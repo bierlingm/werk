@@ -1,0 +1,234 @@
+{
+  "groupId": "store",
+  "testedAt": "2026-02-27T00:00:00Z",
+  "credentials": {
+    "account": "validator-store@local",
+    "namespace": "foundation-store"
+  },
+  "toolsUsed": ["cargo test", "cargo clippy"],
+  "assertions": [
+    {
+      "id": "VAL-STORE-001",
+      "title": "Init creates database",
+      "status": "pass",
+      "steps": [
+        { "action": "Run Store::init(temp_dir)", "expected": "Creates .werk/sd.db with schema", "observed": "Database created with tensions and mutations tables" },
+        { "action": "Verify schema via PRAGMA table_info", "expected": "Correct columns in both tables", "observed": "tensions: id, desired, actual, parent_id, created_at, status; mutations: id, tension_id, timestamp, field, old_value, new_value" }
+      ],
+      "evidence": {
+        "testsRun": ["test_init_idempotent", "test_schema_tensions_columns", "test_schema_mutations_columns"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A - local SQLite"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-002",
+      "title": "Init is idempotent",
+      "status": "pass",
+      "steps": [
+        { "action": "Create store1 via Store::init(path)", "expected": "Store created and tension persisted", "observed": "Created tension with id, store1 persists successfully" },
+        { "action": "Create store2 via Store::init(same_path)", "expected": "Opens existing without error, data preserved", "observed": "store2.get_tension(id) returns the same tension" }
+      ],
+      "evidence": {
+        "testsRun": ["test_init_idempotent"],
+        "testResults": "passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-003",
+      "title": "Discovery walks up directory tree",
+      "status": "blocked",
+      "steps": [
+        { "action": "Review Store::discover_werk_dir() implementation", "expected": "Walks parent directories looking for .werk/", "observed": "Implementation walks up via current.parent() loop until finding .werk/" }
+      ],
+      "evidence": {
+        "testsRun": ["source inspection"],
+        "testResults": "N/A - no automated test for this scenario",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": "No automated test exists for directory tree walking. Implementation verified via source code inspection at store.rs:141-160."
+    },
+    {
+      "id": "VAL-STORE-004",
+      "title": "Discovery falls back to global",
+      "status": "blocked",
+      "steps": [
+        { "action": "Review Store::discover_werk_dir() fallback logic", "expected": "Uses dirs::home_dir() when no .werk/ found", "observed": "Calls dirs::home_dir() and returns home.join('.werk') as fallback" }
+      ],
+      "evidence": {
+        "testsRun": ["source inspection"],
+        "testResults": "N/A - no automated test for home dir fallback",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": "No automated test exists for global fallback. Implementation verified via source code inspection at store.rs:157-159."
+    },
+    {
+      "id": "VAL-STORE-005",
+      "title": "In-memory mode",
+      "status": "pass",
+      "steps": [
+        { "action": "Create two in-memory stores", "expected": "Each has isolated data, no filesystem side effects", "observed": "Store1.create_tension creates t1; Store2.create_tension creates t2; cross-get returns None for foreign ids" },
+        { "action": "Verify store.path() is None", "expected": "In-memory stores report no path", "observed": "store.path() returns None for in-memory stores" }
+      ],
+      "evidence": {
+        "testsRun": ["test_store_new_in_memory", "test_store_new_in_memory_isolated"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-006",
+      "title": "Tension CRUD",
+      "status": "pass",
+      "steps": [
+        { "action": "create_tension with valid data", "expected": "Returns Tension with ULID id, Active status", "observed": "Created tension with unique id, correct desired/actual values" },
+        { "action": "get_tension(existing_id)", "expected": "Returns Some(tension)", "observed": "Retrieved tension matches created tension exactly" },
+        { "action": "get_tension(unknown_id)", "expected": "Returns None", "observed": "Returns None for nonexistent id" },
+        { "action": "list_tensions()", "expected": "Returns all in creation order", "observed": "3 tensions returned in order: t1, t2, t3" }
+      ],
+      "evidence": {
+        "testsRun": ["test_create_tension", "test_get_tension_existing", "test_get_tension_unknown_returns_none", "test_list_tensions_creation_order", "test_list_tensions_empty"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-007",
+      "title": "Tension updates persist and record mutations",
+      "status": "pass",
+      "steps": [
+        { "action": "update_desired and verify persistence", "expected": "get_tension returns updated value", "observed": "desired field updated to 'new desire'" },
+        { "action": "Check mutation recorded", "expected": "Mutation with field='desired', old/new values", "observed": "Mutation recorded with field='desired', old_value='old desire', new_value='new desire'" },
+        { "action": "update_actual, update_parent, update_status", "expected": "All persist and record mutations", "observed": "All updates persisted correctly with corresponding mutation records" }
+      ],
+      "evidence": {
+        "testsRun": ["test_update_desired", "test_update_actual", "test_update_parent", "test_update_status_resolve", "test_update_desired_records_mutation", "test_update_actual_records_mutation", "test_update_parent_records_mutation", "test_update_status_records_mutation"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-008",
+      "title": "Root and child queries",
+      "status": "pass",
+      "steps": [
+        { "action": "get_roots()", "expected": "Returns tensions with null parent_id", "observed": "Returns 1 root when 1 parent and 1 child created; returns 2 roots when 2 root tensions created" },
+        { "action": "get_children(parent_id)", "expected": "Returns all children of parent", "observed": "Returns 2 children for parent with 2 children, empty for leaf nodes" }
+      ],
+      "evidence": {
+        "testsRun": ["test_get_roots", "test_get_roots_multiple", "test_get_children", "test_get_children_empty"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-009",
+      "title": "Mutation queries via store",
+      "status": "pass",
+      "steps": [
+        { "action": "get_mutations(tension_id)", "expected": "Returns ordered mutation history", "observed": "Mutations returned in chronological order" },
+        { "action": "get_mutations(unknown_id)", "expected": "Returns empty Vec", "observed": "Empty vector returned for unknown tension" },
+        { "action": "all_mutations()", "expected": "Returns all mutations ordered by timestamp", "observed": "4 mutations returned for 2 tensions with updates, in timestamp order" }
+      ],
+      "evidence": {
+        "testsRun": ["test_get_mutations_empty_for_unknown", "test_all_mutations", "test_update_desired_records_mutation", "test_create_tension_records_mutation"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-010",
+      "title": "Transaction rollback",
+      "status": "pass",
+      "steps": [
+        { "action": "Attempt update_desired with empty string", "expected": "Validation fails, transaction rolls back", "observed": "Error returned from update_desired" },
+        { "action": "Verify no partial mutation", "expected": "No mutation recorded for failed update", "observed": "Only 1 mutation (creation) exists; no update mutation recorded" },
+        { "action": "Verify original value preserved", "expected": "Tension retains original desired value", "observed": "desired field unchanged at 'goal'" }
+      ],
+      "evidence": {
+        "testsRun": ["test_transaction_rollback_on_update_failure"],
+        "testResults": "passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-011",
+      "title": "Schema correctness",
+      "status": "pass",
+      "steps": [
+        { "action": "PRAGMA table_info(tensions)", "expected": "Columns: id TEXT PK, desired TEXT NOT NULL, actual TEXT NOT NULL, parent_id TEXT nullable, created_at TEXT NOT NULL, status TEXT NOT NULL", "observed": "All columns present with correct types" },
+        { "action": "PRAGMA table_info(mutations)", "expected": "Columns: id INTEGER PK AUTOINCREMENT, tension_id TEXT NOT NULL, timestamp TEXT NOT NULL, field TEXT NOT NULL, old_value TEXT, new_value TEXT", "observed": "All columns present with correct types" }
+      ],
+      "evidence": {
+        "testsRun": ["test_schema_tensions_columns", "test_schema_mutations_columns"],
+        "testResults": "all passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-012",
+      "title": "Concurrent read safety",
+      "status": "pass",
+      "steps": [
+        { "action": "Spawn 5 threads, each opening separate connection to same db", "expected": "All threads read correctly without panics", "observed": "All 5 threads completed successfully, each retrieved the tension correctly" }
+      ],
+      "evidence": {
+        "testsRun": ["test_concurrent_reads"],
+        "testResults": "passed",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-STORE-013",
+      "title": "Permission and disk errors",
+      "status": "blocked",
+      "steps": [
+        { "action": "Review error types and handling", "expected": "StoreError::PermissionDenied and StoreError::IoError variants exist", "observed": "Both error variants defined at store.rs:62-67, PermissionDenied mapped from io::ErrorKind::PermissionDenied at store.rs:98-99" }
+      ],
+      "evidence": {
+        "testsRun": ["test_store_error_display", "source inspection"],
+        "testResults": "N/A - no automated test for actual permission/disk errors",
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": "No automated test exists for permission denied or disk full scenarios. Error types implemented and display correctly. Full verification would require controlled filesystem permissions."
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "No automated tests for directory tree discovery (VAL-STORE-003) and global fallback (VAL-STORE-004). Implementation verified via source inspection but not executed.",
+      "affectedAssertions": ["VAL-STORE-003", "VAL-STORE-004"],
+      "quickFixAttempted": "Verified implementation logic through source code review at store.rs:141-159"
+    },
+    {
+      "description": "No automated tests for permission denied and disk full error scenarios (VAL-STORE-013). Error types are implemented and displayed correctly.",
+      "affectedAssertions": ["VAL-STORE-013"],
+      "quickFixAttempted": "Verified error type definitions and mapping through source inspection at store.rs:62-101"
+    }
+  ],
+  "summary": "Tested 13 store assertions: 10 passed, 3 blocked. All 38 store-specific unit tests pass. 3 assertions blocked due to lack of automated tests for filesystem scenarios (directory discovery, global fallback, permission/disk errors) that are difficult to automate but are correctly implemented per source inspection."
+}

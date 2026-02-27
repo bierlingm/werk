@@ -1,0 +1,93 @@
+{
+  "milestone": "foundation",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 49,
+    "passed": 43,
+    "failed": 1,
+    "blocked": 5
+  },
+  "passedAssertions": [
+    "VAL-MUTATION-001",
+    "VAL-MUTATION-002",
+    "VAL-MUTATION-003",
+    "VAL-MUTATION-004",
+    "VAL-MUTATION-005",
+    "VAL-MUTATION-006",
+    "VAL-MUTATION-008",
+    "VAL-MUTATION-009",
+    "VAL-MUTATION-010",
+    "VAL-STORE-001",
+    "VAL-STORE-002",
+    "VAL-STORE-005",
+    "VAL-STORE-006",
+    "VAL-STORE-007",
+    "VAL-STORE-008",
+    "VAL-STORE-009",
+    "VAL-STORE-010",
+    "VAL-STORE-011",
+    "VAL-STORE-012",
+    "VAL-TENSION-001",
+    "VAL-TENSION-002",
+    "VAL-TENSION-003",
+    "VAL-TENSION-004",
+    "VAL-TENSION-005",
+    "VAL-TENSION-006",
+    "VAL-TENSION-007",
+    "VAL-TENSION-008",
+    "VAL-TENSION-009",
+    "VAL-TENSION-010",
+    "VAL-TENSION-011",
+    "VAL-TENSION-013",
+    "VAL-TREE-001",
+    "VAL-TREE-002",
+    "VAL-TREE-003",
+    "VAL-TREE-004",
+    "VAL-TREE-005",
+    "VAL-TREE-006",
+    "VAL-TREE-007",
+    "VAL-TREE-008",
+    "VAL-TREE-009",
+    "VAL-TREE-010",
+    "VAL-TREE-011",
+    "VAL-TREE-012"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-TENSION-012",
+      "reason": "Assertion specification requires either cascading (children become roots) or error rejection when releasing a tension with children. Current implementation does neither - it leaves children with stale parent references."
+    }
+  ],
+  "blockedAssertions": [
+    {
+      "id": "VAL-MUTATION-007",
+      "blockedBy": "Feature not implemented. The validation contract specifies mutations_between(start, end) but this function does not exist in the codebase."
+    },
+    {
+      "id": "VAL-MUTATION-011",
+      "blockedBy": "Feature not implemented. The contract asserts that replaying mutations should reproduce current tension state, but no reconstruction utility exists."
+    },
+    {
+      "id": "VAL-STORE-003",
+      "blockedBy": "No automated test exists for directory tree walking. Implementation verified via source code inspection at store.rs:141-160."
+    },
+    {
+      "id": "VAL-STORE-004",
+      "blockedBy": "No automated test exists for global fallback. Implementation verified via source code inspection at store.rs:157-159."
+    },
+    {
+      "id": "VAL-STORE-013",
+      "blockedBy": "No automated test exists for permission denied or disk full scenarios. Error types implemented and display correctly. Full verification would require controlled filesystem permissions."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance: rust-library-api section with isolation and boundary rules for parallel flow validators.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "generatedAt": "2026-02-27T20:38:20.307336+00:00"
+}
