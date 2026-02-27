@@ -11,6 +11,7 @@
 // and emits events. Instruments subscribe and react.
 
 pub mod dynamics;
+pub mod engine;
 pub mod events;
 pub mod mutation;
 pub mod store;
@@ -63,6 +64,7 @@ pub use dynamics::{
     measure_assimilation_depth,
     predict_structural_tendency,
 };
+pub use engine::{DynamicsEngine, DynamicsThresholds, PreviousDynamics, PreviousState};
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use store::{Store, StoreError};
