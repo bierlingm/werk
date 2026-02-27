@@ -523,6 +523,10 @@ impl Store {
     /// Update the status of a tension.
     ///
     /// Persists the change and records a mutation.
+    ///
+    /// When a tension is resolved or released and has children, all children
+    /// are atomically reparented to null (becoming roots) and a parent_id
+    /// mutation is recorded for each child.
     pub fn update_status(&self, id: &str, new_status: TensionStatus) -> Result<(), SdError> {
         let mut tension = self
             .get_tension(id)
@@ -548,6 +552,13 @@ impl Store {
 
         tension.status = new_status;
 
+        // Check if this tension has children that need reparenting
+        let children = self
+            .get_children(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?;
+        let needs_reparent = !children.is_empty()
+            && (new_status == TensionStatus::Resolved || new_status == TensionStatus::Released);
+
         // Persist in transaction
         {
             let conn = self.conn.borrow();
@@ -555,6 +566,7 @@ impl Store {
                 SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
+            // Update the tension status
             let result = self
                 .update_tension_in_transaction(&conn, &tension)
                 .and_then(|_| {
@@ -568,6 +580,38 @@ impl Store {
                             new_status.to_string(),
                         ),
                     )
+                })
+                .and_then(|_| {
+                    // If resolving/releasing with children, reparent all children to null
+                    if needs_reparent {
+                        let now = Utc::now();
+                        for child in &children {
+                            // Update child's parent_id to null
+                            conn.execute_with_params(
+                                "UPDATE tensions SET parent_id = NULL WHERE id = ?1",
+                                &[SqliteValue::Text(child.id.clone())],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to reparent child: {:?}",
+                                    e
+                                ))
+                            })?;
+
+                            // Record parent_id mutation for the child
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new(
+                                    child.id.clone(),
+                                    now,
+                                    "parent_id".to_owned(),
+                                    child.parent_id.clone(),
+                                    String::new(), // Empty string represents null
+                                ),
+                            )?;
+                        }
+                    }
+                    Ok(())
                 });
 
             match result {
@@ -714,6 +758,28 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query("SELECT tension_id, timestamp, field, old_value, new_value FROM mutations ORDER BY timestamp ASC")
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_mutation_rows(rows)
+    }
+
+    /// Get all mutations within a time range, in chronological order.
+    ///
+    /// The time range is inclusive on both ends: `[start, end]`.
+    pub fn mutations_between(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<Mutation>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT tension_id, timestamp, field, old_value, new_value FROM mutations WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp ASC",
+                &[
+                    SqliteValue::Text(start.to_rfc3339()),
+                    SqliteValue::Text(end.to_rfc3339()),
+                ],
+            )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_mutation_rows(rows)
@@ -1148,6 +1214,193 @@ mod tests {
         assert_eq!(all.len(), 4); // 2 created + 2 updates
     }
 
+    // ── VAL-MUTATION-007: mutations_between ────────────────────────
+
+    #[test]
+    fn test_mutations_between_returns_in_range() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tensions at specific times
+        let t1 = store.create_tension("goal1", "reality1").unwrap();
+
+        // Wait a bit to ensure different timestamps
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _t2 = store.create_tension("goal2", "reality2").unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        store.update_desired(&t1.id, "new goal1").unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _t3 = store.create_tension("goal3", "reality3").unwrap();
+
+        // Get all mutations to see timestamps
+        let all = store.all_mutations().unwrap();
+        assert_eq!(all.len(), 4);
+
+        // Query mutations in the middle time window (should get t2 creation and t1 update)
+        let start = all[1].timestamp();
+        let end = all[2].timestamp();
+        let middle = store.mutations_between(start, end).unwrap();
+        assert_eq!(middle.len(), 2);
+    }
+
+    #[test]
+    fn test_mutations_between_empty_range() {
+        let store = Store::new_in_memory().unwrap();
+        let _t = store.create_tension("goal", "reality").unwrap();
+
+        // Query a range before any mutations
+        let past = Utc::now() - chrono::Duration::hours(1);
+        let more_past = past - chrono::Duration::hours(1);
+        let result = store.mutations_between(more_past, past).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_mutations_between_single_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        // Get the creation mutation
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let creation = &mutations[0];
+
+        // Query exactly at that timestamp
+        let result = store
+            .mutations_between(creation.timestamp(), creation.timestamp())
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].tension_id(), t.id);
+    }
+
+    #[test]
+    fn test_mutations_between_chronological_order() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create multiple mutations with small delays
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        store.update_desired(&t.id, "new goal").unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        store.update_actual(&t.id, "new reality").unwrap();
+
+        // Query wide range
+        let all = store.all_mutations().unwrap();
+        let start = all[0].timestamp() - chrono::Duration::seconds(1);
+        let end = all[2].timestamp() + chrono::Duration::seconds(1);
+
+        let result = store.mutations_between(start, end).unwrap();
+        assert_eq!(result.len(), 3);
+
+        // Verify chronological order
+        for i in 1..result.len() {
+            assert!(result[i - 1].timestamp() <= result[i].timestamp());
+        }
+    }
+
+    #[test]
+    fn test_mutations_between_multiple_tensions() {
+        let store = Store::new_in_memory().unwrap();
+
+        let t1 = store.create_tension("goal1", "reality1").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let t2 = store.create_tension("goal2", "reality2").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        store.update_desired(&t1.id, "new goal1").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        store.update_actual(&t2.id, "new reality2").unwrap();
+
+        // Query all
+        let all = store.all_mutations().unwrap();
+        let start = all[0].timestamp() - chrono::Duration::seconds(1);
+        let end = all[3].timestamp() + chrono::Duration::seconds(1);
+
+        let result = store.mutations_between(start, end).unwrap();
+        assert_eq!(result.len(), 4);
+
+        // Verify all tension IDs are present
+        let tension_ids: std::collections::HashSet<_> =
+            result.iter().map(|m| m.tension_id()).collect();
+        assert!(tension_ids.contains(&t1.id.as_str()));
+        assert!(tension_ids.contains(&t2.id.as_str()));
+    }
+
+    // ── VAL-MUTATION-011: Mutation replay vs direct query ──────────
+
+    #[test]
+    fn test_replay_matches_direct_query() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tension and perform various updates
+        let t = store
+            .create_tension("initial goal", "initial reality")
+            .unwrap();
+        store.update_desired(&t.id, "second goal").unwrap();
+        store.update_actual(&t.id, "second reality").unwrap();
+        let parent = store.create_tension("parent", "p reality").unwrap();
+        store.update_parent(&t.id, Some(&parent.id)).unwrap();
+        store.update_desired(&t.id, "final goal").unwrap();
+        store.update_actual(&t.id, "final reality").unwrap();
+
+        // Get mutations and replay
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let reconstructed = crate::mutation::replay_mutations(&mutations).unwrap();
+
+        // Compare with direct query
+        let direct = store.get_tension(&t.id).unwrap().unwrap();
+
+        assert_eq!(reconstructed.id, direct.id);
+        assert_eq!(reconstructed.desired, direct.desired);
+        assert_eq!(reconstructed.actual, direct.actual);
+        assert_eq!(reconstructed.parent_id, direct.parent_id);
+        assert_eq!(reconstructed.status, direct.status);
+        // created_at should be very close (within 1 second due to parsing)
+        let diff = (reconstructed.created_at - direct.created_at)
+            .num_seconds()
+            .abs();
+        assert!(diff < 1);
+    }
+
+    #[test]
+    fn test_replay_resolved_tension_matches_direct_query() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tension, update, and resolve
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_desired(&t.id, "final goal").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        // Replay mutations
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let reconstructed = crate::mutation::replay_mutations(&mutations).unwrap();
+
+        // Compare
+        let direct = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(reconstructed.desired, direct.desired);
+        assert_eq!(reconstructed.status, direct.status);
+    }
+
+    #[test]
+    fn test_replay_released_tension_matches_direct_query() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tension, update, and release
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_actual(&t.id, "final reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Released).unwrap();
+
+        // Replay mutations
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let reconstructed = crate::mutation::replay_mutations(&mutations).unwrap();
+
+        // Compare
+        let direct = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(reconstructed.actual, direct.actual);
+        assert_eq!(reconstructed.status, direct.status);
+    }
+
     // ── Transaction Rollback ───────────────────────────────────────
 
     #[test]
@@ -1287,5 +1540,181 @@ mod tests {
 
         let e = StoreError::PermissionDenied("/path".to_owned());
         assert!(e.to_string().contains("permission denied"));
+    }
+
+    // ── VAL-TENSION-012: Deletion with children (reparent to roots) ──────
+
+    #[test]
+    fn test_resolve_tension_with_children_reparents_to_roots() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create parent with children
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let child1 = store
+            .create_tension_with_parent("child1 goal", "child1 reality", Some(parent.id.clone()))
+            .unwrap();
+        let child2 = store
+            .create_tension_with_parent("child2 goal", "child2 reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Resolve the parent
+        store
+            .update_status(&parent.id, TensionStatus::Resolved)
+            .unwrap();
+
+        // Children should now be roots (parent_id = None)
+        let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
+        let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
+        assert!(child1_after.parent_id.is_none());
+        assert!(child2_after.parent_id.is_none());
+
+        // Children should appear in get_roots()
+        let roots = store.get_roots().unwrap();
+        assert!(roots.iter().any(|r| r.id == child1.id));
+        assert!(roots.iter().any(|r| r.id == child2.id));
+
+        // Parent should still be in roots (it has null parent_id), but with Resolved status
+        let parent_in_roots = roots.iter().find(|r| r.id == parent.id);
+        assert!(
+            parent_in_roots.is_some(),
+            "parent should still be a root (null parent_id)"
+        );
+        assert_eq!(
+            parent_in_roots.unwrap().status,
+            TensionStatus::Resolved,
+            "parent should have Resolved status"
+        );
+    }
+
+    #[test]
+    fn test_release_tension_with_children_reparents_to_roots() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create parent with children
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let child1 = store
+            .create_tension_with_parent("child1 goal", "child1 reality", Some(parent.id.clone()))
+            .unwrap();
+        let child2 = store
+            .create_tension_with_parent("child2 goal", "child2 reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Release the parent
+        store
+            .update_status(&parent.id, TensionStatus::Released)
+            .unwrap();
+
+        // Children should now be roots
+        let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
+        let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
+        assert!(child1_after.parent_id.is_none());
+        assert!(child2_after.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_resolve_tension_with_children_records_parent_mutations() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create parent with children
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let child1 = store
+            .create_tension_with_parent("child1 goal", "child1 reality", Some(parent.id.clone()))
+            .unwrap();
+        let child2 = store
+            .create_tension_with_parent("child2 goal", "child2 reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Resolve the parent
+        store
+            .update_status(&parent.id, TensionStatus::Resolved)
+            .unwrap();
+
+        // Each child should have a parent_id mutation recorded
+        let child1_mutations = store.get_mutations(&child1.id).unwrap();
+        let child2_mutations = store.get_mutations(&child2.id).unwrap();
+
+        // Find the parent_id mutation for each child
+        let child1_parent_mutation = child1_mutations.iter().find(|m| m.field() == "parent_id");
+        let child2_parent_mutation = child2_mutations.iter().find(|m| m.field() == "parent_id");
+
+        assert!(
+            child1_parent_mutation.is_some(),
+            "child1 should have parent_id mutation"
+        );
+        assert!(
+            child2_parent_mutation.is_some(),
+            "child2 should have parent_id mutation"
+        );
+
+        // Verify mutation records the old parent_id and empty new_value (null)
+        let m1 = child1_parent_mutation.unwrap();
+        assert_eq!(m1.old_value(), Some(parent.id.as_str()));
+        assert_eq!(m1.new_value(), ""); // Empty string represents null
+    }
+
+    #[test]
+    fn test_resolve_tension_without_children_no_reparent() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create parent without children
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+
+        // Resolve the parent
+        store
+            .update_status(&parent.id, TensionStatus::Resolved)
+            .unwrap();
+
+        // Status should be Resolved
+        let parent_after = store.get_tension(&parent.id).unwrap().unwrap();
+        assert_eq!(parent_after.status, TensionStatus::Resolved);
+
+        // Parent is still a root (has null parent_id), but with Resolved status
+        let roots = store.get_roots().unwrap();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].id, parent.id);
+        assert_eq!(roots[0].status, TensionStatus::Resolved);
+    }
+
+    #[test]
+    fn test_resolve_deep_hierarchy_reparents_all_descendants() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create a deep hierarchy: grandparent -> parent -> child -> grandchild
+        let grandparent = store.create_tension("grandparent", "gp reality").unwrap();
+        let parent = store
+            .create_tension_with_parent("parent", "p reality", Some(grandparent.id.clone()))
+            .unwrap();
+        let child = store
+            .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
+            .unwrap();
+        let grandchild = store
+            .create_tension_with_parent("grandchild", "gc reality", Some(child.id.clone()))
+            .unwrap();
+
+        // Resolve the parent (middle of hierarchy)
+        // This should reparent child and grandchild
+        store
+            .update_status(&parent.id, TensionStatus::Resolved)
+            .unwrap();
+
+        // Child should now be a root
+        let child_after = store.get_tension(&child.id).unwrap().unwrap();
+        assert!(child_after.parent_id.is_none());
+
+        // Grandchild should still have child as parent
+        let grandchild_after = store.get_tension(&grandchild.id).unwrap().unwrap();
+        assert_eq!(grandchild_after.parent_id, Some(child.id));
+
+        // Grandparent should still exist (not resolved)
+        let grandparent_after = store.get_tension(&grandparent.id).unwrap().unwrap();
+        assert_eq!(grandparent_after.status, TensionStatus::Active);
     }
 }

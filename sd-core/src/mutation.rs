@@ -7,6 +7,201 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::tension::{Tension, TensionStatus};
+
+/// Reconstructed tension state from mutation replay.
+///
+/// This struct contains the tension field values that can be reconstructed
+/// from mutation history. Note that `id` and `created_at` are taken from
+/// the initial creation mutation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReconstructedTension {
+    /// Unique identifier (ULID).
+    pub id: String,
+    /// The desired state.
+    pub desired: String,
+    /// The actual state.
+    pub actual: String,
+    /// Optional parent tension ID.
+    pub parent_id: Option<String>,
+    /// When this tension was created.
+    pub created_at: DateTime<Utc>,
+    /// Current lifecycle status.
+    pub status: TensionStatus,
+}
+
+impl ReconstructedTension {
+    /// Convert to a Tension struct.
+    pub fn to_tension(&self) -> Tension {
+        Tension {
+            id: self.id.clone(),
+            desired: self.desired.clone(),
+            actual: self.actual.clone(),
+            parent_id: self.parent_id.clone(),
+            created_at: self.created_at,
+            status: self.status,
+        }
+    }
+}
+
+/// Replay a sequence of mutations to reconstruct the tension state.
+///
+/// Given mutations ordered chronologically (oldest first), this function
+/// reconstructs the final tension field values. The first mutation must
+/// be a "created" mutation containing the initial state.
+///
+/// # Arguments
+///
+/// * `mutations` - Chronologically ordered mutations for a single tension
+///
+/// # Returns
+///
+/// The reconstructed tension state, or an error if mutations are invalid
+/// or empty.
+///
+/// # Example
+///
+/// ```
+/// # use sd_core::mutation::{Mutation, replay_mutations};
+/// # use sd_core::store::Store;
+/// let store = Store::new_in_memory().unwrap();
+/// let t = store.create_tension("goal", "reality").unwrap();
+/// store.update_desired(&t.id, "new goal").unwrap();
+///
+/// let mutations = store.get_mutations(&t.id).unwrap();
+/// let reconstructed = replay_mutations(&mutations).unwrap();
+/// assert_eq!(reconstructed.desired, "new goal");
+/// ```
+pub fn replay_mutations(mutations: &[Mutation]) -> Result<ReconstructedTension, ReplayError> {
+    if mutations.is_empty() {
+        return Err(ReplayError::EmptyMutations);
+    }
+
+    // First mutation must be "created"
+    let first = &mutations[0];
+    if first.field() != "created" {
+        return Err(ReplayError::MissingCreation);
+    }
+
+    // Parse the initial state from the creation mutation's new_value
+    // Format: "desired='...';actual='...'"
+    let initial_state = parse_creation_value(first.new_value())?;
+
+    let mut reconstructed = ReconstructedTension {
+        id: first.tension_id().to_owned(),
+        desired: initial_state.desired,
+        actual: initial_state.actual,
+        parent_id: None, // Parent is set via separate mutation if needed
+        created_at: first.timestamp(),
+        status: TensionStatus::Active,
+    };
+
+    // Replay subsequent mutations
+    for mutation in &mutations[1..] {
+        apply_mutation(&mut reconstructed, mutation)?;
+    }
+
+    Ok(reconstructed)
+}
+
+/// Parsed initial state from a creation mutation.
+struct InitialState {
+    desired: String,
+    actual: String,
+}
+
+/// Parse the creation mutation's new_value format.
+fn parse_creation_value(value: &str) -> Result<InitialState, ReplayError> {
+    // Format: "desired='...';actual='...'"
+    // We need to extract the values, handling potential edge cases
+
+    let desired = extract_field_value(value, "desired")
+        .ok_or_else(|| ReplayError::InvalidCreationFormat(value.to_owned()))?;
+    let actual = extract_field_value(value, "actual")
+        .ok_or_else(|| ReplayError::InvalidCreationFormat(value.to_owned()))?;
+
+    Ok(InitialState { desired, actual })
+}
+
+/// Extract a field value from the creation format.
+fn extract_field_value(format: &str, field_name: &str) -> Option<String> {
+    let prefix = format!("{}='", field_name);
+    let start = format.find(&prefix)?;
+    let value_start = start + prefix.len();
+
+    // Find the closing quote
+    let remaining = &format[value_start..];
+    let end = remaining.find("'")?;
+    Some(remaining[..end].to_owned())
+}
+
+/// Apply a single mutation to the reconstructed tension.
+fn apply_mutation(
+    tension: &mut ReconstructedTension,
+    mutation: &Mutation,
+) -> Result<(), ReplayError> {
+    match mutation.field() {
+        "desired" => {
+            tension.desired = mutation.new_value().to_owned();
+        }
+        "actual" => {
+            tension.actual = mutation.new_value().to_owned();
+        }
+        "parent_id" => {
+            // Empty string represents null
+            tension.parent_id = if mutation.new_value().is_empty() {
+                None
+            } else {
+                Some(mutation.new_value().to_owned())
+            };
+        }
+        "status" => {
+            tension.status = match mutation.new_value() {
+                "Active" => TensionStatus::Active,
+                "Resolved" => TensionStatus::Resolved,
+                "Released" => TensionStatus::Released,
+                _ => return Err(ReplayError::InvalidStatus(mutation.new_value().to_owned())),
+            };
+        }
+        "created" => {
+            // Creation should only appear as the first mutation
+            return Err(ReplayError::UnexpectedCreation);
+        }
+        field => {
+            return Err(ReplayError::UnknownField(field.to_owned()));
+        }
+    }
+    Ok(())
+}
+
+/// Errors that can occur during mutation replay.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum ReplayError {
+    /// No mutations were provided.
+    #[error("cannot replay empty mutations")]
+    EmptyMutations,
+
+    /// The first mutation is not a creation mutation.
+    #[error("expected creation mutation as first, got different field")]
+    MissingCreation,
+
+    /// The creation mutation format is invalid.
+    #[error("invalid creation format: {0}")]
+    InvalidCreationFormat(String),
+
+    /// An invalid status value was encountered.
+    #[error("invalid status value: {0}")]
+    InvalidStatus(String),
+
+    /// A creation mutation appeared in the middle of the sequence.
+    #[error("unexpected creation mutation in middle of sequence")]
+    UnexpectedCreation,
+
+    /// An unknown field was encountered.
+    #[error("unknown field: {0}")]
+    UnknownField(String),
+}
+
 /// An immutable record of a change to a tension.
 ///
 /// Mutations form an append-only log that enables history replay,
@@ -228,5 +423,289 @@ mod tests {
         let json = serde_json::to_string(&m).unwrap();
         let deserialized: Mutation = serde_json::from_str(&json).unwrap();
         assert_eq!(m, deserialized);
+    }
+
+    // ── VAL-MUTATION-011: Mutation replay ─────────────────────────
+
+    #[test]
+    fn test_replay_empty_mutations_fails() {
+        let result = super::replay_mutations(&[]);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            super::ReplayError::EmptyMutations => {}
+            other => panic!("expected EmptyMutations, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_replay_missing_creation_fails() {
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "desired".to_owned(),
+            Some("old".to_owned()),
+            "new".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            super::ReplayError::MissingCreation => {}
+            other => panic!("expected MissingCreation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_replay_creation_only() {
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='my goal';actual='my reality'".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.id, "01ABC");
+        assert_eq!(result.desired, "my goal");
+        assert_eq!(result.actual, "my reality");
+        assert!(result.parent_id.is_none());
+        assert_eq!(result.status, TensionStatus::Active);
+    }
+
+    #[test]
+    fn test_replay_with_desired_update() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='old goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "desired".to_owned(),
+                Some("old goal".to_owned()),
+                "new goal".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.desired, "new goal");
+        assert_eq!(result.actual, "reality");
+    }
+
+    #[test]
+    fn test_replay_with_actual_update() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='old reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "actual".to_owned(),
+                Some("old reality".to_owned()),
+                "new reality".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.desired, "goal");
+        assert_eq!(result.actual, "new reality");
+    }
+
+    #[test]
+    fn test_replay_with_parent_id_update() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "parent_id".to_owned(),
+                None,
+                "parent123".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.parent_id, Some("parent123".to_owned()));
+    }
+
+    #[test]
+    fn test_replay_with_parent_id_set_to_null() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "parent_id".to_owned(),
+                Some("parent123".to_owned()),
+                "".to_owned(), // Empty means null
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert!(result.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_replay_with_status_update() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "status".to_owned(),
+                Some("Active".to_owned()),
+                "Resolved".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.status, TensionStatus::Resolved);
+    }
+
+    #[test]
+    fn test_replay_multiple_updates() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='initial goal';actual='initial reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "desired".to_owned(),
+                Some("initial goal".to_owned()),
+                "second goal".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(2),
+                "actual".to_owned(),
+                Some("initial reality".to_owned()),
+                "second reality".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(3),
+                "desired".to_owned(),
+                Some("second goal".to_owned()),
+                "final goal".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.desired, "final goal");
+        assert_eq!(result.actual, "second reality");
+    }
+
+    #[test]
+    fn test_replay_invalid_status_fails() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "status".to_owned(),
+                Some("Active".to_owned()),
+                "InvalidStatus".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            super::ReplayError::InvalidStatus(s) => assert_eq!(s, "InvalidStatus"),
+            other => panic!("expected InvalidStatus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_replay_invalid_creation_format_fails() {
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "invalid format".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_replay_unknown_field_fails() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "unknown_field".to_owned(),
+                None,
+                "value".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_replay_to_tension() {
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='goal';actual='reality'".to_owned(),
+        )];
+        let reconstructed = super::replay_mutations(&mutations).unwrap();
+        let tension = reconstructed.to_tension();
+        assert_eq!(tension.id, "01ABC");
+        assert_eq!(tension.desired, "goal");
+        assert_eq!(tension.actual, "reality");
     }
 }
