@@ -4446,14 +4446,16 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
         let t = store.create_tension("goal", "a").unwrap();
 
-        // Create 10,000 mutations
+        // Create 10,000 mutations in a single transaction for performance
+        store.begin_transaction().unwrap();
         for i in 0..10000 {
             if i % 2 == 0 {
-                store.update_actual(&t.id, "ab").unwrap();
+                store.update_actual_no_tx(&t.id, "ab").unwrap();
             } else {
-                store.update_actual(&t.id, "a").unwrap();
+                store.update_actual_no_tx(&t.id, "a").unwrap();
             }
         }
+        store.commit_transaction().unwrap();
 
         let mutations = store.get_mutations(&t.id).unwrap();
         let t_updated = store.get_tension(&t.id).unwrap().unwrap();

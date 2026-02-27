@@ -469,6 +469,44 @@ impl Store {
         self.update_field(id, "actual", new_actual)
     }
 
+    /// Update the actual state of a tension without starting a transaction.
+    ///
+    /// For use within an already-active transaction. Call `begin_transaction()`
+    /// before using this method, and `commit_transaction()` after all updates.
+    pub fn update_actual_no_tx(&self, id: &str, new_actual: &str) -> Result<(), SdError> {
+        if new_actual.is_empty() {
+            return Err(SdError::ValidationError(
+                "actual cannot be empty".to_owned(),
+            ));
+        }
+
+        let mut tension = self
+            .get_tension(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?
+            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+
+        if tension.status != TensionStatus::Active {
+            return Err(SdError::UpdateOnInactiveTension(tension.status));
+        }
+
+        let old_value = tension.update_actual(new_actual)?;
+
+        let conn = self.conn.borrow();
+        self.update_tension_in_transaction(&conn, &tension)?;
+        self.record_mutation_in_transaction(
+            &conn,
+            &Mutation::new(
+                tension.id.clone(),
+                Utc::now(),
+                "actual".to_owned(),
+                Some(old_value),
+                new_actual.to_owned(),
+            ),
+        )?;
+
+        Ok(())
+    }
+
     /// Update the parent_id of a tension.
     ///
     /// Persists the change and records a mutation.
@@ -841,6 +879,37 @@ impl Store {
     /// Get the database path (None for in-memory stores).
     pub fn path(&self) -> Option<&std::path::Path> {
         self.path.as_deref()
+    }
+
+    /// Begin a transaction explicitly.
+    ///
+    /// Use this for batch operations to improve performance.
+    /// Must be paired with a call to `commit_transaction()` or `rollback_transaction()`.
+    pub fn begin_transaction(&self) -> Result<(), StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN;")
+            .map(|_| ())
+            .map_err(|e| StoreError::DatabaseError(format!("failed to begin transaction: {:?}", e)))
+    }
+
+    /// Commit the current transaction.
+    ///
+    /// Panics if no transaction is active.
+    pub fn commit_transaction(&self) -> Result<(), StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute("COMMIT;").map(|_| ()).map_err(|e| {
+            StoreError::DatabaseError(format!("failed to commit transaction: {:?}", e))
+        })
+    }
+
+    /// Rollback the current transaction.
+    ///
+    /// Panics if no transaction is active.
+    pub fn rollback_transaction(&self) -> Result<(), StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute("ROLLBACK;").map(|_| ()).map_err(|e| {
+            StoreError::DatabaseError(format!("failed to rollback transaction: {:?}", e))
+        })
     }
 }
 
