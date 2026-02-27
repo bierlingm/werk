@@ -1,0 +1,7 @@
+commands:
+  install: cargo fetch
+  build: cargo build -p sd-core
+  test: cargo test -p sd-core -- --test-threads=5
+  clippy: cargo clippy -p sd-core -- -D warnings
+  fmt_check: cargo fmt -p sd-core --check
+  fmt: cargo fmt -p sd-core

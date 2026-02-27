@@ -1,0 +1,3 @@
+[workspace]
+members = ["sd-core", "werk-cli"]
+resolver = "2"
