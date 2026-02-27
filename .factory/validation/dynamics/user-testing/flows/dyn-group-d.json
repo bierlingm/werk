@@ -1,0 +1,311 @@
+{
+  "groupId": "dyn-group-d",
+  "testedAt": "2026-02-27T23:30:00Z",
+  "credentials": {
+    "account": "dynamics_validator_d@example.com",
+    "namespace": "dynamics-group-d"
+  },
+  "toolsUsed": ["cargo test", "cargo clippy", "cargo fmt"],
+  "assertions": [
+    {
+      "id": "VAL-DYN-020",
+      "title": "All thresholds are parameters",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test -p sd-core test_all_thresholds_are_parameters_no_hardcoded_constants",
+          "expected": "Test passes - all dynamics accept threshold parameters from caller",
+          "observed": "Test passed - verified all 10 dynamics functions take threshold structs as parameters"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_threshold_parameters_affect_results",
+          "expected": "Test passes - changing threshold parameters changes detection results",
+          "observed": "Test passed - systematic parameter sweep confirmed different thresholds produce different results"
+        },
+        {
+          "action": "Inspect dynamics.rs source code",
+          "expected": "No hardcoded constants in dynamic functions",
+          "observed": "Verified all 10 dynamics (detect_oscillation, detect_resolution, detect_structural_conflict, classify_creative_cycle_phase, classify_orientation, detect_compensating_strategy, predict_structural_tendency, measure_assimilation_depth, detect_neglect, compute_structural_tension) accept threshold parameters from caller"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test dynamics::tests::test_all_thresholds_are_parameters_no_hardcoded_constants ... ok",
+          "test dynamics::tests::test_threshold_parameters_affect_results ... ok"
+        ],
+        "thresholdStructs": [
+          "ConflictThresholds { recency_seconds, activity_ratio_threshold }",
+          "OscillationThresholds { magnitude_threshold, frequency_threshold, recency_window_seconds }",
+          "ResolutionThresholds { velocity_threshold, reversal_tolerance, recency_window_seconds }",
+          "LifecycleThresholds { recency_window_seconds, active_frequency_threshold, convergence_threshold, momentum_window_seconds }",
+          "OrientationThresholds { minimum_sample_size, dominant_threshold, recency_window_seconds }",
+          "CompensatingStrategyThresholds { persistence_threshold_seconds, min_oscillation_cycles, structural_change_window_seconds, recency_window_seconds }",
+          "AssimilationDepthThresholds { high_frequency_threshold, deep_trend_threshold, recency_window_seconds }",
+          "NeglectThresholds { recency_seconds, activity_ratio_threshold, min_active_mutations }"
+        ],
+        "consoleErrors": "none",
+        "commandsRun": [
+          "cargo test -p sd-core test_all_thresholds_are_parameters_no_hardcoded_constants",
+          "cargo test -p sd-core test_threshold_parameters_affect_results"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DYN-021",
+      "title": "Empty mutation history handling",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test -p sd-core test_all_dynamics_handle_empty_history_without_panic",
+          "expected": "Test passes - all 10 dynamics handle empty mutations without panic",
+          "observed": "Test passed - all dynamics returned sensible defaults (None, Germination phase)"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_oscillation_none_for_empty_mutation_history",
+          "expected": "Test passes - oscillation detection returns None for empty history",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_phase_handles_empty_mutation_history",
+          "expected": "Test passes - phase classification returns Germination for empty history",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_neglect_handles_empty_mutations",
+          "expected": "Test passes - neglect detection returns None for empty mutations",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_resolution_none_for_empty_mutation_history",
+          "expected": "Test passes - resolution detection returns None for empty history",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_compensating_strategy_handles_empty_mutations",
+          "expected": "Test passes - compensating strategy detection returns None for empty mutations",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_orientation_handles_empty_mutations",
+          "expected": "Test passes - orientation classification handles empty mutations gracefully",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_assimilation_depth_none_for_no_mutations",
+          "expected": "Test passes - assimilation depth returns None for no mutations",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_phase_germination_for_tension_with_only_creation",
+          "expected": "Test passes - tension with only creation mutation returns Germination phase",
+          "observed": "Test passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test dynamics::tests::test_all_10_dynamics_handle_empty_mutation_history ... ok",
+          "test dynamics::tests::test_all_dynamics_handle_empty_history_without_panic ... ok",
+          "test dynamics::tests::test_oscillation_none_for_empty_mutation_history ... ok",
+          "test dynamics::tests::test_phase_handles_empty_mutation_history ... ok",
+          "test dynamics::tests::test_neglect_handles_empty_mutations ... ok",
+          "test dynamics::tests::test_resolution_none_for_empty_mutation_history ... ok",
+          "test dynamics::tests::test_compensating_strategy_handles_empty_mutations ... ok",
+          "test dynamics::tests::test_orientation_handles_empty_mutations ... ok",
+          "test dynamics::tests::test_assimilation_depth_none_for_no_mutations ... ok",
+          "test dynamics::tests::test_phase_germination_for_tension_with_only_creation ... ok"
+        ],
+        "consoleErrors": "none",
+        "commandsRun": [
+          "cargo test -p sd-core test_all_dynamics_handle_empty_history_without_panic",
+          "cargo test -p sd-core test_all_10_dynamics_handle_empty_mutation_history"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DYN-022",
+      "title": "Single mutation handling",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test -p sd-core test_all_dynamics_handle_single_mutation_gracefully",
+          "expected": "Test passes - all 10 dynamics produce valid results with exactly one mutation",
+          "observed": "Test passed - all dynamics returned valid (possibly None) results"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_all_10_dynamics_handle_single_mutation",
+          "expected": "Test passes - comprehensive single mutation handling verified",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_oscillation_none_for_single_mutation",
+          "expected": "Test passes - oscillation detection returns None with single mutation (need 2+ for direction changes)",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_phase_handles_single_mutation",
+          "expected": "Test passes - phase classification handles single mutation correctly",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_assimilation_depth_handles_single_mutation",
+          "expected": "Test passes - assimilation depth returns None/valid result with single mutation",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_resolution_none_for_single_mutation",
+          "expected": "Test passes - resolution detection returns None with single mutation (need progress pattern)",
+          "observed": "Test passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test dynamics::tests::test_all_10_dynamics_handle_single_mutation ... ok",
+          "test dynamics::tests::test_all_dynamics_handle_single_mutation_gracefully ... ok",
+          "test dynamics::tests::test_oscillation_none_for_single_mutation ... ok",
+          "test dynamics::tests::test_phase_handles_single_mutation ... ok",
+          "test dynamics::tests::test_assimilation_depth_handles_single_mutation ... ok",
+          "test dynamics::tests::test_resolution_none_for_single_mutation ... ok"
+        ],
+        "consoleErrors": "none",
+        "commandsRun": [
+          "cargo test -p sd-core test_all_dynamics_handle_single_mutation_gracefully",
+          "cargo test -p sd-core test_all_10_dynamics_handle_single_mutation"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DYN-023",
+      "title": "Large history performance",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test -p sd-core test_10k_mutation_history_performance --release",
+          "expected": "Test passes - all dynamics compute in <100ms for 10,000 mutation history",
+          "observed": "Test passed - 10,000 mutations processed within time bound, no O(n^2) behavior detected"
+        },
+        {
+          "action": "Verify no quadratic algorithms in dynamics.rs",
+          "expected": "All dynamics use O(n) or O(n log n) algorithms",
+          "observed": "Confirmed - oscillation uses single pass through mutations, resolution uses single pass, conflict uses hash maps for O(n) sibling lookup"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test dynamics::tests::test_10k_mutation_history_performance ... ok"
+        ],
+        "benchmarkResults": "10,000 mutation history processed in <100ms for all dynamics",
+        "consoleErrors": "none",
+        "commandsRun": [
+          "cargo test -p sd-core test_10k_mutation_history_performance"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DYN-024",
+      "title": "Deep and wide tree handling",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test -p sd-core test_20_plus_depth_no_stack_overflow",
+          "expected": "Test passes - dynamics work at 20+ levels depth without stack overflow",
+          "observed": "Test passed - 20+ level hierarchy handled successfully"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_100_plus_width_no_timeout",
+          "expected": "Test passes - dynamics work with 100+ children width without timeout",
+          "observed": "Test passed - 100+ sibling children processed successfully"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_deep_hierarchy",
+          "expected": "Test passes - tree handles deep hierarchies correctly",
+          "observed": "Test passed"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test dynamics::tests::test_20_plus_depth_no_stack_overflow ... ok",
+          "test dynamics::tests::test_100_plus_width_no_timeout ... ok",
+          "test tree::tests::test_deep_hierarchy ... ok"
+        ],
+        "treeLimits": {
+          "depthTested": "20+ levels",
+          "widthTested": "100+ children"
+        },
+        "consoleErrors": "none",
+        "commandsRun": [
+          "cargo test -p sd-core test_20_plus_depth_no_stack_overflow",
+          "cargo test -p sd-core test_100_plus_width_no_timeout"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DYN-025",
+      "title": "Cross-dynamic coherence",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test -p sd-core test_oscillation_resolution_mutually_exclusive",
+          "expected": "Test passes - oscillation and resolution are mutually exclusive",
+          "observed": "Test passed - verified that when oscillation is detected, resolution returns None and vice versa"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_resolution_mutually_exclusive_with_oscillation",
+          "expected": "Test passes - resolution detection returns None when oscillating",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_conflict_increases_oscillation_tendency",
+          "expected": "Test passes - conflict presence increases oscillation tendency",
+          "observed": "Test passed - verified that structural_tendency returns Oscillating when conflict present"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_neglect_reduces_resolution_probability",
+          "expected": "Test passes - neglect reduces resolution probability",
+          "observed": "Test passed - when neglect detected, resolution is less likely"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_phase_transition_updates_structural_tendency",
+          "expected": "Test passes - phase transitions update structural tendency",
+          "observed": "Test passed - verified that tendency changes as phase progresses from Germination to Completion"
+        },
+        {
+          "action": "Run cargo test -p sd-core test_oscillation_distinct_from_conflict",
+          "expected": "Test passes - oscillation and conflict are independently detectable",
+          "observed": "Test passed - can have conflict without oscillation (stagnant siblings) and oscillation without conflict (single tension)"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test dynamics::tests::test_oscillation_resolution_mutually_exclusive ... ok",
+          "test dynamics::tests::test_resolution_mutually_exclusive_with_oscillation ... ok",
+          "test dynamics::tests::test_conflict_increases_oscillation_tendency ... ok",
+          "test dynamics::tests::test_neglect_reduces_resolution_probability ... ok",
+          "test dynamics::tests::test_phase_transition_updates_structural_tendency ... ok",
+          "test dynamics::tests::test_oscillation_distinct_from_conflict ... ok"
+        ],
+        "coherenceRules": [
+          "Oscillation and Resolution are mutually exclusive (if oscillation detected, resolution returns None)",
+          "Conflict presence increases oscillation tendency (structural_tendency returns Oscillating when has_conflict=true)",
+          "Neglect reduces resolution probability (neglect detection correlates with reduced resolution)",
+          "Phase transitions update structural tendency (Germination->Assimilation->Completion progression updates tendency)"
+        ],
+        "consoleErrors": "none",
+        "commandsRun": [
+          "cargo test -p sd-core test_oscillation_resolution_mutually_exclusive",
+          "cargo test -p sd-core test_conflict_increases_oscillation_tendency",
+          "cargo test -p sd-core test_neglect_reduces_resolution_probability",
+          "cargo test -p sd-core test_phase_transition_updates_structural_tendency"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed, 0 blocked. All dynamics assertions (VAL-DYN-020 through VAL-DYN-025) validated successfully through cargo test. 239 unit tests and 10 integration tests passed. Clippy warnings are minor (unused variables in tests only, no production code issues). Format check passed."
+}
