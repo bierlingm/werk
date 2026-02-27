@@ -1,0 +1,170 @@
+{
+  "groupId": "rerun-core",
+  "testedAt": "2026-02-27T21:50:00Z",
+  "credentials": {
+    "account": "validator-rerun-core@local",
+    "namespace": "foundation-rerun-core"
+  },
+  "toolsUsed": ["cargo test"],
+  "assertions": [
+    {
+      "id": "VAL-TENSION-012",
+      "title": "Deletion with children - reparenting to roots",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create parent tension",
+          "expected": "Parent tension created with ULID id",
+          "observed": "Parent tension created successfully"
+        },
+        {
+          "action": "Create child tensions with parent_id referencing parent",
+          "expected": "Children created with parent_id set",
+          "observed": "Two children created with correct parent_id"
+        },
+        {
+          "action": "Resolve parent tension using update_status",
+          "expected": "Parent status changes to Resolved, children reparented to null",
+          "observed": "Parent resolved, children now have parent_id=None and appear in get_roots()"
+        },
+        {
+          "action": "Verify parent_id mutations recorded for children",
+          "expected": "Each child has a parent_id mutation recording the reparenting",
+          "observed": "Children have parent_id mutations with old_value=parent.id and new_value='' (empty/null)"
+        },
+        {
+          "action": "Release parent tension (separate test)",
+          "expected": "Same behavior as resolve - children become roots",
+          "observed": "Children successfully reparented to null when parent released"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test store::tests::test_resolve_tension_with_children_reparents_to_roots ... ok",
+          "test store::tests::test_resolve_tension_with_children_records_parent_mutations ... ok",
+          "test store::tests::test_release_tension_with_children_reparents_to_roots ... ok"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A - library API"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MUTATION-007",
+      "title": "Time range query - mutations_between",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tensions and updates across time window",
+          "expected": "Multiple mutations created at different timestamps",
+          "observed": "Created 4 mutations with small time delays between them"
+        },
+        {
+          "action": "Query mutations_between(start, end) with inclusive range",
+          "expected": "Returns only mutations within time window, ordered chronologically",
+          "observed": "Correctly returned 2 mutations within specified range"
+        },
+        {
+          "action": "Query empty range (past timestamps)",
+          "expected": "Returns empty Vec",
+          "observed": "Empty result returned as expected"
+        },
+        {
+          "action": "Query with single timestamp (start == end)",
+          "expected": "Returns mutations at exact timestamp",
+          "observed": "Returned single mutation at exact timestamp"
+        },
+        {
+          "action": "Verify chronological ordering across multiple tensions",
+          "expected": "All mutations ordered by timestamp ascending regardless of tension_id",
+          "observed": "4 mutations correctly ordered chronologically across 2 tensions"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test store::tests::test_mutations_between_returns_in_range ... ok",
+          "test store::tests::test_mutations_between_empty_range ... ok",
+          "test store::tests::test_mutations_between_single_mutation ... ok",
+          "test store::tests::test_mutations_between_chronological_order ... ok",
+          "test store::tests::test_mutations_between_multiple_tensions ... ok"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A - library API"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MUTATION-011",
+      "title": "History enables state reconstruction - mutation replay",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tension and perform series of updates",
+          "expected": "Tension created, then updated via store operations",
+          "observed": "Created tension with 'initial goal/reality', updated desired, actual, parent_id multiple times"
+        },
+        {
+          "action": "Retrieve mutations via get_mutations()",
+          "expected": "Chronological mutation history returned",
+          "observed": "6 mutations returned: created, desired×2, actual×2, parent_id×1"
+        },
+        {
+          "action": "Call replay_mutations() on mutation history",
+          "expected": "ReconstructedTension with final field values",
+          "observed": "ReconstructedTension with correct final desired, actual, parent_id, status"
+        },
+        {
+          "action": "Compare reconstructed with direct store query",
+          "expected": "Values match exactly (id, desired, actual, parent_id, status)",
+          "observed": "All fields match - replay successfully reproduces current state"
+        },
+        {
+          "action": "Test replay on resolved tension",
+          "expected": "Status correctly reconstructed as Resolved",
+          "observed": "Reconstructed status matches direct query (Resolved)"
+        },
+        {
+          "action": "Test replay on released tension",
+          "expected": "Status correctly reconstructed as Released",
+          "observed": "Reconstructed status matches direct query (Released)"
+        },
+        {
+          "action": "Verify error handling for empty mutations",
+          "expected": "ReplayError::EmptyMutations returned",
+          "observed": "Correct error returned"
+        },
+        {
+          "action": "Verify error handling for missing creation mutation",
+          "expected": "ReplayError::MissingCreation returned",
+          "observed": "Correct error returned"
+        }
+      ],
+      "evidence": {
+        "testOutput": [
+          "test mutation::tests::test_replay_empty_mutations_fails ... ok",
+          "test mutation::tests::test_replay_missing_creation_fails ... ok",
+          "test mutation::tests::test_replay_creation_only ... ok",
+          "test mutation::tests::test_replay_with_desired_update ... ok",
+          "test mutation::tests::test_replay_with_actual_update ... ok",
+          "test mutation::tests::test_replay_with_parent_id_update ... ok",
+          "test mutation::tests::test_replay_with_status_update ... ok",
+          "test mutation::tests::test_replay_multiple_updates ... ok",
+          "test mutation::tests::test_replay_invalid_status_fails ... ok",
+          "test mutation::tests::test_replay_invalid_creation_format_fails ... ok",
+          "test mutation::tests::test_replay_unknown_field_fails ... ok",
+          "test mutation::tests::test_replay_to_tension ... ok",
+          "test store::tests::test_replay_matches_direct_query ... ok",
+          "test store::tests::test_replay_resolved_tension_matches_direct_query ... ok",
+          "test store::tests::test_replay_released_tension_matches_direct_query ... ok",
+          "test sd-core/src/mutation.rs - mutation::replay_mutations ... ok"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A - library API"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "All 3 rerun assertions now PASS. VAL-TENSION-012 (deletion with children) was previously fail - now implemented with atomic reparenting to roots. VAL-MUTATION-007 (time range query) was previously blocked - now implemented as mutations_between(). VAL-MUTATION-011 (mutation replay) was previously blocked - now implemented as replay_mutations()."
+}
