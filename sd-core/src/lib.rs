@@ -18,6 +18,14 @@ pub mod tree;
 
 // Re-export commonly used types for convenience
 pub use dynamics::{
+    // Secondary dynamics
+    AssimilationDepth,
+    AssimilationDepthResult,
+    AssimilationDepthThresholds,
+    AssimilationEvidence,
+    CompensatingStrategy,
+    CompensatingStrategyThresholds,
+    CompensatingStrategyType,
     // Core dynamics
     Conflict,
     ConflictPattern,
@@ -26,6 +34,9 @@ pub use dynamics::{
     CreativeCyclePhase,
     CreativeCyclePhaseResult,
     LifecycleThresholds,
+    Neglect,
+    NeglectThresholds,
+    NeglectType,
     Orientation,
     OrientationEvidence,
     OrientationResult,
@@ -36,13 +47,20 @@ pub use dynamics::{
     Resolution,
     ResolutionThresholds,
     ResolutionTrend,
+    StructuralTendency,
+    StructuralTendencyResult,
     StructuralTension,
+    // Functions
     classify_creative_cycle_phase,
     classify_orientation,
     compute_structural_tension,
+    detect_compensating_strategy,
+    detect_neglect,
     detect_oscillation,
     detect_resolution,
     detect_structural_conflict,
+    measure_assimilation_depth,
+    predict_structural_tendency,
 };
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use store::{Store, StoreError};
