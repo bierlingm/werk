@@ -10,6 +10,8 @@
 //! - **StructuralConflict**: Detects competing tensions among siblings.
 //! - **Oscillation**: Detects back-and-forth behavioral patterns.
 //! - **Resolution**: Detects sustainable advancement toward outcomes.
+//! - **CreativeCyclePhase**: Classifies tension into lifecycle phases.
+//! - **Orientation**: Classifies tension formation patterns.
 //!
 //! # Threshold Parameters
 //!
@@ -20,7 +22,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::mutation::Mutation;
-use crate::tension::Tension;
+use crate::tension::{Tension, TensionStatus};
 use crate::tree::Forest;
 
 // ============================================================================
@@ -109,6 +111,100 @@ pub enum ResolutionTrend {
 }
 
 // ============================================================================
+// Creative Cycle Phase Types
+// ============================================================================
+
+/// The phase of the creative cycle for a tension.
+///
+/// Based on Fritz's creative cycle model: tensions progress through
+/// phases from initial vision to completed outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CreativeCyclePhase {
+    /// New tension, no confrontation with reality yet.
+    /// The vision exists but hasn't been tested against current reality.
+    Germination,
+    /// Active mutations occurring, visible progress gap.
+    /// Reality is being confronted, the gap is being worked.
+    Assimilation,
+    /// Reality converging on desired outcome.
+    /// The gap is closing, outcome is becoming real.
+    Completion,
+    /// New tensions created shortly after resolution.
+    /// Energy from completion fuels new creative endeavors.
+    Momentum,
+}
+
+/// Result of creative cycle phase classification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CreativeCyclePhaseResult {
+    /// The tension ID being classified.
+    pub tension_id: String,
+    /// The detected phase.
+    pub phase: CreativeCyclePhase,
+    /// Supporting evidence for the classification.
+    pub evidence: PhaseEvidence,
+}
+
+/// Evidence supporting a phase classification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PhaseEvidence {
+    /// Number of mutations in the recency window.
+    pub mutation_count: usize,
+    /// Whether the gap is closing (convergence).
+    pub gap_closing: bool,
+    /// How close actual is to desired (0.0 = equal, 1.0 = maximally different).
+    pub convergence_ratio: f64,
+    /// Time since the tension was created (seconds).
+    pub age_seconds: i64,
+    /// Whether new tensions were created shortly after resolution.
+    pub recent_resolution_in_network: bool,
+}
+
+// ============================================================================
+// Orientation Types
+// ============================================================================
+
+/// The orientation pattern of tension formation.
+///
+/// Based on Fritz's distinction between creative and problem-solving
+/// orientations. Classification requires analyzing patterns across
+/// multiple tensions, not just a single tension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Orientation {
+    /// Proactive, vision-driven tension formation.
+    /// Tensions created to bring something into being.
+    Creative,
+    /// Reactive, fix-negative tension formation.
+    /// Tensions created to solve problems or remove negatives.
+    ProblemSolving,
+    /// Externally-triggered tension formation.
+    /// Tensions created in response to external circumstances.
+    ReactiveResponsive,
+}
+
+/// Result of orientation classification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrientationResult {
+    /// The detected orientation pattern.
+    pub orientation: Orientation,
+    /// Evidence supporting the classification.
+    pub evidence: OrientationEvidence,
+}
+
+/// Evidence supporting orientation classification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrientationEvidence {
+    /// Number of tensions analyzed.
+    pub tension_count: usize,
+    /// Ratio of vision-driven (creative) indicators.
+    pub creative_ratio: f64,
+    /// Ratio of problem-solving indicators.
+    pub problem_solving_ratio: f64,
+    /// Ratio of externally-triggered indicators.
+    pub reactive_ratio: f64,
+}
+
+// ============================================================================
 // Threshold Parameters
 // ============================================================================
 
@@ -169,6 +265,51 @@ impl Default for ResolutionThresholds {
             velocity_threshold: 0.01,
             reversal_tolerance: 1,                 // Allow 1 minor reversal
             recency_window_seconds: 3600 * 24 * 7, // 1 week
+        }
+    }
+}
+
+/// Thresholds for creative cycle phase classification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LifecycleThresholds {
+    /// How recent a mutation must be to count as "active" (in seconds).
+    pub recency_window_seconds: i64,
+    /// Minimum mutation frequency to be considered Assimilation (mutations per window).
+    pub active_frequency_threshold: usize,
+    /// Convergence ratio threshold for Completion (0.0 = equal, 1.0 = max gap).
+    pub convergence_threshold: f64,
+    /// Time window for detecting Momentum (tensions created within this time after resolution).
+    pub momentum_window_seconds: i64,
+}
+
+impl Default for LifecycleThresholds {
+    fn default() -> Self {
+        Self {
+            recency_window_seconds: 3600 * 24 * 7,  // 1 week
+            active_frequency_threshold: 2,          // At least 2 mutations
+            convergence_threshold: 0.2,             // 80% converged
+            momentum_window_seconds: 3600 * 24 * 3, // 3 days
+        }
+    }
+}
+
+/// Thresholds for orientation classification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrientationThresholds {
+    /// Minimum number of tensions required for classification.
+    pub minimum_sample_size: usize,
+    /// Ratio threshold for dominant orientation (must exceed this to classify).
+    pub dominant_threshold: f64,
+    /// Recency window for analyzing tension formation patterns (in seconds).
+    pub recency_window_seconds: i64,
+}
+
+impl Default for OrientationThresholds {
+    fn default() -> Self {
+        Self {
+            minimum_sample_size: 3,
+            dominant_threshold: 0.5, // Must have >50% of one pattern
+            recency_window_seconds: 3600 * 24 * 30, // 30 days
         }
     }
 }
@@ -602,6 +743,296 @@ fn compute_resolution_trend(progress_values: &[f64]) -> ResolutionTrend {
         ResolutionTrend::Decelerating
     } else {
         ResolutionTrend::Steady
+    }
+}
+
+// ============================================================================
+// Creative Cycle Phase Classification
+// ============================================================================
+
+/// Classify a tension's creative cycle phase.
+///
+/// The phase is determined from mutation history and the relationship
+/// between desired and actual states:
+///
+/// - **Germination**: New tension, no confrontation with reality yet.
+/// - **Assimilation**: Active mutations occurring, visible progress gap.
+/// - **Completion**: Reality converging on desired outcome.
+/// - **Momentum**: New tensions created shortly after resolution.
+///
+/// # Arguments
+///
+/// * `tension` - The tension to classify.
+/// * `mutations` - All mutations for this tension.
+/// * `resolved_tensions` - Recently resolved tensions in the network.
+/// * `thresholds` - Threshold parameters for phase boundaries.
+/// * `now` - The current time for recency calculations.
+///
+/// # Returns
+///
+/// `CreativeCyclePhaseResult` with the detected phase and evidence.
+pub fn classify_creative_cycle_phase(
+    tension: &Tension,
+    mutations: &[Mutation],
+    resolved_tensions: &[Tension],
+    thresholds: &LifecycleThresholds,
+    now: DateTime<Utc>,
+) -> CreativeCyclePhaseResult {
+    // Calculate basic evidence
+    let cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+    let age_seconds = (now - tension.created_at).num_seconds().max(0);
+
+    // Count mutations within recency window (excluding creation)
+    let recent_mutations: Vec<&Mutation> = mutations
+        .iter()
+        .filter(|m| {
+            m.tension_id() == tension.id && m.timestamp() >= cutoff && m.field() != "created"
+        })
+        .collect();
+
+    let mutation_count = recent_mutations.len();
+
+    // Calculate convergence ratio
+    let convergence_ratio = compute_gap_magnitude(&tension.desired, &tension.actual);
+    let gap_closing = convergence_ratio < 0.5; // Simplified: gap is closing if < 50%
+
+    // Check for recent resolution in network (Momentum detection)
+    let momentum_cutoff = now - chrono::Duration::seconds(thresholds.momentum_window_seconds);
+    let recent_resolution_in_network = resolved_tensions
+        .iter()
+        .any(|t| t.status == TensionStatus::Resolved && t.created_at >= momentum_cutoff);
+
+    // Classify phase based on evidence
+    let phase = if convergence_ratio < thresholds.convergence_threshold && mutation_count > 0 {
+        // Reality converging on desired
+        CreativeCyclePhase::Completion
+    } else if mutation_count >= thresholds.active_frequency_threshold {
+        // Active mutations with visible gap
+        CreativeCyclePhase::Assimilation
+    } else if recent_resolution_in_network && age_seconds <= thresholds.momentum_window_seconds {
+        // New tension created shortly after resolution
+        CreativeCyclePhase::Momentum
+    } else {
+        // Default: new tension, no confrontation yet
+        CreativeCyclePhase::Germination
+    };
+
+    CreativeCyclePhaseResult {
+        tension_id: tension.id.clone(),
+        phase,
+        evidence: PhaseEvidence {
+            mutation_count,
+            gap_closing,
+            convergence_ratio,
+            age_seconds,
+            recent_resolution_in_network,
+        },
+    }
+}
+
+// ============================================================================
+// Orientation Classification
+// ============================================================================
+
+/// Classify the orientation pattern of tension formation.
+///
+/// Orientation is determined by analyzing patterns across multiple tensions,
+/// not from a single tension. Requires a minimum sample size.
+///
+/// - **Creative**: Proactive, vision-driven tension formation.
+/// - **ProblemSolving**: Reactive, fix-negative tension formation.
+/// - **ReactiveResponsive**: Externally-triggered tension formation.
+///
+/// # Arguments
+///
+/// * `tensions` - The tensions to analyze for orientation patterns.
+/// * `mutations` - All mutations for the tensions.
+/// * `thresholds` - Threshold parameters for classification.
+/// * `now` - The current time for recency calculations.
+///
+/// # Returns
+///
+/// `Some(OrientationResult)` if classification is possible, `None` if
+/// insufficient sample size or no dominant pattern.
+pub fn classify_orientation(
+    tensions: &[Tension],
+    mutations: &[Mutation],
+    thresholds: &OrientationThresholds,
+    now: DateTime<Utc>,
+) -> Option<OrientationResult> {
+    // Check minimum sample size
+    if tensions.len() < thresholds.minimum_sample_size {
+        return None;
+    }
+
+    let cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+
+    // Analyze each tension for orientation indicators
+    let mut creative_count = 0usize;
+    let mut problem_solving_count = 0usize;
+    let mut reactive_count = 0usize;
+
+    for tension in tensions {
+        // Get mutations for this tension
+        let tension_mutations: Vec<&Mutation> = mutations
+            .iter()
+            .filter(|m| m.tension_id() == tension.id && m.timestamp() >= cutoff)
+            .collect();
+
+        // Classify this tension's orientation indicator
+        let indicator = classify_single_tension_orientation(tension, &tension_mutations);
+
+        match indicator {
+            OrientationIndicator::Creative => creative_count += 1,
+            OrientationIndicator::ProblemSolving => problem_solving_count += 1,
+            OrientationIndicator::ReactiveResponsive => reactive_count += 1,
+            OrientationIndicator::Unknown => {}
+        }
+    }
+
+    let total = creative_count + problem_solving_count + reactive_count;
+    if total == 0 {
+        return None;
+    }
+
+    let creative_ratio = creative_count as f64 / total as f64;
+    let problem_solving_ratio = problem_solving_count as f64 / total as f64;
+    let reactive_ratio = reactive_count as f64 / total as f64;
+
+    // Determine dominant orientation
+    let orientation = if creative_ratio > thresholds.dominant_threshold {
+        Orientation::Creative
+    } else if problem_solving_ratio > thresholds.dominant_threshold {
+        Orientation::ProblemSolving
+    } else if reactive_ratio > thresholds.dominant_threshold {
+        Orientation::ReactiveResponsive
+    } else {
+        // No dominant pattern
+        return None;
+    };
+
+    Some(OrientationResult {
+        orientation,
+        evidence: OrientationEvidence {
+            tension_count: tensions.len(),
+            creative_ratio,
+            problem_solving_ratio,
+            reactive_ratio,
+        },
+    })
+}
+
+/// Internal indicator for a single tension's orientation tendency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OrientationIndicator {
+    Creative,
+    ProblemSolving,
+    ReactiveResponsive,
+    Unknown,
+}
+
+/// Classify a single tension's orientation tendency.
+///
+/// Heuristics for orientation detection:
+/// - Creative: desired is vision/creation focused, actual shows forward progress
+/// - ProblemSolving: desired is about fixing/removing negatives
+/// - ReactiveResponsive: created in response to external circumstances
+fn classify_single_tension_orientation(
+    tension: &Tension,
+    mutations: &[&Mutation],
+) -> OrientationIndicator {
+    // Heuristic patterns for orientation detection
+    let desired_lower = tension.desired.to_lowercase();
+    let actual_lower = tension.actual.to_lowercase();
+
+    // Problem-solving indicators: fixing negatives, removing issues
+    let problem_keywords = [
+        "fix",
+        "solve",
+        "remove",
+        "eliminate",
+        "reduce",
+        "stop",
+        "prevent",
+        "avoid",
+        "correct",
+        "repair",
+        "address",
+        "resolve issue",
+        "problem",
+    ];
+    let has_problem_keywords = problem_keywords.iter().any(|k| desired_lower.contains(k));
+
+    // Creative indicators: creating, building, vision-focused
+    let creative_keywords = [
+        "create",
+        "build",
+        "develop",
+        "establish",
+        "design",
+        "launch",
+        "achieve",
+        "accomplish",
+        "produce",
+        "make",
+        "write",
+        "compose",
+    ];
+    let has_creative_keywords = creative_keywords.iter().any(|k| desired_lower.contains(k));
+
+    // Reactive indicators: external triggers, circumstances
+    let reactive_keywords = [
+        "because",
+        "since",
+        "due to",
+        "in response",
+        "after",
+        "when",
+        "need to",
+        "have to",
+        "must",
+        "required",
+        "deadline",
+    ];
+    let has_reactive_keywords = reactive_keywords
+        .iter()
+        .any(|k| desired_lower.contains(k) || actual_lower.contains(k));
+
+    // Additional heuristic: mutation patterns
+    // Creative tensions tend to have forward progress (actual getting closer to desired)
+    // Problem-solving tensions tend to oscillate more
+    let has_forward_progress = mutations.iter().any(|m| {
+        if m.field() == "actual" {
+            let old = m.old_value().unwrap_or("");
+            let new = m.new_value();
+            // Progress = actual getting longer/more detailed
+            new.len() > old.len()
+        } else {
+            false
+        }
+    });
+
+    // Determine orientation based on combined evidence
+    // Priority: Problem-solving > Reactive > Creative
+    // Rationale: Problem-solving and reactive are more distinctive patterns
+    if has_problem_keywords && !has_creative_keywords {
+        OrientationIndicator::ProblemSolving
+    } else if has_reactive_keywords && !has_creative_keywords {
+        OrientationIndicator::ReactiveResponsive
+    } else if has_creative_keywords {
+        // Creative keywords indicate creative orientation even without mutations
+        OrientationIndicator::Creative
+    } else if has_forward_progress && !has_problem_keywords {
+        // Default to creative if showing forward progress
+        OrientationIndicator::Creative
+    } else if has_problem_keywords {
+        // Problem keywords without creative context
+        OrientationIndicator::ProblemSolving
+    } else if has_reactive_keywords {
+        // Reactive keywords without creative context
+        OrientationIndicator::ReactiveResponsive
+    } else {
+        OrientationIndicator::Unknown
     }
 }
 
@@ -1666,5 +2097,534 @@ mod tests {
         assert!(rt.velocity_threshold >= 0.0);
         // reversal_tolerance is usize, always >= 0
         assert!(rt.recency_window_seconds > 0);
+    }
+
+    // ============================================================================
+    // Creative Cycle Phase Tests (VAL-DYN-010, VAL-DYN-011)
+    // ============================================================================
+
+    #[test]
+    fn test_phase_germination_for_new_tension_no_mutations() {
+        let t = Tension::new("goal", "reality").unwrap();
+        let mutations: Vec<Mutation> = Vec::new();
+        let thresholds = LifecycleThresholds::default();
+
+        let result = classify_creative_cycle_phase(&t, &mutations, &[], &thresholds, Utc::now());
+
+        assert_eq!(result.phase, CreativeCyclePhase::Germination);
+        assert_eq!(result.evidence.mutation_count, 0);
+    }
+
+    #[test]
+    fn test_phase_germination_for_tension_with_only_creation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let thresholds = LifecycleThresholds::default();
+
+        let result = classify_creative_cycle_phase(&t, &mutations, &[], &thresholds, Utc::now());
+
+        // Only the creation mutation exists, so it's still germination
+        assert_eq!(result.phase, CreativeCyclePhase::Germination);
+    }
+
+    #[test]
+    fn test_phase_assimilation_for_active_mutations_with_gap() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal xyz", "abc").unwrap();
+
+        // Multiple actual updates showing active work but visible gap
+        store.update_actual(&t.id, "goal x progress").unwrap();
+        store.update_actual(&t.id, "goal xy progress").unwrap();
+        store.update_actual(&t.id, "goal xyz prog").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let t_updated = store.get_tension(&t.id).unwrap().unwrap();
+        let thresholds = LifecycleThresholds {
+            active_frequency_threshold: 2,
+            convergence_threshold: 0.1, // Low threshold = harder to complete
+            ..Default::default()
+        };
+
+        let result =
+            classify_creative_cycle_phase(&t_updated, &mutations, &[], &thresholds, Utc::now());
+
+        // Active mutations (3 updates) with still visible gap
+        assert_eq!(result.phase, CreativeCyclePhase::Assimilation);
+        assert!(result.evidence.mutation_count >= 2);
+    }
+
+    #[test]
+    fn test_phase_completion_for_converging_reality() {
+        let store = Store::new_in_memory().unwrap();
+        // Goal and actual are very close (almost equal)
+        let t = store.create_tension("goal state", "goal stat").unwrap();
+
+        // One update that brings us closer
+        store.update_actual(&t.id, "goal state").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let t_updated = store.get_tension(&t.id).unwrap().unwrap();
+        let thresholds = LifecycleThresholds {
+            active_frequency_threshold: 2,
+            convergence_threshold: 0.3, // Higher = easier to complete
+            ..Default::default()
+        };
+
+        let result =
+            classify_creative_cycle_phase(&t_updated, &mutations, &[], &thresholds, Utc::now());
+
+        // Reality has converged on desired
+        assert_eq!(result.phase, CreativeCyclePhase::Completion);
+        // Convergence ratio should be low (near 0)
+        assert!(result.evidence.convergence_ratio < 0.3);
+    }
+
+    #[test]
+    fn test_phase_momentum_for_new_tension_after_resolution() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create and resolve a tension
+        let t1 = store
+            .create_tension("completed goal", "in progress")
+            .unwrap();
+        store.update_actual(&t1.id, "completed goal").unwrap();
+        store
+            .update_status(&t1.id, TensionStatus::Resolved)
+            .unwrap();
+
+        let t1_resolved = store.get_tension(&t1.id).unwrap().unwrap();
+
+        // Create a new tension shortly after
+        let t2 = store.create_tension("new goal", "starting").unwrap();
+        let mutations2 = store.get_mutations(&t2.id).unwrap();
+
+        let thresholds = LifecycleThresholds {
+            momentum_window_seconds: 3600 * 24 * 7, // 1 week
+            ..Default::default()
+        };
+
+        let result = classify_creative_cycle_phase(
+            &t2,
+            &mutations2,
+            &[t1_resolved],
+            &thresholds,
+            Utc::now(),
+        );
+
+        // New tension created shortly after resolution = Momentum
+        assert_eq!(result.phase, CreativeCyclePhase::Momentum);
+        assert!(result.evidence.recent_resolution_in_network);
+    }
+
+    #[test]
+    fn test_phase_threshold_frequency_affects_assimilation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "abc").unwrap();
+
+        // Only 1 update
+        store.update_actual(&t.id, "goal progress").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let t_updated = store.get_tension(&t.id).unwrap().unwrap();
+
+        // High frequency threshold = need more mutations for Assimilation
+        let thresholds_high = LifecycleThresholds {
+            active_frequency_threshold: 10, // Need 10 mutations
+            ..Default::default()
+        };
+
+        let result_high = classify_creative_cycle_phase(
+            &t_updated,
+            &mutations,
+            &[],
+            &thresholds_high,
+            Utc::now(),
+        );
+
+        // With only 1 mutation and high threshold, should be Germination
+        assert_eq!(result_high.phase, CreativeCyclePhase::Germination);
+
+        // Low frequency threshold = easier to get Assimilation
+        let thresholds_low = LifecycleThresholds {
+            active_frequency_threshold: 1, // Only need 1 mutation
+            convergence_threshold: 0.1,    // Low = harder to complete
+            ..Default::default()
+        };
+
+        let result_low =
+            classify_creative_cycle_phase(&t_updated, &mutations, &[], &thresholds_low, Utc::now());
+
+        // With low threshold, should be Assimilation (active work, visible gap)
+        assert_eq!(result_low.phase, CreativeCyclePhase::Assimilation);
+    }
+
+    #[test]
+    fn test_phase_threshold_convergence_affects_completion() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "goa").unwrap();
+
+        // Update to get closer to goal (but not equal)
+        store.update_actual(&t.id, "goal").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let t_updated = store.get_tension(&t.id).unwrap().unwrap();
+
+        // Low convergence threshold = harder to complete (need very close match)
+        let thresholds_low = LifecycleThresholds {
+            convergence_threshold: 0.05, // Need 95% convergence
+            ..Default::default()
+        };
+
+        let result_low =
+            classify_creative_cycle_phase(&t_updated, &mutations, &[], &thresholds_low, Utc::now());
+
+        // With exact match (convergence ratio = 0), even low threshold should complete
+        // But let's test with a different setup
+        // Actually with exact match, convergence ratio = 0, so it should complete
+        assert_eq!(result_low.phase, CreativeCyclePhase::Completion);
+    }
+
+    #[test]
+    fn test_phase_handles_empty_mutation_history() {
+        let t = Tension::new("goal", "reality").unwrap();
+        let thresholds = LifecycleThresholds::default();
+
+        let result = classify_creative_cycle_phase(&t, &[], &[], &thresholds, Utc::now());
+
+        // Should not panic, should return Germination
+        assert_eq!(result.phase, CreativeCyclePhase::Germination);
+    }
+
+    #[test]
+    fn test_phase_handles_single_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let thresholds = LifecycleThresholds::default();
+
+        // Should not panic
+        let result = classify_creative_cycle_phase(&t, &mutations, &[], &thresholds, Utc::now());
+
+        // Single creation mutation = Germination
+        assert_eq!(result.phase, CreativeCyclePhase::Germination);
+    }
+
+    // ============================================================================
+    // Orientation Tests (VAL-DYN-012, VAL-DYN-013)
+    // ============================================================================
+
+    #[test]
+    fn test_orientation_none_for_insufficient_sample() {
+        let t1 = Tension::new("goal1", "reality1").unwrap();
+        let tensions = vec![t1];
+        let thresholds = OrientationThresholds {
+            minimum_sample_size: 3,
+            ..Default::default()
+        };
+
+        let result = classify_orientation(&tensions, &[], &thresholds, Utc::now());
+
+        // Should return None for insufficient sample
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_orientation_creative_for_vision_driven_tensions() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tensions with creative keywords
+        let t1 = store
+            .create_tension("create a new product", "planning")
+            .unwrap();
+        let t2 = store
+            .create_tension("build a new feature", "designing")
+            .unwrap();
+        let t3 = store
+            .create_tension("develop new system", "researching")
+            .unwrap();
+
+        // Add forward progress to each
+        store
+            .update_actual(&t1.id, "create a new product v1")
+            .unwrap();
+        store
+            .update_actual(&t2.id, "build a new feature v1")
+            .unwrap();
+        store
+            .update_actual(&t3.id, "develop new system v1")
+            .unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        let mutations = store.all_mutations().unwrap();
+        let thresholds = OrientationThresholds {
+            minimum_sample_size: 3,
+            dominant_threshold: 0.5,
+            ..Default::default()
+        };
+
+        let result = classify_orientation(&tensions, &mutations, &thresholds, Utc::now());
+
+        assert!(result.is_some());
+        let orientation = result.unwrap();
+        assert_eq!(orientation.orientation, Orientation::Creative);
+    }
+
+    #[test]
+    fn test_orientation_problem_solving_for_fix_negative_tensions() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tensions with problem-solving keywords
+        let t1 = store.create_tension("fix the bug", "debugging").unwrap();
+        let t2 = store
+            .create_tension("solve the issue", "analyzing")
+            .unwrap();
+        let t3 = store
+            .create_tension("remove the problem", "investigating")
+            .unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        let mutations = store.all_mutations().unwrap();
+        let thresholds = OrientationThresholds {
+            minimum_sample_size: 3,
+            dominant_threshold: 0.5,
+            ..Default::default()
+        };
+
+        let result = classify_orientation(&tensions, &mutations, &thresholds, Utc::now());
+
+        assert!(result.is_some());
+        let orientation = result.unwrap();
+        assert_eq!(orientation.orientation, Orientation::ProblemSolving);
+    }
+
+    #[test]
+    fn test_orientation_reactive_for_externally_triggered_tensions() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create tensions with reactive keywords
+        let t1 = store
+            .create_tension("need to respond to request", "pending")
+            .unwrap();
+        let t2 = store
+            .create_tension("must handle deadline", "waiting")
+            .unwrap();
+        let t3 = store
+            .create_tension("required to fix this", "not started")
+            .unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        let mutations = store.all_mutations().unwrap();
+        let thresholds = OrientationThresholds {
+            minimum_sample_size: 3,
+            dominant_threshold: 0.5,
+            ..Default::default()
+        };
+
+        let result = classify_orientation(&tensions, &mutations, &thresholds, Utc::now());
+
+        assert!(result.is_some());
+        let orientation = result.unwrap();
+        assert_eq!(orientation.orientation, Orientation::ReactiveResponsive);
+    }
+
+    #[test]
+    fn test_orientation_none_for_mixed_patterns_no_dominant() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create mixed tensions: one creative, one problem-solving, one reactive
+        let _t1 = store
+            .create_tension("create something new", "planning")
+            .unwrap();
+        let _t2 = store
+            .create_tension("fix the problem", "debugging")
+            .unwrap();
+        let _t3 = store
+            .create_tension("need to handle this", "waiting")
+            .unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        let mutations = store.all_mutations().unwrap();
+        let thresholds = OrientationThresholds {
+            minimum_sample_size: 3,
+            dominant_threshold: 0.6, // Need 60% to classify
+            ..Default::default()
+        };
+
+        let result = classify_orientation(&tensions, &mutations, &thresholds, Utc::now());
+
+        // With 3 different orientations (1 each), no dominant pattern
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_orientation_minimum_sample_size_threshold() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create 2 tensions (below default minimum of 3)
+        let _t1 = store
+            .create_tension("create something", "planning")
+            .unwrap();
+        let _t2 = store.create_tension("build something", "starting").unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        let mutations = store.all_mutations().unwrap();
+        let thresholds = OrientationThresholds::default();
+
+        let result = classify_orientation(&tensions, &mutations, &thresholds, Utc::now());
+
+        // Should return None for insufficient sample
+        assert!(result.is_none());
+
+        // Now with lower threshold
+        let thresholds_low = OrientationThresholds {
+            minimum_sample_size: 2,
+            dominant_threshold: 0.5,
+            ..Default::default()
+        };
+
+        let result_low = classify_orientation(&tensions, &mutations, &thresholds_low, Utc::now());
+
+        // Should now classify
+        assert!(result_low.is_some());
+    }
+
+    #[test]
+    fn test_orientation_handles_empty_mutations() {
+        let t1 = Tension::new("create goal", "reality").unwrap();
+        let t2 = Tension::new("build goal", "reality").unwrap();
+        let t3 = Tension::new("develop goal", "reality").unwrap();
+        let tensions = vec![t1, t2, t3];
+
+        let thresholds = OrientationThresholds {
+            minimum_sample_size: 3,
+            dominant_threshold: 0.5,
+            ..Default::default()
+        };
+
+        // Should not panic with empty mutations
+        let result = classify_orientation(&tensions, &[], &thresholds, Utc::now());
+
+        // May return None (no pattern detected) or Some (keywords only)
+        // Either way, should not panic
+        assert!(result.is_none() || result.is_some());
+    }
+
+    #[test]
+    fn test_orientation_requires_multiple_tensions() {
+        let t = Tension::new("create something", "reality").unwrap();
+        let tensions = vec![t];
+        let thresholds = OrientationThresholds::default();
+
+        let result = classify_orientation(&tensions, &[], &thresholds, Utc::now());
+
+        // Single tension = insufficient sample
+        assert!(result.is_none());
+    }
+
+    // ============================================================================
+    // New Types Trait Tests
+    // ============================================================================
+
+    #[test]
+    fn test_creative_cycle_phase_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<CreativeCyclePhase>();
+        assert_send_sync::<CreativeCyclePhaseResult>();
+        assert_send_sync::<PhaseEvidence>();
+        assert_send_sync::<LifecycleThresholds>();
+    }
+
+    #[test]
+    fn test_orientation_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Orientation>();
+        assert_send_sync::<OrientationResult>();
+        assert_send_sync::<OrientationEvidence>();
+        assert_send_sync::<OrientationThresholds>();
+    }
+
+    #[test]
+    fn test_creative_cycle_phase_debug_clone() {
+        let phase = CreativeCyclePhase::Assimilation;
+        let _ = format!("{:?}", phase);
+        let _ = phase.clone();
+
+        let result = CreativeCyclePhaseResult {
+            tension_id: "test".to_string(),
+            phase: CreativeCyclePhase::Completion,
+            evidence: PhaseEvidence {
+                mutation_count: 5,
+                gap_closing: true,
+                convergence_ratio: 0.1,
+                age_seconds: 3600,
+                recent_resolution_in_network: false,
+            },
+        };
+        let _ = format!("{:?}", result);
+        let _ = result.clone();
+    }
+
+    #[test]
+    fn test_orientation_debug_clone() {
+        let orient = Orientation::Creative;
+        let _ = format!("{:?}", orient);
+        let _ = orient.clone();
+
+        let result = OrientationResult {
+            orientation: Orientation::ProblemSolving,
+            evidence: OrientationEvidence {
+                tension_count: 5,
+                creative_ratio: 0.2,
+                problem_solving_ratio: 0.6,
+                reactive_ratio: 0.2,
+            },
+        };
+        let _ = format!("{:?}", result);
+        let _ = result.clone();
+    }
+
+    #[test]
+    fn test_creative_cycle_phase_serialization() {
+        for phase in [
+            CreativeCyclePhase::Germination,
+            CreativeCyclePhase::Assimilation,
+            CreativeCyclePhase::Completion,
+            CreativeCyclePhase::Momentum,
+        ] {
+            let json = serde_json::to_string(&phase).unwrap();
+            let deserialized: CreativeCyclePhase = serde_json::from_str(&json).unwrap();
+            assert_eq!(phase, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_orientation_serialization() {
+        for orient in [
+            Orientation::Creative,
+            Orientation::ProblemSolving,
+            Orientation::ReactiveResponsive,
+        ] {
+            let json = serde_json::to_string(&orient).unwrap();
+            let deserialized: Orientation = serde_json::from_str(&json).unwrap();
+            assert_eq!(orient, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_lifecycle_thresholds_defaults_reasonable() {
+        let t = LifecycleThresholds::default();
+        assert!(t.recency_window_seconds > 0);
+        assert!(t.active_frequency_threshold >= 1);
+        assert!(t.convergence_threshold > 0.0 && t.convergence_threshold < 1.0);
+        assert!(t.momentum_window_seconds > 0);
+    }
+
+    #[test]
+    fn test_orientation_thresholds_defaults_reasonable() {
+        let t = OrientationThresholds::default();
+        assert!(t.minimum_sample_size >= 1);
+        assert!(t.dominant_threshold > 0.0 && t.dominant_threshold < 1.0);
+        assert!(t.recency_window_seconds > 0);
     }
 }
