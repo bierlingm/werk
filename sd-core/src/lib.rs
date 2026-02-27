@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // sd-core: Structural Dynamics Grammar
 //
 // A faithful computational model of Robert Fritz's structural dynamics.
@@ -8,9 +10,11 @@
 // This crate has zero instrument dependencies. It computes dynamics
 // and emits events. Instruments subscribe and react.
 
-pub mod tension;
 pub mod mutation;
-pub mod dynamics;
-pub mod events;
-pub mod store;
-pub mod tree;
+pub mod tension;
+
+// Future modules (not yet implemented):
+// pub mod dynamics;
+// pub mod events;
+// pub mod store;
+// pub mod tree;
