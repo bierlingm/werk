@@ -39,6 +39,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::events::{Event, EventBuilder, EventBus};
 use crate::mutation::Mutation;
 use crate::tension::{SdError, Tension, TensionStatus};
 
@@ -82,9 +83,16 @@ impl From<StoreError> for SdError {
 /// Uses fsqlite for storage. Note: fsqlite's Connection uses Rc internally,
 /// so Store cannot be sent between threads. For concurrent access, open
 /// multiple Store instances to the same file-based database.
+///
+/// # Events
+///
+/// The store can optionally emit events to an attached EventBus.
+/// Use `set_event_bus()` to attach a bus, then all successful operations
+/// will emit corresponding events.
 pub struct Store {
     conn: Rc<RefCell<Connection>>,
     path: Option<PathBuf>,
+    event_bus: Option<EventBus>,
 }
 
 impl Store {
@@ -110,6 +118,7 @@ impl Store {
         let store = Self {
             conn: Rc::new(RefCell::new(conn)),
             path: Some(db_path),
+            event_bus: None,
         };
         store.create_schema()?;
         Ok(store)
@@ -133,6 +142,7 @@ impl Store {
         let store = Self {
             conn: Rc::new(RefCell::new(conn)),
             path: None,
+            event_bus: None,
         };
         store.create_schema()?;
         Ok(store)
@@ -215,6 +225,15 @@ impl Store {
             None,
             format!("desired='{}';actual='{}'", tension.desired, tension.actual),
         ))?;
+
+        // Emit TensionCreated event
+        self.emit_event(&EventBuilder::tension_created(
+            tension.id.clone(),
+            tension.desired.clone(),
+            tension.actual.clone(),
+            tension.parent_id.clone(),
+        ));
+
         Ok(tension)
     }
 
@@ -536,8 +555,8 @@ impl Store {
                             tension.id.clone(),
                             Utc::now(),
                             "parent_id".to_owned(),
-                            old_parent,
-                            new_parent.unwrap_or_default(),
+                            old_parent.clone(),
+                            new_parent.clone().unwrap_or_default(),
                         ),
                     )
                 });
@@ -554,6 +573,11 @@ impl Store {
                 }
             }
         }
+
+        // Emit StructureChanged event
+        self.emit_event(&EventBuilder::structure_changed(
+            tension.id, old_parent, new_parent,
+        ));
 
         Ok(())
     }
@@ -665,6 +689,25 @@ impl Store {
             }
         }
 
+        // Emit appropriate event based on new status
+        match new_status {
+            TensionStatus::Resolved => {
+                self.emit_event(&EventBuilder::tension_resolved(
+                    tension.id,
+                    tension.desired,
+                    tension.actual,
+                ));
+            }
+            TensionStatus::Released => {
+                self.emit_event(&EventBuilder::tension_released(
+                    tension.id,
+                    tension.desired,
+                    tension.actual,
+                ));
+            }
+            TensionStatus::Active => {}
+        }
+
         Ok(())
     }
 
@@ -695,6 +738,7 @@ impl Store {
                 )));
             }
         };
+        let old_value_for_event = old_value.clone();
 
         // Persist in transaction
         {
@@ -729,6 +773,25 @@ impl Store {
                     return Err(e);
                 }
             }
+        }
+
+        // Emit appropriate event based on field
+        match field {
+            "desired" => {
+                self.emit_event(&EventBuilder::desire_revised(
+                    tension.id,
+                    old_value_for_event,
+                    new_value.to_owned(),
+                ));
+            }
+            "actual" => {
+                self.emit_event(&EventBuilder::reality_confronted(
+                    tension.id,
+                    old_value_for_event,
+                    new_value.to_owned(),
+                ));
+            }
+            _ => {}
         }
 
         Ok(())
@@ -881,6 +944,30 @@ impl Store {
         self.path.as_deref()
     }
 
+    /// Set the EventBus for this store.
+    ///
+    /// After setting, all successful operations will emit events.
+    pub fn set_event_bus(&mut self, bus: EventBus) {
+        self.event_bus = Some(bus);
+    }
+
+    /// Get the EventBus for this store, if any.
+    pub fn event_bus(&self) -> Option<&EventBus> {
+        self.event_bus.as_ref()
+    }
+
+    /// Remove the EventBus from this store.
+    pub fn clear_event_bus(&mut self) {
+        self.event_bus = None;
+    }
+
+    /// Emit an event if an EventBus is attached.
+    fn emit_event(&self, event: &Event) {
+        if let Some(bus) = &self.event_bus {
+            bus.emit(event);
+        }
+    }
+
     /// Begin a transaction explicitly.
     ///
     /// Use this for batch operations to improve performance.
@@ -916,6 +1003,8 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
 
     // ── Construction ──────────────────────────────────────────────
 
@@ -1785,5 +1874,210 @@ mod tests {
         // Grandparent should still exist (not resolved)
         let grandparent_after = store.get_tension(&grandparent.id).unwrap().unwrap();
         assert_eq!(grandparent_after.status, TensionStatus::Active);
+    }
+
+    // ── Event Emission Tests ────────────────────────────────────────
+
+    #[test]
+    fn test_store_emits_tension_created_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::TensionCreated { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let _t = store.create_tension("goal", "reality").unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_emits_reality_confronted_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::RealityConfronted { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_emits_desire_revised_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::DesireRevised { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_desired(&t.id, "new goal").unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_emits_tension_resolved_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::TensionResolved { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_emits_tension_released_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::TensionReleased { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Released).unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_emits_structure_changed_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::StructureChanged { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let parent = store.create_tension("parent", "p").unwrap();
+        let child = store.create_tension("child", "c").unwrap();
+        store.update_parent(&child.id, Some(&parent.id)).unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_no_events_on_failed_operation() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |_ev| {
+            c.fetch_add(1, Ordering::SeqCst);
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        // This will fail (empty string not allowed)
+        let _ = store.update_desired(&t.id, "");
+
+        // Only the TensionCreated event should have been emitted
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_store_events_in_causal_order() {
+        use crate::events::{Event, EventBus};
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+
+        let e = events.clone();
+        let _handle = bus.subscribe(move |ev| {
+            e.lock().unwrap().push(ev.clone());
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        let received = events.lock().unwrap().clone();
+        assert_eq!(received.len(), 3);
+
+        // Verify causal order: Created -> RealityConfronted -> TensionResolved
+        assert!(matches!(&received[0], Event::TensionCreated { .. }));
+        assert!(matches!(&received[1], Event::RealityConfronted { .. }));
+        assert!(matches!(&received[2], Event::TensionResolved { .. }));
+    }
+
+    #[test]
+    fn test_store_no_event_bus_no_panic() {
+        // Verify that operations work without an event bus attached
+        let store = Store::new_in_memory().unwrap();
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        // If we get here without panicking, the test passes
+        assert!(true);
     }
 }

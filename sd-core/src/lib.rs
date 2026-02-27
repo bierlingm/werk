@@ -11,6 +11,7 @@
 // and emits events. Instruments subscribe and react.
 
 pub mod dynamics;
+pub mod events;
 pub mod mutation;
 pub mod store;
 pub mod tension;
@@ -62,10 +63,8 @@ pub use dynamics::{
     measure_assimilation_depth,
     predict_structural_tendency,
 };
+pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use store::{Store, StoreError};
 pub use tension::{SdError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};
-
-// Future modules (not yet implemented):
-// pub mod events;
