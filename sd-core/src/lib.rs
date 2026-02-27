@@ -11,10 +11,10 @@
 // and emits events. Instruments subscribe and react.
 
 pub mod mutation;
+pub mod store;
 pub mod tension;
 
 // Future modules (not yet implemented):
 // pub mod dynamics;
 // pub mod events;
-// pub mod store;
 // pub mod tree;

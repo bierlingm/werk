@@ -1,0 +1,1291 @@
+//! fsqlite-backed Store for tensions and mutations.
+//!
+//! The Store provides persistence for tensions and their mutation history.
+//! It uses fsqlite (FrankenSQLite) for storage, supporting both file-based
+//! and in-memory databases.
+//!
+//! # Directory Discovery
+//!
+//! `Store::open()` walks up from the current working directory looking for
+//! a `.werk/` directory containing `sd.db`. If not found, it falls back to
+//! `~/.werk/sd.db`.
+//!
+//! # Schema
+//!
+//! ```sql
+//! CREATE TABLE tensions (
+//!     id TEXT PRIMARY KEY,
+//!     desired TEXT NOT NULL,
+//!     actual TEXT NOT NULL,
+//!     parent_id TEXT,
+//!     created_at TEXT NOT NULL,
+//!     status TEXT NOT NULL
+//! );
+//!
+//! CREATE TABLE mutations (
+//!     id INTEGER PRIMARY KEY AUTOINCREMENT,
+//!     tension_id TEXT NOT NULL,
+//!     timestamp TEXT NOT NULL,
+//!     field TEXT NOT NULL,
+//!     old_value TEXT,
+//!     new_value TEXT
+//! );
+//! ```
+
+use chrono::{DateTime, Utc};
+use fsqlite::Connection;
+use fsqlite_types::value::SqliteValue;
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use crate::mutation::Mutation;
+use crate::tension::{SdError, Tension, TensionStatus};
+
+/// Errors specific to store operations.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum StoreError {
+    /// Failed to open or create the database.
+    #[error("database error: {0}")]
+    DatabaseError(String),
+
+    /// Failed to discover .werk/ directory.
+    #[error("failed to discover .werk directory")]
+    DiscoveryError,
+
+    /// Tension not found.
+    #[error("tension not found: {0}")]
+    TensionNotFound(String),
+
+    /// Permission denied.
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
+
+    /// Disk full or I/O error.
+    #[error("I/O error: {0}")]
+    IoError(String),
+
+    /// Transaction failed and was rolled back.
+    #[error("transaction rolled back: {0}")]
+    TransactionRolledBack(String),
+}
+
+/// Convert StoreError to SdError for use in operations that return SdError.
+impl From<StoreError> for SdError {
+    fn from(e: StoreError) -> Self {
+        SdError::ValidationError(e.to_string())
+    }
+}
+
+/// The persistent store for tensions and mutations.
+///
+/// Uses fsqlite for storage. Note: fsqlite's Connection uses Rc internally,
+/// so Store cannot be sent between threads. For concurrent access, open
+/// multiple Store instances to the same file-based database.
+pub struct Store {
+    conn: Rc<RefCell<Connection>>,
+    path: Option<PathBuf>,
+}
+
+impl Store {
+    /// Initialize a new store at the given path.
+    ///
+    /// Creates `.werk/sd.db` with the correct schema. Idempotent —
+    /// opening an existing database preserves data.
+    pub fn init(path: &std::path::Path) -> Result<Self, StoreError> {
+        let werk_dir = path.join(".werk");
+        std::fs::create_dir_all(&werk_dir).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                StoreError::PermissionDenied(format!("{}", werk_dir.display()))
+            } else {
+                StoreError::IoError(format!("failed to create .werk directory: {}", e))
+            }
+        })?;
+
+        let db_path = werk_dir.join("sd.db");
+        let db_path_str = db_path.to_string_lossy().into_owned();
+        let conn = Connection::open(db_path_str)
+            .map_err(|e| StoreError::DatabaseError(format!("failed to open database: {:?}", e)))?;
+
+        let store = Self {
+            conn: Rc::new(RefCell::new(conn)),
+            path: Some(db_path),
+        };
+        store.create_schema()?;
+        Ok(store)
+    }
+
+    /// Open an existing store, discovering .werk/ by walking up from CWD.
+    ///
+    /// Falls back to ~/.werk/sd.db if no local .werk/ found.
+    pub fn open() -> Result<Self, StoreError> {
+        let path = Self::discover_werk_dir()?;
+        Self::init(&path)
+    }
+
+    /// Create an in-memory store for testing.
+    ///
+    /// Each in-memory store is isolated from others.
+    pub fn new_in_memory() -> Result<Self, StoreError> {
+        let conn = Connection::open(":memory:").map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create in-memory db: {:?}", e))
+        })?;
+        let store = Self {
+            conn: Rc::new(RefCell::new(conn)),
+            path: None,
+        };
+        store.create_schema()?;
+        Ok(store)
+    }
+
+    fn discover_werk_dir() -> Result<PathBuf, StoreError> {
+        let cwd = std::env::current_dir()
+            .map_err(|e| StoreError::IoError(format!("failed to get CWD: {}", e)))?;
+
+        let mut current = cwd.as_path();
+        loop {
+            let werk_dir = current.join(".werk");
+            if werk_dir.exists() {
+                return Ok(current.to_path_buf());
+            }
+            match current.parent() {
+                Some(parent) => current = parent,
+                None => break,
+            }
+        }
+
+        // Fall back to ~/.werk/
+        let home = dirs::home_dir().ok_or(StoreError::DiscoveryError)?;
+        Ok(home.join(".werk"))
+    }
+
+    fn create_schema(&self) -> Result<(), StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tensions (
+                id TEXT PRIMARY KEY,
+                desired TEXT NOT NULL,
+                actual TEXT NOT NULL,
+                parent_id TEXT,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create tensions table: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS mutations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tension_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                field TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create mutations table: {:?}", e))
+        })?;
+
+        Ok(())
+    }
+
+    /// Create a new tension and persist it.
+    ///
+    /// Generates a ULID id, persists the tension, and records a "created" mutation.
+    pub fn create_tension(&self, desired: &str, actual: &str) -> Result<Tension, SdError> {
+        self.create_tension_with_parent(desired, actual, None)
+    }
+
+    /// Create a new tension with a parent reference.
+    pub fn create_tension_with_parent(
+        &self,
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+    ) -> Result<Tension, SdError> {
+        let tension = Tension::new_with_parent(desired, actual, parent_id)?;
+        self.persist_tension(&tension)?;
+        self.record_mutation(&Mutation::new(
+            tension.id.clone(),
+            tension.created_at,
+            "created".to_owned(),
+            None,
+            format!("desired='{}';actual='{}'", tension.desired, tension.actual),
+        ))?;
+        Ok(tension)
+    }
+
+    fn persist_tension(&self, tension: &Tension) -> Result<(), SdError> {
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            &[
+                SqliteValue::Text(tension.id.clone()),
+                SqliteValue::Text(tension.desired.clone()),
+                SqliteValue::Text(tension.actual.clone()),
+                match &tension.parent_id {
+                    Some(pid) => SqliteValue::Text(pid.clone()),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(tension.created_at.to_rfc3339()),
+                SqliteValue::Text(tension.status.to_string()),
+            ],
+        )
+        .map_err(|e| SdError::ValidationError(format!("failed to persist tension: {:?}", e)))?;
+        Ok(())
+    }
+
+    fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value) VALUES (?1, ?2, ?3, ?4, ?5)",
+            &[
+                SqliteValue::Text(mutation.tension_id().to_owned()),
+                SqliteValue::Text(mutation.timestamp().to_rfc3339()),
+                SqliteValue::Text(mutation.field().to_owned()),
+                match mutation.old_value() {
+                    Some(v) => SqliteValue::Text(v.to_owned()),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(mutation.new_value().to_owned()),
+            ],
+        )
+        .map_err(|e| SdError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
+        Ok(())
+    }
+
+    /// Get a tension by ID.
+    ///
+    /// Returns None if the tension doesn't exist.
+    pub fn get_tension(&self, id: &str) -> Result<Option<Tension>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT id, desired, actual, parent_id, created_at, status FROM tensions WHERE id = ?1",
+                &[SqliteValue::Text(id.to_owned())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &rows[0];
+        let id = match row.get(0) {
+            Some(SqliteValue::Text(s)) => s.clone(),
+            _ => return Err(StoreError::DatabaseError("invalid id column".to_owned())),
+        };
+        let desired = match row.get(1) {
+            Some(SqliteValue::Text(s)) => s.clone(),
+            _ => {
+                return Err(StoreError::DatabaseError(
+                    "invalid desired column".to_owned(),
+                ));
+            }
+        };
+        let actual = match row.get(2) {
+            Some(SqliteValue::Text(s)) => s.clone(),
+            _ => {
+                return Err(StoreError::DatabaseError(
+                    "invalid actual column".to_owned(),
+                ));
+            }
+        };
+        let parent_id = match row.get(3) {
+            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Null) | None => None,
+            _ => {
+                return Err(StoreError::DatabaseError(
+                    "invalid parent_id column".to_owned(),
+                ));
+            }
+        };
+        let created_at_str = match row.get(4) {
+            Some(SqliteValue::Text(s)) => s.clone(),
+            _ => {
+                return Err(StoreError::DatabaseError(
+                    "invalid created_at column".to_owned(),
+                ));
+            }
+        };
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .map_err(|e| StoreError::DatabaseError(format!("invalid created_at: {}", e)))?;
+
+        let status_str = match row.get(5) {
+            Some(SqliteValue::Text(s)) => s.clone(),
+            _ => {
+                return Err(StoreError::DatabaseError(
+                    "invalid status column".to_owned(),
+                ));
+            }
+        };
+        let status = match status_str.as_str() {
+            "Active" => TensionStatus::Active,
+            "Resolved" => TensionStatus::Resolved,
+            "Released" => TensionStatus::Released,
+            _ => {
+                return Err(StoreError::DatabaseError(format!(
+                    "invalid status: {}",
+                    status_str
+                )));
+            }
+        };
+
+        Ok(Some(Tension {
+            id,
+            desired,
+            actual,
+            parent_id,
+            created_at,
+            status,
+        }))
+    }
+
+    /// List all tensions in creation order.
+    pub fn list_tensions(&self) -> Result<Vec<Tension>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT id, desired, actual, parent_id, created_at, status FROM tensions ORDER BY created_at ASC")
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_tension_rows(rows)
+    }
+
+    /// Get all root tensions (those with no parent_id).
+    pub fn get_roots(&self) -> Result<Vec<Tension>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT id, desired, actual, parent_id, created_at, status FROM tensions WHERE parent_id IS NULL ORDER BY created_at ASC")
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_tension_rows(rows)
+    }
+
+    /// Get all children of a given parent.
+    pub fn get_children(&self, parent_id: &str) -> Result<Vec<Tension>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT id, desired, actual, parent_id, created_at, status FROM tensions WHERE parent_id = ?1 ORDER BY created_at ASC",
+                &[SqliteValue::Text(parent_id.to_owned())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_tension_rows(rows)
+    }
+
+    fn parse_tension_rows(&self, rows: Vec<fsqlite::Row>) -> Result<Vec<Tension>, StoreError> {
+        let mut tensions = Vec::new();
+        for row in &rows {
+            let id = match row.get(0) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid id column".to_owned())),
+            };
+            let desired = match row.get(1) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid desired column".to_owned(),
+                    ));
+                }
+            };
+            let actual = match row.get(2) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid actual column".to_owned(),
+                    ));
+                }
+            };
+            let parent_id = match row.get(3) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid parent_id column".to_owned(),
+                    ));
+                }
+            };
+            let created_at_str = match row.get(4) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid created_at column".to_owned(),
+                    ));
+                }
+            };
+            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::DatabaseError(format!("invalid created_at: {}", e)))?;
+
+            let status_str = match row.get(5) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid status column".to_owned(),
+                    ));
+                }
+            };
+            let status = match status_str.as_str() {
+                "Active" => TensionStatus::Active,
+                "Resolved" => TensionStatus::Resolved,
+                "Released" => TensionStatus::Released,
+                _ => {
+                    return Err(StoreError::DatabaseError(format!(
+                        "invalid status: {}",
+                        status_str
+                    )));
+                }
+            };
+
+            tensions.push(Tension {
+                id,
+                desired,
+                actual,
+                parent_id,
+                created_at,
+                status,
+            });
+        }
+
+        Ok(tensions)
+    }
+
+    /// Update the desired state of a tension.
+    ///
+    /// Persists the change and records a mutation.
+    pub fn update_desired(&self, id: &str, new_desired: &str) -> Result<(), SdError> {
+        self.update_field(id, "desired", new_desired)
+    }
+
+    /// Update the actual state of a tension.
+    ///
+    /// Persists the change and records a mutation.
+    pub fn update_actual(&self, id: &str, new_actual: &str) -> Result<(), SdError> {
+        self.update_field(id, "actual", new_actual)
+    }
+
+    /// Update the parent_id of a tension.
+    ///
+    /// Persists the change and records a mutation.
+    pub fn update_parent(&self, id: &str, new_parent_id: Option<&str>) -> Result<(), SdError> {
+        let mut tension = self
+            .get_tension(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?
+            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+
+        let old_parent = tension.parent_id.clone();
+        let new_parent = new_parent_id.map(|s| s.to_owned());
+        tension.parent_id = new_parent.clone();
+
+        // Persist in transaction
+        {
+            let conn = self.conn.borrow();
+            conn.execute("BEGIN;").map_err(|e| {
+                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+            })?;
+
+            let result = self
+                .update_tension_in_transaction(&conn, &tension)
+                .and_then(|_| {
+                    self.record_mutation_in_transaction(
+                        &conn,
+                        &Mutation::new(
+                            tension.id.clone(),
+                            Utc::now(),
+                            "parent_id".to_owned(),
+                            old_parent,
+                            new_parent.unwrap_or_default(),
+                        ),
+                    )
+                });
+
+            match result {
+                Ok(_) => {
+                    conn.execute("COMMIT;").map_err(|e| {
+                        SdError::ValidationError(format!("failed to commit: {:?}", e))
+                    })?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Update the status of a tension.
+    ///
+    /// Persists the change and records a mutation.
+    pub fn update_status(&self, id: &str, new_status: TensionStatus) -> Result<(), SdError> {
+        let mut tension = self
+            .get_tension(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?
+            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+
+        let old_status = tension.status;
+        if old_status == new_status {
+            return Ok(()); // No change needed
+        }
+
+        // Validate transition
+        match (&old_status, &new_status) {
+            (TensionStatus::Active, TensionStatus::Resolved) => {}
+            (TensionStatus::Active, TensionStatus::Released) => {}
+            _ => {
+                return Err(SdError::InvalidStatusTransition {
+                    from: old_status,
+                    to: new_status,
+                });
+            }
+        }
+
+        tension.status = new_status;
+
+        // Persist in transaction
+        {
+            let conn = self.conn.borrow();
+            conn.execute("BEGIN;").map_err(|e| {
+                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+            })?;
+
+            let result = self
+                .update_tension_in_transaction(&conn, &tension)
+                .and_then(|_| {
+                    self.record_mutation_in_transaction(
+                        &conn,
+                        &Mutation::new(
+                            tension.id.clone(),
+                            Utc::now(),
+                            "status".to_owned(),
+                            Some(old_status.to_string()),
+                            new_status.to_string(),
+                        ),
+                    )
+                });
+
+            match result {
+                Ok(_) => {
+                    conn.execute("COMMIT;").map_err(|e| {
+                        SdError::ValidationError(format!("failed to commit: {:?}", e))
+                    })?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn update_field(&self, id: &str, field: &str, new_value: &str) -> Result<(), SdError> {
+        if new_value.is_empty() {
+            return Err(SdError::ValidationError(format!(
+                "{} cannot be empty",
+                field
+            )));
+        }
+
+        let mut tension = self
+            .get_tension(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?
+            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+
+        if tension.status != TensionStatus::Active {
+            return Err(SdError::UpdateOnInactiveTension(tension.status));
+        }
+
+        let old_value = match field {
+            "desired" => tension.update_desired(new_value)?,
+            "actual" => tension.update_actual(new_value)?,
+            _ => {
+                return Err(SdError::ValidationError(format!(
+                    "unknown field: {}",
+                    field
+                )));
+            }
+        };
+
+        // Persist in transaction
+        {
+            let conn = self.conn.borrow();
+            conn.execute("BEGIN;").map_err(|e| {
+                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+            })?;
+
+            let result = self
+                .update_tension_in_transaction(&conn, &tension)
+                .and_then(|_| {
+                    self.record_mutation_in_transaction(
+                        &conn,
+                        &Mutation::new(
+                            tension.id.clone(),
+                            Utc::now(),
+                            field.to_owned(),
+                            Some(old_value),
+                            new_value.to_owned(),
+                        ),
+                    )
+                });
+
+            match result {
+                Ok(_) => {
+                    conn.execute("COMMIT;").map_err(|e| {
+                        SdError::ValidationError(format!("failed to commit: {:?}", e))
+                    })?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn update_tension_in_transaction(
+        &self,
+        conn: &Connection,
+        tension: &Tension,
+    ) -> Result<(), SdError> {
+        conn.execute_with_params(
+            "UPDATE tensions SET desired = ?1, actual = ?2, parent_id = ?3, status = ?4 WHERE id = ?5",
+            &[
+                SqliteValue::Text(tension.desired.clone()),
+                SqliteValue::Text(tension.actual.clone()),
+                match &tension.parent_id {
+                    Some(pid) => SqliteValue::Text(pid.clone()),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(tension.status.to_string()),
+                SqliteValue::Text(tension.id.clone()),
+            ],
+        )
+        .map_err(|e| SdError::ValidationError(format!("failed to update tension: {:?}", e)))?;
+        Ok(())
+    }
+
+    fn record_mutation_in_transaction(
+        &self,
+        conn: &Connection,
+        mutation: &Mutation,
+    ) -> Result<(), SdError> {
+        conn.execute_with_params(
+            "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value) VALUES (?1, ?2, ?3, ?4, ?5)",
+            &[
+                SqliteValue::Text(mutation.tension_id().to_owned()),
+                SqliteValue::Text(mutation.timestamp().to_rfc3339()),
+                SqliteValue::Text(mutation.field().to_owned()),
+                match mutation.old_value() {
+                    Some(v) => SqliteValue::Text(v.to_owned()),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(mutation.new_value().to_owned()),
+            ],
+        )
+        .map_err(|e| SdError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
+        Ok(())
+    }
+
+    /// Get all mutations for a tension in chronological order.
+    pub fn get_mutations(&self, tension_id: &str) -> Result<Vec<Mutation>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT tension_id, timestamp, field, old_value, new_value FROM mutations WHERE tension_id = ?1 ORDER BY timestamp ASC",
+                &[SqliteValue::Text(tension_id.to_owned())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_mutation_rows(rows)
+    }
+
+    /// Get all mutations across all tensions in chronological order.
+    pub fn all_mutations(&self) -> Result<Vec<Mutation>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT tension_id, timestamp, field, old_value, new_value FROM mutations ORDER BY timestamp ASC")
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_mutation_rows(rows)
+    }
+
+    fn parse_mutation_rows(&self, rows: Vec<fsqlite::Row>) -> Result<Vec<Mutation>, StoreError> {
+        let mut mutations = Vec::new();
+        for row in &rows {
+            let tension_id = match row.get(0) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid tension_id column".to_owned(),
+                    ));
+                }
+            };
+            let timestamp_str = match row.get(1) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid timestamp column".to_owned(),
+                    ));
+                }
+            };
+            let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::DatabaseError(format!("invalid timestamp: {}", e)))?;
+
+            let field = match row.get(2) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid field column".to_owned())),
+            };
+            let old_value = match row.get(3) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid old_value column".to_owned(),
+                    ));
+                }
+            };
+            let new_value = match row.get(4) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid new_value column".to_owned(),
+                    ));
+                }
+            };
+
+            mutations.push(Mutation::new(
+                tension_id, timestamp, field, old_value, new_value,
+            ));
+        }
+
+        Ok(mutations)
+    }
+
+    /// Get the database path (None for in-memory stores).
+    pub fn path(&self) -> Option<&std::path::Path> {
+        self.path.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Construction ──────────────────────────────────────────────
+
+    #[test]
+    fn test_store_new_in_memory() {
+        let store = Store::new_in_memory().unwrap();
+        assert!(store.path().is_none());
+    }
+
+    #[test]
+    fn test_store_new_in_memory_isolated() {
+        let store1 = Store::new_in_memory().unwrap();
+        let store2 = Store::new_in_memory().unwrap();
+
+        let t1 = store1.create_tension("goal1", "reality1").unwrap();
+        let t2 = store2.create_tension("goal2", "reality2").unwrap();
+
+        // Each store has its own data
+        assert!(store1.get_tension(&t2.id).unwrap().is_none());
+        assert!(store2.get_tension(&t1.id).unwrap().is_none());
+    }
+
+    // ── Tension CRUD ──────────────────────────────────────────────
+
+    #[test]
+    fn test_create_tension() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store
+            .create_tension("write a novel", "have an outline")
+            .unwrap();
+
+        assert!(!t.id.is_empty());
+        assert_eq!(t.desired, "write a novel");
+        assert_eq!(t.actual, "have an outline");
+        assert_eq!(t.status, TensionStatus::Active);
+        assert!(t.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_create_tension_with_parent() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let child = store
+            .create_tension_with_parent("child goal", "child reality", Some(parent.id.clone()))
+            .unwrap();
+
+        assert_eq!(child.parent_id, Some(parent.id));
+    }
+
+    #[test]
+    fn test_create_tension_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 1);
+        assert_eq!(mutations[0].field(), "created");
+        assert!(mutations[0].old_value().is_none());
+    }
+
+    #[test]
+    fn test_create_tension_empty_desired_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let result = store.create_tension("", "reality");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_tension_empty_actual_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let result = store.create_tension("goal", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_tension_existing() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let retrieved = store.get_tension(&t.id).unwrap();
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.id, t.id);
+        assert_eq!(retrieved.desired, t.desired);
+        assert_eq!(retrieved.actual, t.actual);
+    }
+
+    #[test]
+    fn test_get_tension_unknown_returns_none() {
+        let store = Store::new_in_memory().unwrap();
+        let result = store.get_tension("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_list_tensions_creation_order() {
+        let store = Store::new_in_memory().unwrap();
+        let t1 = store.create_tension("first", "r1").unwrap();
+        let t2 = store.create_tension("second", "r2").unwrap();
+        let t3 = store.create_tension("third", "r3").unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        assert_eq!(tensions.len(), 3);
+        assert_eq!(tensions[0].id, t1.id);
+        assert_eq!(tensions[1].id, t2.id);
+        assert_eq!(tensions[2].id, t3.id);
+    }
+
+    #[test]
+    fn test_list_tensions_empty() {
+        let store = Store::new_in_memory().unwrap();
+        let tensions = store.list_tensions().unwrap();
+        assert!(tensions.is_empty());
+    }
+
+    // ── Root and Child Queries ─────────────────────────────────────
+
+    #[test]
+    fn test_get_roots() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let _child = store
+            .create_tension_with_parent("child goal", "child reality", Some(parent.id.clone()))
+            .unwrap();
+
+        let roots = store.get_roots().unwrap();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].id, parent.id);
+    }
+
+    #[test]
+    fn test_get_roots_multiple() {
+        let store = Store::new_in_memory().unwrap();
+        let _r1 = store.create_tension("root1", "r1").unwrap();
+        let _r2 = store.create_tension("root2", "r2").unwrap();
+
+        let roots = store.get_roots().unwrap();
+        assert_eq!(roots.len(), 2);
+    }
+
+    #[test]
+    fn test_get_children() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store.create_tension("parent", "p").unwrap();
+        let c1 = store
+            .create_tension_with_parent("child1", "c1", Some(parent.id.clone()))
+            .unwrap();
+        let c2 = store
+            .create_tension_with_parent("child2", "c2", Some(parent.id.clone()))
+            .unwrap();
+        let _other = store.create_tension("other", "o").unwrap();
+
+        let children = store.get_children(&parent.id).unwrap();
+        assert_eq!(children.len(), 2);
+        assert!(children.iter().any(|c| c.id == c1.id));
+        assert!(children.iter().any(|c| c.id == c2.id));
+    }
+
+    #[test]
+    fn test_get_children_empty() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let children = store.get_children(&t.id).unwrap();
+        assert!(children.is_empty());
+    }
+
+    // ── Update Operations ──────────────────────────────────────────
+
+    #[test]
+    fn test_update_desired() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("old desire", "reality").unwrap();
+
+        store.update_desired(&t.id, "new desire").unwrap();
+
+        let updated = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(updated.desired, "new desire");
+    }
+
+    #[test]
+    fn test_update_desired_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("old desire", "reality").unwrap();
+
+        store.update_desired(&t.id, "new desire").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2); // created + update
+        assert_eq!(mutations[1].field(), "desired");
+        assert_eq!(mutations[1].old_value(), Some("old desire"));
+        assert_eq!(mutations[1].new_value(), "new desire");
+    }
+
+    #[test]
+    fn test_update_desired_empty_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("desire", "reality").unwrap();
+
+        let result = store.update_desired(&t.id, "");
+        assert!(result.is_err());
+
+        // Original preserved
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.desired, "desire");
+    }
+
+    #[test]
+    fn test_update_actual() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("desire", "old reality").unwrap();
+
+        store.update_actual(&t.id, "new reality").unwrap();
+
+        let updated = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(updated.actual, "new reality");
+    }
+
+    #[test]
+    fn test_update_actual_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("desire", "old reality").unwrap();
+
+        store.update_actual(&t.id, "new reality").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2);
+        assert_eq!(mutations[1].field(), "actual");
+        assert_eq!(mutations[1].old_value(), Some("old reality"));
+        assert_eq!(mutations[1].new_value(), "new reality");
+    }
+
+    #[test]
+    fn test_update_parent() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        let new_parent = store.create_tension("parent", "p").unwrap();
+
+        store.update_parent(&t.id, Some(&new_parent.id)).unwrap();
+
+        let updated = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(updated.parent_id, Some(new_parent.id));
+    }
+
+    #[test]
+    fn test_update_parent_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        let new_parent = store.create_tension("parent", "p").unwrap();
+
+        store.update_parent(&t.id, Some(&new_parent.id)).unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2);
+        assert_eq!(mutations[1].field(), "parent_id");
+    }
+
+    #[test]
+    fn test_update_parent_to_none() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store.create_tension("parent", "p").unwrap();
+        let child = store
+            .create_tension_with_parent("child", "c", Some(parent.id.clone()))
+            .unwrap();
+
+        store.update_parent(&child.id, None).unwrap();
+
+        let updated = store.get_tension(&child.id).unwrap().unwrap();
+        assert!(updated.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_update_status_resolve() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        let updated = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(updated.status, TensionStatus::Resolved);
+    }
+
+    #[test]
+    fn test_update_status_release() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        store.update_status(&t.id, TensionStatus::Released).unwrap();
+
+        let updated = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(updated.status, TensionStatus::Released);
+    }
+
+    #[test]
+    fn test_update_status_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2);
+        assert_eq!(mutations[1].field(), "status");
+        assert_eq!(mutations[1].old_value(), Some("Active"));
+        assert_eq!(mutations[1].new_value(), "Resolved");
+    }
+
+    #[test]
+    fn test_update_status_invalid_transition() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        let result = store.update_status(&t.id, TensionStatus::Released);
+        assert!(result.is_err());
+
+        // Status unchanged
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.status, TensionStatus::Resolved);
+    }
+
+    #[test]
+    fn test_update_on_resolved_tension_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        let result = store.update_desired(&t.id, "new goal");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_on_released_tension_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Released).unwrap();
+
+        let result = store.update_actual(&t.id, "new reality");
+        assert!(result.is_err());
+    }
+
+    // ── Mutation Queries ───────────────────────────────────────────
+
+    #[test]
+    fn test_get_mutations_empty_for_unknown() {
+        let store = Store::new_in_memory().unwrap();
+        let mutations = store.get_mutations("nonexistent").unwrap();
+        assert!(mutations.is_empty());
+    }
+
+    #[test]
+    fn test_all_mutations() {
+        let store = Store::new_in_memory().unwrap();
+        let t1 = store.create_tension("goal1", "reality1").unwrap();
+        let t2 = store.create_tension("goal2", "reality2").unwrap();
+
+        store.update_desired(&t1.id, "new goal1").unwrap();
+        store.update_actual(&t2.id, "new reality2").unwrap();
+
+        let all = store.all_mutations().unwrap();
+        assert_eq!(all.len(), 4); // 2 created + 2 updates
+    }
+
+    // ── Transaction Rollback ───────────────────────────────────────
+
+    #[test]
+    fn test_transaction_rollback_on_update_failure() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        // This should fail and rollback
+        let result = store.update_desired(&t.id, "");
+        assert!(result.is_err());
+
+        // No mutation recorded for failed update
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 1); // Only the creation mutation
+    }
+
+    // ── Schema Correctness ─────────────────────────────────────────
+
+    #[test]
+    fn test_schema_tensions_columns() {
+        let store = Store::new_in_memory().unwrap();
+        let conn = store.conn.borrow();
+        let rows = conn.query("PRAGMA table_info(tensions);").unwrap();
+
+        // Check expected columns exist
+        let columns: Vec<String> = rows
+            .iter()
+            .filter_map(|r| {
+                if let Some(SqliteValue::Text(name)) = r.get(1) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(columns.contains(&"id".to_owned()));
+        assert!(columns.contains(&"desired".to_owned()));
+        assert!(columns.contains(&"actual".to_owned()));
+        assert!(columns.contains(&"parent_id".to_owned()));
+        assert!(columns.contains(&"created_at".to_owned()));
+        assert!(columns.contains(&"status".to_owned()));
+    }
+
+    #[test]
+    fn test_schema_mutations_columns() {
+        let store = Store::new_in_memory().unwrap();
+        let conn = store.conn.borrow();
+        let rows = conn.query("PRAGMA table_info(mutations);").unwrap();
+
+        let columns: Vec<String> = rows
+            .iter()
+            .filter_map(|r| {
+                if let Some(SqliteValue::Text(name)) = r.get(1) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(columns.contains(&"id".to_owned()));
+        assert!(columns.contains(&"tension_id".to_owned()));
+        assert!(columns.contains(&"timestamp".to_owned()));
+        assert!(columns.contains(&"field".to_owned()));
+        assert!(columns.contains(&"old_value".to_owned()));
+        assert!(columns.contains(&"new_value".to_owned()));
+    }
+
+    // ── Concurrent Reads ───────────────────────────────────────────
+
+    #[test]
+    fn test_concurrent_reads() {
+        use std::thread;
+
+        // fsqlite's Connection uses Rc internally, so it's not Send.
+        // We test concurrent reads by having each thread open its own connection
+        // to a file-based database.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = Store::init(temp_dir.path()).unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        let tension_id = t.id.clone();
+        let path = temp_dir.path().to_path_buf();
+
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let path_clone = path.clone();
+            let id = tension_id.clone();
+            handles.push(thread::spawn(move || {
+                // Each thread opens its own connection to the same database
+                let thread_store = Store::init(&path_clone).unwrap();
+                let retrieved = thread_store.get_tension(&id).unwrap();
+                assert!(retrieved.is_some());
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    // ── Unicode ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_store_unicode() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("写小说", "有一个大纲 🎵").unwrap();
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.desired, "写小说");
+        assert_eq!(retrieved.actual, "有一个大纲 🎵");
+    }
+
+    // ── Init Idempotency ───────────────────────────────────────────
+
+    #[test]
+    fn test_init_idempotent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store1 = Store::init(temp_dir.path()).unwrap();
+        let t = store1.create_tension("goal", "reality").unwrap();
+
+        // Re-open the same database
+        let store2 = Store::init(temp_dir.path()).unwrap();
+        let retrieved = store2.get_tension(&t.id).unwrap();
+        assert!(retrieved.is_some());
+    }
+
+    // ── Error Types ────────────────────────────────────────────────
+
+    #[test]
+    fn test_store_error_display() {
+        let e = StoreError::DatabaseError("test".to_owned());
+        assert!(e.to_string().contains("database error"));
+
+        let e = StoreError::TensionNotFound("abc".to_owned());
+        assert!(e.to_string().contains("abc"));
+
+        let e = StoreError::PermissionDenied("/path".to_owned());
+        assert!(e.to_string().contains("permission denied"));
+    }
+}

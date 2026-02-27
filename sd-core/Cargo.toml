@@ -6,8 +6,14 @@ description = "Structural dynamics grammar — a faithful computational model of
 
 [dependencies]
 fsqlite = "0.1.1"
+fsqlite-types = "0.1"
+fsqlite-error = "0.1"
 ulid = "1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
