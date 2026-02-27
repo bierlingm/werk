@@ -10,17 +10,22 @@
 // This crate has zero instrument dependencies. It computes dynamics
 // and emits events. Instruments subscribe and react.
 
+pub mod dynamics;
 pub mod mutation;
 pub mod store;
 pub mod tension;
 pub mod tree;
 
 // Re-export commonly used types for convenience
+pub use dynamics::{
+    Conflict, ConflictPattern, ConflictThresholds, Oscillation, OscillationThresholds, Resolution,
+    ResolutionThresholds, ResolutionTrend, StructuralTension, compute_structural_tension,
+    detect_oscillation, detect_resolution, detect_structural_conflict,
+};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use store::{Store, StoreError};
 pub use tension::{SdError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};
 
 // Future modules (not yet implemented):
-// pub mod dynamics;
 // pub mod events;
