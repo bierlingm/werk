@@ -139,21 +139,242 @@ fn cmd_config(output: &Output, _command: werk::commands::ConfigCommand) -> Resul
 
 fn cmd_add(
     output: &Output,
-    _desired: Option<String>,
-    _actual: Option<String>,
-    _parent: Option<String>,
+    desired: Option<String>,
+    actual: Option<String>,
+    parent: Option<String>,
 ) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: add command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for add command.
+    #[derive(Serialize)]
+    struct AddResult {
+        id: String,
+        desired: String,
+        actual: String,
+        status: String,
+        parent_id: Option<String>,
+    }
+
+    // Require both desired and actual as positional args
+    let desired = desired.ok_or_else(|| {
+        WerkError::InvalidInput(
+            "desired state is required: werk add <desired> <actual>".to_string(),
+        )
+    })?;
+    let actual = actual.ok_or_else(|| {
+        WerkError::InvalidInput("actual state is required: werk add <desired> <actual>".to_string())
+    })?;
+
+    // Validate non-empty
+    if desired.is_empty() {
+        return Err(WerkError::InvalidInput(
+            "desired state cannot be empty".to_string(),
+        ));
+    }
+    if actual.is_empty() {
+        return Err(WerkError::InvalidInput(
+            "actual state cannot be empty".to_string(),
+        ));
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Resolve parent if provided
+    let parent_id = if let Some(parent_prefix) = parent {
+        let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+        let resolver = werk::prefix::PrefixResolver::new(tensions);
+        let parent_tension = resolver.resolve(&parent_prefix)?;
+        Some(parent_tension.id.clone())
+    } else {
+        None
+    };
+
+    // Create the tension
+    let tension = store.create_tension_with_parent(&desired, &actual, parent_id.clone())?;
+
+    let result = AddResult {
+        id: tension.id.clone(),
+        desired: tension.desired.clone(),
+        actual: tension.actual.clone(),
+        status: tension.status.to_string(),
+        parent_id,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+        let status_styled = output.styled(
+            &tension.status.to_string(),
+            werk::output::ColorStyle::Active,
+        );
+        output
+            .success(&format!("Created tension {}", id_styled))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!(
+            "  Desired: {}",
+            output.styled(&tension.desired, werk::output::ColorStyle::Highlight)
+        );
+        println!(
+            "  Actual:  {}",
+            output.styled(&tension.actual, werk::output::ColorStyle::Muted)
+        );
+        println!("  Status:  {}", status_styled);
+        if let Some(pid) = &tension.parent_id {
+            println!(
+                "  Parent:  {}",
+                output.styled(pid, werk::output::ColorStyle::Id)
+            );
+        }
+    }
+
+    Ok(())
 }
 
-fn cmd_show(output: &Output, _id: String, _verbose: bool) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: show command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for show command.
+    #[derive(Serialize)]
+    struct ShowResult {
+        id: String,
+        desired: String,
+        actual: String,
+        status: String,
+        parent_id: Option<String>,
+        created_at: String,
+        mutations: Vec<MutationInfo>,
+    }
+
+    /// Mutation information for display.
+    #[derive(Serialize)]
+    struct MutationInfo {
+        timestamp: String,
+        field: String,
+        old_value: Option<String>,
+        new_value: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Get mutations
+    let mutations = store
+        .get_mutations(&tension.id)
+        .map_err(WerkError::StoreError)?;
+
+    // Build mutation info
+    let mutation_infos: Vec<MutationInfo> = mutations
+        .iter()
+        .map(|m| MutationInfo {
+            timestamp: m.timestamp().to_rfc3339(),
+            field: m.field().to_owned(),
+            old_value: m.old_value().map(|s| s.to_owned()),
+            new_value: m.new_value().to_owned(),
+        })
+        .collect();
+
+    let result = ShowResult {
+        id: tension.id.clone(),
+        desired: tension.desired.clone(),
+        actual: tension.actual.clone(),
+        status: tension.status.to_string(),
+        parent_id: tension.parent_id.clone(),
+        created_at: tension.created_at.to_rfc3339(),
+        mutations: mutation_infos,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+        let status_style = match tension.status {
+            sd_core::TensionStatus::Active => werk::output::ColorStyle::Active,
+            sd_core::TensionStatus::Resolved => werk::output::ColorStyle::Resolved,
+            sd_core::TensionStatus::Released => werk::output::ColorStyle::Released,
+        };
+        let status_styled = output.styled(&tension.status.to_string(), status_style);
+
+        println!("Tension {}", id_styled);
+        println!(
+            "  Desired:    {}",
+            output.styled(&tension.desired, werk::output::ColorStyle::Highlight)
+        );
+        println!(
+            "  Actual:     {}",
+            output.styled(&tension.actual, werk::output::ColorStyle::Muted)
+        );
+        println!("  Status:     {}", status_styled);
+        println!(
+            "  Created:    {}",
+            output.styled(
+                &tension
+                    .created_at
+                    .format("%Y-%m-%d %H:%M:%S UTC")
+                    .to_string(),
+                werk::output::ColorStyle::Muted
+            )
+        );
+
+        if let Some(pid) = &tension.parent_id {
+            println!(
+                "  Parent:     {}",
+                output.styled(pid, werk::output::ColorStyle::Id)
+            );
+        }
+
+        // Mutation count
+        println!(
+            "  Mutations:  {}",
+            output.styled(
+                &format!("{}", result.mutations.len()),
+                werk::output::ColorStyle::Info
+            )
+        );
+
+        // Show mutations if verbose or if there are any beyond creation
+        if verbose || result.mutations.len() > 1 {
+            println!("\n  Mutation History:");
+            for m in &result.mutations {
+                let old = m.old_value.as_deref().unwrap_or("(none)");
+                println!(
+                    "    {} [{}] {} -> {}",
+                    output.styled(
+                        &m.timestamp[..19].replace('T', " "),
+                        werk::output::ColorStyle::Muted
+                    ),
+                    output.styled(&m.field, werk::output::ColorStyle::Info),
+                    output.styled(old, werk::output::ColorStyle::Muted),
+                    output.styled(&m.new_value, werk::output::ColorStyle::Highlight)
+                );
+            }
+        }
+
+        // Note about --verbose for future dynamics display
+        if !verbose {
+            let _ = verbose; // suppress unused warning
+        }
+    }
+
+    Ok(())
 }
 
 fn cmd_reality(output: &Output, _id: String, _value: Option<String>) -> Result<(), WerkError> {
