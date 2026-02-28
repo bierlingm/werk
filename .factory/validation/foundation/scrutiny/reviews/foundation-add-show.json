@@ -1,0 +1,15 @@
+{
+  "featureId": "foundation-add-show",
+  "reviewedAt": "2026-02-28T15:18:00.000Z",
+  "commitId": "6d60d05",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Excellent implementation of `werk add` and `werk show` commands. The code follows the established patterns: TDD approach with comprehensive integration tests, proper error handling with descriptive messages, correct prefix resolution (4+ chars, case-insensitive), JSON output support, and Unicode handling. All 18 integration tests pass covering VAL-CRUD-001 through VAL-CRUD-007 and VAL-CRUD-025.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Feature fully implements the requirements. `werk add <desired> <actual>` creates Active tensions with ULID, validates non-empty fields, supports --parent for child tensions, and outputs confirmation with ID. `werk show <id-or-prefix>` displays all tension fields (id, desired, actual, status, parent, created_at) plus mutation count. Prefix resolution correctly requires 4+ characters, rejects ambiguous prefixes, and handles not-found cases. Both commands support --json output. Unicode (CJK, emoji) is preserved correctly. Implementation follows rust-cli-worker skill procedure: RED (wrote 18 failing tests), GREEN (implemented to pass), REFACTOR (clippy clean, properly formatted). All 63 werk tests pass, 306 sd-core tests pass, zero clippy warnings."
+}

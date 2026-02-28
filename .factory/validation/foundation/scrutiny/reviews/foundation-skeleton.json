@@ -1,0 +1,31 @@
+{
+  "featureId": "foundation-skeleton",
+  "reviewedAt": "2026-02-28T15:20:00Z",
+  "commitId": "afbfc0a21f4cadb5a0c24f4c791d998ec512006c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The foundation-skeleton feature is fully implemented according to specification. The CLI skeleton uses clap derive macros correctly, with global --json and --no-color flags. All 14 subcommands are defined in the Commands enum (init, config, add, show, reality, desire, resolve, release, rm, move, note, tree, context, run). Workspace resolution walks up from CWD to find .werk/ and falls back to ~/.werk/. ID prefix resolution enforces 4+ character minimum with case-insensitive matching and ambiguity detection. Output formatting supports both human-readable and JSON formats with color control via owo-colors respecting NO_COLOR. Error types use thiserror with proper exit codes (0=success, 1=user error, 2=internal error). All dependencies were added (toml, owo-colors, thiserror, dirs for runtime; assert_cmd, predicates, tempfile for dev). #![forbid(unsafe_code)] is present at crate root. 32 tests pass (25 unit + 7 integration), clippy clean.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The services.yaml has comprehensive commands defined including test_werk, clippy_werk, and run_werk which were used during implementation.",
+      "evidence": ".factory/services.yaml defines all necessary commands for building, testing, and linting the werk-cli crate."
+    },
+    {
+      "area": "conventions",
+      "observation": "The worker correctly followed AGENTS.md conventions: used clap derive, proper exit codes, owo-colors for output, ID prefix matching with 4+ char minimum, and temp directories for tests.",
+      "evidence": "werk-cli/src/main.rs uses #[derive(Parser)] and #[derive(Subcommand)], werk-cli/src/error.rs defines exit codes 0/1/2, werk-cli/src/output.rs uses owo-colors, werk-cli/src/prefix.rs enforces MIN_PREFIX_LEN=4."
+    },
+    {
+      "area": "skills",
+      "observation": "The worker followed the rust-cli-worker skill procedure: checked preconditions (sd-core tests passing), wrote tests first (RED phase), implemented to make tests pass (GREEN phase), ran lint/format, performed manual verification, and committed.",
+      "evidence": "Transcript shows: cargo test -p sd-core first, then skeleton.rs tests created, then implementation, then cargo fmt && cargo clippy, then manual verification with cargo run -- --help."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS: The foundation-skeleton feature is complete and correct. Implementation includes clap derive CLI framework with global flags, all 14 subcommand variants, workspace resolution (CWD walk-up + ~/.werk/ fallback), ID prefix resolution (4+ chars, case-insensitive, ambiguity detection), output formatting (human/JSON, NO_COLOR support), and error types with proper exit codes. All 32 tests pass, clippy clean, no unsafe code. The worker followed established conventions and skill procedures correctly."
+}

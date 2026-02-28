@@ -1,0 +1,33 @@
+{
+  "featureId": "foundation-move-note",
+  "reviewedAt": "2026-02-28T15:20:00Z",
+  "commitId": "5bc8d63",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Well-implemented feature with solid code quality. The `werk move` command correctly implements cycle prevention using Forest::descendants(), and the `werk note` command properly handles both tension-specific and workspace-level notes. Both commands follow established patterns for prefix resolution, JSON output, and error handling. Test coverage is comprehensive with 23 integration tests covering all expected behaviors and edge cases.",
+    "issues": [
+      {
+        "file": "werk-cli/src/main.rs",
+        "line": 856,
+        "severity": "non_blocking",
+        "description": "Workspace notes use a sentinel tension ID 'WORKSPACE_NOTES' stored via record_mutation(). This works but creates 'ghost' mutations not attached to real tensions. Consider documenting this pattern in AGENTS.md or using a separate workspace_notes table in future iterations."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker followed all documented conventions correctly. Command structure matches existing patterns (prefix resolution, JSON output, error handling).",
+      "evidence": "Compare cmd_move and cmd_note to cmd_resolve/cmd_release in werk-cli/src/main.rs - all follow same structure: resolve ID via PrefixResolver, perform store operation, format output via Output module."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The workspace note implementation using sentinel tension ID 'WORKSPACE_NOTES' is a design pattern that could be documented for future maintainers.",
+      "evidence": "werk-cli/src/main.rs:856-866 - notes without --id are stored as mutations on sentinel ID 'WORKSPACE_NOTES'. This is functional but the pattern isn't documented in AGENTS.md or library files."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature fully implements VAL-CRUD-019 through VAL-CRUD-024. Move command reparents tensions with cycle prevention, note command adds annotations (works on resolved/released tensions), both support --json and prefix resolution. 23 integration tests pass. One non-blocking observation about workspace note sentinel pattern."
+}

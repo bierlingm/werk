@@ -1,0 +1,55 @@
+{
+  "featureId": "foundation-reality-desire",
+  "reviewedAt": "2026-02-28T14:20:00Z",
+  "commitId": "79514049d4e96170254e37caebcb7c31becb5336",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Well-implemented feature with solid test coverage. The `werk reality` and `werk desire` commands fully meet all requirements in the feature specification: ID prefix resolution, $EDITOR integration, status validation, mutation recording, and JSON output. The editor module is cleanly designed with proper temp file handling and cleanup.",
+    "issues": [
+      {
+        "file": "werk-cli/src/editor.rs",
+        "line": 22,
+        "severity": "non_blocking",
+        "description": "Uses ULID for temp file naming which adds a dependency just for this purpose. A simple random string or process ID + timestamp would suffice and reduce dependencies."
+      },
+      {
+        "file": "werk-cli/src/editor.rs",
+        "line": 82,
+        "severity": "non_blocking",
+        "description": "The `edit_field` function adds a helpful comment header for users but is not actually used by the commands - they call `edit_content` directly instead. Either use `edit_field` in commands or remove it to avoid dead code."
+      },
+      {
+        "file": "werk-cli/src/main.rs",
+        "line": 375,
+        "severity": "non_blocking",
+        "description": "When editor returns no change, the JSON output format differs between reality (returns tension with old==new) and a more conventional 'unchanged' indicator might be clearer. Current behavior is acceptable but slightly inconsistent with human output which shows 'No changes made'."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker followed AGENTS.md conventions correctly: clap derive macros, thiserror for errors, owo-colors for output, sd-core Store methods, and proper exit codes (0/1/2). The integration with prefix resolution and workspace discovery is consistent with prior commands.",
+      "evidence": "All error types use #[error(...)] from thiserror, output uses styled() method with ColorStyle enum, commands delegate to Store methods rather than reimplementing logic."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed rust-cli-worker skill procedure: wrote tests first (24 integration tests), implemented to make tests pass, ran lint/format, verified sd-core tests pass, did manual verification. Handoff shows all verification steps completed.",
+      "evidence": "Handoff shows: cargo test -p werk (92 tests passed), cargo test -p sd-core (no regressions), cargo clippy (clean), manual verification with EDITOR=cat and interactive checks."
+    },
+    {
+      "area": "services",
+      "observation": "No new services needed - this is a CLI-only feature using existing sd-core storage. The services.yaml already has appropriate test commands defined.",
+      "evidence": "services.yaml defines test_werk, test_sd_core, clippy_werk which were used for validation."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The editor module implements a useful pattern for $EDITOR integration that could be documented in library/ for future reference. The test strategy using EDITOR=cat for editor mocking is effective.",
+      "evidence": "editor.rs lines 74-88 show editor test pattern with env::set_var('EDITOR', 'cat'). test_reality_opens_editor and test_desire_opens_editor in reality_desire.rs demonstrate this approach."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The foundation-reality-desire feature is fully implemented and passes review. Both `werk reality` and `werk desire` commands work correctly with ID prefix resolution, $EDITOR integration (including EDITOR=cat test mocking), status validation (rejecting updates to Resolved/Released tensions), empty value rejection, mutation recording, and JSON output. The 24 integration tests cover all validation contract assertions (VAL-CRUD-008 through VAL-CRUD-012). Minor non-blocking issues noted about ULID dependency for temp files and the unused edit_field function. The worker followed all conventions and skill procedures correctly."
+}
