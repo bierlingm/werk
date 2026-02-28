@@ -2551,9 +2551,511 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     Ok(())
 }
 
-fn cmd_run(output: &Output, _id: String, _command: Vec<String>) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: run command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), WerkError> {
+    use chrono::Utc;
+    use sd_core::{
+        classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
+        detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
+        detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
+        AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
+        CreativeCyclePhase, Forest, LifecycleThresholds, Mutation, NeglectThresholds,
+        OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
+    };
+    use serde::Serialize;
+    use std::io::Write;
+    use std::process::Stdio;
+    use werk::commands::config::Config;
+    use werk::workspace::Workspace;
+
+    /// Context output structure - always JSON, designed for agent consumption.
+    #[derive(Serialize)]
+    struct ContextResult {
+        tension: TensionInfo,
+        ancestors: Vec<TensionInfo>,
+        siblings: Vec<TensionInfo>,
+        children: Vec<TensionInfo>,
+        dynamics: DynamicsJson,
+        mutations: Vec<MutationInfo>,
+    }
+
+    /// Tension information for context output.
+    #[derive(Serialize)]
+    struct TensionInfo {
+        id: String,
+        desired: String,
+        actual: String,
+        status: String,
+        created_at: String,
+        parent_id: Option<String>,
+    }
+
+    /// All 10 dynamics in JSON format.
+    #[derive(Serialize)]
+    struct DynamicsJson {
+        structural_tension: Option<StructuralTensionJson>,
+        structural_conflict: Option<ConflictJson>,
+        oscillation: Option<OscillationJson>,
+        resolution: Option<ResolutionJson>,
+        creative_cycle_phase: PhaseJson,
+        orientation: Option<OrientationJson>,
+        compensating_strategy: Option<CompensatingStrategyJson>,
+        structural_tendency: TendencyJson,
+        assimilation_depth: Option<AssimilationDepthJson>,
+        neglect: Option<NeglectJson>,
+    }
+
+    #[derive(Serialize)]
+    struct StructuralTensionJson {
+        magnitude: f64,
+        has_gap: bool,
+    }
+
+    #[derive(Serialize)]
+    struct ConflictJson {
+        pattern: String,
+        tension_ids: Vec<String>,
+    }
+
+    #[derive(Serialize)]
+    struct OscillationJson {
+        reversals: usize,
+        magnitude: f64,
+        window_start: String,
+        window_end: String,
+    }
+
+    #[derive(Serialize)]
+    struct ResolutionJson {
+        velocity: f64,
+        trend: String,
+        window_start: String,
+        window_end: String,
+    }
+
+    #[derive(Serialize)]
+    struct PhaseJson {
+        phase: String,
+        evidence: PhaseEvidenceJson,
+    }
+
+    #[derive(Serialize)]
+    struct PhaseEvidenceJson {
+        mutation_count: usize,
+        gap_closing: bool,
+        convergence_ratio: f64,
+        age_seconds: i64,
+    }
+
+    #[derive(Serialize)]
+    struct OrientationJson {
+        orientation: String,
+        creative_ratio: f64,
+        problem_solving_ratio: f64,
+        reactive_ratio: f64,
+    }
+
+    #[derive(Serialize)]
+    struct CompensatingStrategyJson {
+        strategy_type: String,
+        persistence_seconds: i64,
+    }
+
+    #[derive(Serialize)]
+    struct TendencyJson {
+        tendency: String,
+        has_conflict: bool,
+    }
+
+    #[derive(Serialize)]
+    struct AssimilationDepthJson {
+        depth: String,
+        mutation_frequency: f64,
+        frequency_trend: f64,
+    }
+
+    #[derive(Serialize)]
+    struct NeglectJson {
+        neglect_type: String,
+        activity_ratio: f64,
+    }
+
+    /// Mutation information for context output.
+    #[derive(Serialize)]
+    struct MutationInfo {
+        tension_id: String,
+        timestamp: String,
+        field: String,
+        old_value: Option<String>,
+        new_value: String,
+    }
+
+    // Helper function to convert a tension Node to TensionInfo
+    fn node_to_info(node: &sd_core::Node) -> TensionInfo {
+        TensionInfo {
+            id: node.id().to_string(),
+            desired: node.tension.desired.clone(),
+            actual: node.tension.actual.clone(),
+            status: node.tension.status.to_string(),
+            created_at: node.tension.created_at.to_rfc3339(),
+            parent_id: node.tension.parent_id.clone(),
+        }
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(all_tensions.clone());
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Get mutations for this tension
+    let mutations = store
+        .get_mutations(&tension.id)
+        .map_err(WerkError::StoreError)?;
+
+    // Get all mutations for conflict and orientation detection
+    let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
+
+    // Build forest for ancestors, siblings, children, and conflict/neglect detection
+    let forest = Forest::from_tensions(all_tensions.clone())
+        .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
+
+    // === Tension Info ===
+    let tension_info = TensionInfo {
+        id: tension.id.clone(),
+        desired: tension.desired.clone(),
+        actual: tension.actual.clone(),
+        status: tension.status.to_string(),
+        created_at: tension.created_at.to_rfc3339(),
+        parent_id: tension.parent_id.clone(),
+    };
+
+    // === Ancestors (root-first) ===
+    let ancestors: Vec<TensionInfo> = forest
+        .ancestors(&tension.id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(node_to_info)
+        .collect();
+
+    // === Siblings (excluding self) ===
+    let siblings: Vec<TensionInfo> = forest
+        .siblings(&tension.id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(node_to_info)
+        .collect();
+
+    // === Children ===
+    let children: Vec<TensionInfo> = forest
+        .children(&tension.id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(node_to_info)
+        .collect();
+
+    // === Compute Dynamics ===
+    let now = Utc::now();
+    let lifecycle_thresholds = LifecycleThresholds::default();
+    let conflict_thresholds = ConflictThresholds::default();
+    let oscillation_thresholds = OscillationThresholds::default();
+    let resolution_thresholds = ResolutionThresholds::default();
+    let orientation_thresholds = OrientationThresholds::default();
+    let compensating_thresholds = CompensatingStrategyThresholds::default();
+    let assimilation_thresholds = AssimilationDepthThresholds::default();
+    let neglect_thresholds = NeglectThresholds::default();
+
+    // Get resolved tensions for momentum phase detection
+    let resolved_tensions: Vec<_> = all_tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Resolved)
+        .cloned()
+        .collect();
+
+    // 1. Structural Tension
+    let structural_tension = compute_structural_tension(tension);
+
+    // 2. Structural Conflict
+    let conflict = detect_structural_conflict(
+        &forest,
+        &tension.id,
+        &all_mutations,
+        &conflict_thresholds,
+        now,
+    );
+
+    // 3. Oscillation
+    let oscillation = detect_oscillation(&tension.id, &mutations, &oscillation_thresholds, now);
+
+    // 4. Resolution
+    let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
+
+    // 5. Creative Cycle Phase
+    let phase_result = classify_creative_cycle_phase(
+        tension,
+        &mutations,
+        &resolved_tensions,
+        &lifecycle_thresholds,
+        now,
+    );
+
+    // 6. Orientation (requires multiple tensions)
+    let orientation =
+        classify_orientation(&all_tensions, &all_mutations, &orientation_thresholds, now);
+
+    // 7. Compensating Strategy
+    let compensating_strategy = detect_compensating_strategy(
+        &tension.id,
+        &mutations,
+        oscillation.as_ref(),
+        &compensating_thresholds,
+        now,
+    );
+
+    // 8. Structural Tendency
+    let has_conflict = conflict.is_some();
+    let tendency_result = predict_structural_tendency(tension, has_conflict);
+
+    // 9. Assimilation Depth
+    let assimilation = measure_assimilation_depth(
+        &tension.id,
+        &mutations,
+        tension,
+        &assimilation_thresholds,
+        now,
+    );
+
+    // 10. Neglect
+    let neglect = detect_neglect(
+        &forest,
+        &tension.id,
+        &all_mutations,
+        &neglect_thresholds,
+        now,
+    );
+
+    // Build dynamics JSON
+    let dynamics_json = DynamicsJson {
+        structural_tension: structural_tension.as_ref().map(|st| StructuralTensionJson {
+            magnitude: st.magnitude,
+            has_gap: st.has_gap,
+        }),
+        structural_conflict: conflict.as_ref().map(|c| ConflictJson {
+            pattern: match c.pattern {
+                sd_core::ConflictPattern::AsymmetricActivity => "AsymmetricActivity".to_string(),
+                sd_core::ConflictPattern::CompetingTensions => "CompetingTensions".to_string(),
+            },
+            tension_ids: c.tension_ids.clone(),
+        }),
+        oscillation: oscillation.as_ref().map(|o| OscillationJson {
+            reversals: o.reversals,
+            magnitude: o.magnitude,
+            window_start: o.window_start.to_rfc3339(),
+            window_end: o.window_end.to_rfc3339(),
+        }),
+        resolution: resolution.as_ref().map(|r| ResolutionJson {
+            velocity: r.velocity,
+            trend: match r.trend {
+                sd_core::ResolutionTrend::Accelerating => "Accelerating".to_string(),
+                sd_core::ResolutionTrend::Steady => "Steady".to_string(),
+                sd_core::ResolutionTrend::Decelerating => "Decelerating".to_string(),
+            },
+            window_start: r.window_start.to_rfc3339(),
+            window_end: r.window_end.to_rfc3339(),
+        }),
+        creative_cycle_phase: PhaseJson {
+            phase: match phase_result.phase {
+                CreativeCyclePhase::Germination => "Germination".to_string(),
+                CreativeCyclePhase::Assimilation => "Assimilation".to_string(),
+                CreativeCyclePhase::Completion => "Completion".to_string(),
+                CreativeCyclePhase::Momentum => "Momentum".to_string(),
+            },
+            evidence: PhaseEvidenceJson {
+                mutation_count: phase_result.evidence.mutation_count,
+                gap_closing: phase_result.evidence.gap_closing,
+                convergence_ratio: phase_result.evidence.convergence_ratio,
+                age_seconds: phase_result.evidence.age_seconds,
+            },
+        },
+        orientation: orientation.as_ref().map(|o| OrientationJson {
+            orientation: match o.orientation {
+                sd_core::Orientation::Creative => "Creative".to_string(),
+                sd_core::Orientation::ProblemSolving => "ProblemSolving".to_string(),
+                sd_core::Orientation::ReactiveResponsive => "ReactiveResponsive".to_string(),
+            },
+            creative_ratio: o.evidence.creative_ratio,
+            problem_solving_ratio: o.evidence.problem_solving_ratio,
+            reactive_ratio: o.evidence.reactive_ratio,
+        }),
+        compensating_strategy: compensating_strategy
+            .as_ref()
+            .map(|cs| CompensatingStrategyJson {
+                strategy_type: match cs.strategy_type {
+                    sd_core::CompensatingStrategyType::TolerableConflict => {
+                        "TolerableConflict".to_string()
+                    }
+                    sd_core::CompensatingStrategyType::ConflictManipulation => {
+                        "ConflictManipulation".to_string()
+                    }
+                    sd_core::CompensatingStrategyType::WillpowerManipulation => {
+                        "WillpowerManipulation".to_string()
+                    }
+                },
+                persistence_seconds: cs.persistence_seconds,
+            }),
+        structural_tendency: TendencyJson {
+            tendency: match tendency_result.tendency {
+                sd_core::StructuralTendency::Advancing => "Advancing".to_string(),
+                sd_core::StructuralTendency::Oscillating => "Oscillating".to_string(),
+                sd_core::StructuralTendency::Stagnant => "Stagnant".to_string(),
+            },
+            has_conflict: tendency_result.has_conflict,
+        },
+        assimilation_depth: if assimilation.depth == sd_core::AssimilationDepth::None
+            && assimilation.evidence.total_mutations == 0
+        {
+            None
+        } else {
+            Some(AssimilationDepthJson {
+                depth: match assimilation.depth {
+                    sd_core::AssimilationDepth::Shallow => "Shallow".to_string(),
+                    sd_core::AssimilationDepth::Deep => "Deep".to_string(),
+                    sd_core::AssimilationDepth::None => "None".to_string(),
+                },
+                mutation_frequency: assimilation.mutation_frequency,
+                frequency_trend: assimilation.frequency_trend,
+            })
+        },
+        neglect: neglect.as_ref().map(|n| NeglectJson {
+            neglect_type: match n.neglect_type {
+                sd_core::NeglectType::ParentNeglectsChildren => {
+                    "ParentNeglectsChildren".to_string()
+                }
+                sd_core::NeglectType::ChildrenNeglected => "ChildrenNeglected".to_string(),
+            },
+            activity_ratio: n.activity_ratio,
+        }),
+    };
+
+    // === Mutations (chronological order - oldest first) ===
+    let mutation_infos: Vec<MutationInfo> = mutations
+        .iter()
+        .map(|m| MutationInfo {
+            tension_id: m.tension_id().to_owned(),
+            timestamp: m.timestamp().to_rfc3339(),
+            field: m.field().to_owned(),
+            old_value: m.old_value().map(|s| s.to_owned()),
+            new_value: m.new_value().to_owned(),
+        })
+        .collect();
+
+    // Build context result
+    let context = ContextResult {
+        tension: tension_info,
+        ancestors,
+        siblings,
+        children,
+        dynamics: dynamics_json,
+        mutations: mutation_infos,
+    };
+
+    // Serialize context to JSON
+    let context_json = serde_json::to_string(&context)
+        .map_err(|e| WerkError::IoError(format!("failed to serialize context JSON: {}", e)))?;
+
+    // === Determine command to run ===
+    let (program, args, command_str_for_mutation): (String, Vec<String>, String) = if !command
+        .is_empty()
+    {
+        // Use -- override directly (already properly split by clap)
+        let program = command[0].clone();
+        let args: Vec<String> = command[1..].to_vec();
+        let command_str = command.join(" ");
+        (program, args, command_str)
+    } else {
+        // Try config default
+        let config = Config::load(&workspace)?;
+        match config.get("agent.command") {
+            Some(cmd) => {
+                // Parse config command - split on whitespace
+                let cmd_parts: Vec<String> =
+                    cmd.split_whitespace().map(|s| s.to_string()).collect();
+                if cmd_parts.is_empty() {
+                    return Err(WerkError::InvalidInput(
+                        "agent command in config is empty".to_string(),
+                    ));
+                }
+                let program = cmd_parts[0].clone();
+                let args: Vec<String> = cmd_parts[1..].to_vec();
+                (program, args, cmd.clone())
+            }
+            None => {
+                return Err(WerkError::InvalidInput(
+                    "no agent command configured. Use -- to specify a command or set agent.command in config".to_string(),
+                ));
+            }
+        }
+    };
+
+    // Get workspace path
+    let workspace_path = workspace.werk_dir();
+
+    // === Spawn subprocess ===
+    let mut child = std::process::Command::new(&program)
+        .args(&args)
+        .env("WERK_TENSION_ID", &tension.id)
+        .env("WERK_CONTEXT", &context_json)
+        .env("WERK_WORKSPACE", workspace_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                WerkError::InvalidInput(format!("agent command not found: {}", program))
+            } else {
+                WerkError::IoError(format!("failed to spawn agent process: {}", e))
+            }
+        })?;
+
+    // Write context to stdin
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| WerkError::IoError("failed to open stdin for subprocess".to_string()))?;
+        stdin
+            .write_all(context_json.as_bytes())
+            .map_err(|e| WerkError::IoError(format!("failed to write context to stdin: {}", e)))?;
+    }
+
+    // Wait for subprocess to complete
+    let exit_status = child
+        .wait()
+        .map_err(|e| WerkError::IoError(format!("failed to wait for agent process: {}", e)))?;
+
+    // Get exit code
+    let exit_code = exit_status.code().unwrap_or(1);
+
+    // Record session mutation
+    store
+        .record_mutation(&Mutation::new(
+            tension.id.clone(),
+            Utc::now(),
+            "agent_session".to_owned(),
+            None,
+            command_str_for_mutation,
+        ))
+        .map_err(WerkError::SdError)?;
+
+    // If not successful, exit with the subprocess exit code
+    if !exit_status.success() {
+        std::process::exit(exit_code);
+    }
+
+    Ok(())
 }
