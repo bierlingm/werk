@@ -1,9 +1,11 @@
-//! Cross-area integration tests for display & dynamics milestone.
+//! Cross-area integration tests for display & dynamics and agent integration milestones.
 //!
 //! Tests verify:
 //! - VAL-CROSS-001: Full lifecycle flow (init -> add -> reality updates -> show dynamics -> resolve)
 //! - VAL-CROSS-002: Tree operations flow (hierarchy -> move -> rm with reparenting)
+//! - VAL-CROSS-003: Agent workflow flow (add -> updates -> context -> run)
 //! - VAL-CROSS-005: JSON consistency across tree --json and show --json
+//! - VAL-CROSS-006: Config affects agent behavior (set -> run uses it -> -- overrides)
 //! - VAL-CROSS-008: Multiple roots handled correctly
 
 use assert_cmd::Command;
@@ -1464,5 +1466,733 @@ fn test_tree_filter_resolved_cross_area() {
         !stdout.contains("active tension"),
         "Should not show active in --resolved, got: {}",
         stdout
+    );
+}
+
+// =============================================================================
+// VAL-CROSS-003: Agent workflow flow
+// =============================================================================
+
+/// VAL-CROSS-003: Full agent workflow - add -> updates -> context -> run
+/// This test verifies the complete end-to-end agent workflow.
+#[test]
+fn test_agent_workflow_full_flow() {
+    let dir = TempDir::new().unwrap();
+
+    // Step 1: Init workspace
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Step 2: Add tension
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store
+        .create_tension("build feature X", "have requirements")
+        .unwrap();
+    let id = tension.id.clone();
+
+    // Step 3: Multiple reality updates to build history
+    for i in 1..=5 {
+        store
+            .update_actual(&id, &format!("progress update {}", i))
+            .unwrap();
+    }
+
+    // Step 4: Get context and verify dynamics are computed from history
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("context")
+        .arg(&id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
+
+    // Verify context has tension data
+    assert_eq!(
+        context_json["tension"]["id"].as_str().unwrap(),
+        id,
+        "Context should have correct tension ID"
+    );
+
+    // Verify dynamics are present and computed
+    let dynamics = context_json
+        .get("dynamics")
+        .expect("Context should have dynamics");
+
+    // Phase should be computed from history (not Germination after updates)
+    let phase = dynamics
+        .get("phase")
+        .or_else(|| dynamics.get("creative_cycle_phase"));
+    assert!(
+        phase.is_some(),
+        "Context should have computed phase from history"
+    );
+
+    // Mutations should show the history
+    let mutations = context_json
+        .get("mutations")
+        .expect("Context should have mutations");
+    assert!(
+        mutations.as_array().unwrap().len() >= 5,
+        "Context should have at least 5 mutations (creation + updates)"
+    );
+
+    // Step 5: Run agent with context and verify env vars
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&id)
+        .arg("--")
+        .arg("printenv")
+        .arg("WERK_TENSION_ID")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    assert_eq!(
+        stdout.trim(),
+        id,
+        "WERK_TENSION_ID should be set to full tension ID"
+    );
+
+    // Step 6: Verify stdin receives context JSON
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&id)
+        .arg("--")
+        .arg("cat")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let stdin_json: Value = serde_json::from_str(&stdout).expect("Stdin should contain valid JSON");
+
+    // Stdin JSON should match context structure
+    assert_eq!(
+        stdin_json["tension"]["id"].as_str().unwrap(),
+        id,
+        "Stdin context should have correct tension ID"
+    );
+}
+
+/// VAL-CROSS-003: Context dynamics computed from mutation history
+#[test]
+fn test_context_dynamics_computed_from_history() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension with alternating updates (oscillation pattern)
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "initial").unwrap();
+    let id = tension.id.clone();
+
+    // Create oscillating pattern by alternating actual values
+    for i in 1..=6 {
+        let value = if i % 2 == 0 { "state A" } else { "state B" };
+        store.update_actual(&id, value).unwrap();
+    }
+
+    // Get context
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("context")
+        .arg(&id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
+
+    // Dynamics should reflect the oscillating pattern
+    let dynamics = context_json.get("dynamics").expect("Should have dynamics");
+
+    // Oscillation dynamics should be present and computed
+    let oscillation = dynamics.get("oscillation");
+    assert!(
+        oscillation.is_some(),
+        "Context should have oscillation dynamics computed from history"
+    );
+
+    // Structural tendency should be computed
+    let tendency = dynamics.get("structural_tendency");
+    assert!(
+        tendency.is_some(),
+        "Context should have structural tendency computed"
+    );
+}
+
+/// VAL-CROSS-003: Run passes full context via stdin to agent
+#[test]
+fn test_run_passes_context_via_stdin() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension with hierarchy
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store
+        .create_tension("parent goal", "parent reality")
+        .unwrap();
+    let child = store
+        .create_tension_with_parent("child goal", "child reality", Some(parent.id.clone()))
+        .unwrap();
+
+    // Run and capture stdin
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&child.id)
+        .arg("--")
+        .arg("cat")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let stdin_context: Value =
+        serde_json::from_str(&stdout).expect("Stdin should have valid JSON context");
+
+    // Verify all context sections present
+    assert!(
+        stdin_context.get("tension").is_some(),
+        "Should have tension"
+    );
+    assert!(
+        stdin_context.get("ancestors").is_some(),
+        "Should have ancestors"
+    );
+    assert!(
+        stdin_context.get("siblings").is_some(),
+        "Should have siblings"
+    );
+    assert!(
+        stdin_context.get("children").is_some(),
+        "Should have children"
+    );
+    assert!(
+        stdin_context.get("dynamics").is_some(),
+        "Should have dynamics"
+    );
+    assert!(
+        stdin_context.get("mutations").is_some(),
+        "Should have mutations"
+    );
+
+    // Verify ancestors include parent
+    let ancestors = stdin_context["ancestors"].as_array().unwrap();
+    assert_eq!(
+        ancestors.len(),
+        1,
+        "Child should have one ancestor (parent)"
+    );
+    assert_eq!(
+        ancestors[0]["id"].as_str().unwrap(),
+        parent.id,
+        "Ancestor should be parent"
+    );
+}
+
+// =============================================================================
+// VAL-CROSS-006: Config affects agent behavior
+// =============================================================================
+
+/// VAL-CROSS-006: Config default is used by run command
+#[test]
+fn test_config_default_used_by_run() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Set agent.command in config
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("config")
+        .arg("set")
+        .arg("agent.command")
+        .arg("echo config_default_used")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Run without -- (should use config default)
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    assert!(
+        stdout.contains("config_default_used"),
+        "Run should use config agent.command, got: {}",
+        stdout
+    );
+}
+
+/// VAL-CROSS-006: Override with -- ignores config default
+#[test]
+fn test_config_override_with_double_dash() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Set agent.command in config
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("config")
+        .arg("set")
+        .arg("agent.command")
+        .arg("echo should_not_appear")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Run WITH -- override
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&tension.id)
+        .arg("--")
+        .arg("echo")
+        .arg("override_used")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    assert!(
+        stdout.contains("override_used"),
+        "Run -- override should be used, got: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("should_not_appear"),
+        "Config default should be ignored with -- override"
+    );
+}
+
+/// VAL-CROSS-006: Config persists across commands
+#[test]
+fn test_config_persists_across_commands() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Set agent.command
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("config")
+        .arg("set")
+        .arg("agent.command")
+        .arg("echo persisted")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Verify with config get
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("config")
+        .arg("get")
+        .arg("agent.command")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    assert!(
+        stdout.contains("echo persisted"),
+        "Config should persist, got: {}",
+        stdout
+    );
+
+    // Create tension and run - config should still be used
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("test", "reality").unwrap();
+
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    assert!(
+        stdout.contains("persisted"),
+        "Config should be used by run after other commands"
+    );
+}
+
+// =============================================================================
+// JSON Consistency: context output schema matches show --json dynamics
+// =============================================================================
+
+/// Context dynamics schema matches show --json dynamics schema
+/// Note: show uses "phase" while context uses "creative_cycle_phase" for the phase field.
+/// Both have the same structure otherwise.
+#[test]
+fn test_context_show_json_dynamics_schema_match() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension with some updates
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("test goal", "test reality").unwrap();
+    store.update_actual(&tension.id, "updated reality").unwrap();
+
+    // Get show --json
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("--json")
+        .arg("show")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
+
+    // Get context
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("context")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
+
+    // Both should have dynamics with matching core schema
+    let show_dynamics = show_json
+        .get("dynamics")
+        .expect("Show should have dynamics");
+    let context_dynamics = context_json
+        .get("dynamics")
+        .expect("Context should have dynamics");
+
+    // 9 dynamics fields (excluding phase which is named differently) should be present in both
+    let shared_dynamics_fields = [
+        "structural_tension",
+        "structural_conflict",
+        "oscillation",
+        "resolution",
+        "orientation",
+        "compensating_strategy",
+        "structural_tendency",
+        "assimilation_depth",
+        "neglect",
+    ];
+
+    for field in &shared_dynamics_fields {
+        assert!(
+            show_dynamics.get(field).is_some(),
+            "Show dynamics should have field '{}'",
+            field
+        );
+        assert!(
+            context_dynamics.get(field).is_some(),
+            "Context dynamics should have field '{}'",
+            field
+        );
+    }
+
+    // Show uses "phase", context uses "creative_cycle_phase" - both have phase data
+    assert!(
+        show_dynamics.get("phase").is_some(),
+        "Show dynamics should have 'phase' field"
+    );
+    assert!(
+        context_dynamics.get("creative_cycle_phase").is_some(),
+        "Context dynamics should have 'creative_cycle_phase' field"
+    );
+
+    // Phase values should match (show.phase == context.creative_cycle_phase)
+    let show_phase = show_dynamics.get("phase").unwrap();
+    let context_phase = context_dynamics.get("creative_cycle_phase").unwrap();
+    assert_eq!(
+        show_phase.get("phase").unwrap().as_str().unwrap(),
+        context_phase.get("phase").unwrap().as_str().unwrap(),
+        "Phase values should match between show and context"
+    );
+
+    // Core tension fields should match
+    assert_eq!(
+        show_json["id"], context_json["tension"]["id"],
+        "Tension ID should match between show and context"
+    );
+    assert_eq!(
+        show_json["desired"], context_json["tension"]["desired"],
+        "Tension desired should match between show and context"
+    );
+    assert_eq!(
+        show_json["actual"], context_json["tension"]["actual"],
+        "Tension actual should match between show and context"
+    );
+    assert_eq!(
+        show_json["status"], context_json["tension"]["status"],
+        "Tension status should match between show and context"
+    );
+}
+
+/// Context mutations match show --json mutations
+/// Note: show mutations don't include tension_id (it's implicit), but context mutations do.
+#[test]
+fn test_context_show_mutations_match() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension with mutations
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "initial").unwrap();
+    store.update_actual(&tension.id, "update 1").unwrap();
+    store.update_desired(&tension.id, "refined goal").unwrap();
+
+    // Get show --json
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("--json")
+        .arg("show")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
+
+    // Get context
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("context")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
+
+    // Both should have mutations
+    let show_mutations = show_json
+        .get("mutations")
+        .expect("Show should have mutations")
+        .as_array()
+        .unwrap();
+    let context_mutations = context_json
+        .get("mutations")
+        .expect("Context should have mutations")
+        .as_array()
+        .unwrap();
+
+    // Same number of mutations
+    assert_eq!(
+        show_mutations.len(),
+        context_mutations.len(),
+        "Mutation count should match between show and context"
+    );
+
+    // Mutations should have same core schema
+    // Show has: timestamp, field, old_value, new_value
+    // Context has: tension_id, timestamp, field, old_value, new_value
+    for (show_m, ctx_m) in show_mutations.iter().zip(context_mutations.iter()) {
+        assert!(
+            show_m.get("timestamp").is_some() && ctx_m.get("timestamp").is_some(),
+            "Both should have timestamp in mutations"
+        );
+        assert!(
+            show_m.get("field").is_some() && ctx_m.get("field").is_some(),
+            "Both should have field in mutations"
+        );
+        assert!(
+            show_m.get("old_value").is_some() && ctx_m.get("old_value").is_some(),
+            "Both should have old_value in mutations"
+        );
+        assert!(
+            show_m.get("new_value").is_some() && ctx_m.get("new_value").is_some(),
+            "Both should have new_value in mutations"
+        );
+
+        // Context additionally has tension_id
+        assert!(
+            ctx_m.get("tension_id").is_some(),
+            "Context mutation should have tension_id"
+        );
+
+        // Values should match
+        assert_eq!(
+            show_m.get("field").unwrap().as_str(),
+            ctx_m.get("field").unwrap().as_str(),
+            "Mutation field should match"
+        );
+        assert_eq!(
+            show_m.get("new_value").unwrap().as_str(),
+            ctx_m.get("new_value").unwrap().as_str(),
+            "Mutation new_value should match"
+        );
+    }
+}
+
+/// Verify agent session mutation is recorded after run
+#[test]
+fn test_agent_session_recorded_in_context() {
+    let dir = TempDir::new().unwrap();
+
+    // Init
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create tension
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Run agent
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("run")
+        .arg(&tension.id)
+        .arg("--")
+        .arg("echo")
+        .arg("test")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Get context - should have agent_session mutation
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("context")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
+
+    let mutations = context_json["mutations"].as_array().unwrap();
+
+    // Find agent_session mutation
+    let session_mutation = mutations
+        .iter()
+        .find(|m| m["field"].as_str() == Some("agent_session"));
+    assert!(
+        session_mutation.is_some(),
+        "Context should have agent_session mutation after run"
     );
 }
