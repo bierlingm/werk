@@ -38,3 +38,12 @@ Set `HOME` to temp dir for global workspace tests.
 - ULID generation is time-based — rapid creation produces sequential IDs
 - `$EDITOR` tests need mock editor (`EDITOR=cat` to verify, `EDITOR=true` to skip)
 - Color auto-disabled when piping (`werk tree | cat` = plain text)
+
+## Flow Validator Guidance: werk-cli-cli
+
+- Use only CLI user-surface commands (`cargo run -p werk -- ...` or `target/debug/werk ...`).
+- Isolation boundary: each flow validator must use its own temp workspace root and its own `HOME` directory.
+- Never touch the real user home workspace (`~/.werk`) directly; always override `HOME` to your assigned namespace path.
+- Keep all files inside your assigned namespace prefix (e.g. `/tmp/werk-foundation-<group>`).
+- Do not modify source code while validating; only execute commands and inspect outputs/exit codes.
+- Validate assertions by observable user behavior (stdout/stderr, exit code, and command-visible state).

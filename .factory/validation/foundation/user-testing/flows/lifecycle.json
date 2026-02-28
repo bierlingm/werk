@@ -1,0 +1,178 @@
+{
+  "groupId": "lifecycle",
+  "testedAt": "2026-02-28T16:29:30Z",
+  "credentials": {
+    "account": "cli-validator-lifecycle@example.test",
+    "namespace": "/tmp/werk-foundation-flow-lifecycle"
+  },
+  "toolsUsed": ["shell"],
+  "assertions": [
+    {
+      "id": "VAL-CRUD-013",
+      "title": "Resolve transitions Active to Resolved",
+      "status": "pass",
+      "steps": [
+        { "action": "Create tension with werk add", "expected": "Tension created with Active status", "observed": "Created tension 01KJJH7RNYGHB112QV3CF9G1ED with Status: Active" },
+        { "action": "Execute werk resolve <id>", "expected": "Status changes to Resolved with mutation recorded", "observed": "Resolved tension 01KJJH7RNYGHB112QV3CF9G1ED. Status: Active -> Resolved. Exit code 0" },
+        { "action": "Execute werk show <id>", "expected": "Shows Resolved status and mutation history", "observed": "Status: Resolved shown. Mutation History includes [status] Active -> Resolved. 2 mutations total" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk add \"Test tension for resolve\" \"initial actual state\" -> Created 01KJJH7RNYGHB112QV3CF9G1ED",
+          "werk resolve 01KJJH7RNYGHB112QV3CF9G1ED -> Exit 0, 'Status: Active -> Resolved'",
+          "werk show 01KJJH7RNYGHB112QV3CF9G1ED -> Shows Resolved, mutation [status] Active -> Resolved"
+        ],
+        "consoleErrors": "none",
+        "exitCodes": "0 for all commands"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-014",
+      "title": "Resolve reparents children to roots",
+      "status": "pass",
+      "steps": [
+        { "action": "Create parent tension", "expected": "Parent created with Active status", "observed": "Created 01KJJH84QPRXYTQE5K6NEE5WXS" },
+        { "action": "Create two children with --parent", "expected": "Children created with parent_id set", "observed": "Created 01KJJH8742JQ2GJQ57A72D8J05 and 01KJJH89WDQDM8DR5HJC3NY029 both with Parent set" },
+        { "action": "Execute werk resolve on parent", "expected": "Parent resolved, exit code 0", "observed": "Resolved 01KJJH84QPRXYTQE5K6NEE5WXS, Status: Active -> Resolved" },
+        { "action": "Execute werk show on first child", "expected": "Child has no parent (root)", "observed": "No Parent field shown. Mutation History shows [parent_id] 01KJJH84QPRXYTQE5K6NEE5WXS -> (empty)" },
+        { "action": "Execute werk show on second child", "expected": "Child has no parent (root)", "observed": "No Parent field shown. Mutation History shows [parent_id] 01KJJH84QPRXYTQE5K6NEE5WXS -> (empty)" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk add \"Parent tension\" \"parent actual\" -> 01KJJH84QPRXYTQE5K6NEE5WXS",
+          "werk add \"Child tension\" \"child actual\" --parent 01KJJH84QPRXYTQE5K6NEE5WXS -> Parent: 01KJJH84QPRXYTQE5K6NEE5WXS",
+          "werk add \"Another child\" \"another actual\" --parent 01KJJH84QPRXYTQE5K6NEE5WXS -> Parent: 01KJJH84QPRXYTQE5K6NEE5WXS",
+          "werk resolve 01KJJH84QPRXYTQE5K6NEE5WXS -> Exit 0",
+          "werk show 01KJJH8742JQ2GJQ57A72D8J05 -> No Parent field, mutation shows parent_id -> empty",
+          "werk show 01KJJH89WDQDM8DR5HJC3NY029 -> No Parent field, mutation shows parent_id -> empty"
+        ],
+        "consoleErrors": "none",
+        "exitCodes": "0 for all commands"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-015",
+      "title": "Resolve fails on non-Active tension",
+      "status": "pass",
+      "steps": [
+        { "action": "Attempt to resolve already-resolved tension", "expected": "Command fails with clear error and non-zero exit code", "observed": "error: cannot resolve tension with status Resolved (must be Active). Exit code: 1" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk resolve 01KJJH7RNYGHB112QV3CF9G1ED (already Resolved) -> error: cannot resolve tension with status Resolved (must be Active), Exit 1"
+        ],
+        "consoleErrors": "error: cannot resolve tension with status Resolved (must be Active)",
+        "exitCodes": "1 (user error)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-016",
+      "title": "Release requires --reason and transitions to Released",
+      "status": "pass",
+      "steps": [
+        { "action": "Create tension for release test", "expected": "Tension created with Active status", "observed": "Created 01KJJH8PSVFHF8C7EHNQ4DG7AR with Status: Active" },
+        { "action": "Attempt release without --reason", "expected": "Command fails with clear error about missing required argument", "observed": "error: the following required arguments were not provided: --reason <REASON>. Exit code: 2" },
+        { "action": "Execute release with --reason", "expected": "Tension transitions to Released, reason recorded", "observed": "Released 01KJJH8PSVFHF8C7EHNQ4DG7AR. Status: Active -> Released. Reason: no longer relevant" },
+        { "action": "Execute werk show on released tension", "expected": "Shows Released status, release_reason mutation", "observed": "Status: Released. Mutation History includes [release_reason] (none) -> no longer relevant" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk add \"Tension to release\" \"actual state\" -> 01KJJH8PSVFHF8C7EHNQ4DG7AR",
+          "werk release 01KJJH8PSVFHF8C7EHNQ4DG7AR (no --reason) -> error: missing --reason, Exit 2",
+          "werk release 01KJJH8PSVFHF8C7EHNQ4DG7AR --reason \"no longer relevant\" -> Exit 0, shows Reason",
+          "werk show 01KJJH8PSVFHF8C7EHNQ4DG7AR -> Status: Released, mutation [release_reason]"
+        ],
+        "consoleErrors": "none (errors were expected and clear)",
+        "exitCodes": "2 for missing arg, 0 for success"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-017",
+      "title": "Release reparents children like resolve",
+      "status": "pass",
+      "steps": [
+        { "action": "Create parent tension", "expected": "Parent created", "observed": "Created 01KJJH90NVSTVRYJ55NH5PKRBA" },
+        { "action": "Create child with --parent", "expected": "Child created with parent", "observed": "Created 01KJJH92Z1JT422J0PQRRA3XRZ with Parent: 01KJJH90NVSTVRYJ55NH5PKRBA" },
+        { "action": "Execute release on parent with --reason", "expected": "Parent released, exit code 0", "observed": "Released 01KJJH90NVSTVRYJ55NH5PKRBA with reason 'test reparenting'" },
+        { "action": "Execute werk show on child", "expected": "Child is now a root (no parent)", "observed": "No Parent field. Mutation shows [parent_id] 01KJJH90NVSTVRYJ55NH5PKRBA -> (empty)" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk add \"Parent for release test\" \"parent actual\" -> 01KJJH90NVSTVRYJ55NH5PKRBA",
+          "werk add \"Child for release\" \"child actual\" --parent 01KJJH90NVSTVRYJ55NH5PKRBA -> Parent: 01KJJH90NVSTVRYJ55NH5PKRBA",
+          "werk release 01KJJH90NVSTVRYJ55NH5PKRBA --reason \"test reparenting\" -> Exit 0",
+          "werk show 01KJJH92Z1JT422J0PQRRA3XRZ -> No Parent, mutation shows parent_id -> empty"
+        ],
+        "consoleErrors": "none",
+        "exitCodes": "0 for all commands"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-018",
+      "title": "Rm deletes tension and reparents children to grandparent",
+      "status": "pass",
+      "steps": [
+        { "action": "Create grandparent tension", "expected": "Grandparent created", "observed": "Created 01KJJH9E2ZGBDAGVPWF48HNQ1Q" },
+        { "action": "Create parent under grandparent", "expected": "Parent created with grandparent as parent", "observed": "Created 01KJJH9GDZ20QE53KRS1RCTHW3 with Parent: 01KJJH9E2ZGBDAGVPWF48HNQ1Q" },
+        { "action": "Create child under parent", "expected": "Child created with parent", "observed": "Created 01KJJH9K5ZQTWPTCMKDG4SGE19 with Parent: 01KJJH9GDZ20QE53KRS1RCTHW3" },
+        { "action": "Execute werk rm on parent", "expected": "Parent deleted, exit code 0", "observed": "Deleted 01KJJH9GDZ20QE53KRS1RCTHW3. Exit 0" },
+        { "action": "Execute werk show on child", "expected": "Child's parent is now grandparent", "observed": "Parent: 01KJJH9E2ZGBDAGVPWF48HNQ1Q (grandparent). Mutation: [parent_id] 01KJJH9GDZ20QE53KRS1RCTHW3 -> 01KJJH9E2ZGBDAGVPWF48HNQ1Q" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk add \"Grandparent\" \"grandparent actual\" -> 01KJJH9E2ZGBDAGVPWF48HNQ1Q",
+          "werk add \"Parent to delete\" \"parent actual\" --parent 01KJJH9E2ZGBDAGVPWF48HNQ1Q -> Parent: 01KJJH9E2ZGBDAGVPWF48HNQ1Q",
+          "werk add \"Child to reparent\" \"child actual\" --parent 01KJJH9GDZ20QE53KRS1RCTHW3 -> Parent: 01KJJH9GDZ20QE53KRS1RCTHW3",
+          "werk rm 01KJJH9GDZ20QE53KRS1RCTHW3 -> Exit 0",
+          "werk show 01KJJH9K5ZQTWPTCMKDG4SGE19 -> Parent: 01KJJH9E2ZGBDAGVPWF48HNQ1Q (grandparent)"
+        ],
+        "consoleErrors": "none",
+        "exitCodes": "0 for all commands"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "Error recovery preserves state",
+      "status": "pass",
+      "steps": [
+        { "action": "Create tension, update with reality, resolve it", "expected": "Tension in Resolved state with 3 mutations", "observed": "01KJJH9VNTDJ0YAXQVXHT62K6C: Status Resolved, Actual 'updated state', Mutations: 3" },
+        { "action": "Record full state with werk show", "expected": "Baseline state captured", "observed": "Desired: State preservation test, Actual: updated state, Status: Resolved, Mutations: 3" },
+        { "action": "Attempt invalid operation (resolve already resolved)", "expected": "Command fails with exit code 1", "observed": "error: cannot resolve tension with status Resolved (must be Active). Exit code: 1" },
+        { "action": "Verify state unchanged with werk show", "expected": "All fields identical to before", "observed": "Desired: State preservation test, Actual: updated state, Status: Resolved, Mutations: 3 - identical" },
+        { "action": "Create hierarchy A->B->C for cycle test", "expected": "Chain created", "observed": "A=01KJJHAB2ENYTWJ6DP8M8NKQYN, B=01KJJHAD7P9MSZR1ZN7SHP0MHC, C=01KJJHAFKNHPFD647KJ6HS65HG" },
+        { "action": "Record state of A", "expected": "Baseline for A captured", "observed": "A: Status Active, Mutations: 1" },
+        { "action": "Attempt cycle-creating move (A under C)", "expected": "Command fails with clear error", "observed": "error: cannot move tension under its descendant (would create cycle). Exit code: 1" },
+        { "action": "Verify A state unchanged", "expected": "A unchanged", "observed": "A: Status Active, Mutations: 1 - identical" },
+        { "action": "Attempt rm nonexistent ID", "expected": "Clear not found error", "observed": "error: tension not found: NONEXISTENTID123. Exit code: 1" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk add \"State preservation test\" \"initial\" -> 01KJJH9VNTDJ0YAXQVXHT62K6C",
+          "werk reality 01KJJH9VNTDJ0YAXQVXHT62K6C \"updated state\" -> Exit 0",
+          "werk resolve 01KJJH9VNTDJ0YAXQVXHT62K6C -> Exit 0",
+          "werk show 01KJJH9VNTDJ0YAXQVXHT62K6C -> baseline recorded",
+          "werk resolve 01KJJH9VNTDJ0YAXQVXHT62K6C (again) -> error, Exit 1",
+          "werk show 01KJJH9VNTDJ0YAXQVXHT62K6C -> identical to baseline",
+          "werk add \"Cycle test A\" -> 01KJJHAB2ENYTWJ6DP8M8NKQYN",
+          "werk add \"Cycle test B\" --parent A -> 01KJJHAD7P9MSZR1ZN7SHP0MHC",
+          "werk add \"Cycle test C\" --parent B -> 01KJJHAFKNHPFD647KJ6HS65HG",
+          "werk move A --parent C -> error: would create cycle, Exit 1",
+          "werk show A -> identical to baseline",
+          "werk rm NONEXISTENTID123 -> error: tension not found, Exit 1"
+        ],
+        "consoleErrors": "Expected errors were clear and non-panicking",
+        "exitCodes": "1 for all invalid operations (proper error handling)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 assertions: 7 passed, 0 failed, 0 blocked. All lifecycle transitions (resolve, release, rm) work correctly with proper reparenting. Error handling preserves state as specified."
+}

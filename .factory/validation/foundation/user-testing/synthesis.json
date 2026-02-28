@@ -1,6 +1,6 @@
 {
   "milestone": "foundation",
-  "round": 2,
+  "round": 4,
   "status": "pass",
   "assertionsSummary": {
     "total": 6,
@@ -9,16 +9,16 @@
     "blocked": 0
   },
   "passedAssertions": [
-    "VAL-TENSION-012",
-    "VAL-MUTATION-007",
-    "VAL-MUTATION-011",
-    "VAL-STORE-003",
-    "VAL-STORE-004",
-    "VAL-STORE-013"
+    "VAL-CROSS-004",
+    "VAL-CROSS-009",
+    "VAL-CROSS-010",
+    "VAL-CRUD-022",
+    "VAL-CRUD-023",
+    "VAL-CRUD-024"
   ],
   "failedAssertions": [],
   "blockedAssertions": [],
   "appliedUpdates": [],
-  "previousRound": ".factory/validation/foundation/user-testing/synthesis.round1.json",
-  "generatedAt": "2026-02-27T20:50:18.601120+00:00"
+  "previousRound": ".factory/validation/foundation/user-testing/synthesis.round3.json",
+  "generatedAt": "2026-02-28T17:06:22.093031+00:00"
 }

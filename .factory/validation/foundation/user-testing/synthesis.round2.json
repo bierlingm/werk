@@ -1,0 +1,24 @@
+{
+  "milestone": "foundation",
+  "round": 2,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-TENSION-012",
+    "VAL-MUTATION-007",
+    "VAL-MUTATION-011",
+    "VAL-STORE-003",
+    "VAL-STORE-004",
+    "VAL-STORE-013"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": ".factory/validation/foundation/user-testing/synthesis.round1.json",
+  "generatedAt": "2026-02-27T20:50:18.601120+00:00"
+}

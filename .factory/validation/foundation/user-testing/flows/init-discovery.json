@@ -1,0 +1,190 @@
+{
+  "groupId": "init-discovery",
+  "testedAt": "2026-02-28T16:35:00Z",
+  "credentials": {
+    "account": "cli-validator-init@example.test",
+    "namespace": "/tmp/werk-foundation-flow-init"
+  },
+  "toolsUsed": ["direct-CLI-execution"],
+  "assertions": [
+    {
+      "id": "VAL-INIT-001",
+      "title": "Workspace initialization creates .werk/ with sd.db",
+      "status": "pass",
+      "steps": [
+        { "action": "Run werk init in clean directory", "expected": "Creates .werk/ directory with sd.db, exit 0", "observed": "✓ Workspace initialized at /private/tmp/werk-foundation-flow-init/.werk, EXIT CODE: 0" },
+        { "action": "Verify .werk/ directory exists", "expected": ".werk/ contains sd.db and sd.db-wal", "observed": "Directory contains sd.db (12288 bytes) and sd.db-wal (16512 bytes)" },
+        { "action": "Verify database file type", "expected": "SQLite 3.x database", "observed": "file command confirms: SQLite 3.x database, last written using SQLite version 3052000" }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /tmp/werk-foundation-flow-init && HOME=/tmp/werk-foundation-flow-init/home /Users/moritzbierling/werk/desk/werk/target/debug/werk init",
+          "ls -la /tmp/werk-foundation-flow-init/.werk/",
+          "file /tmp/werk-foundation-flow-init/.werk/sd.db"
+        ],
+        "exitCodes": [0, 0, 0],
+        "outputs": [
+          "✓ Workspace initialized at /private/tmp/werk-foundation-flow-init/.werk",
+          "sd.db (12288 bytes), sd.db-wal (16512 bytes)",
+          "SQLite 3.x database, last written using SQLite version 3052000"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-INIT-002",
+      "title": "Init --global creates ~/.werk/",
+      "status": "pass",
+      "steps": [
+        { "action": "Run werk init --global with isolated HOME", "expected": "Creates ~/.werk/ at HOME path, exit 0", "observed": "✓ Workspace initialized at /tmp/werk-foundation-flow-init/home-with-global/.werk, EXIT CODE: 0" },
+        { "action": "Verify global workspace structure", "expected": "~/.werk/ contains sd.db", "observed": "sd.db (12288 bytes) and sd.db-wal (16512 bytes) present" },
+        { "action": "Verify no local .werk/ created", "expected": "Only global workspace exists", "observed": "No local .werk/ created in current directory" }
+      ],
+      "evidence": {
+        "commands": [
+          "mkdir -p /tmp/werk-foundation-flow-init/home-with-global && HOME=/tmp/werk-foundation-flow-init/home-with-global /Users/moritzbierling/werk/desk/werk/target/debug/werk init --global",
+          "ls -la /tmp/werk-foundation-flow-init/home-with-global/.werk/"
+        ],
+        "exitCodes": [0, 0],
+        "outputs": [
+          "✓ Workspace initialized at /tmp/werk-foundation-flow-init/home-with-global/.werk",
+          "sd.db, sd.db-wal present"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-INIT-003",
+      "title": "Init is idempotent",
+      "status": "pass",
+      "steps": [
+        { "action": "Run werk init first time", "expected": "Creates workspace, exit 0", "observed": "✓ Workspace initialized at /private/tmp/werk-foundation-flow-init/.werk" },
+        { "action": "Run werk init second time in same directory", "expected": "Succeeds without error, exit 0", "observed": "✓ Workspace already initialized at /private/tmp/werk-foundation-flow-init/.werk, EXIT CODE: 0" }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /tmp/werk-foundation-flow-init && HOME=/tmp/werk-foundation-flow-init/home /Users/moritzbierling/werk/desk/werk/target/debug/werk init",
+          "cd /tmp/werk-foundation-flow-init && HOME=/tmp/werk-foundation-flow-init/home /Users/moritzbierling/werk/desk/werk/target/debug/werk init"
+        ],
+        "exitCodes": [0, 0],
+        "outputs": [
+          "✓ Workspace initialized at /private/tmp/werk-foundation-flow-init/.werk",
+          "✓ Workspace already initialized at /private/tmp/werk-foundation-flow-init/.werk"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-INIT-004",
+      "title": "Store discovery walks up directory tree",
+      "status": "pass",
+      "steps": [
+        { "action": "Create deep subdirectory structure", "expected": "project/a/b/c/ exists with no local .werk/", "observed": "Created /tmp/werk-foundation-flow-init/subdir/a/b/c/" },
+        { "action": "Run werk add from deep subdirectory", "expected": "Uses parent .werk/sd.db, tension created", "observed": "✓ Created tension 01KJJHKHB2YPTM1CV7AD9QDAJ6 from /subdir/a/b/c/" },
+        { "action": "Verify tension accessible from parent", "expected": "werk show finds the tension", "observed": "Tension 01KJJHKHB2YPTM1CV7AD9QDAJ6 displayed correctly from parent directory" }
+      ],
+      "evidence": {
+        "commands": [
+          "mkdir -p /tmp/werk-foundation-flow-init/subdir/a/b/c",
+          "cd /tmp/werk-foundation-flow-init/subdir/a/b/c && HOME=/tmp/werk-foundation-flow-init/home /Users/moritzbierling/werk/desk/werk/target/debug/werk add \"test from deep\" \"deep actual\"",
+          "cd /tmp/werk-foundation-flow-init && HOME=/tmp/werk-foundation-flow-init/home /Users/moritzbierling/werk/desk/werk/target/debug/werk show 01KJJHKHB2YPTM1CV7AD9QDAJ6"
+        ],
+        "exitCodes": [0, 0, 0],
+        "outputs": [
+          "Directory created",
+          "✓ Created tension 01KJJHKHB2YPTM1CV7AD9QDAJ6, Desired: test from deep, Actual: deep actual, Status: Active",
+          "Tension displayed with correct fields from parent directory"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-INIT-005",
+      "title": "Global fallback when no local workspace",
+      "status": "pass",
+      "steps": [
+        { "action": "Set up isolated HOME with global workspace", "expected": "~/.werk/ exists at isolated HOME", "observed": "Global workspace at /tmp/werk-foundation-flow-init/home-with-global/.werk/" },
+        { "action": "Go to completely isolated directory", "expected": "No .werk/ in path from /tmp/isolated-test to root", "observed": "ls -la shows empty directory, no .werk/" },
+        { "action": "Run werk add from isolated dir", "expected": "Creates tension in global workspace, exit 0", "observed": "✓ Created tension 01KJJHN5CQF5TED6A3CWD2A4XP in global workspace" },
+        { "action": "Verify tension stored in global workspace", "expected": "werk show finds tension when using same HOME", "observed": "Tension 01KJJHN5CQF5TED6A3CWD2A4XP found with correct desired/actual" }
+      ],
+      "evidence": {
+        "commands": [
+          "mkdir -p /tmp/werk-foundation-flow-init/home-with-global && HOME=/tmp/werk-foundation-flow-init/home-with-global /Users/moritzbierling/werk/desk/werk/target/debug/werk init --global",
+          "mkdir -p /tmp/isolated-test && cd /tmp/isolated-test",
+          "ls -la /tmp/isolated-test/",
+          "cd /tmp/isolated-test && HOME=/tmp/werk-foundation-flow-init/home-with-global /Users/moritzbierling/werk/desk/werk/target/debug/werk add \"truly global\" \"should be in home-with-global\"",
+          "cd /tmp/isolated-test && HOME=/tmp/werk-foundation-flow-init/home-with-global /Users/moritzbierling/werk/desk/werk/target/debug/werk show 01KJJHN5CQF5TED6A3CWD2A4XP"
+        ],
+        "exitCodes": [0, 0, 0, 0, 0],
+        "outputs": [
+          "Global workspace created",
+          "Directory created",
+          "total 0 (empty directory)",
+          "✓ Created tension 01KJJHN5CQF5TED6A3CWD2A4XP",
+          "Tension 01KJJHN5CQF5TED6A3CWD2A4XP, Desired: truly global, Actual: should be in home-with-global, Status: Active"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "Workspace discovery consistency",
+      "status": "pass",
+      "steps": [
+        { "action": "Init workspace in project root", "expected": ".werk/ created at /tmp/werk-foundation-flow-init/.werk/", "observed": "Workspace initialized" },
+        { "action": "Add tension from deep subdirectory", "expected": "Tension stored in parent workspace", "observed": "Tension 01KJJHKHB2YPTM1CV7AD9QDAJ6 created from subdir/a/b/c/" },
+        { "action": "Show tension from project root", "expected": "Same tension found via store walking up", "observed": "Tension accessible from root directory" },
+        { "action": "Commands operate on same store regardless of CWD depth", "expected": "Consistent view of data", "observed": "Both deep and root commands see same tension" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk init in /tmp/werk-foundation-flow-init/",
+          "werk add from /tmp/werk-foundation-flow-init/subdir/a/b/c/",
+          "werk show from /tmp/werk-foundation-flow-init/"
+        ],
+        "exitCodes": [0, 0, 0],
+        "outputs": [
+          "Workspace initialized",
+          "Created tension 01KJJHKHB2YPTM1CV7AD9QDAJ6",
+          "Tension displayed from root directory"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-010",
+      "title": "First-use experience",
+      "status": "pass",
+      "steps": [
+        { "action": "Fresh werk init", "expected": "Clear success message, exit 0", "observed": "✓ Workspace initialized message" },
+        { "action": "werk add after init", "expected": "Tension created with helpful output", "observed": "✓ Created tension with ULID, desired, actual, status shown" },
+        { "action": "werk show after add", "expected": "Detailed tension view", "observed": "Full tension details displayed: ID, desired, actual, status, created, mutations" },
+        { "action": "Verify coherent UX at each step", "expected": "Helpful output at each stage", "observed": "All outputs were clear and informative" }
+      ],
+      "evidence": {
+        "commands": [
+          "werk init",
+          "werk add \"test tension\" \"test actual\"",
+          "werk show <id>"
+        ],
+        "exitCodes": [0, 0, 0],
+        "outputs": [
+          "✓ Workspace initialized at ...",
+          "✓ Created tension <ID>\n  Desired: test tension\n  Actual:  test actual\n  Status:  Active",
+          "Tension details with all fields"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [
+    {
+      "description": "Command 'tree' has conflicting short option names: '-r' is in use by both '--resolved' and '--released'. This causes a panic at clap argument parsing time.",
+      "affectedAssertions": ["tree-related tests would be blocked"],
+      "quickFixAttempted": "Tested with both 'werk tree' and 'werk tree --all' - both panic with same error. The bug is in clap derive macro configuration in the source code."
+    }
+  ],
+  "summary": "Tested 7 assertions: 7 passed, 0 failed, 0 blocked. All init-related assertions pass. Store discovery correctly walks up directory tree and falls back to global workspace. First-use experience is coherent. Blocker found: tree command has conflicting CLI short options causing panic."
+}

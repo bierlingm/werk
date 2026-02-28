@@ -1,0 +1,80 @@
+{
+  "milestone": "foundation",
+  "round": 3,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 37,
+    "passed": 31,
+    "failed": 6,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CFG-001",
+    "VAL-CFG-002",
+    "VAL-CFG-003",
+    "VAL-CROSS-007",
+    "VAL-CRUD-001",
+    "VAL-CRUD-002",
+    "VAL-CRUD-003",
+    "VAL-CRUD-004",
+    "VAL-CRUD-005",
+    "VAL-CRUD-006",
+    "VAL-CRUD-007",
+    "VAL-CRUD-008",
+    "VAL-CRUD-009",
+    "VAL-CRUD-010",
+    "VAL-CRUD-011",
+    "VAL-CRUD-012",
+    "VAL-CRUD-013",
+    "VAL-CRUD-014",
+    "VAL-CRUD-015",
+    "VAL-CRUD-016",
+    "VAL-CRUD-017",
+    "VAL-CRUD-018",
+    "VAL-CRUD-019",
+    "VAL-CRUD-020",
+    "VAL-CRUD-021",
+    "VAL-CRUD-025",
+    "VAL-INIT-001",
+    "VAL-INIT-002",
+    "VAL-INIT-003",
+    "VAL-INIT-004",
+    "VAL-INIT-005"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CRUD-022",
+      "reason": "Contracted syntax `werk note <id> \"text\"` is unsupported; CLI requires `werk note -i <id> \"text\"`."
+    },
+    {
+      "id": "VAL-CRUD-023",
+      "reason": "Notes on resolved/released tensions fail when executed with contracted syntax `werk note <id> \"text\"`."
+    },
+    {
+      "id": "VAL-CRUD-024",
+      "reason": "Workspace note retrieval via `werk notes` is missing (unrecognized subcommand)."
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "reason": "`werk tree` panics at startup due duplicate `-r` short flags and `werk context` returns not implemented."
+    },
+    {
+      "id": "VAL-CROSS-009",
+      "reason": "`werk context` and `werk run` are not implemented; contracted positional note syntax is also unsupported."
+    },
+    {
+      "id": "VAL-CROSS-010",
+      "reason": "`werk tree` panics, preventing first-use flow `init -> add -> tree -> show` from completing."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance: werk-cli-cli section defining CLI-only validation, temp HOME isolation, and namespace boundaries for parallel flow validators.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": ".factory/validation/foundation/user-testing/synthesis.round2.json",
+  "generatedAt": "2026-02-28T16:42:33.713050+00:00"
+}

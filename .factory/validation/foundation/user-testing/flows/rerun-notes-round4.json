@@ -1,0 +1,58 @@
+{
+  "groupId": "rerun-notes-round4",
+  "testedAt": "2026-02-28T17:04:30Z",
+  "credentials": {
+    "account": "cli-validator-rerun-a@example.test",
+    "namespace": "/tmp/werk-foundation-r4-notes"
+  },
+  "toolsUsed": ["direct-cli-execution"],
+  "assertions": [
+    {
+      "id": "VAL-CRUD-022",
+      "title": "Note adds annotation mutation",
+      "status": "pass",
+      "steps": [
+        { "action": "Create tension: werk add 'write novel' 'have outline'", "expected": "Tension created with ID", "observed": "Created tension 01KJJKA64HS0WN67S9CM9N4DCM" },
+        { "action": "Add note: werk note <id> 'met with team to discuss plot'", "expected": "Note added successfully", "observed": "✓ Added note to tension" },
+        { "action": "Show tension to verify mutation", "expected": "Note mutation recorded in history", "observed": "Mutation History shows [note] entry: 'met with team to discuss plot'" }
+      ],
+      "evidence": {
+        "stdout": "Note mutation recorded as [note] in mutation history with field='note' content",
+        "exitCodes": [0, 0, 0]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-023",
+      "title": "Note works on resolved/released tensions",
+      "status": "pass",
+      "steps": [
+        { "action": "Resolve tension: werk resolve <id>", "expected": "Tension resolved", "observed": "✓ Resolved tension 01KJJKA64HS0WN67S9CM9N4DCM, Status: Active -> Resolved" },
+        { "action": "Add note to resolved tension: werk note <id> 'post-completion retrospective notes'", "expected": "Note added successfully", "observed": "✓ Added note to tension" },
+        { "action": "Show tension to verify note recorded", "expected": "Note appears in mutation history after status change", "observed": "Mutation History shows [note] after [status] Active -> Resolved" }
+      ],
+      "evidence": {
+        "stdout": "Note successfully added to resolved tension, recorded as separate mutation after resolution",
+        "exitCodes": [0, 0, 0]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CRUD-024",
+      "title": "General note without tension ID",
+      "status": "pass",
+      "steps": [
+        { "action": "Add general note: werk note 'general observation about the writing process'", "expected": "Workspace-level note created", "observed": "✓ Added workspace note" },
+        { "action": "List notes: werk notes", "expected": "General note appears in workspace notes list", "observed": "Workspace notes (1): 'general observation about the writing process' with timestamp" }
+      ],
+      "evidence": {
+        "stdout": "General note stored separately from tension mutations, retrievable via 'werk notes' command",
+        "exitCodes": [0, 0]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed, 0 failed, 0 blocked. All note functionality working as specified: annotation mutations recorded, notes work on resolved tensions, and general workspace notes stored separately."
+}
