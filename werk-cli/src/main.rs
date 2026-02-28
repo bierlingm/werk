@@ -573,25 +573,204 @@ fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<(), 
     Ok(())
 }
 
-fn cmd_resolve(output: &Output, _id: String) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: resolve command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for resolve command.
+    #[derive(Serialize)]
+    struct ResolveResult {
+        id: String,
+        status: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Record old status for output
+    let old_status = tension.status;
+
+    // Check if already resolved
+    if old_status != sd_core::TensionStatus::Active {
+        return Err(WerkError::InvalidInput(format!(
+            "cannot resolve tension with status {} (must be Active)",
+            old_status
+        )));
+    }
+
+    // Update status via store (handles validation and mutation recording)
+    store
+        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
+        .map_err(WerkError::SdError)?;
+
+    let result = ResolveResult {
+        id: tension.id.clone(),
+        status: "Resolved".to_string(),
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+        output
+            .success(&format!("Resolved tension {}", id_styled))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!(
+            "  Status: {} -> {}",
+            output.styled(&old_status.to_string(), werk::output::ColorStyle::Muted),
+            output.styled("Resolved", werk::output::ColorStyle::Resolved)
+        );
+    }
+
+    Ok(())
 }
 
-fn cmd_release(output: &Output, _id: String, _reason: String) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: release command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for release command.
+    #[derive(Serialize)]
+    struct ReleaseResult {
+        id: String,
+        status: String,
+        reason: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Record old status for output
+    let old_status = tension.status;
+
+    // Check if already resolved/released
+    if old_status != sd_core::TensionStatus::Active {
+        return Err(WerkError::InvalidInput(format!(
+            "cannot release tension with status {} (must be Active)",
+            old_status
+        )));
+    }
+
+    // Update status via store (handles validation and mutation recording)
+    store
+        .update_status(&tension.id, sd_core::TensionStatus::Released)
+        .map_err(WerkError::SdError)?;
+
+    // Record the release reason as a mutation
+    use chrono::Utc;
+    use sd_core::Mutation;
+    store
+        .record_mutation(&Mutation::new(
+            tension.id.clone(),
+            Utc::now(),
+            "release_reason".to_owned(),
+            None,
+            reason.clone(),
+        ))
+        .map_err(WerkError::SdError)?;
+
+    let result = ReleaseResult {
+        id: tension.id.clone(),
+        status: "Released".to_string(),
+        reason: reason.clone(),
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+        output
+            .success(&format!("Released tension {}", id_styled))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!(
+            "  Status: {} -> {}",
+            output.styled(&old_status.to_string(), werk::output::ColorStyle::Muted),
+            output.styled("Released", werk::output::ColorStyle::Released)
+        );
+        println!(
+            "  Reason: {}",
+            output.styled(&reason, werk::output::ColorStyle::Muted)
+        );
+    }
+
+    Ok(())
 }
 
-fn cmd_rm(output: &Output, _id: String) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: rm command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for rm command.
+    #[derive(Serialize)]
+    struct RmResult {
+        id: String,
+        deleted: bool,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Record the tension ID before deletion
+    let tension_id = tension.id.clone();
+    let tension_desired = tension.desired.clone();
+
+    // Delete via store (handles reparenting children to grandparent)
+    store
+        .delete_tension(&tension_id)
+        .map_err(WerkError::SdError)?;
+
+    let result = RmResult {
+        id: tension_id.clone(),
+        deleted: true,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension_id, werk::output::ColorStyle::Id);
+        output
+            .success(&format!("Deleted tension {}", id_styled))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!(
+            "  Desired: {}",
+            output.styled(&tension_desired, werk::output::ColorStyle::Muted)
+        );
+    }
+
+    Ok(())
 }
 
 fn cmd_move(output: &Output, _id: String, _parent: Option<String>) -> Result<(), WerkError> {

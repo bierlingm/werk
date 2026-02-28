@@ -115,6 +115,18 @@ pub enum Event {
         timestamp: DateTime<Utc>,
     },
 
+    /// A tension was deleted.
+    TensionDeleted {
+        /// ULID of the tension.
+        tension_id: String,
+        /// The desired state at deletion.
+        desired: String,
+        /// The actual state at deletion.
+        actual: String,
+        /// When deletion occurred.
+        timestamp: DateTime<Utc>,
+    },
+
     /// Structural conflict was detected.
     ConflictDetected {
         /// Tensions involved in the conflict.
@@ -213,6 +225,7 @@ impl Event {
             Event::DesireRevised { tension_id, .. } => Some(tension_id),
             Event::TensionResolved { tension_id, .. } => Some(tension_id),
             Event::TensionReleased { tension_id, .. } => Some(tension_id),
+            Event::TensionDeleted { tension_id, .. } => Some(tension_id),
             Event::ConflictDetected { .. } => None,
             Event::ConflictResolved { .. } => None,
             Event::LifecycleTransition { tension_id, .. } => Some(tension_id),
@@ -232,6 +245,7 @@ impl Event {
             Event::DesireRevised { timestamp, .. } => *timestamp,
             Event::TensionResolved { timestamp, .. } => *timestamp,
             Event::TensionReleased { timestamp, .. } => *timestamp,
+            Event::TensionDeleted { timestamp, .. } => *timestamp,
             Event::ConflictDetected { timestamp, .. } => *timestamp,
             Event::ConflictResolved { timestamp, .. } => *timestamp,
             Event::LifecycleTransition { timestamp, .. } => *timestamp,
@@ -444,6 +458,16 @@ impl EventBuilder {
     /// Build a TensionReleased event.
     pub fn tension_released(tension_id: String, desired: String, actual: String) -> Event {
         Event::TensionReleased {
+            tension_id,
+            desired,
+            actual,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build a TensionDeleted event.
+    pub fn tension_deleted(tension_id: String, desired: String, actual: String) -> Event {
+        Event::TensionDeleted {
             tension_id,
             desired,
             actual,

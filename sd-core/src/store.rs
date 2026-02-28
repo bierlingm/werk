@@ -257,7 +257,11 @@ impl Store {
         Ok(())
     }
 
-    fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
+    /// Record a mutation for a tension.
+    ///
+    /// This is a low-level method for recording arbitrary mutations.
+    /// Most operations automatically record appropriate mutations.
+    pub fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
         let conn = self.conn.borrow();
         conn.execute_with_params(
             "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -997,6 +1001,122 @@ impl Store {
         conn.execute("ROLLBACK;").map(|_| ()).map_err(|e| {
             StoreError::DatabaseError(format!("failed to rollback transaction: {:?}", e))
         })
+    }
+
+    /// Delete a tension and reparent its children to the grandparent.
+    ///
+    /// When a tension is deleted:
+    /// - All its children are reparented to the deleted tension's parent (grandparent adoption)
+    /// - If the deleted tension is a root (parent_id = null), children become roots
+    /// - The tension is removed from the database
+    /// - A "deleted" mutation is recorded for the deleted tension
+    /// - A parent_id mutation is recorded for each child that was reparented
+    ///
+    /// Returns an error if the tension doesn't exist.
+    pub fn delete_tension(&self, id: &str) -> Result<(), SdError> {
+        // Get the tension to delete
+        let tension = self
+            .get_tension(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?
+            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+
+        // Get all children of this tension
+        let children = self
+            .get_children(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?;
+
+        // The grandparent is the deleted tension's parent_id
+        let grandparent_id = tension.parent_id.clone();
+
+        // Persist in transaction
+        {
+            let conn = self.conn.borrow();
+            conn.execute("BEGIN;").map_err(|e| {
+                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+            })?;
+
+            let now = Utc::now();
+
+            // Reparent all children to grandparent
+            let result = (|| {
+                for child in &children {
+                    // Update child's parent_id to grandparent
+                    conn.execute_with_params(
+                        "UPDATE tensions SET parent_id = ?1 WHERE id = ?2",
+                        &[
+                            match &grandparent_id {
+                                Some(gp) => SqliteValue::Text(gp.clone()),
+                                None => SqliteValue::Null,
+                            },
+                            SqliteValue::Text(child.id.clone()),
+                        ],
+                    )
+                    .map_err(|e| {
+                        SdError::ValidationError(format!("failed to reparent child: {:?}", e))
+                    })?;
+
+                    // Record parent_id mutation for the child
+                    self.record_mutation_in_transaction(
+                        &conn,
+                        &Mutation::new(
+                            child.id.clone(),
+                            now,
+                            "parent_id".to_owned(),
+                            child.parent_id.clone(),
+                            grandparent_id.clone().unwrap_or_default(),
+                        ),
+                    )?;
+                }
+
+                // Delete the tension
+                conn.execute_with_params(
+                    "DELETE FROM tensions WHERE id = ?1",
+                    &[SqliteValue::Text(tension.id.clone())],
+                )
+                .map_err(|e| {
+                    SdError::ValidationError(format!("failed to delete tension: {:?}", e))
+                })?;
+
+                // Record deletion mutation for the deleted tension
+                // (We record this even though the tension is deleted, for audit trail)
+                self.record_mutation_in_transaction(
+                    &conn,
+                    &Mutation::new(
+                        tension.id.clone(),
+                        now,
+                        "deleted".to_owned(),
+                        Some(format!(
+                            "desired='{}';actual='{}'",
+                            tension.desired, tension.actual
+                        )),
+                        String::new(),
+                    ),
+                )?;
+
+                Ok(())
+            })();
+
+            match result {
+                Ok(_) => {
+                    conn.execute("COMMIT;").map_err(|e| {
+                        SdError::ValidationError(format!("failed to commit: {:?}", e))
+                    })?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(e);
+                }
+            }
+        }
+
+        // Emit TensionDeleted event
+        self.emit_event(&EventBuilder::tension_deleted(
+            tension.id,
+            tension.desired,
+            tension.actual,
+        ));
+
+        Ok(())
     }
 }
 
@@ -2079,5 +2199,179 @@ mod tests {
 
         // If we get here without panicking, the test passes
         assert!(true);
+    }
+
+    // ── VAL-TENSION-013: Deletion with children (grandparent adoption) ──────
+
+    #[test]
+    fn test_delete_tension_leaf() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create a leaf tension (no children)
+        let t = store.create_tension("goal", "reality").unwrap();
+        let tension_id = t.id.clone();
+
+        // Delete it
+        store.delete_tension(&tension_id).unwrap();
+
+        // Should be gone
+        let result = store.get_tension(&tension_id).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_delete_tension_not_found() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Try to delete a nonexistent tension
+        let result = store.delete_tension("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_tension_with_children_adopts_to_grandparent() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create a three-level hierarchy: grandparent -> parent -> child
+        let grandparent = store.create_tension("grandparent", "gp reality").unwrap();
+        let parent = store
+            .create_tension_with_parent("parent", "p reality", Some(grandparent.id.clone()))
+            .unwrap();
+        let child = store
+            .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Delete the middle (parent)
+        store.delete_tension(&parent.id).unwrap();
+
+        // Parent should be gone
+        assert!(store.get_tension(&parent.id).unwrap().is_none());
+
+        // Child should now have grandparent as parent
+        let child_after = store.get_tension(&child.id).unwrap().unwrap();
+        assert_eq!(child_after.parent_id, Some(grandparent.id));
+    }
+
+    #[test]
+    fn test_delete_root_with_children_makes_children_roots() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create parent -> children
+        let parent = store.create_tension("parent", "p reality").unwrap();
+        let child1 = store
+            .create_tension_with_parent("child1", "c1 reality", Some(parent.id.clone()))
+            .unwrap();
+        let child2 = store
+            .create_tension_with_parent("child2", "c2 reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Delete the root parent
+        store.delete_tension(&parent.id).unwrap();
+
+        // Parent should be gone
+        assert!(store.get_tension(&parent.id).unwrap().is_none());
+
+        // Children should now be roots
+        let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
+        let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
+        assert!(child1_after.parent_id.is_none());
+        assert!(child2_after.parent_id.is_none());
+
+        // Children should appear in get_roots()
+        let roots = store.get_roots().unwrap();
+        assert!(roots.iter().any(|r| r.id == child1.id));
+        assert!(roots.iter().any(|r| r.id == child2.id));
+    }
+
+    #[test]
+    fn test_delete_tension_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        let tension_id = t.id.clone();
+
+        store.delete_tension(&tension_id).unwrap();
+
+        // A "deleted" mutation should be recorded
+        let mutations = store.get_mutations(&tension_id).unwrap();
+        let deleted_mutation = mutations.iter().find(|m| m.field() == "deleted");
+        assert!(
+            deleted_mutation.is_some(),
+            "should have 'deleted' mutation recorded"
+        );
+    }
+
+    #[test]
+    fn test_delete_tension_records_parent_mutation_for_children() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create parent -> child
+        let parent = store.create_tension("parent", "p reality").unwrap();
+        let child = store
+            .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Delete parent
+        store.delete_tension(&parent.id).unwrap();
+
+        // Child should have a parent_id mutation
+        let mutations = store.get_mutations(&child.id).unwrap();
+        let parent_mutation = mutations.iter().find(|m| m.field() == "parent_id");
+        assert!(parent_mutation.is_some());
+
+        let m = parent_mutation.unwrap();
+        assert_eq!(m.old_value(), Some(parent.id.as_str()));
+        assert_eq!(m.new_value(), ""); // Empty string represents null
+    }
+
+    #[test]
+    fn test_delete_deep_hierarchy_preserves_lower_levels() {
+        let store = Store::new_in_memory().unwrap();
+
+        // Create A -> B -> C -> D (4 levels)
+        let a = store.create_tension("A", "a reality").unwrap();
+        let b = store
+            .create_tension_with_parent("B", "b reality", Some(a.id.clone()))
+            .unwrap();
+        let c = store
+            .create_tension_with_parent("C", "c reality", Some(b.id.clone()))
+            .unwrap();
+        let d = store
+            .create_tension_with_parent("D", "d reality", Some(c.id.clone()))
+            .unwrap();
+
+        // Delete B
+        store.delete_tension(&b.id).unwrap();
+
+        // C's parent should now be A
+        let c_after = store.get_tension(&c.id).unwrap().unwrap();
+        assert_eq!(c_after.parent_id, Some(a.id));
+
+        // D's parent should still be C
+        let d_after = store.get_tension(&d.id).unwrap().unwrap();
+        assert_eq!(d_after.parent_id, Some(c.id));
+    }
+
+    #[test]
+    fn test_delete_tension_emits_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::TensionDeleted { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.delete_tension(&t.id).unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 }
