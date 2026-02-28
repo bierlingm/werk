@@ -1,6 +1,6 @@
 {
   "milestone": "events-and-integration",
-  "round": 2,
+  "round": 1,
   "status": "pass",
   "validatorsRun": {
     "test": {
@@ -49,5 +49,5 @@
       "reason": "already-documented"
     }
   ],
-  "previousRound": ".factory/validation/events-and-integration/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }
