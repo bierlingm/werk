@@ -1167,14 +1167,386 @@ fn cmd_notes(output: &Output) -> Result<(), WerkError> {
 fn cmd_tree(
     output: &Output,
     _open: bool,
-    _all: bool,
-    _resolved: bool,
-    _released: bool,
+    all: bool,
+    resolved: bool,
+    released: bool,
 ) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: tree command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+    use chrono::Utc;
+    use sd_core::{
+        classify_creative_cycle_phase, detect_structural_conflict,
+        predict_structural_tendency, ConflictThresholds, Forest, LifecycleThresholds,
+        TensionStatus,
+    };
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for a tension in tree.
+    #[derive(Serialize)]
+    struct TensionJson {
+        id: String,
+        desired: String,
+        actual: String,
+        status: String,
+        parent_id: Option<String>,
+        created_at: String,
+        phase: String,
+        movement: String,
+        has_conflict: bool,
+    }
+
+    /// JSON output structure for tree.
+    #[derive(Serialize)]
+    struct TreeJson {
+        tensions: Vec<TensionJson>,
+        summary: TreeSummary,
+    }
+
+    #[derive(Serialize)]
+    struct TreeSummary {
+        total: usize,
+        active: usize,
+        resolved: usize,
+        released: usize,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
+
+    // Build forest
+    let forest = Forest::from_tensions(tensions.clone())
+        .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
+
+    // Determine filter
+    let filter = if all {
+        Filter::All
+    } else if resolved {
+        Filter::Resolved
+    } else if released {
+        Filter::Released
+    } else {
+        // Default: --open (active only)
+        Filter::Active
+    };
+
+    // Filter tensions
+    let filtered_tensions: Vec<_> = tensions
+        .iter()
+        .filter(|t| match filter {
+            Filter::All => true,
+            Filter::Active => t.status == TensionStatus::Active,
+            Filter::Resolved => t.status == TensionStatus::Resolved,
+            Filter::Released => t.status == TensionStatus::Released,
+        })
+        .collect();
+
+    // Handle empty forest
+    if filtered_tensions.is_empty() {
+        if output.is_json() {
+            let result = TreeJson {
+                tensions: vec![],
+                summary: TreeSummary {
+                    total: 0,
+                    active: 0,
+                    resolved: 0,
+                    released: 0,
+                },
+            };
+            let json = serde_json::to_string_pretty(&result)
+                .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+            println!("{}", json);
+        } else {
+            output
+                .info("No tensions found")
+                .map_err(|e| WerkError::IoError(e.to_string()))?;
+        }
+        return Ok(());
+    }
+
+    // Compute dynamics for each tension
+    let now = Utc::now();
+    let thresholds = LifecycleThresholds::default();
+    let conflict_thresholds = ConflictThresholds::default();
+
+    // Get resolved tensions for momentum phase detection
+    let resolved_tensions: Vec<_> = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Resolved)
+        .cloned()
+        .collect();
+
+    // Build a map of tension ID to computed dynamics
+    let mut dynamics_map: std::collections::HashMap<String, (String, String, bool)> =
+        std::collections::HashMap::new();
+
+    for tension in &filtered_tensions {
+        // Get mutations for this tension
+        let mutations: Vec<_> = all_mutations
+            .iter()
+            .filter(|m| m.tension_id() == tension.id)
+            .cloned()
+            .collect();
+
+        // Classify phase
+        let phase_result = classify_creative_cycle_phase(
+            tension,
+            &mutations,
+            &resolved_tensions,
+            &thresholds,
+            now,
+        );
+        let phase_badge = match phase_result.phase {
+            sd_core::CreativeCyclePhase::Germination => "[G]",
+            sd_core::CreativeCyclePhase::Assimilation => "[A]",
+            sd_core::CreativeCyclePhase::Completion => "[C]",
+            sd_core::CreativeCyclePhase::Momentum => "[M]",
+        };
+
+        // Detect conflict with siblings
+        let has_conflict = detect_structural_conflict(
+            &forest,
+            &tension.id,
+            &all_mutations,
+            &conflict_thresholds,
+            now,
+        )
+        .is_some();
+
+        // Predict movement tendency
+        let tendency = predict_structural_tendency(tension, has_conflict);
+        let movement_signal = match tendency.tendency {
+            sd_core::StructuralTendency::Advancing => "→",
+            sd_core::StructuralTendency::Oscillating => "↔",
+            sd_core::StructuralTendency::Stagnant => "○",
+        };
+
+        dynamics_map.insert(
+            tension.id.clone(),
+            (
+                phase_badge.to_string(),
+                movement_signal.to_string(),
+                has_conflict,
+            ),
+        );
+    }
+
+    // If JSON output, build JSON structure
+    if output.is_json() {
+        let json_tensions: Vec<TensionJson> = filtered_tensions
+            .iter()
+            .map(|t| {
+                let (phase, movement, has_conflict) = dynamics_map.get(&t.id).cloned().unwrap_or((
+                    "[G]".to_string(),
+                    "○".to_string(),
+                    false,
+                ));
+                TensionJson {
+                    id: t.id.clone(),
+                    desired: t.desired.clone(),
+                    actual: t.actual.clone(),
+                    status: t.status.to_string(),
+                    parent_id: t.parent_id.clone(),
+                    created_at: t.created_at.to_rfc3339(),
+                    phase: phase.replace("[", "").replace("]", ""),
+                    movement: movement.to_string(),
+                    has_conflict,
+                }
+            })
+            .collect();
+
+        // Count by status
+        let active_count = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active)
+            .count();
+        let resolved_count = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Resolved)
+            .count();
+        let released_count = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Released)
+            .count();
+
+        let result = TreeJson {
+            tensions: json_tensions,
+            summary: TreeSummary {
+                total: tensions.len(),
+                active: active_count,
+                resolved: resolved_count,
+                released: released_count,
+            },
+        };
+
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+        return Ok(());
+    }
+
+    // Human-readable tree output
+    // Build filtered forest for display
+    let filtered_ids: std::collections::HashSet<_> =
+        filtered_tensions.iter().map(|t| t.id.as_str()).collect();
+
+    // Traverse and render the forest
+    fn render_tree(
+        forest: &Forest,
+        root_ids: &[String],
+        filtered_ids: &std::collections::HashSet<&str>,
+        dynamics_map: &std::collections::HashMap<String, (String, String, bool)>,
+        output: &Output,
+        prefix: &str,
+        lines: &mut Vec<String>,
+    ) {
+        let roots: Vec<_> = root_ids
+            .iter()
+            .filter(|id| filtered_ids.contains(id.as_str()))
+            .filter_map(|id| forest.find(id))
+            .collect();
+
+        for (i, node) in roots.iter().enumerate() {
+            let is_last = i == roots.len() - 1;
+
+            // Get dynamics
+            let (phase, movement, has_conflict) = dynamics_map.get(node.id()).cloned().unwrap_or((
+                "[G]".to_string(),
+                "○".to_string(),
+                false,
+            ));
+
+            // Status style
+            let status_style = match node.tension.status {
+                TensionStatus::Active => werk::output::ColorStyle::Active,
+                TensionStatus::Resolved => werk::output::ColorStyle::Resolved,
+                TensionStatus::Released => werk::output::ColorStyle::Released,
+            };
+
+            // Build the line
+            let connector = if is_last { "└── " } else { "├── " };
+
+            // Conflict marker
+            let conflict_marker = if has_conflict { "!" } else { " " };
+
+            // Format: prefix + connector + [badge] status conflict movement desired
+            let id_short = &node.id()[..8.min(node.id().len())];
+            let line = format!(
+                "{}{}{}{} {} {}{} {}",
+                prefix,
+                connector,
+                output.styled(&phase, werk::output::ColorStyle::Info),
+                output.styled(&node.tension.status.to_string(), status_style),
+                output.styled(id_short, werk::output::ColorStyle::Id),
+                conflict_marker,
+                movement,
+                output.styled(
+                    &truncate(&node.tension.desired, 50),
+                    werk::output::ColorStyle::Highlight
+                )
+            );
+            lines.push(line);
+
+            // Recurse for children (only those that pass the filter)
+            let children: Vec<_> = node
+                .children
+                .iter()
+                .filter(|id| filtered_ids.contains(id.as_str()))
+                .filter_map(|id| forest.find(id))
+                .collect();
+
+            if !children.is_empty() {
+                let new_prefix = if is_last {
+                    format!("{}    ", prefix)
+                } else {
+                    format!("{}│   ", prefix)
+                };
+                render_tree(
+                    forest,
+                    &node.children,
+                    filtered_ids,
+                    dynamics_map,
+                    output,
+                    &new_prefix,
+                    lines,
+                );
+            }
+        }
+    }
+
+    let mut lines = Vec::new();
+    render_tree(
+        &forest,
+        forest.root_ids(),
+        &filtered_ids,
+        &dynamics_map,
+        output,
+        "",
+        &mut lines,
+    );
+
+    // Print tree
+    for line in &lines {
+        println!("{}", line);
+    }
+
+    // Print summary footer
+    let active_count = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+        .count();
+    let resolved_count = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Resolved)
+        .count();
+    let released_count = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Released)
+        .count();
+
+    println!();
+    println!(
+        "Total: {}  Active: {}  Resolved: {}  Released: {}",
+        output.styled(
+            &format!("{}", tensions.len()),
+            werk::output::ColorStyle::Highlight
+        ),
+        output.styled(
+            &format!("{}", active_count),
+            werk::output::ColorStyle::Active
+        ),
+        output.styled(
+            &format!("{}", resolved_count),
+            werk::output::ColorStyle::Resolved
+        ),
+        output.styled(
+            &format!("{}", released_count),
+            werk::output::ColorStyle::Released
+        )
+    );
+
+    Ok(())
+}
+
+/// Filter for tree display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Filter {
+    All,
+    Active,
+    Resolved,
+    Released,
+}
+
+/// Truncate a string to max length, adding ellipsis if needed.
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
+    }
 }
 
 fn cmd_context(output: &Output, _id: String) -> Result<(), WerkError> {
