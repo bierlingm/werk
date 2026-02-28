@@ -1,0 +1,220 @@
+{
+  "groupId": "context",
+  "testedAt": "2026-02-28T18:35:00Z",
+  "credentials": {
+    "account": "N/A",
+    "namespace": "/tmp/werk-agentint-g1"
+  },
+  "toolsUsed": ["cargo run -p werk", "python3 (json validation)"],
+  "assertions": [
+    {
+      "id": "VAL-AGENT-001",
+      "title": "Context outputs complete tension data as JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tension hierarchy with chain A->B->C->D",
+          "expected": "Tensions created with valid IDs",
+          "observed": "All tensions created successfully with ULIDs"
+        },
+        {
+          "action": "Run werk context <chain_d_id>",
+          "expected": "Valid JSON output with all required sections",
+          "observed": "JSON output with tension, ancestors, siblings, children, dynamics, mutations"
+        },
+        {
+          "action": "Parse JSON and verify all sections present",
+          "expected": "All 6 sections (tension, ancestors, siblings, children, dynamics, mutations) present",
+          "observed": "All sections present: tension=True, ancestors=True, siblings=True, children=True, dynamics=True, mutations=True"
+        }
+      ],
+      "evidence": {
+        "command": "werk context 01KJJRGS47KM9R8VR1QZDW18T1",
+        "exitCode": 0,
+        "outputFile": "/tmp/werk-agentint-g1/context_d.json",
+        "jsonStructure": {
+          "tension": ["id", "desired", "actual", "status", "created_at", "parent_id"],
+          "ancestors": "array of tension objects (root-first)",
+          "siblings": "array of tension objects",
+          "children": "array of tension objects",
+          "dynamics": ["structural_tension", "structural_conflict", "oscillation", "resolution", "creative_cycle_phase", "orientation", "compensating_strategy", "structural_tendency", "assimilation_depth", "neglect"],
+          "mutations": "array of mutation objects with timestamp, field, old_value, new_value"
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-002",
+      "title": "Context ancestors ordered root-first",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create chain A->B->C->D",
+          "expected": "Parent relationships: A (root), B->A, C->B, D->C",
+          "observed": "Chain created successfully"
+        },
+        {
+          "action": "Run werk context on D (deepest in chain)",
+          "expected": "Ancestors in order [A, B, C]",
+          "observed": "Ancestors array: [A (root), B (parent=A), C (parent=B)]"
+        },
+        {
+          "action": "Verify first ancestor is root (parent_id=null)",
+          "expected": "ancestors[0].parent_id == null",
+          "observed": "ancestors[0] (Chain A) has parent_id: null"
+        },
+        {
+          "action": "Verify each ancestor points to previous as parent",
+          "expected": "B.parent=A.id, C.parent=B.id",
+          "observed": "Order check [1]: PASS, Order check [2]: PASS"
+        }
+      ],
+      "evidence": {
+        "command": "werk context 01KJJRGS47KM9R8VR1QZDW18T1",
+        "exitCode": 0,
+        "ancestorChain": [
+          "[0] Chain A (parent_id: None)",
+          "[1] Chain B (parent_id: 01KJJRGRX4RCQ3SXZPGMJSXHCS)",
+          "[2] Chain C (parent_id: 01KJJRGRZPTD78MD816DCZX547)"
+        ],
+        "firstIsRoot": true,
+        "parentChainCorrect": true,
+        "rootFirstOrderCorrect": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-003",
+      "title": "Context siblings exclude self",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create parent P with 3 children (C1, C2, C3)",
+          "expected": "Parent P with children C1, C2, C3",
+          "observed": "Created Parent P (01KJJRGJRAFG8Y50RK3ZY1QGWS) with 3 children"
+        },
+        {
+          "action": "Run werk context on Child 2",
+          "expected": "Siblings array contains C1 and C3, not C2",
+          "observed": "Siblings: [Child 1, Child 3], self (Child 2) excluded"
+        },
+        {
+          "action": "Verify target tension ID not in siblings list",
+          "expected": "target.id not in [s.id for s in siblings]",
+          "observed": "Self ID in siblings list: False"
+        }
+      ],
+      "evidence": {
+        "command": "werk context 01KJJRGJWCSP4TTX1GXVZSZ1CC",
+        "exitCode": 0,
+        "targetTension": "Child 2 (ID: 01KJJRGJWCSP4TTX1GXVZSZ1CC)",
+        "siblingsFound": 2,
+        "siblingList": ["Child 1 (01KJJRGJTAFZ13NMEV5G6C6FHE)", "Child 3 (01KJJRGJYFWCCBP1GM0G2R8NFB)"],
+        "selfInSiblings": false,
+        "siblingsExcludeSelf": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-004",
+      "title": "Context handles root tension (no ancestors)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create standalone root tension (no parent)",
+          "expected": "Tension with parent_id=null",
+          "observed": "Created 'Standalone Root' with parent_id: null"
+        },
+        {
+          "action": "Run werk context on root tension",
+          "expected": "ancestors=[], siblings=other roots",
+          "observed": "ancestors: [], siblings: 8 other roots"
+        },
+        {
+          "action": "Verify ancestors array is empty",
+          "expected": "len(ancestors) == 0",
+          "observed": "Ancestors is empty: True"
+        }
+      ],
+      "evidence": {
+        "command": "werk context 01KJJRGK0P7S7H5DZ6WV1AAR0Y",
+        "exitCode": 0,
+        "tension": "Standalone Root",
+        "parentId": null,
+        "isRoot": true,
+        "ancestors": [],
+        "ancestorsEmpty": true,
+        "otherRootsAsSiblings": 8
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-005",
+      "title": "Context handles leaf tension (no children)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Use Chain D (deepest in chain A->B->C->D)",
+          "expected": "D has no children (leaf node)",
+          "observed": "Chain D confirmed as leaf (end of chain)"
+        },
+        {
+          "action": "Run werk context on leaf tension",
+          "expected": "children=[]",
+          "observed": "Children list: []"
+        },
+        {
+          "action": "Verify children array is empty",
+          "expected": "len(children) == 0",
+          "observed": "Children is empty: True"
+        }
+      ],
+      "evidence": {
+        "command": "werk context 01KJJRGS47KM9R8VR1QZDW18T1 (Chain D)",
+        "exitCode": 0,
+        "tension": "Chain D",
+        "children": [],
+        "childrenEmpty": true,
+        "isLeaf": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-006",
+      "title": "Context preserves unicode/special chars in JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tension with unicode: desired='Unicode: 写小说 🎵', actual='CJK: 有大纲'",
+          "expected": "Tension created with exact unicode text",
+          "observed": "Created tension 01KJJRGK2Q314MGWNWCWMB3SGK"
+        },
+        {
+          "action": "Run werk context on unicode tension",
+          "expected": "JSON output preserves all unicode characters",
+          "observed": "Desired: 'Unicode: 写小说 🎵', Actual: 'CJK: 有大纲'"
+        },
+        {
+          "action": "Parse JSON and verify exact values",
+          "expected": "Values match original input exactly",
+          "observed": "CJK preserved: True, Emoji preserved: True, Exact match: True"
+        }
+      ],
+      "evidence": {
+        "command": "werk context 01KJJRGK2Q314MGWNWCWMB3SGK",
+        "exitCode": 0,
+        "desiredField": "Unicode: 写小说 🎵",
+        "actualField": "CJK: 有大纲",
+        "cjkInDesired": true,
+        "emojiInDesired": true,
+        "cjkInActual": true,
+        "desiredMatchesExpected": true,
+        "actualMatchesExpected": true
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed, 0 blocked. All context command assertions validated successfully. The werk context command correctly outputs complete tension data as JSON with ancestors in root-first order, siblings excluding self, proper handling of root tensions (empty ancestors) and leaf tensions (empty children), and full unicode preservation."
+}

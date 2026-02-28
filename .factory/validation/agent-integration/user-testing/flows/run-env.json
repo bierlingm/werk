@@ -1,0 +1,208 @@
+{
+  "groupId": "run-env",
+  "testedAt": "2026-02-28T18:34:36Z",
+  "credentials": {
+    "account": "N/A (CLI-only surface)",
+    "namespace": "/tmp/werk-agentint-g2"
+  },
+  "toolsUsed": ["cargo run -p werk", "Execute tool (CLI commands)"],
+  "assertions": [
+    {
+      "id": "VAL-AGENT-007",
+      "title": "Run injects WERK_TENSION_ID env var",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create test tension with werk add",
+          "expected": "Tension created with ID",
+          "observed": "Created tension 01KJJRFXB7RSD0MH2FS4CVZQ0G"
+        },
+        {
+          "action": "Run 'werk run <id> -- printenv WERK_TENSION_ID'",
+          "expected": "Full tension ID printed",
+          "observed": "01KJJRFXB7RSD0MH2FS4CVZQ0G"
+        }
+      ],
+      "evidence": {
+        "command": "werk run 01KJJRFXB7RS -- printenv WERK_TENSION_ID",
+        "output": "01KJJRFXB7RSD0MH2FS4CVZQ0G",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-008",
+      "title": "Run injects WERK_CONTEXT env var",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk run <id> -- printenv WERK_CONTEXT'",
+          "expected": "Valid JSON context output",
+          "observed": "JSON with tension, ancestors, siblings, children, dynamics, mutations"
+        },
+        {
+          "action": "Compare with 'werk context' output",
+          "expected": "Matching structure",
+          "observed": "Same schema: tension.id, ancestors[], siblings[], children[], dynamics{}, mutations[]"
+        }
+      ],
+      "evidence": {
+        "command": "werk run 01KJJRFXB7RS -- printenv WERK_CONTEXT",
+        "output": "Valid JSON with all context fields including dynamics and mutation history",
+        "structureMatch": "WERK_CONTEXT matches werk context command output schema",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-009",
+      "title": "Run injects WERK_WORKSPACE env var",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk run <id> -- printenv WERK_WORKSPACE'",
+          "expected": ".werk/ directory path printed",
+          "observed": "/private/tmp/werk-agentint-g2/.werk"
+        }
+      ],
+      "evidence": {
+        "command": "werk run 01KJJRFXB7RS -- printenv WERK_WORKSPACE",
+        "output": "/private/tmp/werk-agentint-g2/.werk",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-010",
+      "title": "Run pipes context JSON to stdin",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk run <id> -- cat'",
+          "expected": "Context JSON output via stdin",
+          "observed": "Full context JSON printed (same structure as WERK_CONTEXT)"
+        }
+      ],
+      "evidence": {
+        "command": "werk run 01KJJRFXB7RS -- cat",
+        "output": "JSON with tension, dynamics, mutations - identical to context command",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-011",
+      "title": "Run uses default agent from config",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Set agent.command in config: 'werk config set agent.command echo default_agent_executed'",
+          "expected": "Config updated successfully",
+          "observed": "✓ Set agent.command = echo default_agent_executed"
+        },
+        {
+          "action": "Run 'werk run <id>' without -- override",
+          "expected": "Config agent executes",
+          "observed": "default_agent_executed"
+        }
+      ],
+      "evidence": {
+        "configCommand": "werk config set agent.command 'echo default_agent_executed'",
+        "runCommand": "werk run 01KJJRFXB7RS",
+        "output": "default_agent_executed",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-012",
+      "title": "Run override with -- syntax",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk run <id> -- echo override_agent_executed'",
+          "expected": "Override command executes, ignoring config",
+          "observed": "override_agent_executed"
+        }
+      ],
+      "evidence": {
+        "command": "werk run 01KJJRFXB7RS -- echo override_agent_executed",
+        "output": "override_agent_executed",
+        "exitCode": 0,
+        "note": "-- override correctly bypasses config agent.command"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AGENT-013",
+      "title": "Run records session as mutation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Execute multiple 'werk run' commands",
+          "expected": "Each session recorded in mutation history",
+          "observed": "7 total mutations: 1 created + 6 agent_session mutations"
+        },
+        {
+          "action": "Run 'werk show <id>' to verify mutations",
+          "expected": "agent_session mutations listed in history",
+          "observed": "All 6 agent sessions recorded with timestamp and command"
+        }
+      ],
+      "evidence": {
+        "command": "werk show 01KJJRFXB7RS",
+        "output": "Mutations: 7 total - [created], 6x [agent_session] with command details",
+        "mutations": [
+          { "field": "created", "new_value": "desired='test tension for agent';actual='initial actual state'" },
+          { "field": "agent_session", "new_value": "printenv WERK_TENSION_ID" },
+          { "field": "agent_session", "new_value": "printenv WERK_CONTEXT" },
+          { "field": "agent_session", "new_value": "printenv WERK_WORKSPACE" },
+          { "field": "agent_session", "new_value": "cat" },
+          { "field": "agent_session", "new_value": "echo default_agent_executed" },
+          { "field": "agent_session", "new_value": "echo override_agent_executed" }
+        ],
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "Config affects agent behavior",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Set agent.command via config",
+          "expected": "Config value stored",
+          "observed": "Config persisted successfully"
+        },
+        {
+          "action": "Run without -- uses config agent",
+          "expected": "Config agent executes",
+          "observed": "default_agent_executed"
+        },
+        {
+          "action": "Run with -- ignores config",
+          "expected": "Override command executes",
+          "observed": "override_agent_executed"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "werk config set agent.command 'echo default_agent_executed'",
+          "werk run 01KJJRFXB7RS (uses config)",
+          "werk run 01KJJRFXB7RS -- echo override_agent_executed (overrides config)"
+        ],
+        "results": [
+          "Config set: success",
+          "Config agent: default_agent_executed",
+          "Override: override_agent_executed"
+        ],
+        "exitCodes": [0, 0, 0]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 8 passed, 0 failed, 0 blocked. All agent run environment assertions validated successfully. Environment variables (WERK_TENSION_ID, WERK_CONTEXT, WERK_WORKSPACE) correctly injected. Context JSON piped to stdin. Config-based agent execution works with -- override. Session mutations properly recorded."
+}
