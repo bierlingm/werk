@@ -83,8 +83,7 @@ impl Output {
     pub fn print<T: Serialize + std::fmt::Display>(&self, value: &T) -> io::Result<()> {
         match self.format {
             OutputFormat::Json => {
-                let json = serde_json::to_string_pretty(value)
-                    .map_err(io::Error::other)?;
+                let json = serde_json::to_string_pretty(value).map_err(io::Error::other)?;
                 println!("{}", json);
             }
             OutputFormat::Human => {

@@ -62,12 +62,13 @@ fn test_werk_help_lists_all_subcommands() {
 }
 
 #[test]
-fn test_werk_init_not_implemented() {
+fn test_werk_init_is_implemented() {
     let mut cmd = Command::cargo_bin("werk").unwrap();
     cmd.arg("init");
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("not implemented"));
+    cmd.assert().success().stdout(
+        predicate::str::contains("Workspace initialized")
+            .or(predicate::str::contains("already initialized")),
+    );
 }
 
 #[test]
@@ -75,8 +76,8 @@ fn test_werk_json_flag() {
     let mut cmd = Command::cargo_bin("werk").unwrap();
     cmd.arg("--json").arg("init");
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("not implemented"));
+        .success()
+        .stdout(predicate::str::contains("\"path\""));
 }
 
 #[test]
@@ -84,6 +85,6 @@ fn test_werk_no_color_flag() {
     let mut cmd = Command::cargo_bin("werk").unwrap();
     cmd.arg("--no-color").arg("init");
     cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("not implemented"));
+        .success()
+        .stdout(predicate::str::contains("Workspace"));
 }
