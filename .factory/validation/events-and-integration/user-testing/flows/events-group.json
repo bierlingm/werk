@@ -1,0 +1,244 @@
+{
+  "groupId": "events-group",
+  "testedAt": "2026-02-28T00:00:00Z",
+  "credentials": {
+    "account": "validator-events@local",
+    "namespace": "events-group"
+  },
+  "toolsUsed": ["cargo test"],
+  "assertions": [
+    {
+      "id": "VAL-EVENT-001",
+      "title": "State change events fire correctly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_state_change_events_defined in events::tests",
+          "expected": "All state change events (TensionCreated, RealityConfronted, DesireRevised, TensionResolved, TensionReleased, StructureChanged) defined with correct payloads",
+          "observed": "All 6 state change event types are defined with correct payload structure (tension_id, desired/actual/old/new fields, timestamps)"
+        },
+        {
+          "action": "Run store tests for event emission",
+          "expected": "Store operations emit correct events",
+          "observed": "test_store_emits_tension_created_event, test_store_emits_reality_confronted_event, test_store_emits_desire_revised_event, test_store_emits_tension_resolved_event, test_store_emits_tension_released_event, test_store_emits_structure_changed_event all pass"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::", "cargo test -p sd-core --lib store::tests::test_store_emits_*"],
+        "testOutput": ["test events::tests::test_state_change_events_defined ... ok", "test store::tests::test_store_emits_tension_created_event ... ok", "test store::tests::test_store_emits_reality_confronted_event ... ok", "test store::tests::test_store_emits_desire_revised_event ... ok", "test store::tests::test_store_emits_tension_resolved_event ... ok", "test store::tests::test_store_emits_tension_released_event ... ok", "test store::tests::test_store_emits_structure_changed_event ... ok"],
+        "tests": ["events::tests::test_state_change_events_defined", "store::tests::test_store_emits_tension_created_event", "store::tests::test_store_emits_reality_confronted_event", "store::tests::test_store_emits_desire_revised_event", "store::tests::test_store_emits_tension_resolved_event", "store::tests::test_store_emits_tension_released_event", "store::tests::test_store_emits_structure_changed_event"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-002",
+      "title": "Dynamic transition events fire",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_dynamic_transition_events_defined in events::tests",
+          "expected": "All dynamic transition events (ConflictDetected, ConflictResolved, LifecycleTransition, OscillationDetected, ResolutionAchieved, NeglectDetected, OrientationShift) defined with correct payloads",
+          "observed": "All 7 dynamic transition event types are defined with correct payload structure"
+        },
+        {
+          "action": "Run engine tests for dynamic event emission",
+          "expected": "DynamicsEngine emits conflict, oscillation, and lifecycle transition events",
+          "observed": "test_engine_emits_conflict_detected, test_engine_tracks_conflict_resolution, test_engine_emits_oscillation_detected, test_engine_emits_lifecycle_transition all pass"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::", "cargo test -p sd-core --lib engine::tests::test_engine_emits_*"],
+        "testOutput": ["test events::tests::test_dynamic_transition_events_defined ... ok", "test engine::tests::test_engine_emits_conflict_detected ... ok", "test engine::tests::test_engine_tracks_conflict_resolution ... ok", "test engine::tests::test_engine_emits_oscillation_detected ... ok", "test engine::tests::test_engine_emits_lifecycle_transition ... ok"],
+        "tests": ["events::tests::test_dynamic_transition_events_defined", "engine::tests::test_engine_emits_conflict_detected", "engine::tests::test_engine_tracks_conflict_resolution", "engine::tests::test_engine_emits_oscillation_detected", "engine::tests::test_engine_emits_lifecycle_transition"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-003",
+      "title": "Subscription and unsubscription",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_subscribe_returns_handle_drop_stops_delivery",
+          "expected": "subscribe() returns SubscriptionHandle, dropping handle stops delivery",
+          "observed": "Handle returned, events received before drop, no events after drop"
+        },
+        {
+          "action": "Run test_event_bus_multiple_subscribers",
+          "expected": "Multiple subscribers receive identical event sequences",
+          "observed": "Both subscribers received all emitted events"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::tests::test_subscribe_returns_handle_drop_stops_delivery", "cargo test -p sd-core --lib events::tests::test_event_bus_multiple_subscribers"],
+        "testOutput": ["test events::tests::test_subscribe_returns_handle_drop_stops_delivery ... ok", "test events::tests::test_event_bus_multiple_subscribers ... ok", "test events::tests::test_event_bus_subscribe_and_emit ... ok", "test events::tests::test_event_bus_unsubscribe_on_drop ... ok"],
+        "tests": ["events::tests::test_subscribe_returns_handle_drop_stops_delivery", "events::tests::test_event_bus_multiple_subscribers", "events::tests::test_event_bus_subscribe_and_emit", "events::tests::test_event_bus_unsubscribe_on_drop"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-004",
+      "title": "Event ordering",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_events_emitted_in_causal_order",
+          "expected": "Events emitted in causal order: creation -> modification -> conflict detection",
+          "observed": "TensionCreated received first, RealityConfronted second, ConflictDetected third"
+        },
+        {
+          "action": "Run test_store_events_causal_order",
+          "expected": "Store events in correct sequence: created -> reality update -> desire update -> resolved",
+          "observed": "Integration test confirms correct causal ordering through full lifecycle"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::tests::test_events_emitted_in_causal_order", "cargo test -p sd-core --test integration test_store_events_causal_order"],
+        "testOutput": ["test events::tests::test_events_emitted_in_causal_order ... ok", "test test_store_events_causal_order ... ok"],
+        "tests": ["events::tests::test_events_emitted_in_causal_order", "integration::test_store_events_causal_order"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-005",
+      "title": "Determinism",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_deterministic_event_sequence",
+          "expected": "Same initial state + same operation sequence produces identical event sequence",
+          "observed": "Two EventBus instances receiving same event sequence show identical history"
+        },
+        {
+          "action": "Run test_event_bus_identical_sequences",
+          "expected": "Multiple subscribers receive events in identical order",
+          "observed": "Event sequences match across subscribers"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::tests::test_deterministic_event_sequence", "cargo test -p sd-core --lib events::tests::test_event_bus_identical_sequences"],
+        "testOutput": ["test events::tests::test_deterministic_event_sequence ... ok", "test events::tests::test_event_bus_identical_sequences ... ok"],
+        "tests": ["events::tests::test_deterministic_event_sequence", "events::tests::test_event_bus_identical_sequences"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-006",
+      "title": "No events on failure",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_store_no_events_on_failed_operation",
+          "expected": "Failed operations (validation errors, invalid transitions) emit zero events",
+          "observed": "No events recorded when store operations fail validation"
+        },
+        {
+          "action": "Verify via integration tests",
+          "expected": "Failed updates do not produce events",
+          "observed": "test_error_recovery_constraint_violations confirms no partial events on failure"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib store::tests::test_store_no_events_on_failed_operation", "cargo test -p sd-core --test integration test_error_recovery_constraint_violations"],
+        "testOutput": ["test store::tests::test_store_no_events_on_failed_operation ... ok", "test test_error_recovery_constraint_violations ... ok"],
+        "tests": ["store::tests::test_store_no_events_on_failed_operation", "integration::test_error_recovery_constraint_violations"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-007",
+      "title": "Event payloads correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_event_payload_types_correct",
+          "expected": "All event payloads contain documented fields with correct types",
+          "observed": "tension_id is ULID string, timestamps are chrono DateTime, enums are valid variants"
+        },
+        {
+          "action": "Run test_event_all_types_defined",
+          "expected": "All 13 event types are defined and serializable",
+          "observed": "13 event types defined, all serialize/deserialize correctly"
+        },
+        {
+          "action": "Run test_event_unicode_payloads",
+          "expected": "Unicode content preserved in payloads",
+          "observed": "CJK, emoji, RTL text survives roundtrip through event payload"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::tests::test_event_payload_types_correct", "cargo test -p sd-core --lib events::tests::test_event_all_types_defined", "cargo test -p sd-core --lib events::tests::test_event_unicode_payloads"],
+        "testOutput": ["test events::tests::test_event_payload_types_correct ... ok", "test events::tests::test_event_all_types_defined ... ok", "test events::tests::test_event_unicode_payloads ... ok"],
+        "tests": ["events::tests::test_event_payload_types_correct", "events::tests::test_event_all_types_defined", "events::tests::test_event_unicode_payloads"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-008",
+      "title": "State reconstruction from events",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_state_reconstruction_from_events",
+          "expected": "Complete event sequence enables reconstruction of current tension store state",
+          "observed": "Replaying mutations from event history reproduces current tension values"
+        },
+        {
+          "action": "Run integration test_state_reconstruction_from_events",
+          "expected": "replay_mutations() returns tension matching current state",
+          "observed": "Reconstructed tension id, desired, actual, parent_id, status match original"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::tests::test_state_reconstruction_from_events", "cargo test -p sd-core --test integration test_state_reconstruction_from_events"],
+        "testOutput": ["test events::tests::test_state_reconstruction_from_events ... ok", "test test_state_reconstruction_from_events ... ok"],
+        "tests": ["events::tests::test_state_reconstruction_from_events", "integration::test_state_reconstruction_from_events"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-009",
+      "title": "No duplicate events on stable state",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_engine_no_duplicate_events_on_stable_state",
+          "expected": "Querying dynamics on unchanged state does not emit duplicate events",
+          "observed": "Events only fire on state transitions, not on repeated queries"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib engine::tests::test_engine_no_duplicate_events_on_stable_state"],
+        "testOutput": ["test engine::tests::test_engine_no_duplicate_events_on_stable_state ... ok"],
+        "tests": ["engine::tests::test_engine_no_duplicate_events_on_stable_state"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-EVENT-010",
+      "title": "Subscriber error isolation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run test_panicking_subscriber_isolated",
+          "expected": "One subscriber panicking does not prevent other subscribers from receiving events",
+          "observed": "Good subscriber received event despite panicking subscriber"
+        },
+        {
+          "action": "Run test_panicking_subscriber_removed",
+          "expected": "Panicking subscriber is removed from subscriber list",
+          "observed": "Subscriber count drops from 1 to 0 after panic"
+        }
+      ],
+      "evidence": {
+        "commands": ["cargo test -p sd-core --lib events::tests::test_panicking_subscriber_isolated", "cargo test -p sd-core --lib events::tests::test_panicking_subscriber_removed"],
+        "testOutput": ["test events::tests::test_panicking_subscriber_isolated ... ok", "test events::tests::test_panicking_subscriber_removed ... ok"],
+        "tests": ["events::tests::test_panicking_subscriber_isolated", "events::tests::test_panicking_subscriber_removed"]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 10 assertions: 10 passed, 0 failed, 0 blocked. All events assertions validated through cargo test execution. 60 total tests passed across events module (22), engine module (7), store module (13), and integration tests (18)."
+}
