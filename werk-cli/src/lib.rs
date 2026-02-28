@@ -6,11 +6,13 @@
 // Built on sd-core. Maximally opinionated.
 
 pub mod commands;
+pub mod editor;
 pub mod error;
 pub mod output;
 pub mod prefix;
 pub mod workspace;
 
+pub use editor::edit_content;
 pub use error::WerkError;
 pub use output::Output;
 pub use prefix::PrefixResolver;

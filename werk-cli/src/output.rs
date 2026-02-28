@@ -125,6 +125,21 @@ impl Output {
         Ok(())
     }
 
+    /// Print an info message to stdout.
+    pub fn info(&self, message: &str) -> io::Result<()> {
+        if self.is_json() {
+            let output = serde_json::json!({
+                "info": message
+            });
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        } else if self.use_color {
+            println!("{} {}", "i".blue(), message);
+        } else {
+            println!("i {}", message);
+        }
+        Ok(())
+    }
+
     /// Print a styled string (only when colors are enabled).
     pub fn styled(&self, text: &str, style: ColorStyle) -> String {
         if !self.use_color {

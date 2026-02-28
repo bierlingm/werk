@@ -18,6 +18,7 @@ toml = "0.8"
 owo-colors = "4"
 thiserror = "2"
 dirs = "6"
+ulid = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

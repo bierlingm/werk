@@ -377,18 +377,200 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
     Ok(())
 }
 
-fn cmd_reality(output: &Output, _id: String, _value: Option<String>) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: reality command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for reality command.
+    #[derive(Serialize)]
+    struct RealityResult {
+        id: String,
+        actual: String,
+        old_actual: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Get the new value - either from argument or editor
+    let new_value = match value {
+        Some(v) => v,
+        None => {
+            // Open editor with current actual
+            let edited = werk::edit_content(&tension.actual)?;
+            match edited {
+                Some(v) => v,
+                None => {
+                    // Editor returned no change - nothing to do
+                    if output.is_json() {
+                        let result = RealityResult {
+                            id: tension.id.clone(),
+                            actual: tension.actual.clone(),
+                            old_actual: tension.actual.clone(),
+                        };
+                        let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                            WerkError::IoError(format!("failed to serialize JSON: {}", e))
+                        })?;
+                        println!("{}", json);
+                    } else {
+                        output
+                            .info("No changes made (editor cancelled or content unchanged)")
+                            .map_err(|e| WerkError::IoError(e.to_string()))?;
+                    }
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    // Validate non-empty
+    if new_value.is_empty() {
+        return Err(WerkError::InvalidInput(
+            "actual state cannot be empty".to_string(),
+        ));
+    }
+
+    // Record old value for output
+    let old_actual = tension.actual.clone();
+
+    // Update via store (this handles status validation and mutation recording)
+    store
+        .update_actual(&tension.id, &new_value)
+        .map_err(WerkError::SdError)?;
+
+    let result = RealityResult {
+        id: tension.id.clone(),
+        actual: new_value,
+        old_actual,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+        output
+            .success(&format!("Updated actual for tension {}", id_styled))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!(
+            "  Old:  {}",
+            output.styled(&result.old_actual, werk::output::ColorStyle::Muted)
+        );
+        println!(
+            "  New:  {}",
+            output.styled(&result.actual, werk::output::ColorStyle::Highlight)
+        );
+    }
+
+    Ok(())
 }
 
-fn cmd_desire(output: &Output, _id: String, _value: Option<String>) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: desire command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for desire command.
+    #[derive(Serialize)]
+    struct DesireResult {
+        id: String,
+        desired: String,
+        old_desired: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    // Get the new value - either from argument or editor
+    let new_value = match value {
+        Some(v) => v,
+        None => {
+            // Open editor with current desired
+            let edited = werk::edit_content(&tension.desired)?;
+            match edited {
+                Some(v) => v,
+                None => {
+                    // Editor returned no change - nothing to do
+                    if output.is_json() {
+                        let result = DesireResult {
+                            id: tension.id.clone(),
+                            desired: tension.desired.clone(),
+                            old_desired: tension.desired.clone(),
+                        };
+                        let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                            WerkError::IoError(format!("failed to serialize JSON: {}", e))
+                        })?;
+                        println!("{}", json);
+                    } else {
+                        output
+                            .info("No changes made (editor cancelled or content unchanged)")
+                            .map_err(|e| WerkError::IoError(e.to_string()))?;
+                    }
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    // Validate non-empty
+    if new_value.is_empty() {
+        return Err(WerkError::InvalidInput(
+            "desired state cannot be empty".to_string(),
+        ));
+    }
+
+    // Record old value for output
+    let old_desired = tension.desired.clone();
+
+    // Update via store (this handles status validation and mutation recording)
+    store
+        .update_desired(&tension.id, &new_value)
+        .map_err(WerkError::SdError)?;
+
+    let result = DesireResult {
+        id: tension.id.clone(),
+        desired: new_value,
+        old_desired,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+        output
+            .success(&format!("Updated desired for tension {}", id_styled))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!(
+            "  Old:  {}",
+            output.styled(&result.old_desired, werk::output::ColorStyle::Muted)
+        );
+        println!(
+            "  New:  {}",
+            output.styled(&result.desired, werk::output::ColorStyle::Highlight)
+        );
+    }
+
+    Ok(())
 }
 
 fn cmd_resolve(output: &Output, _id: String) -> Result<(), WerkError> {
