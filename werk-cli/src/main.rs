@@ -63,6 +63,7 @@ fn main() {
         } => cmd_tree(&output, open, all, resolved, released),
         Commands::Context { id } => cmd_context(&output, id),
         Commands::Run { id, command } => cmd_run(&output, id, command),
+        Commands::Nuke { confirm, global } => cmd_nuke(&output, confirm, global),
     };
 
     match result {
@@ -3055,6 +3056,92 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
     // If not successful, exit with the subprocess exit code
     if !exit_status.success() {
         std::process::exit(exit_code);
+    }
+
+    Ok(())
+}
+
+fn cmd_nuke(output: &Output, confirm: bool, global: bool) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use std::path::PathBuf;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for nuke command.
+    #[derive(Serialize)]
+    struct NukeResult {
+        path: String,
+        deleted: bool,
+    }
+
+    // Determine target path
+    let werk_dir: PathBuf = if global {
+        let home = dirs::home_dir()
+            .ok_or_else(|| WerkError::IoError("cannot determine home directory".to_string()))?;
+        home.join(".werk")
+    } else {
+        // Try to discover workspace first
+        match Workspace::discover() {
+            Ok(ws) => ws.werk_dir().to_path_buf(),
+            Err(_) => {
+                // If no workspace found, use current directory's .werk
+                let cwd = std::env::current_dir().map_err(|e| {
+                    WerkError::IoError(format!("failed to get current directory: {}", e))
+                })?;
+                cwd.join(".werk")
+            }
+        }
+    };
+
+    // Check if the directory exists
+    if !werk_dir.exists() {
+        return Err(WerkError::InvalidInput(format!(
+            "No .werk directory found at {}",
+            werk_dir.display()
+        )));
+    }
+
+    // If not confirmed, just show what would be deleted
+    if !confirm {
+        if output.is_json() {
+            let result = NukeResult {
+                path: werk_dir.to_string_lossy().to_string(),
+                deleted: false,
+            };
+            let json = serde_json::to_string_pretty(&result)
+                .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+            println!("{}", json);
+        } else {
+            output
+                .info(&format!("Would delete: {}", werk_dir.display()))
+                .map_err(|e| WerkError::IoError(e.to_string()))?;
+            println!("\nPass --confirm to proceed with deletion.");
+            println!("All data in this workspace will be permanently lost.");
+        }
+        return Ok(());
+    }
+
+    // Delete the entire .werk directory
+    std::fs::remove_dir_all(&werk_dir).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            WerkError::PermissionDenied(format!("{}", werk_dir.display()))
+        } else {
+            WerkError::IoError(format!("failed to delete {}: {}", werk_dir.display(), e))
+        }
+    })?;
+
+    let result = NukeResult {
+        path: werk_dir.to_string_lossy().to_string(),
+        deleted: true,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        output
+            .success(&format!("Deleted workspace: {}", werk_dir.display()))
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
     }
 
     Ok(())

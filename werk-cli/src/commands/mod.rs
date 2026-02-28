@@ -143,6 +143,17 @@ pub enum Commands {
         #[arg(trailing_var_arg = true)]
         command: Vec<String>,
     },
+
+    /// Destroy the current workspace (deletes the .werk/ directory).
+    Nuke {
+        /// Confirm deletion (required for safety).
+        #[arg(short = 'y', long)]
+        confirm: bool,
+
+        /// Nuke the global workspace (~/.werk/) instead of local.
+        #[arg(short, long)]
+        global: bool,
+    },
 }
 
 /// Config subcommands.
