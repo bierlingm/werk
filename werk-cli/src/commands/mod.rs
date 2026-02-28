@@ -85,7 +85,6 @@ pub enum Commands {
     },
 
     /// Reparent a tension to a new parent.
-    #[command(name = "mv")]
     Move {
         /// Tension ID or prefix.
         id: String,
@@ -97,11 +96,12 @@ pub enum Commands {
 
     /// Attach a narrative annotation to a tension.
     Note {
-        /// Tension ID or prefix (omit for workspace-level note).
-        id: Option<String>,
-
         /// Note text.
         text: String,
+
+        /// Tension ID or prefix (omit for workspace-level note).
+        #[arg(short, long)]
+        id: Option<String>,
     },
 
     /// Display the tension forest as a tree.

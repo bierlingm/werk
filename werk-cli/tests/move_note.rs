@@ -1,0 +1,764 @@
+//! Integration tests for `werk move` and `werk note` commands.
+//!
+//! Tests verify:
+//! - VAL-CRUD-019: Move reparents tension
+//! - VAL-CRUD-020: Move without --parent makes tension a root
+//! - VAL-CRUD-021: Move prevents cycles
+//! - VAL-CRUD-022: Note adds annotation mutation
+//! - VAL-CRUD-023: Note works on resolved/released tensions
+//! - VAL-CRUD-024: General note without tension ID
+
+use assert_cmd::Command;
+use predicates::prelude::*;
+use tempfile::TempDir;
+
+// =============================================================================
+// MOVE command tests
+// =============================================================================
+
+/// VAL-CRUD-019: `werk move <id> --parent <new-parent>` changes parent_id
+#[test]
+fn test_move_to_new_parent() {
+    let dir = TempDir::new().unwrap();
+
+    // Initialize workspace
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create parent and child
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store
+        .create_tension("parent goal", "parent reality")
+        .unwrap();
+    let child = store.create_tension("child goal", "child reality").unwrap();
+    let child_id = child.id.clone();
+
+    // Move child under parent
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&child_id)
+        .arg("--parent")
+        .arg(&parent.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Moved").or(predicate::str::contains("moved")));
+
+    // Verify parent changed
+    let updated = store.get_tension(&child_id).unwrap().unwrap();
+    assert_eq!(updated.parent_id, Some(parent.id));
+}
+
+/// VAL-CRUD-019: Move works with ID prefix
+#[test]
+fn test_move_with_prefix() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store.create_tension("parent", "p").unwrap();
+    // Small delay to ensure different ULID prefix
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    let child = store.create_tension("child", "c").unwrap();
+
+    // Use longer prefixes to ensure uniqueness
+    let child_prefix = &child.id[..10];
+    let parent_prefix = &parent.id[..10];
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(child_prefix)
+        .arg("--parent")
+        .arg(parent_prefix)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let updated = store.get_tension(&child.id).unwrap().unwrap();
+    assert_eq!(updated.parent_id, Some(parent.id));
+}
+
+/// VAL-CRUD-020: Move without --parent makes tension a root
+#[test]
+fn test_move_to_root() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create parent with child
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store.create_tension("parent", "p").unwrap();
+    let child = store
+        .create_tension_with_parent("child", "c", Some(parent.id.clone()))
+        .unwrap();
+
+    // Move child to root (no --parent)
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&child.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Child should now be root
+    let updated = store.get_tension(&child.id).unwrap().unwrap();
+    assert!(updated.parent_id.is_none());
+}
+
+/// VAL-CRUD-021: Move prevents cycles (moving ancestor under descendant)
+#[test]
+fn test_move_prevents_cycle() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Create A -> B -> C chain
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let a = store.create_tension("A", "a").unwrap();
+    let b = store
+        .create_tension_with_parent("B", "b", Some(a.id.clone()))
+        .unwrap();
+    let c = store
+        .create_tension_with_parent("C", "c", Some(b.id.clone()))
+        .unwrap();
+
+    // Try to move A under C (would create cycle)
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&a.id)
+        .arg("--parent")
+        .arg(&c.id)
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("cycle")
+                .or(predicate::str::contains("descendant"))
+                .or(predicate::str::contains("circular")),
+        );
+
+    // A should still have no parent
+    let a_after = store.get_tension(&a.id).unwrap().unwrap();
+    assert!(a_after.parent_id.is_none());
+}
+
+/// VAL-CRUD-021: Move prevents moving to self
+#[test]
+fn test_move_to_self_fails() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&tension.id)
+        .arg("--parent")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("self")
+                .or(predicate::str::contains("cycle"))
+                .or(predicate::str::contains("descendant")),
+        );
+}
+
+/// Move to non-existent parent fails
+#[test]
+fn test_move_to_nonexistent_parent() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let child = store.create_tension("child", "c").unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&child.id)
+        .arg("--parent")
+        .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+/// Move records mutation
+#[test]
+fn test_move_records_mutation() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store.create_tension("parent", "p").unwrap();
+    let child = store.create_tension("child", "c").unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&child.id)
+        .arg("--parent")
+        .arg(&parent.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Verify mutation was recorded
+    let mutations = store.get_mutations(&child.id).unwrap();
+    let parent_mutation = mutations.iter().find(|m| m.field() == "parent_id");
+    assert!(parent_mutation.is_some());
+    // The old value should be empty (was None) and new value should be parent id
+    let mutation = parent_mutation.unwrap();
+    assert!(mutation.old_value().is_none() || mutation.old_value() == Some(""));
+    assert_eq!(mutation.new_value(), parent.id);
+}
+
+/// --json flag produces valid JSON for move
+#[test]
+fn test_move_json_output() {
+    use serde_json::Value;
+
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store.create_tension("parent", "p").unwrap();
+    let child = store.create_tension("child", "c").unwrap();
+
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("--json")
+        .arg("move")
+        .arg(&child.id)
+        .arg("--parent")
+        .arg(&parent.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    assert!(json.get("id").is_some(), "JSON should have 'id' field");
+    assert!(
+        json.get("parent_id").is_some(),
+        "JSON should have 'parent_id' field"
+    );
+}
+
+/// Move nonexistent tension fails
+#[test]
+fn test_move_not_found() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+// =============================================================================
+// NOTE command tests
+// =============================================================================
+
+/// VAL-CRUD-022: `werk note 'text' --id <id>` creates note mutation
+#[test]
+fn test_note_on_tension() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("met with team to discuss approach")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Note").or(predicate::str::contains("note")));
+
+    // Verify mutation was recorded
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    let note_mutation = mutations.iter().find(|m| m.field() == "note");
+    assert!(note_mutation.is_some());
+    assert_eq!(
+        note_mutation.unwrap().new_value(),
+        "met with team to discuss approach"
+    );
+}
+
+/// VAL-CRUD-022: Note works with ID prefix
+#[test]
+fn test_note_with_prefix() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+    let prefix = &tension.id[..6];
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("test note")
+        .arg("--id")
+        .arg(prefix)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    assert!(mutations.iter().any(|m| m.field() == "note"));
+}
+
+/// VAL-CRUD-023: Note works on resolved tensions
+#[test]
+fn test_note_on_resolved_tension() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Resolve the tension first
+    store
+        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
+        .unwrap();
+
+    // Note should still work on resolved tension
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("post-resolution reflection")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    assert!(mutations.iter().any(|m| m.field() == "note"));
+}
+
+/// VAL-CRUD-023: Note works on released tensions
+#[test]
+fn test_note_on_released_tension() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Release the tension first
+    store
+        .update_status(&tension.id, sd_core::TensionStatus::Released)
+        .unwrap();
+
+    // Note should still work on released tension
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("why we abandoned this")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    assert!(mutations.iter().any(|m| m.field() == "note"));
+}
+
+/// VAL-CRUD-024: `werk note 'text'` (no ID) creates workspace-level note
+#[test]
+fn test_general_note_without_id() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Note without ID should create workspace-level note
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("general workspace observation")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // The workspace should have a way to store general notes
+    // For now, we verify the command succeeds
+    // (Implementation uses a special sentinel tension or separate mechanism)
+}
+
+/// Note on nonexistent tension fails
+#[test]
+fn test_note_not_found() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("some note")
+        .arg("--id")
+        .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+/// --json flag produces valid JSON for note
+#[test]
+fn test_note_json_output() {
+    use serde_json::Value;
+
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("--json")
+        .arg("note")
+        .arg("test note content")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    assert!(json.get("id").is_some(), "JSON should have 'id' field");
+    assert!(json.get("note").is_some(), "JSON should have 'note' field");
+}
+
+/// Note with unicode content
+#[test]
+fn test_note_unicode() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("Unicode: 写小说 🎵 compose 音楽")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    let note_mutation = mutations.iter().find(|m| m.field() == "note");
+    assert_eq!(
+        note_mutation.unwrap().new_value(),
+        "Unicode: 写小说 🎵 compose 音楽"
+    );
+}
+
+/// --json for general note
+#[test]
+fn test_general_note_json_output() {
+    use serde_json::Value;
+
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("werk")
+        .unwrap()
+        .arg("--json")
+        .arg("note")
+        .arg("workspace-level note")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    assert!(json.get("note").is_some(), "JSON should have 'note' field");
+}
+
+// =============================================================================
+// Cross-cutting tests
+// =============================================================================
+
+/// Commands require workspace
+#[test]
+fn test_move_requires_workspace() {
+    let dir = TempDir::new().unwrap();
+    let home = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg("SOMEID")
+        .env("HOME", home.path())
+        .current_dir(dir.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_note_requires_workspace() {
+    let dir = TempDir::new().unwrap();
+    let home = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("text")
+        .env("HOME", home.path())
+        .current_dir(dir.path())
+        .assert()
+        .failure();
+}
+
+/// Multiple notes can be added to same tension
+#[test]
+fn test_multiple_notes() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Add first note
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("first note")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Add second note
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("note")
+        .arg("second note")
+        .arg("--id")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    let notes: Vec<_> = mutations.iter().filter(|m| m.field() == "note").collect();
+    assert_eq!(notes.len(), 2);
+}
+
+/// Move preserves children
+#[test]
+fn test_move_preserves_children() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent = store.create_tension("parent", "p").unwrap();
+    let child = store.create_tension("child", "c").unwrap();
+    let grandchild = store
+        .create_tension_with_parent("grandchild", "gc", Some(child.id.clone()))
+        .unwrap();
+
+    // Move child under parent
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&child.id)
+        .arg("--parent")
+        .arg(&parent.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Grandchild should still have child as parent
+    let gc_after = store.get_tension(&grandchild.id).unwrap().unwrap();
+    assert_eq!(gc_after.parent_id, Some(child.id));
+}
+
+/// Re-parenting from one parent to another
+#[test]
+fn test_move_between_parents() {
+    let dir = TempDir::new().unwrap();
+
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let parent1 = store.create_tension("parent1", "p1").unwrap();
+    let parent2 = store.create_tension("parent2", "p2").unwrap();
+    let child = store
+        .create_tension_with_parent("child", "c", Some(parent1.id.clone()))
+        .unwrap();
+
+    // Move from parent1 to parent2
+    Command::cargo_bin("werk")
+        .unwrap()
+        .arg("move")
+        .arg(&child.id)
+        .arg("--parent")
+        .arg(&parent2.id)
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let child_after = store.get_tension(&child.id).unwrap().unwrap();
+    assert_eq!(child_after.parent_id, Some(parent2.id));
+}

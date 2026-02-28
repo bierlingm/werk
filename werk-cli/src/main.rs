@@ -53,7 +53,7 @@ fn main() {
         Commands::Release { id, reason } => cmd_release(&output, id, reason),
         Commands::Rm { id } => cmd_rm(&output, id),
         Commands::Move { id, parent } => cmd_move(&output, id, parent),
-        Commands::Note { id, text } => cmd_note(&output, id, text),
+        Commands::Note { text, id } => cmd_note(&output, id, text),
         Commands::Tree {
             open,
             all,
@@ -773,18 +773,192 @@ fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     Ok(())
 }
 
-fn cmd_move(output: &Output, _id: String, _parent: Option<String>) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: move command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(), WerkError> {
+    use sd_core::Forest;
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for move command.
+    #[derive(Serialize)]
+    struct MoveResult {
+        id: String,
+        parent_id: Option<String>,
+        old_parent_id: Option<String>,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution and forest building
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions.clone());
+
+    // Resolve the tension to move
+    let tension = resolver.resolve(&id)?;
+    let tension_id = tension.id.clone();
+    let old_parent_id = tension.parent_id.clone();
+
+    // Resolve the new parent if provided
+    let new_parent_id = if let Some(parent_prefix) = parent {
+        // Prevent moving to self
+        let parent_tension = resolver.resolve(&parent_prefix)?;
+        if parent_tension.id == tension_id {
+            return Err(WerkError::InvalidInput(
+                "cannot move tension to itself".to_string(),
+            ));
+        }
+
+        // Check for cycles: new parent cannot be a descendant of the tension being moved
+        let forest = Forest::from_tensions(tensions.clone())
+            .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
+
+        if let Some(descendants) = forest.descendants(&tension_id) {
+            let descendant_ids: std::collections::HashSet<_> =
+                descendants.iter().map(|n| n.id()).collect();
+
+            if descendant_ids.contains(parent_tension.id.as_str()) {
+                return Err(WerkError::InvalidInput(
+                    "cannot move tension under its descendant (would create cycle)".to_string(),
+                ));
+            }
+        }
+
+        Some(parent_tension.id.clone())
+    } else {
+        None
+    };
+
+    // Perform the move via store
+    store
+        .update_parent(&tension_id, new_parent_id.as_deref())
+        .map_err(WerkError::SdError)?;
+
+    let result = MoveResult {
+        id: tension_id.clone(),
+        parent_id: new_parent_id.clone(),
+        old_parent_id,
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        let id_styled = output.styled(&tension_id, werk::output::ColorStyle::Id);
+        match &new_parent_id {
+            Some(pid) => {
+                output
+                    .success(&format!(
+                        "Moved tension {} under {}",
+                        id_styled,
+                        output.styled(pid, werk::output::ColorStyle::Id)
+                    ))
+                    .map_err(|e| WerkError::IoError(e.to_string()))?;
+            }
+            None => {
+                output
+                    .success(&format!("Moved tension {} to root", id_styled))
+                    .map_err(|e| WerkError::IoError(e.to_string()))?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
-fn cmd_note(output: &Output, _id: Option<String>, _text: String) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: note command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_note(output: &Output, id: Option<String>, text: String) -> Result<(), WerkError> {
+    use chrono::Utc;
+    use sd_core::Mutation;
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for note command.
+    #[derive(Serialize)]
+    struct NoteResult {
+        id: Option<String>,
+        note: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    let result = match id {
+        Some(id_prefix) => {
+            // Note on specific tension
+            let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+            let resolver = werk::prefix::PrefixResolver::new(tensions);
+            let tension = resolver.resolve(&id_prefix)?;
+
+            // Record note mutation (notes work on any status, no validation needed)
+            store
+                .record_mutation(&Mutation::new(
+                    tension.id.clone(),
+                    Utc::now(),
+                    "note".to_owned(),
+                    None,
+                    text.clone(),
+                ))
+                .map_err(WerkError::SdError)?;
+
+            NoteResult {
+                id: Some(tension.id.clone()),
+                note: text.clone(),
+            }
+        }
+        None => {
+            // General workspace note - store as mutation on a sentinel ID
+            // The sentinel is not a real tension but serves as an anchor for workspace-level notes
+            const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
+
+            // Record note mutation on the sentinel
+            store
+                .record_mutation(&Mutation::new(
+                    WORKSPACE_NOTE_TENSION_ID.to_owned(),
+                    Utc::now(),
+                    "note".to_owned(),
+                    None,
+                    text.clone(),
+                ))
+                .map_err(WerkError::SdError)?;
+
+            NoteResult {
+                id: None,
+                note: text.clone(),
+            }
+        }
+    };
+
+    if output.is_json() {
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        match &result.id {
+            Some(tid) => {
+                output
+                    .success(&format!(
+                        "Added note to tension {}",
+                        output.styled(tid, werk::output::ColorStyle::Id)
+                    ))
+                    .map_err(|e| WerkError::IoError(e.to_string()))?;
+            }
+            None => {
+                output
+                    .success("Added workspace note")
+                    .map_err(|e| WerkError::IoError(e.to_string()))?;
+            }
+        }
+        println!(
+            "  Note: {}",
+            output.styled(&text, werk::output::ColorStyle::Muted)
+        );
+    }
+
+    Ok(())
 }
 
 fn cmd_tree(

@@ -52,7 +52,7 @@ fn test_werk_help_lists_all_subcommands() {
         .stdout(predicate::str::contains("resolve"))
         .stdout(predicate::str::contains("release"))
         .stdout(predicate::str::contains("rm"))
-        .stdout(predicate::str::contains("mv"))
+        .stdout(predicate::str::contains("move"))
         .stdout(predicate::str::contains("note"))
         // Display commands
         .stdout(predicate::str::contains("tree"))
