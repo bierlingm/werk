@@ -350,9 +350,8 @@ fn test_discovery_note_from_subdirectory() {
     Command::cargo_bin("werk")
         .unwrap()
         .arg("note")
-        .arg("note added from subdirectory")
-        .arg("--id")
         .arg(prefix)
+        .arg("note added from subdirectory")
         .current_dir(&subdir)
         .assert()
         .success();
@@ -967,9 +966,8 @@ fn test_prefix_consistency_across_commands() {
     Command::cargo_bin("werk")
         .unwrap()
         .arg("note")
-        .arg("test note")
-        .arg("--id")
         .arg(prefix)
+        .arg("test note")
         .current_dir(dir.path())
         .assert()
         .success();

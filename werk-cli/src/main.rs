@@ -53,7 +53,8 @@ fn main() {
         Commands::Release { id, reason } => cmd_release(&output, id, reason),
         Commands::Rm { id } => cmd_rm(&output, id),
         Commands::Move { id, parent } => cmd_move(&output, id, parent),
-        Commands::Note { text, id } => cmd_note(&output, id, text),
+        Commands::Note { arg1, arg2 } => cmd_note(&output, arg1, arg2),
+        Commands::Notes => cmd_notes(&output),
         Commands::Tree {
             open,
             all,
@@ -977,7 +978,7 @@ fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(), W
     Ok(())
 }
 
-fn cmd_note(output: &Output, id: Option<String>, text: String) -> Result<(), WerkError> {
+fn cmd_note(output: &Output, arg1: Option<String>, arg2: Option<String>) -> Result<(), WerkError> {
     use chrono::Utc;
     use sd_core::Mutation;
     use serde::Serialize;
@@ -989,6 +990,27 @@ fn cmd_note(output: &Output, id: Option<String>, text: String) -> Result<(), Wer
         id: Option<String>,
         note: String,
     }
+
+    // Parse arguments: determine ID and text
+    let (id, text) = match (arg1, arg2) {
+        (None, None) => {
+            return Err(WerkError::InvalidInput(
+                "note text is required: werk note <text> or werk note <id> <text>".to_string(),
+            ));
+        }
+        (Some(text), None) => {
+            // Single argument: treat as workspace note
+            (None, text)
+        }
+        (Some(id), Some(text)) => {
+            // Two arguments: first is ID, second is text
+            (Some(id), text)
+        }
+        (None, Some(_)) => {
+            // This shouldn't happen with clap, but handle it
+            unreachable!("arg2 without arg1")
+        }
+    };
 
     // Discover workspace
     let workspace = Workspace::discover()?;
@@ -1065,6 +1087,78 @@ fn cmd_note(output: &Output, id: Option<String>, text: String) -> Result<(), Wer
             "  Note: {}",
             output.styled(&text, werk::output::ColorStyle::Muted)
         );
+    }
+
+    Ok(())
+}
+
+fn cmd_notes(output: &Output) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for notes command.
+    #[derive(Serialize)]
+    struct NotesResult {
+        notes: Vec<NoteInfo>,
+    }
+
+    /// Note information for display.
+    #[derive(Serialize)]
+    struct NoteInfo {
+        timestamp: String,
+        text: String,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get workspace-level notes (mutations on the WORKSPACE_NOTES sentinel)
+    const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
+    let mutations = store
+        .get_mutations(WORKSPACE_NOTE_TENSION_ID)
+        .map_err(WerkError::StoreError)?;
+
+    // Filter for note mutations only
+    let notes: Vec<NoteInfo> = mutations
+        .into_iter()
+        .filter(|m| m.field() == "note")
+        .map(|m| NoteInfo {
+            timestamp: m.timestamp().to_rfc3339(),
+            text: m.new_value().to_owned(),
+        })
+        .collect();
+
+    if output.is_json() {
+        let result = NotesResult { notes };
+        let json = serde_json::to_string_pretty(&result)
+            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+        println!("{}", json);
+    } else {
+        // Human-readable output
+        if notes.is_empty() {
+            output
+                .info("No workspace notes")
+                .map_err(|e| WerkError::IoError(e.to_string()))?;
+        } else {
+            output
+                .success(&format!("Workspace notes ({})", notes.len()))
+                .map_err(|e| WerkError::IoError(e.to_string()))?;
+            for (i, note) in notes.iter().enumerate() {
+                println!(
+                    "\n{}. {}",
+                    i + 1,
+                    output.styled(&note.text, werk::output::ColorStyle::Highlight)
+                );
+                println!(
+                    "   {}",
+                    output.styled(
+                        &note.timestamp[..19].replace('T', " "),
+                        werk::output::ColorStyle::Muted
+                    )
+                );
+            }
+        }
     }
 
     Ok(())

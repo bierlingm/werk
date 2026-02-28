@@ -97,14 +97,17 @@ pub enum Commands {
     },
 
     /// Attach a narrative annotation to a tension.
+    /// Usage: `werk note <text>` for workspace note, or `werk note <id> <text>` for tension note.
     Note {
-        /// Note text.
-        text: String,
+        /// First argument: either tension ID/prefix (if second arg present) or note text.
+        arg1: Option<String>,
 
-        /// Tension ID or prefix (omit for workspace-level note).
-        #[arg(short, long)]
-        id: Option<String>,
+        /// Second argument: note text (when first arg is ID).
+        arg2: Option<String>,
     },
+
+    /// List all workspace-level notes.
+    Notes,
 
     /// Display the tension forest as a tree.
     Tree {
@@ -117,11 +120,11 @@ pub enum Commands {
         all: bool,
 
         /// Show only resolved tensions.
-        #[arg(short, long)]
+        #[arg(long)]
         resolved: bool,
 
         /// Show only released tensions.
-        #[arg(short, long)]
+        #[arg(long)]
         released: bool,
     },
 
