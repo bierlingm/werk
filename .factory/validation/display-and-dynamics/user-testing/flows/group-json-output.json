@@ -1,0 +1,216 @@
+{
+  "groupId": "json-output",
+  "testedAt": "2026-02-28T18:01:00Z",
+  "credentials": {
+    "account": "cli-validator-g3@example.test",
+    "namespace": "/tmp/werk-display-dyn-g3-json"
+  },
+  "toolsUsed": ["direct CLI execution"],
+  "assertions": [
+    {
+      "id": "VAL-JSON-001",
+      "title": "--json on tree produces valid JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create parent and child tensions",
+          "expected": "Tensions created successfully",
+          "observed": "Parent (01KJJPGAXFZBE4A4ADBNSJ91M9) and child (01KJJPGET7ZGKBVKMG9JET4JGY) created"
+        },
+        {
+          "action": "Run 'werk tree --json | jq .'",
+          "expected": "Parses successfully as valid JSON",
+          "observed": "JSON parsed successfully, structure contains 'summary' and 'tensions' keys"
+        }
+      ],
+      "evidence": {
+        "stdout": "{\"summary\": {...}, \"tensions\": [...]}",
+        "exitCode": 0,
+        "jsonStructure": {
+          "rootKeys": ["summary", "tensions"],
+          "tensionsArray": true
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JSON-002",
+      "title": "--json on show produces valid JSON with dynamics",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk show <id> --json' on existing tension",
+          "expected": "Valid JSON with tension fields, all 10 dynamics, mutations array",
+          "observed": "JSON contains id, desired, actual, status, parent_id, created_at, dynamics (10 fields), mutations array, and children"
+        },
+        {
+          "action": "Verify all 10 dynamics are present",
+          "expected": "All 10 dynamics keys exist",
+          "observed": "structural_tension, structural_conflict, oscillation, resolution, phase, orientation, compensating_strategy, structural_tendency, assimilation_depth, neglect all present"
+        }
+      ],
+      "evidence": {
+        "stdout": "{\"id\": \"...\", \"dynamics\": {...}, \"mutations\": [...], \"children\": [...]}",
+        "exitCode": 0,
+        "dynamicsCount": 10,
+        "dynamicsKeys": [
+          "structural_tension",
+          "structural_conflict",
+          "oscillation",
+          "resolution",
+          "phase",
+          "orientation",
+          "compensating_strategy",
+          "structural_tendency",
+          "assimilation_depth",
+          "neglect"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JSON-003",
+      "title": "--json on CRUD commands produces valid JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk add ... --json'",
+          "expected": "Valid JSON output with tension data",
+          "observed": "Returns {id, desired, actual, status, parent_id} - valid JSON"
+        },
+        {
+          "action": "Run 'werk reality <id> <value> --json'",
+          "expected": "Valid JSON output with updated actual",
+          "observed": "Returns {id, actual, old_actual} - valid JSON"
+        },
+        {
+          "action": "Run 'werk desire <id> <value> --json'",
+          "expected": "Valid JSON output with updated desired",
+          "observed": "Returns {id, desired, old_desired} - valid JSON"
+        },
+        {
+          "action": "Run 'werk resolve <id> --json'",
+          "expected": "Valid JSON output with updated status",
+          "observed": "Returns {id, status} - valid JSON"
+        }
+      ],
+      "evidence": {
+        "addOutput": "{\"id\": \"...\", \"desired\": \"...\", \"actual\": \"...\", \"status\": \"Active\", \"parent_id\": null}",
+        "realityOutput": "{\"id\": \"...\", \"actual\": \"updated...\", \"old_actual\": \"initial...\"}",
+        "desireOutput": "{\"id\": \"...\", \"desired\": \"updated...\", \"old_desired\": \"original...\"}",
+        "resolveOutput": "{\"id\": \"...\", \"status\": \"Resolved\"}"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JSON-004",
+      "title": "--json respects filter flags",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk tree --all --json' to get baseline count",
+          "expected": "JSON includes all tensions (Active, Resolved, Released)",
+          "observed": "6 tensions returned (5 Active, 1 Resolved)"
+        },
+        {
+          "action": "Run 'werk tree --open --json' with filter",
+          "expected": "JSON includes only Active tensions",
+          "observed": "5 tensions returned, all with status 'Active'"
+        }
+      ],
+      "evidence": {
+        "allCount": 6,
+        "openCount": 5,
+        "filterApplied": true,
+        "filteredStatuses": ["Active"]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JSON-005",
+      "title": "--json absent dynamics are null not omitted",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create fresh tension with minimal mutations",
+          "expected": "Tension created with limited dynamics data",
+          "observed": "Tension 01KJJPJ7QCXGTSKKKHJTNPPE19 created"
+        },
+        {
+          "action": "Run 'werk show <id> --json' and check dynamics fields",
+          "expected": "Dynamics without data show as null, not missing keys",
+          "observed": "4 dynamics with null values: oscillation, resolution, compensating_strategy, neglect"
+        }
+      ],
+      "evidence": {
+        "nullDynamics": ["oscillation", "resolution", "compensating_strategy", "neglect"],
+        "nullCount": 4,
+        "nonNullCount": 6,
+        "totalDynamicsFields": 10,
+        "allKeysPresent": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JSON-006",
+      "title": "--json error responses are structured JSON",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk show NONEXISTENT --json'",
+          "expected": "JSON error with code and message",
+          "observed": "{\"error\": {\"code\": \"NOT_FOUND\", \"message\": \"tension not found: NONEXISTENT\"}}"
+        },
+        {
+          "action": "Run 'werk show <short-prefix> --json' (ambiguous)",
+          "expected": "JSON error with AMBIGUOUS code",
+          "observed": "{\"error\": {\"code\": \"AMBIGUOUS\", \"message\": \"ambiguous prefix...\"}}"
+        },
+        {
+          "action": "Run 'werk resolve <resolved-id> --json' (invalid transition)",
+          "expected": "JSON error with INVALID_INPUT code",
+          "observed": "{\"error\": {\"code\": \"INVALID_INPUT\", \"message\": \"cannot resolve tension with status Resolved...\"}}"
+        }
+      ],
+      "evidence": {
+        "notFoundError": "{\"error\": {\"code\": \"NOT_FOUND\", \"message\": \"tension not found: NONEXISTENT\"}}",
+        "ambiguousError": "{\"error\": {\"code\": \"AMBIGUOUS\", \"message\": \"ambiguous prefix '01KJ' matches multiple tensions...\"}}",
+        "invalidTransitionError": "{\"error\": {\"code\": \"INVALID_INPUT\", \"message\": \"cannot resolve tension with status Resolved (must be Active)\"}}",
+        "allValidJson": true
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JSON-007",
+      "title": "--json on empty tree returns empty array",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Initialize new empty workspace",
+          "expected": "Clean workspace with no tensions",
+          "observed": "Workspace initialized at /private/tmp/werk-display-dyn-g3-json/empty_workspace/.werk"
+        },
+        {
+          "action": "Run 'werk tree --json' in empty workspace",
+          "expected": "Valid JSON with empty tensions array",
+          "observed": "{\"tensions\": [], \"summary\": {\"total\": 0, \"active\": 0, \"resolved\": 0, \"released\": 0}}"
+        }
+      ],
+      "evidence": {
+        "tensionsArray": [],
+        "tensionsCount": 0,
+        "validJson": true,
+        "summary": {
+          "total": 0,
+          "active": 0,
+          "resolved": 0,
+          "released": 0
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 JSON output assertions: all 7 passed (VAL-JSON-001 through VAL-JSON-007). All JSON output modes produce valid, parseable JSON with correct structure. Filter flags work correctly with --json. Error responses are properly formatted as JSON. Empty trees return valid empty arrays."
+}

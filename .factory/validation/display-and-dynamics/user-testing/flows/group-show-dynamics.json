@@ -1,0 +1,142 @@
+{
+  "groupId": "show-dynamics",
+  "testedAt": "2026-02-28T17:58:00Z",
+  "credentials": {
+    "account": "cli-validator-g2@example.test",
+    "namespace": "/tmp/werk-display-dyn-g2-show"
+  },
+  "toolsUsed": ["direct-cli-execution"],
+  "assertions": [
+    {
+      "id": "VAL-DISP-009",
+      "title": "Show displays dynamics summary",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tension with mutations (reality and desire updates)",
+          "expected": "Tension has history for dynamics computation",
+          "observed": "Tension 01KJJPD21GK created with 4 mutations"
+        },
+        {
+          "action": "Run 'werk show <id>' on tension with history",
+          "expected": "Show displays dynamics summary section with phase, magnitude, conflict, movement",
+          "observed": "Dynamics section displayed: Phase: Assimilation, Magnitude: 0.52, Conflict: None, Movement: → Advancing"
+        }
+      ],
+      "evidence": {
+        "stdout": "Tension 01KJJPD21GK35ST8PH82SMT1QA\n  Desired:    Write a bestselling novel\n  Actual:     Three chapters drafted\n  Status:     Active\n  Created:    2026-02-28 17:58:06 UTC\n  Mutations:  4\n  Children:   2\n\nDynamics:\n  Phase:      Assimilation (mutations: 3, convergence: 48%)\n  Magnitude:  0.52\n  Conflict:   None\n  Movement:   → Advancing",
+        "stderr": "",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISP-010",
+      "title": "Show --verbose displays all 10 dynamics",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk show <id> --verbose' on tension with history",
+          "expected": "Show displays all 10 dynamics with values or 'None'",
+          "observed": "All 10 dynamics displayed: StructuralTension, StructuralConflict, Oscillation, Resolution, CreativeCyclePhase, Orientation, CompensatingStrategy, StructuralTendency, AssimilationDepth, Neglect"
+        }
+      ],
+      "evidence": {
+        "stdout": "All Dynamics:\n  StructuralTension: magnitude=0.52, has_gap=true\n  StructuralConflict: None\n  Oscillation: None\n  Resolution: velocity=0.08, trend=Decelerating\n  CreativeCyclePhase: phase=Assimilation, mutations=3, convergence=48%\n  Orientation: Creative (creative=100%, problem=0%, reactive=0%)\n  CompensatingStrategy: None\n  StructuralTendency: tendency=Advancing, has_conflict=false\n  AssimilationDepth: depth=Shallow, frequency=0.29, trend=1.00\n  Neglect: type=ParentNeglectsChildren, ratio=3.00",
+        "stderr": "",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISP-011",
+      "title": "Show displays mutation history",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run 'werk show <id>' on tension with mutations",
+          "expected": "Show displays mutation history chronologically",
+          "observed": "Mutation History section displayed with 4 mutations in chronological order (oldest first)"
+        }
+      ],
+      "evidence": {
+        "stdout": "Mutation History:\n  2026-02-28 17:58:06 [created] (none) -> desired='Write a novel';actual='Have an outline'\n  2026-02-28 17:58:10 [actual] Have an outline -> First chapter drafted\n  2026-02-28 17:58:10 [actual] First chapter drafted -> Three chapters drafted\n  2026-02-28 17:58:10 [desired] Write a novel -> Write a bestselling novel",
+        "stderr": "",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISP-012",
+      "title": "Show displays children list",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create parent tension with two children",
+          "expected": "Parent has children associated",
+          "observed": "Parent tension 01KJJPD21GK has 2 children created"
+        },
+        {
+          "action": "Run 'werk show <parent-id>'",
+          "expected": "Show displays children section with child info",
+          "observed": "Children section displayed with 2 children: prefix, status, and desired state"
+        }
+      ],
+      "evidence": {
+        "stdout": "Children:\n  01KJJPDA Active [Active] Complete chapter 4\n  01KJJPDF Active [Active] Research market trends",
+        "stderr": "",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISP-013",
+      "title": "Dynamics on new tension without mutations",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create fresh tension with no updates",
+          "expected": "Tension has only creation mutation",
+          "observed": "New tension 01KJJPDVWHEFP6HD6BFXT2JHB4 created with Mutations: 1"
+        },
+        {
+          "action": "Run 'werk show <id>' on fresh tension",
+          "expected": "Show displays Germination phase, no panic or error",
+          "observed": "Phase: Germination displayed correctly with no errors or panics"
+        }
+      ],
+      "evidence": {
+        "stdout": "Tension 01KJJPDVWHEFP6HD6BFXT2JHB4\n  Desired:    New test tension\n  Actual:     Initial state\n  Status:     Active\n  Created:    2026-02-28 17:58:32 UTC\n  Mutations:  1\n\nDynamics:\n  Phase:      Germination (mutations: 0, convergence: 44%)\n  Magnitude:  0.56\n  Conflict:   AsymmetricActivity with 2 tensions\n  Movement:   ↔ Oscillating",
+        "stderr": "",
+        "exitCode": 0
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DISP-014",
+      "title": "Tree renders deeply nested hierarchies",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create chain of 12 parent-child tensions",
+          "expected": "12 levels of nesting created successfully",
+          "observed": "Created Level 1 through Level 12 in a chain (each child of previous)"
+        },
+        {
+          "action": "Run 'werk tree' on workspace with deep nesting",
+          "expected": "Tree displays all 12 levels with proper indentation, no truncation",
+          "observed": "All 12 levels displayed with correct tree characters and indentation"
+        }
+      ],
+      "evidence": {
+        "stdout": "└── [G]Active 01KJJPE8 !↔ Level 1\n    └── [G]Active 01KJJPEC  → Level 2\n        └── [G]Active 01KJJPED  → Level 3\n            └── [G]Active 01KJJPED  → Level 4\n                └── [G]Active 01KJJPED  → Level 5\n                    └── [G]Active 01KJJPED  → Level 6\n                        └── [G]Active 01KJJPED  → Level 7\n                            └── [G]Active 01KJJPED  → Level 8\n                                └── [G]Active 01KJJPED  → Level 9\n                                    └── [G]Active 01KJJPED  → Level 10\n                                        └── [G]Active 01KJJPED  → Level 11\n                                            └── [G]Active 01KJJPED  → Level 12",
+        "stderr": "",
+        "exitCode": 0
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed, 0 blocked. All show and dynamics features working as specified."
+}
