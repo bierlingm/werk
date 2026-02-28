@@ -6,8 +6,8 @@ A Rust workspace implementing Robert Fritz's structural dynamics as computationa
 
 This workspace contains two crates:
 
-- **sd-core**: A pure Rust library implementing structural dynamics as a computational grammar. Fully implemented, tested, and ready for use.
-- **werk-cli**: Command-line interface for the structural dynamics system. Planned but not yet implemented.
+- **sd-core**: A pure Rust library implementing structural dynamics as a computational grammar. Fully implemented with 313 tests.
+- **werk-cli**: Command-line interface for working with structural tensions and launching agent sessions. Fully implemented with 331 tests.
 
 ## sd-core
 
@@ -85,30 +85,33 @@ Requires nightly Rust (edition 2024), pinned via `rust-toolchain.toml`:
 rustup show  # Installs toolchain from rust-toolchain.toml
 ```
 
-Build the library:
+Build:
 
 ```bash
-cargo build -p sd-core
+cargo build -p sd-core      # Library only
+cargo build -p werk-cli     # CLI binary
 ```
 
 Run tests:
 
 ```bash
-cargo test -p sd-core
+cargo test -p sd-core       # 313 tests
+cargo test -p werk-cli      # 331 tests
+cargo test                  # All 644 tests
 ```
 
 ## Test Suite
 
-- **306 tests total**: 277 unit tests + 18 integration tests + 10 store discovery tests + 1 doctest
+- **644 tests total**: 313 sd-core (277 unit + 18 integration + 10 store discovery + 1 doctest) + 331 werk-cli (integration and unit tests)
 - **Zero unsafe code**
 - **Deterministic**: Same operations always produce same results
 
 Run the full test suite:
 
 ```bash
-cargo test -p sd-core
-cargo clippy -p sd-core -- -D warnings
-cargo fmt -p sd-core --check
+cargo test
+cargo clippy -- -D warnings
+cargo fmt --check
 ```
 
 ## Quick Example
@@ -127,6 +130,72 @@ store.update_actual(&tension.id, "have a draft chapter")?;
 
 // Resolve when desired state is achieved
 store.update_status(&tension.id, TensionStatus::Resolved)?;
+```
+
+## werk-cli
+
+The operative instrument. Command-line interface to sd-core for working with structural tensions and launching agent sessions.
+
+### Commands
+
+| Command | Flags | Purpose |
+|---------|-------|---------|
+| `init` | `--global` | Initialize workspace (local `.werk/` or global `~/.werk/`) |
+| `config set` | | Set configuration key=value |
+| `config get` | | Get configuration value |
+| `add` | `--parent <id>` | Create tension (desired state, actual state) |
+| `show` | `--verbose` | Display tension with computed dynamics |
+| `tree` | `--open`, `--all`, `--resolved`, `--released` | Forest tree with dynamics indicators |
+| `reality` | | Update actual state of a tension |
+| `desire` | | Update desired state of a tension |
+| `resolve` | | Mark tension as resolved |
+| `release` | `--reason <text>` | Release tension with optional reason |
+| `rm` | | Delete tension (automatically reparents children) |
+| `move` | `--parent <id>` | Reparent tension to new parent |
+| `note` | | Add annotation to workspace |
+| `notes` | | List all workspace notes |
+| `context` | | Output rich JSON context for agent consumption |
+| `run` | `-- <command>` | Launch agent with full werk context |
+
+### Global Flags
+
+- `--json`: Output raw JSON (for piping to agents)
+- `--no-color`: Disable colored output
+
+### Workspace Discovery
+
+werk-cli walks up the directory tree to find `.werk/` directories. Supports both local (project-specific) and global (`~/.werk/`) workspaces. The `--global` flag forces global workspace operations.
+
+### Agent Integration
+
+When launching agents via `werk run`, the CLI sets environment variables:
+
+- `WERK_TENSION_ID`: Active tension ID (if applicable)
+- `WERK_CONTEXT`: Path to JSON context file
+- `WERK_WORKSPACE`: Absolute path to workspace root
+
+Agents receive full structural context via stdin piping, including tension forest, dynamics state, and computed tendencies.
+
+### Quick Example
+
+```bash
+# Initialize workspace
+werk init
+
+# Create a tension: gap between desired and actual
+werk add "ship v1.0" "have working prototype"
+
+# Update reality as progress happens
+werk reality <id> "have alpha build"
+
+# View forest with dynamics indicators
+werk tree --open
+
+# Export context for agent consumption
+werk context | jq '.tensions | length'
+
+# Launch agent with full context
+werk run -- claude --analyze-tensions
 ```
 
 ## License
