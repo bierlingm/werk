@@ -301,11 +301,32 @@ fn test_config_get_missing_json_output() {
         .get_output()
         .clone();
 
-    // Error should be JSON format
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    // For now, we accept that errors go to stderr in plain text
-    // The key thing is it doesn't panic
-    assert!(stderr.contains("not found") || stderr.contains("error"));
+    // Error should be JSON format in stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"error\""),
+        "JSON error should have 'error' field, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("\"code\""),
+        "JSON error should have 'code' field, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("\"message\""),
+        "JSON error should have 'message' field, got: {}",
+        stdout
+    );
+
+    // Verify the error code
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should be valid JSON");
+    assert_eq!(
+        json["error"]["code"].as_str(),
+        Some("CONFIG_ERROR"),
+        "Error code should be CONFIG_ERROR, got: {:?}",
+        json
+    );
 }
 
 // =============================================================================

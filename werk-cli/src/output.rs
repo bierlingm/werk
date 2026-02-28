@@ -125,6 +125,19 @@ impl Output {
         Ok(())
     }
 
+    /// Print a JSON error response to stdout.
+    /// Used when --json flag is set and an error occurs.
+    pub fn error_json(&self, code: &str, message: &str) -> io::Result<()> {
+        let output = serde_json::json!({
+            "error": {
+                "code": code,
+                "message": message
+            }
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        Ok(())
+    }
+
     /// Print an info message to stdout.
     pub fn info(&self, message: &str) -> io::Result<()> {
         if self.is_json() {

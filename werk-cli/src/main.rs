@@ -12,7 +12,7 @@
 
 use clap::Parser;
 use werk::commands::Commands;
-use werk::error::WerkError;
+use werk::error::{ErrorCode, WerkError};
 use werk::output::Output;
 
 /// Operative instrument for structural dynamics.
@@ -68,7 +68,22 @@ fn main() {
     match result {
         Ok(()) => std::process::exit(0),
         Err(e) => {
-            let _ = output.error(&e.to_string());
+            if output.is_json() {
+                // Output structured JSON error when --json flag is set
+                let code = match e.error_code() {
+                    ErrorCode::NOT_FOUND => "NOT_FOUND",
+                    ErrorCode::INVALID_INPUT => "INVALID_INPUT",
+                    ErrorCode::AMBIGUOUS => "AMBIGUOUS",
+                    ErrorCode::NO_WORKSPACE => "NO_WORKSPACE",
+                    ErrorCode::PERMISSION_DENIED => "PERMISSION_DENIED",
+                    ErrorCode::IO_ERROR => "IO_ERROR",
+                    ErrorCode::CONFIG_ERROR => "CONFIG_ERROR",
+                    ErrorCode::INTERNAL_ERROR => "INTERNAL_ERROR",
+                };
+                let _ = output.error_json(code, &e.to_string());
+            } else {
+                let _ = output.error(&e.to_string());
+            }
             std::process::exit(e.exit_code());
         }
     }

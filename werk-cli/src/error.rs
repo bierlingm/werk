@@ -5,6 +5,7 @@
 //! - 1: User error (bad input, not found, invalid operation)
 //! - 2: Internal error (unexpected failures)
 
+use serde::Serialize;
 use thiserror::Error;
 
 /// Errors that can occur in werk-cli operations.
@@ -65,6 +66,28 @@ pub enum WerkError {
     TreeError(#[from] sd_core::TreeError),
 }
 
+/// Error codes for JSON error output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[allow(non_camel_case_types)]
+pub enum ErrorCode {
+    /// Resource not found.
+    NOT_FOUND,
+    /// Invalid input from user.
+    INVALID_INPUT,
+    /// Ambiguous identifier.
+    AMBIGUOUS,
+    /// No workspace found.
+    NO_WORKSPACE,
+    /// Permission denied.
+    PERMISSION_DENIED,
+    /// I/O error.
+    IO_ERROR,
+    /// Configuration error.
+    CONFIG_ERROR,
+    /// Internal error.
+    INTERNAL_ERROR,
+}
+
 impl WerkError {
     /// Returns the exit code for this error.
     ///
@@ -87,6 +110,23 @@ impl WerkError {
             WerkError::SdError(_) => 2,
             WerkError::StoreError(_) => 2,
             WerkError::TreeError(_) => 2,
+        }
+    }
+
+    /// Returns the error code for JSON error output.
+    pub fn error_code(&self) -> ErrorCode {
+        match self {
+            WerkError::NoWorkspace => ErrorCode::NO_WORKSPACE,
+            WerkError::TensionNotFound(_) => ErrorCode::NOT_FOUND,
+            WerkError::PrefixTooShort { .. } => ErrorCode::INVALID_INPUT,
+            WerkError::AmbiguousPrefix { .. } => ErrorCode::AMBIGUOUS,
+            WerkError::InvalidInput(_) => ErrorCode::INVALID_INPUT,
+            WerkError::ConfigError(_) => ErrorCode::CONFIG_ERROR,
+            WerkError::PermissionDenied(_) => ErrorCode::PERMISSION_DENIED,
+            WerkError::IoError(_) => ErrorCode::IO_ERROR,
+            WerkError::SdError(_) => ErrorCode::INTERNAL_ERROR,
+            WerkError::StoreError(_) => ErrorCode::INTERNAL_ERROR,
+            WerkError::TreeError(_) => ErrorCode::INTERNAL_ERROR,
         }
     }
 
