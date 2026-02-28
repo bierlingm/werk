@@ -8,35 +8,33 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ## Testing Surface
 
-sd-core is a pure Rust library with no user-facing surface (no CLI, no TUI, no server, no browser). All validation is through automated tests.
+### sd-core (library)
 
-## Tools
-
-- `cargo test -p sd-core` -- run all tests
+sd-core is a pure Rust library. Validation through automated tests.
+- `cargo test -p sd-core` -- run all tests (306 tests)
 - `cargo clippy -p sd-core -- -D warnings` -- lint
 - `cargo fmt -p sd-core --check` -- format check
 
-## Testing Approach
+### werk-cli (CLI application)
 
-For user-testing validation, the "user" is a Rust developer calling the API. Assertions are verified by running the test suite and checking that all tests pass. Each validation contract assertion maps to one or more test cases in the sd-core test suite.
+werk-cli is a CLI application. Testing via direct command execution.
+
+**How to test:**
+1. Create temp directory: `mktemp -d`
+2. Init workspace: `cargo run -p werk -- init` (from temp dir)
+3. Run commands under test
+4. Verify stdout, stderr, exit code
+
+**Build:** `cargo build -p werk` (binary at `target/debug/werk`)
+**Run:** `cargo run -p werk -- <subcommand> [args]`
+
+**Test isolation:** Each flow uses its own temp directory. Never use the user's real `~/.werk/`.
+Set `HOME` to temp dir for global workspace tests.
 
 ## Known Quirks
 
-- fsqlite requires nightly Rust (edition 2024)
-- fsqlite error types use FrankenError, not standard SQLite error types
-- In-memory databases via Connection::open(":memory:")
-
-## Flow Validator Guidance: rust-library-api
-
-- Surface: Rust library API behavior validated through test execution (no browser/TUI/API server).
-- Isolation strategy for parallel validators:
-  - Use separate assertion groups by domain area (`tension`, `mutation`, `store`, `tree`).
-  - Run scoped tests with filters for assigned area only; avoid running full-suite concurrently in all subagents.
-  - Use unique data namespace labels in reports (`foundation-tension`, `foundation-mutation`, etc.) for traceability.
-- Shared-state boundaries:
-  - Do not modify production library code while validating.
-  - If temporary artifacts are created, keep them under repo-local test outputs only.
-  - Do not write outside assigned flow report file.
-- Off-limits:
-  - No edits to `werk-cli/`.
-  - No mocking sd-core internals; validate against real crate behavior via tests.
+- fsqlite requires nightly Rust
+- fsqlite error types use FrankenError, not standard SQLite types
+- ULID generation is time-based — rapid creation produces sequential IDs
+- `$EDITOR` tests need mock editor (`EDITOR=cat` to verify, `EDITOR=true` to skip)
+- Color auto-disabled when piping (`werk tree | cat` = plain text)

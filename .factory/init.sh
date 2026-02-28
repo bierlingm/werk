@@ -9,3 +9,6 @@ rustup component add clippy rustfmt --toolchain nightly 2>/dev/null || true
 
 # Fetch dependencies
 cargo fetch 2>/dev/null || true
+
+# Verify workspace builds
+cargo check --workspace 2>/dev/null || true

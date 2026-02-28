@@ -53,3 +53,33 @@ fsqlite (FrankenSQLite) in compatibility mode (standard .db format). Store at .w
 Core (6): StructuralTension, StructuralConflict, Oscillation, Resolution, CreativeCyclePhase, Orientation
 Secondary (3): CompensatingStrategy, StructuralTendency, AssimilationDepth
 Derived (1): Neglect
+
+---
+
+## werk-cli (Instrument Layer)
+
+### Module Structure
+
+```
+werk-cli/src/
+  main.rs          -- Entry point, clap Parser, top-level error handling
+  commands/         -- One module per subcommand
+    mod.rs
+    init.rs, add.rs, show.rs, tree.rs, reality.rs, desire.rs,
+    resolve.rs, release.rs, rm.rs, mv.rs, note.rs, config.rs,
+    context.rs, run.rs
+  workspace.rs     -- .werk/ discovery, Store creation
+  prefix.rs        -- ID prefix resolution
+  output.rs        -- Formatting (human + JSON), color control
+  editor.rs        -- $EDITOR integration
+```
+
+### Key Patterns
+
+- **Clap derive**: `#[derive(Parser)]` for CLI, `#[derive(Subcommand)]` for commands
+- **Workspace resolution**: Walk up from CWD for `.werk/`, fall back to `~/.werk/`
+- **Output module**: All formatting through output.rs — human text or JSON based on --json flag
+- **Color via owo-colors**: Lightweight, supports NO_COLOR env var natively
+- **ID prefix matching**: Case-insensitive, minimum 4 chars, must be unambiguous
+- **Exit codes**: 0 success, 1 user error, 2 internal error
+- **sd-core as consumer**: Never reimplement dynamics, store, or tree logic
