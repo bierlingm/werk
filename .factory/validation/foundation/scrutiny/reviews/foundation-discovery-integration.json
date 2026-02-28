@@ -1,26 +1,26 @@
 {
   "featureId": "foundation-discovery-integration",
-  "reviewedAt": "2026-02-28T15:20:00.000Z",
+  "reviewedAt": "2026-02-28T15:35:00Z",
   "commitId": "0498179",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
   "codeReview": {
-    "summary": "Excellent implementation of 29 integration tests for workspace discovery. Tests comprehensively cover subdirectory discovery (VAL-INIT-004), global fallback (VAL-INIT-005), workspace consistency (VAL-CROSS-004), error recovery (VAL-CROSS-007), ID prefix consistency (VAL-CROSS-009), and first-use experience (VAL-CROSS-010). All tests pass, code is well-structured with clear validation assertion mapping.",
+    "summary": "Comprehensive integration test suite for workspace discovery covering all 6 validation assertions. 29 well-structured tests using assert_cmd and tempfile, following established patterns from other test files. Tests use isolated temp directories with proper HOME env var isolation for global fallback scenarios.",
     "issues": []
   },
   "sharedStateObservations": [
     {
       "area": "conventions",
-      "observation": "Test file uses 6-12 character ID prefixes to avoid ambiguity from time-sorted ULIDs. This is a practical pattern discovered during implementation that could be documented in AGENTS.md for future test authors.",
-      "evidence": "werk-cli/tests/discovery.rs lines 332, 500, 607 - tests use &tension.id[..6] or [...12] to ensure unique prefix resolution when multiple tensions created rapidly"
+      "observation": "The tests in discovery.rs use 6-character prefixes for ID resolution, while other tests in the codebase use 8-12 character prefixes. The prefix module requires minimum 4 characters, but the tests demonstrate that 6 chars works reliably for single tensions. Consider documenting the recommended prefix length guidance in AGENTS.md — currently it only states 'minimum 4 characters' without guidance on collision avoidance.",
+      "evidence": "werk-cli/tests/discovery.rs: uses &tension.id[..6] throughout; werk-cli/tests/add_show.rs: uses &tension.id[..12] for some tests. AGENTS.md states 'Minimum 4 characters' with no collision guidance."
     },
     {
       "area": "knowledge",
-      "observation": "The note command has different CLI syntax than other commands (text as positional, --id as flag vs ID as positional for other commands). The worker correctly adapted test syntax after initial failures.",
-      "evidence": "Transcript shows worker changed from `note <id> 'text'` to `note 'text' --id <id>` after discovering the actual CLI structure. werk-cli/tests/discovery.rs lines 291, 940 show correct usage."
+      "observation": "The test_no_workspace_error test checks for 'workspace' OR 'init' in stderr — this suggests the error message format may vary. The test could be more precise about expected error messages to ensure consistent UX.",
+      "evidence": "werk-cli/tests/discovery.rs:600: .stderr(predicate::str::contains('workspace').or(predicate::str::contains('init')))"
     }
   ],
   "addressesFailureFrom": null,
-  "summary": "Feature fully implemented with 29 comprehensive integration tests. All validation assertions from the feature description are covered. Tests properly use TempDir for isolation, verify both CLI output and store state, and handle edge cases like deep nesting (12 levels) and time-sorted ULID prefixes. No blocking issues. Two minor shared-state observations noted about test patterns that could benefit future workers."
+  "summary": "Feature 'foundation-discovery-integration' is a solid implementation of 29 integration tests covering all specified validation requirements. The tests verify workspace discovery from subdirectories (VAL-INIT-004), global fallback (VAL-INIT-005), consistency across commands (VAL-CROSS-004), error recovery (VAL-CROSS-007), prefix matching (VAL-CROSS-009), and first-use experience (VAL-CROSS-010). All tests use proper isolation via tempfile and assert_cmd. No blocking issues identified. Minor observations about prefix length conventions and error message consistency could be addressed in follow-up work but don't block this feature."
 }

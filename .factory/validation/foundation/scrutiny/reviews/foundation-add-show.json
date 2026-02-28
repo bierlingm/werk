@@ -1,15 +1,33 @@
 {
   "featureId": "foundation-add-show",
-  "reviewedAt": "2026-02-28T15:18:00.000Z",
+  "reviewedAt": "2026-02-28T14:45:00Z",
   "commitId": "6d60d05",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
   "codeReview": {
-    "summary": "Excellent implementation of `werk add` and `werk show` commands. The code follows the established patterns: TDD approach with comprehensive integration tests, proper error handling with descriptive messages, correct prefix resolution (4+ chars, case-insensitive), JSON output support, and Unicode handling. All 18 integration tests pass covering VAL-CRUD-001 through VAL-CRUD-007 and VAL-CRUD-025.",
-    "issues": []
+    "summary": "Well-implemented feature following TDD pattern. The `werk add` and `werk show` commands fully meet the expected behavior requirements. Code follows established conventions: uses sd-core Store, workspace resolution, prefix matching, proper error handling with exit codes, and supports both human and JSON output. All 18 integration tests pass with comprehensive coverage of happy paths and error cases.",
+    "issues": [
+      {
+        "file": "werk-cli/src/main.rs",
+        "line": 275,
+        "severity": "non_blocking",
+        "description": "The `--verbose` flag is accepted but provides minimal additional functionality beyond showing mutation history (which is already shown). The code includes a comment acknowledging this is for 'future dynamics display'. This is acceptable as the foundation milestone doesn't require dynamics computation yet."
+      }
+    ]
   },
-  "sharedStateObservations": [],
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The worker consistently uses the pattern of creating local JSON result structs within each command function (AddResult, ShowResult, etc.) and serializing with serde_json::to_string_pretty. This is a good pattern but not documented in AGENTS.md — could be added as a convention for new commands.",
+      "evidence": "main.rs lines 157-166 (AddResult), 247-257 (ShowResult), 337-341 (RealityResult), etc."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker followed the rust-cli-worker skill procedure correctly: wrote 18 failing tests first, implemented to make them pass, ran lint/format, verified sd-core tests pass, and performed manual verification. No deviations recorded.",
+      "evidence": "Handoff transcript shows TDD pattern: tests written before implementation, then tests passing, then clippy/fmt clean."
+    }
+  ],
   "addressesFailureFrom": null,
-  "summary": "Feature fully implements the requirements. `werk add <desired> <actual>` creates Active tensions with ULID, validates non-empty fields, supports --parent for child tensions, and outputs confirmation with ID. `werk show <id-or-prefix>` displays all tension fields (id, desired, actual, status, parent, created_at) plus mutation count. Prefix resolution correctly requires 4+ characters, rejects ambiguous prefixes, and handles not-found cases. Both commands support --json output. Unicode (CJK, emoji) is preserved correctly. Implementation follows rust-cli-worker skill procedure: RED (wrote 18 failing tests), GREEN (implemented to pass), REFACTOR (clippy clean, properly formatted). All 63 werk tests pass, 306 sd-core tests pass, zero clippy warnings."
+  "summary": "The foundation-add-show feature is complete and correctly implemented. Both `werk add` and `werk show` commands work as specified with proper prefix resolution, JSON output, unicode handling, and comprehensive error handling. All 63 werk tests pass (including 18 new integration tests), 306 sd-core tests pass with no regressions, and clippy reports no warnings. The implementation follows the established patterns from foundation-skeleton and foundation-init."
 }

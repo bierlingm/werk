@@ -1,27 +1,27 @@
 {
   "milestone": "foundation",
-  "round": 1,
+  "round": 2,
   "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "cargo test -p sd-core -- --test-threads=5",
+      "command": "cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml --workspace -- --test-threads=5",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "cargo check -p sd-core",
+      "command": "cargo check --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml --workspace",
       "exitCode": 0
     },
     "lint": {
       "passed": true,
-      "command": "cargo clippy -p sd-core -- -D warnings",
+      "command": "cargo clippy --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml --workspace -- -D warnings",
       "exitCode": 0
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 3,
+    "total": 8,
+    "passed": 8,
     "failed": 0,
     "failedFeatures": []
   },
@@ -29,12 +29,35 @@
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "rust-library-worker skill",
-      "suggestion": "Clarify TDD guidance for greenfield type-definition features: allow writing tests alongside initial type scaffolding when strict RED-first is impractical because the tested interface does not yet exist.",
-      "evidence": "foundation-types reviewer noted skillFeedback deviation where tests and implementation were written together to establish first-pass public types while still validating behavior comprehensively.",
-      "isSystemic": false
+      "target": "AGENTS.md",
+      "suggestion": "Add practical ID-prefix guidance (for example, prefer 6+ characters in tests and manual flows) in addition to the current 4-character minimum to reduce ambiguity in denser workspaces.",
+      "evidence": "foundation-discovery-integration review observed mixed 6-char and 8-12-char prefix usage while shared guidance currently documents only the minimum length.",
+      "isSystemic": true
+    },
+    {
+      "target": "scrutiny-feature-reviewer skill",
+      "suggestion": "Require reviewers to re-check referenced files before recording shared-state gaps so stale observations are filtered before reporting.",
+      "evidence": "foundation-config review reported missing editor.rs, but current codebase contains werk-cli/src/editor.rs.",
+      "isSystemic": true
     }
   ],
-  "rejectedObservations": [],
-  "previousRound": null
+  "rejectedObservations": [
+    {
+      "observation": "AGENTS.md lists editor.rs but the module does not exist.",
+      "reason": "ambiguous"
+    },
+    {
+      "observation": "Worker followed rust-cli-worker procedure.",
+      "reason": "already-documented"
+    },
+    {
+      "observation": "services.yaml and architecture updates from foundation-skeleton should be newly applied.",
+      "reason": "already-documented"
+    },
+    {
+      "observation": "Inline JSON response structs should be standardized immediately.",
+      "reason": "ambiguous"
+    }
+  ],
+  "previousRound": ".factory/validation/foundation/scrutiny/synthesis.round1.json"
 }
