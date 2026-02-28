@@ -1,0 +1,15 @@
+{
+  "featureId": "display-show-dynamics",
+  "reviewedAt": "2026-02-28T18:50:00Z",
+  "commitId": "a2651a106b0f1006a81c55dbc21431699e83be89",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation fully meets all feature requirements. The `werk show <id>` command correctly displays computed structural dynamics: default view shows summary (phase, magnitude, conflict, movement), --verbose shows all 10 dynamics, mutation history (last 10, chronological), and children list. JSON output correctly uses null for absent dynamics. New tensions correctly show Germination phase. All 17 integration tests pass.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Feature 'display-show-dynamics' is fully implemented and verified. The code correctly computes all 10 dynamics using sd-core functions, displays them appropriately in both human-readable and JSON formats, handles edge cases (new tensions, absent dynamics), and includes comprehensive test coverage. No issues found."
+}
