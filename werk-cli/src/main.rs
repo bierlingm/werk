@@ -348,6 +348,15 @@ fn cmd_add(
 }
 
 fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError> {
+    use chrono::Utc;
+    use sd_core::{
+        classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
+        detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
+        detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
+        AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
+        CreativeCyclePhase, Forest, LifecycleThresholds, NeglectThresholds, OrientationThresholds,
+        OscillationThresholds, ResolutionThresholds, TensionStatus,
+    };
     use serde::Serialize;
     use werk::workspace::Workspace;
 
@@ -360,7 +369,99 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         status: String,
         parent_id: Option<String>,
         created_at: String,
+        dynamics: DynamicsJson,
         mutations: Vec<MutationInfo>,
+        children: Vec<ChildInfo>,
+    }
+
+    /// All 10 dynamics in JSON format.
+    #[derive(Serialize)]
+    struct DynamicsJson {
+        structural_tension: Option<StructuralTensionJson>,
+        structural_conflict: Option<ConflictJson>,
+        oscillation: Option<OscillationJson>,
+        resolution: Option<ResolutionJson>,
+        phase: PhaseJson,
+        orientation: Option<OrientationJson>,
+        compensating_strategy: Option<CompensatingStrategyJson>,
+        structural_tendency: TendencyJson,
+        assimilation_depth: Option<AssimilationDepthJson>,
+        neglect: Option<NeglectJson>,
+    }
+
+    #[derive(Serialize)]
+    struct StructuralTensionJson {
+        magnitude: f64,
+        has_gap: bool,
+    }
+
+    #[derive(Serialize)]
+    struct ConflictJson {
+        pattern: String,
+        tension_ids: Vec<String>,
+    }
+
+    #[derive(Serialize)]
+    struct OscillationJson {
+        reversals: usize,
+        magnitude: f64,
+        window_start: String,
+        window_end: String,
+    }
+
+    #[derive(Serialize)]
+    struct ResolutionJson {
+        velocity: f64,
+        trend: String,
+        window_start: String,
+        window_end: String,
+    }
+
+    #[derive(Serialize)]
+    struct PhaseJson {
+        phase: String,
+        evidence: PhaseEvidenceJson,
+    }
+
+    #[derive(Serialize)]
+    struct PhaseEvidenceJson {
+        mutation_count: usize,
+        gap_closing: bool,
+        convergence_ratio: f64,
+        age_seconds: i64,
+    }
+
+    #[derive(Serialize)]
+    struct OrientationJson {
+        orientation: String,
+        creative_ratio: f64,
+        problem_solving_ratio: f64,
+        reactive_ratio: f64,
+    }
+
+    #[derive(Serialize)]
+    struct CompensatingStrategyJson {
+        strategy_type: String,
+        persistence_seconds: i64,
+    }
+
+    #[derive(Serialize)]
+    struct TendencyJson {
+        tendency: String,
+        has_conflict: bool,
+    }
+
+    #[derive(Serialize)]
+    struct AssimilationDepthJson {
+        depth: String,
+        mutation_frequency: f64,
+        frequency_trend: f64,
+    }
+
+    #[derive(Serialize)]
+    struct NeglectJson {
+        neglect_type: String,
+        activity_ratio: f64,
     }
 
     /// Mutation information for display.
@@ -372,25 +473,145 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         new_value: String,
     }
 
+    /// Child information for display.
+    #[derive(Serialize)]
+    struct ChildInfo {
+        id: String,
+        id_prefix: String,
+        desired: String,
+        status: String,
+    }
+
     // Discover workspace
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
-    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-    let resolver = werk::prefix::PrefixResolver::new(tensions);
+    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
 
-    // Get mutations
+    // Get mutations for this tension
     let mutations = store
         .get_mutations(&tension.id)
         .map_err(WerkError::StoreError)?;
 
-    // Build mutation info
+    // Get all mutations for conflict and orientation detection
+    let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
+
+    // Build forest for conflict/neglect detection and children finding
+    let forest = Forest::from_tensions(all_tensions.clone())
+        .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
+
+    // Get children
+    let children: Vec<ChildInfo> = forest
+        .children(&tension.id)
+        .unwrap_or_default()
+        .iter()
+        .map(|child| ChildInfo {
+            id: child.id().to_string(),
+            id_prefix: child.id()[..8.min(child.id().len())].to_string(),
+            desired: truncate(&child.tension.desired, 40),
+            status: child.tension.status.to_string(),
+        })
+        .collect();
+
+    // Get siblings for conflict detection (used implicitly by detect_structural_conflict)
+    let _siblings: Vec<_> = forest
+        .siblings(&tension.id)
+        .unwrap_or_default()
+        .iter()
+        .map(|s| s.id().to_string())
+        .collect();
+
+    // Get resolved tensions for momentum phase detection
+    let resolved_tensions: Vec<_> = all_tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Resolved)
+        .cloned()
+        .collect();
+
+    // Compute dynamics
+    let now = Utc::now();
+    let lifecycle_thresholds = LifecycleThresholds::default();
+    let conflict_thresholds = ConflictThresholds::default();
+    let oscillation_thresholds = OscillationThresholds::default();
+    let resolution_thresholds = ResolutionThresholds::default();
+    let orientation_thresholds = OrientationThresholds::default();
+    let compensating_thresholds = CompensatingStrategyThresholds::default();
+    let assimilation_thresholds = AssimilationDepthThresholds::default();
+    let neglect_thresholds = NeglectThresholds::default();
+
+    // 1. Structural Tension
+    let structural_tension = compute_structural_tension(tension);
+
+    // 2. Structural Conflict
+    let conflict = detect_structural_conflict(
+        &forest,
+        &tension.id,
+        &all_mutations,
+        &conflict_thresholds,
+        now,
+    );
+
+    // 3. Oscillation
+    let oscillation = detect_oscillation(&tension.id, &mutations, &oscillation_thresholds, now);
+
+    // 4. Resolution
+    let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
+
+    // 5. Creative Cycle Phase
+    let phase_result = classify_creative_cycle_phase(
+        tension,
+        &mutations,
+        &resolved_tensions,
+        &lifecycle_thresholds,
+        now,
+    );
+
+    // 6. Orientation (requires multiple tensions)
+    let orientation =
+        classify_orientation(&all_tensions, &all_mutations, &orientation_thresholds, now);
+
+    // 7. Compensating Strategy
+    let compensating_strategy = detect_compensating_strategy(
+        &tension.id,
+        &mutations,
+        oscillation.as_ref(),
+        &compensating_thresholds,
+        now,
+    );
+
+    // 8. Structural Tendency
+    let has_conflict = conflict.is_some();
+    let tendency_result = predict_structural_tendency(tension, has_conflict);
+
+    // 9. Assimilation Depth
+    let assimilation = measure_assimilation_depth(
+        &tension.id,
+        &mutations,
+        tension,
+        &assimilation_thresholds,
+        now,
+    );
+
+    // 10. Neglect
+    let neglect = detect_neglect(
+        &forest,
+        &tension.id,
+        &all_mutations,
+        &neglect_thresholds,
+        now,
+    );
+
+    // Build mutation info (last 10, chronological order - oldest first)
     let mutation_infos: Vec<MutationInfo> = mutations
         .iter()
+        .rev()
+        .take(10)
+        .rev()
         .map(|m| MutationInfo {
             timestamp: m.timestamp().to_rfc3339(),
             field: m.field().to_owned(),
@@ -399,6 +620,109 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         })
         .collect();
 
+    // Build dynamics JSON
+    let dynamics_json = DynamicsJson {
+        structural_tension: structural_tension.as_ref().map(|st| StructuralTensionJson {
+            magnitude: st.magnitude,
+            has_gap: st.has_gap,
+        }),
+        structural_conflict: conflict.as_ref().map(|c| ConflictJson {
+            pattern: match c.pattern {
+                sd_core::ConflictPattern::AsymmetricActivity => "AsymmetricActivity".to_string(),
+                sd_core::ConflictPattern::CompetingTensions => "CompetingTensions".to_string(),
+            },
+            tension_ids: c.tension_ids.clone(),
+        }),
+        oscillation: oscillation.as_ref().map(|o| OscillationJson {
+            reversals: o.reversals,
+            magnitude: o.magnitude,
+            window_start: o.window_start.to_rfc3339(),
+            window_end: o.window_end.to_rfc3339(),
+        }),
+        resolution: resolution.as_ref().map(|r| ResolutionJson {
+            velocity: r.velocity,
+            trend: match r.trend {
+                sd_core::ResolutionTrend::Accelerating => "Accelerating".to_string(),
+                sd_core::ResolutionTrend::Steady => "Steady".to_string(),
+                sd_core::ResolutionTrend::Decelerating => "Decelerating".to_string(),
+            },
+            window_start: r.window_start.to_rfc3339(),
+            window_end: r.window_end.to_rfc3339(),
+        }),
+        phase: PhaseJson {
+            phase: match phase_result.phase {
+                CreativeCyclePhase::Germination => "Germination".to_string(),
+                CreativeCyclePhase::Assimilation => "Assimilation".to_string(),
+                CreativeCyclePhase::Completion => "Completion".to_string(),
+                CreativeCyclePhase::Momentum => "Momentum".to_string(),
+            },
+            evidence: PhaseEvidenceJson {
+                mutation_count: phase_result.evidence.mutation_count,
+                gap_closing: phase_result.evidence.gap_closing,
+                convergence_ratio: phase_result.evidence.convergence_ratio,
+                age_seconds: phase_result.evidence.age_seconds,
+            },
+        },
+        orientation: orientation.as_ref().map(|o| OrientationJson {
+            orientation: match o.orientation {
+                sd_core::Orientation::Creative => "Creative".to_string(),
+                sd_core::Orientation::ProblemSolving => "ProblemSolving".to_string(),
+                sd_core::Orientation::ReactiveResponsive => "ReactiveResponsive".to_string(),
+            },
+            creative_ratio: o.evidence.creative_ratio,
+            problem_solving_ratio: o.evidence.problem_solving_ratio,
+            reactive_ratio: o.evidence.reactive_ratio,
+        }),
+        compensating_strategy: compensating_strategy
+            .as_ref()
+            .map(|cs| CompensatingStrategyJson {
+                strategy_type: match cs.strategy_type {
+                    sd_core::CompensatingStrategyType::TolerableConflict => {
+                        "TolerableConflict".to_string()
+                    }
+                    sd_core::CompensatingStrategyType::ConflictManipulation => {
+                        "ConflictManipulation".to_string()
+                    }
+                    sd_core::CompensatingStrategyType::WillpowerManipulation => {
+                        "WillpowerManipulation".to_string()
+                    }
+                },
+                persistence_seconds: cs.persistence_seconds,
+            }),
+        structural_tendency: TendencyJson {
+            tendency: match tendency_result.tendency {
+                sd_core::StructuralTendency::Advancing => "Advancing".to_string(),
+                sd_core::StructuralTendency::Oscillating => "Oscillating".to_string(),
+                sd_core::StructuralTendency::Stagnant => "Stagnant".to_string(),
+            },
+            has_conflict: tendency_result.has_conflict,
+        },
+        assimilation_depth: if assimilation.depth == sd_core::AssimilationDepth::None
+            && assimilation.evidence.total_mutations == 0
+        {
+            None
+        } else {
+            Some(AssimilationDepthJson {
+                depth: match assimilation.depth {
+                    sd_core::AssimilationDepth::Shallow => "Shallow".to_string(),
+                    sd_core::AssimilationDepth::Deep => "Deep".to_string(),
+                    sd_core::AssimilationDepth::None => "None".to_string(),
+                },
+                mutation_frequency: assimilation.mutation_frequency,
+                frequency_trend: assimilation.frequency_trend,
+            })
+        },
+        neglect: neglect.as_ref().map(|n| NeglectJson {
+            neglect_type: match n.neglect_type {
+                sd_core::NeglectType::ParentNeglectsChildren => {
+                    "ParentNeglectsChildren".to_string()
+                }
+                sd_core::NeglectType::ChildrenNeglected => "ChildrenNeglected".to_string(),
+            },
+            activity_ratio: n.activity_ratio,
+        }),
+    };
+
     let result = ShowResult {
         id: tension.id.clone(),
         desired: tension.desired.clone(),
@@ -406,7 +730,9 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         status: tension.status.to_string(),
         parent_id: tension.parent_id.clone(),
         created_at: tension.created_at.to_rfc3339(),
+        dynamics: dynamics_json,
         mutations: mutation_infos,
+        children,
     };
 
     if output.is_json() {
@@ -417,9 +743,9 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
         let status_style = match tension.status {
-            sd_core::TensionStatus::Active => werk::output::ColorStyle::Active,
-            sd_core::TensionStatus::Resolved => werk::output::ColorStyle::Resolved,
-            sd_core::TensionStatus::Released => werk::output::ColorStyle::Released,
+            TensionStatus::Active => werk::output::ColorStyle::Active,
+            TensionStatus::Resolved => werk::output::ColorStyle::Resolved,
+            TensionStatus::Released => werk::output::ColorStyle::Released,
         };
         let status_styled = output.styled(&tension.status.to_string(), status_style);
 
@@ -455,32 +781,276 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         println!(
             "  Mutations:  {}",
             output.styled(
-                &format!("{}", result.mutations.len()),
+                &format!("{}", mutations.len()),
                 werk::output::ColorStyle::Info
             )
         );
 
-        // Show mutations if verbose or if there are any beyond creation
-        if verbose || result.mutations.len() > 1 {
-            println!("\n  Mutation History:");
-            for m in &result.mutations {
-                let old = m.old_value.as_deref().unwrap_or("(none)");
+        // Children count
+        if !result.children.is_empty() {
+            println!(
+                "  Children:   {}",
+                output.styled(
+                    &format!("{}", result.children.len()),
+                    werk::output::ColorStyle::Info
+                )
+            );
+        }
+
+        // === Dynamics Summary (always shown) ===
+        println!();
+        println!("Dynamics:");
+
+        // Phase (always shown)
+        let phase_display =
+            output.styled(&result.dynamics.phase.phase, werk::output::ColorStyle::Info);
+        println!(
+            "  Phase:      {} (mutations: {}, convergence: {:.0}%)",
+            phase_display,
+            result.dynamics.phase.evidence.mutation_count,
+            (1.0 - result.dynamics.phase.evidence.convergence_ratio) * 100.0
+        );
+
+        // Structural Tension (show magnitude)
+        match &result.dynamics.structural_tension {
+            Some(st) => {
                 println!(
-                    "    {} [{}] {} -> {}",
+                    "  Magnitude:  {}",
                     output.styled(
-                        &m.timestamp[..19].replace('T', " "),
-                        werk::output::ColorStyle::Muted
-                    ),
-                    output.styled(&m.field, werk::output::ColorStyle::Info),
-                    output.styled(old, werk::output::ColorStyle::Muted),
-                    output.styled(&m.new_value, werk::output::ColorStyle::Highlight)
+                        &format!("{:.2}", st.magnitude),
+                        werk::output::ColorStyle::Highlight
+                    )
+                );
+            }
+            None => {
+                println!(
+                    "  Magnitude:  {}",
+                    output.styled("None (no gap)", werk::output::ColorStyle::Muted)
                 );
             }
         }
 
-        // Note about --verbose for future dynamics display
-        if !verbose {
-            let _ = verbose; // suppress unused warning
+        // Conflict (show if present, else None)
+        match &result.dynamics.structural_conflict {
+            Some(c) => {
+                println!(
+                    "  Conflict:   {} with {} tensions",
+                    output.styled(&c.pattern, werk::output::ColorStyle::Error),
+                    c.tension_ids.len()
+                );
+            }
+            None => {
+                println!(
+                    "  Conflict:   {}",
+                    output.styled("None", werk::output::ColorStyle::Muted)
+                );
+            }
+        }
+
+        // Movement/Tendency
+        let movement_symbol = match tendency_result.tendency {
+            sd_core::StructuralTendency::Advancing => "→",
+            sd_core::StructuralTendency::Oscillating => "↔",
+            sd_core::StructuralTendency::Stagnant => "○",
+        };
+        println!(
+            "  Movement:   {} {}",
+            movement_symbol,
+            output.styled(
+                &result.dynamics.structural_tendency.tendency,
+                werk::output::ColorStyle::Info
+            )
+        );
+
+        // === Verbose: Show all 10 dynamics ===
+        if verbose {
+            println!();
+            println!("All Dynamics:");
+
+            // 1. Structural Tension
+            match &result.dynamics.structural_tension {
+                Some(st) => {
+                    println!(
+                        "  StructuralTension: magnitude={:.2}, has_gap={}",
+                        st.magnitude, st.has_gap
+                    );
+                }
+                None => {
+                    println!(
+                        "  StructuralTension: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 2. Structural Conflict
+            match &result.dynamics.structural_conflict {
+                Some(c) => {
+                    println!(
+                        "  StructuralConflict: pattern={}, tensions={}",
+                        c.pattern,
+                        c.tension_ids.join(", ")
+                    );
+                }
+                None => {
+                    println!(
+                        "  StructuralConflict: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 3. Oscillation
+            match &result.dynamics.oscillation {
+                Some(o) => {
+                    println!(
+                        "  Oscillation: reversals={}, magnitude={:.2}",
+                        o.reversals, o.magnitude
+                    );
+                }
+                None => {
+                    println!(
+                        "  Oscillation: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 4. Resolution
+            match &result.dynamics.resolution {
+                Some(r) => {
+                    println!(
+                        "  Resolution: velocity={:.2}, trend={}",
+                        r.velocity, r.trend
+                    );
+                }
+                None => {
+                    println!(
+                        "  Resolution: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 5. Creative Cycle Phase (already in summary)
+            println!(
+                "  CreativeCyclePhase: phase={}, mutations={}, convergence={:.0}%",
+                result.dynamics.phase.phase,
+                result.dynamics.phase.evidence.mutation_count,
+                (1.0 - result.dynamics.phase.evidence.convergence_ratio) * 100.0
+            );
+
+            // 6. Orientation
+            match &result.dynamics.orientation {
+                Some(o) => {
+                    println!(
+                        "  Orientation: {} (creative={:.0}%, problem={:.0}%, reactive={:.0}%)",
+                        o.orientation,
+                        o.creative_ratio * 100.0,
+                        o.problem_solving_ratio * 100.0,
+                        o.reactive_ratio * 100.0
+                    );
+                }
+                None => {
+                    println!(
+                        "  Orientation: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 7. Compensating Strategy
+            match &result.dynamics.compensating_strategy {
+                Some(cs) => {
+                    println!(
+                        "  CompensatingStrategy: type={}, persistence={}s",
+                        cs.strategy_type, cs.persistence_seconds
+                    );
+                }
+                None => {
+                    println!(
+                        "  CompensatingStrategy: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 8. Structural Tendency (already in summary)
+            println!(
+                "  StructuralTendency: tendency={}, has_conflict={}",
+                result.dynamics.structural_tendency.tendency,
+                result.dynamics.structural_tendency.has_conflict
+            );
+
+            // 9. Assimilation Depth
+            match &result.dynamics.assimilation_depth {
+                Some(a) => {
+                    println!(
+                        "  AssimilationDepth: depth={}, frequency={:.2}, trend={:.2}",
+                        a.depth, a.mutation_frequency, a.frequency_trend
+                    );
+                }
+                None => {
+                    println!(
+                        "  AssimilationDepth: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+
+            // 10. Neglect
+            match &result.dynamics.neglect {
+                Some(n) => {
+                    println!(
+                        "  Neglect: type={}, ratio={:.2}",
+                        n.neglect_type, n.activity_ratio
+                    );
+                }
+                None => {
+                    println!(
+                        "  Neglect: {}",
+                        output.styled("None", werk::output::ColorStyle::Muted)
+                    );
+                }
+            }
+        }
+
+        // === Mutation History (last 10) ===
+        println!();
+        println!("Mutation History:");
+        for m in &result.mutations {
+            let old = m.old_value.as_deref().unwrap_or("(none)");
+            println!(
+                "  {} [{}] {} -> {}",
+                output.styled(
+                    &m.timestamp[..19].replace('T', " "),
+                    werk::output::ColorStyle::Muted
+                ),
+                output.styled(&m.field, werk::output::ColorStyle::Info),
+                output.styled(old, werk::output::ColorStyle::Muted),
+                output.styled(&m.new_value, werk::output::ColorStyle::Highlight)
+            );
+        }
+
+        // === Children List ===
+        if !result.children.is_empty() {
+            println!();
+            println!("Children:");
+            for child in &result.children {
+                let status_style = match child.status.as_str() {
+                    "Active" => werk::output::ColorStyle::Active,
+                    "Resolved" => werk::output::ColorStyle::Resolved,
+                    "Released" => werk::output::ColorStyle::Released,
+                    _ => werk::output::ColorStyle::Muted,
+                };
+                println!(
+                    "  {} {} [{}] {}",
+                    output.styled(&child.id_prefix, werk::output::ColorStyle::Id),
+                    output.styled(&child.status, status_style),
+                    output.styled(&child.status, status_style),
+                    output.styled(&child.desired, werk::output::ColorStyle::Muted)
+                );
+            }
         }
     }
 
@@ -1173,9 +1743,8 @@ fn cmd_tree(
 ) -> Result<(), WerkError> {
     use chrono::Utc;
     use sd_core::{
-        classify_creative_cycle_phase, detect_structural_conflict,
-        predict_structural_tendency, ConflictThresholds, Forest, LifecycleThresholds,
-        TensionStatus,
+        classify_creative_cycle_phase, detect_structural_conflict, predict_structural_tendency,
+        ConflictThresholds, Forest, LifecycleThresholds, TensionStatus,
     };
     use serde::Serialize;
     use werk::workspace::Workspace;
