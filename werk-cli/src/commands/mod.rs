@@ -2,6 +2,8 @@
 //!
 //! Each subcommand is defined with clap derive macros.
 
+pub mod config;
+
 use clap::Subcommand;
 
 /// CLI subcommands.

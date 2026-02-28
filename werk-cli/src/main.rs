@@ -130,11 +130,120 @@ fn cmd_init(output: &Output, global: bool) -> Result<(), WerkError> {
     Ok(())
 }
 
-fn cmd_config(output: &Output, _command: werk::commands::ConfigCommand) -> Result<(), WerkError> {
-    let _ = output.error("not implemented: config command coming soon");
-    Err(WerkError::InvalidInput(
-        "command not implemented".to_string(),
-    ))
+fn cmd_config(output: &Output, command: werk::commands::ConfigCommand) -> Result<(), WerkError> {
+    use serde::Serialize;
+    use werk::commands::config::Config;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for config set.
+    #[derive(Serialize)]
+    struct ConfigSetResult {
+        key: String,
+        value: String,
+        path: String,
+    }
+
+    /// JSON output structure for config get.
+    #[derive(Serialize)]
+    struct ConfigGetResult {
+        key: String,
+        value: String,
+    }
+
+    match command {
+        werk::commands::ConfigCommand::Set { key, value } => {
+            // Validate key is not empty
+            if key.is_empty() {
+                return Err(WerkError::InvalidInput(
+                    "config key cannot be empty".to_string(),
+                ));
+            }
+
+            // Try to find a local workspace first, fall back to global
+            let workspace_result = Workspace::discover();
+            let mut config = match workspace_result {
+                Ok(ws) => Config::load(&ws)?,
+                Err(_) => {
+                    // No local workspace - use global config
+                    Config::load_global()?
+                }
+            };
+
+            // Set the value
+            config.set(&key, value.clone());
+
+            // Save
+            config.save()?;
+
+            // Output
+            let path = config
+                .path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            if output.is_json() {
+                let result = ConfigSetResult { key, value, path };
+                let json = serde_json::to_string_pretty(&result)
+                    .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+                println!("{}", json);
+            } else {
+                output
+                    .success(&format!(
+                        "Set {} = {}",
+                        key,
+                        output.styled(&value, werk::output::ColorStyle::Highlight)
+                    ))
+                    .map_err(|e| WerkError::IoError(e.to_string()))?;
+            }
+
+            Ok(())
+        }
+        werk::commands::ConfigCommand::Get { key } => {
+            // Validate key is not empty
+            if key.is_empty() {
+                return Err(WerkError::InvalidInput(
+                    "config key cannot be empty".to_string(),
+                ));
+            }
+
+            // Try to find a local workspace first, fall back to global
+            let workspace_result = Workspace::discover();
+            let config = match workspace_result {
+                Ok(ws) => Config::load(&ws)?,
+                Err(_) => {
+                    // No local workspace - use global config
+                    Config::load_global()?
+                }
+            };
+
+            // Get the value
+            match config.get(&key) {
+                Some(value) => {
+                    if output.is_json() {
+                        let result = ConfigGetResult {
+                            key,
+                            value: value.clone(),
+                        };
+                        let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                            WerkError::IoError(format!("failed to serialize JSON: {}", e))
+                        })?;
+                        println!("{}", json);
+                    } else {
+                        println!(
+                            "{} = {}",
+                            output.styled(&key, werk::output::ColorStyle::Info),
+                            output.styled(value, werk::output::ColorStyle::Highlight)
+                        );
+                    }
+                    Ok(())
+                }
+                None => Err(WerkError::ConfigError(format!(
+                    "config key '{}' not found",
+                    key
+                ))),
+            }
+        }
+    }
 }
 
 fn cmd_add(
