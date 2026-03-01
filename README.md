@@ -141,6 +141,7 @@ The operative instrument. Command-line interface to sd-core for working with str
 | Command | Flags | Purpose |
 |---------|-------|---------|
 | `init` | `--global` | Initialize workspace (local `.werk/` or global `~/.werk/`) |
+| `nuke` | `--confirm`, `--global` | Delete workspace (.werk/ directory). Requires --confirm for safety. --global targets ~/.werk/ |
 | `config set` | | Set configuration key=value |
 | `config get` | | Get configuration value |
 | `add` | `--parent <id>` | Create tension (desired state, actual state) |
