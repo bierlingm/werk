@@ -1,0 +1,39 @@
+{
+  "featureId": "horizon-tree",
+  "reviewedAt": "2026-03-08T03:07:01Z",
+  "commitId": "0d7f40f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Re-review confirms the prior blocking issue is still present: children_by_horizon does not match the feature/spec API contract. Other horizon query logic appears aligned with expected behavior.",
+    "issues": [
+      {
+        "file": "sd-core/src/tree.rs",
+        "line": 431,
+        "severity": "blocking",
+        "description": "`children_by_horizon` is still implemented as `-> Option<Vec<&Node>>` and returns `None` for missing parent IDs, while the feature contract requires `children_by_horizon(parent_id) -> Vec<&Node>` (features.json description, research/horizon-spec.md Bead H8). Blocking contract mismatch remains unresolved."
+      },
+      {
+        "file": "sd-core/src/tree.rs",
+        "line": 1323,
+        "severity": "non_blocking",
+        "description": "`test_children_by_horizon_all_none` says it checks stable ordering, but it only asserts membership via `contains` and does not assert actual output order."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "There is an unresolved contract/convention mismatch around missing-parent semantics for horizon child queries: mission feature/spec requires `Vec`, but established tree APIs use `Option<Vec<_>>` and this implementation followed the existing convention instead of the feature contract.",
+      "evidence": "Feature description in mission features.json: `children_by_horizon(parent_id) -> Vec<&Node>`; spec in research/horizon-spec.md Bead H8: same; existing tree API in sd-core/src/tree.rs:231 uses `children(&self, id: &str) -> Option<Vec<&Node>>`; implementation at sd-core/src/tree.rs:431 also uses `Option<Vec<&Node>>`."
+    },
+    {
+      "area": "skills",
+      "observation": "The rust-library-worker skill requires manual verification (including `cargo doc` and API/doc review), but the worker recorded no interactive checks while reporting `followedProcedure: true`.",
+      "evidence": "Skill procedure `.factory/skills/rust-library-worker/SKILL.md` section `6. Manual Verification`; handoff for worker session b1e752f4-1bd8-4bf6-b87f-6457014818c7 shows `verification.interactiveChecks: []` and `skillFeedback.followedProcedure: true`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/horizon-core/scrutiny/reviews/horizon-tree.json",
+  "summary": "Fail: prior blocking API-signature mismatch remains. `children_by_horizon` still returns `Option<Vec<&Node>>` instead of the contracted `Vec<&Node>`, so the re-run does not clear the original failure."
+}

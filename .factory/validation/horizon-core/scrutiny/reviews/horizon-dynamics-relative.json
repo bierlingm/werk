@@ -1,0 +1,34 @@
+{
+  "featureId": "horizon-dynamics-relative",
+  "reviewedAt": "2026-03-08T03:07:18Z",
+  "commitId": "03f14c75197d34b798053ee70a3c5f8212b385af",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Re-review confirms both prior blocking issues still remain in current code: detect_oscillation still counts horizon mutations in None-mode, and compensating-strategy persistence scaling still increases the threshold for Month horizons contrary to expected behavior.",
+    "issues": [
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 1126,
+        "severity": "blocking",
+        "description": "`detect_oscillation` still unconditionally collects `field == \"horizon\"` updates and adds temporal reversals into `total_reversals` (1126-1203) even when function argument `horizon` is `None`. That changes None-mode behavior and violates the feature invariant that horizon=None must remain identical to pre-horizon behavior."
+      },
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 1823,
+        "severity": "blocking",
+        "description": "`detect_compensating_strategy` still computes `scale_factor = horizon_width_days / 14.0` and multiplies persistence threshold (1818-1824). For Month (~30d), this raises the threshold above the 2-week baseline, which contradicts expected behavior that a 2-week oscillation should be significant for Month but not Year."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Skill adherence is marked as fully followed, but required manual-verification evidence is incomplete for this session.",
+      "evidence": "Skill requires `cargo doc -p sd-core --no-deps` in Step 6 (.factory/skills/rust-library-worker/SKILL.md:68-76). Feature handoff for session ea747678-99d3-4002-85e3-59a82a587e2d lists commandsRun entries for test/clippy/fmt only while setting `skillFeedback.followedProcedure=true` (/Users/moritzbierling/.factory/missions/30fe7d21-09b3-49fb-8f42-d5d2ffc0b72b/handoffs/2026-03-08T02-29-30-273Z__horizon-dynamics-relative__ea747678-99d3-4002-85e3-59a82a587e2d.json:14-44)."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/horizon-core/scrutiny/reviews/horizon-dynamics-relative.json",
+  "summary": "Fail: the two previously reported blocking H7 issues are still present in current code, and the same skill-procedure evidence mismatch remains." 
+}

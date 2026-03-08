@@ -1,0 +1,15 @@
+{
+  "featureId": "horizon-tension",
+  "reviewedAt": "2026-03-08T02:46:49Z",
+  "commitId": "0b637d09e485213d9bd3950b739a3badeac95ec7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation matches the feature contract: Tension gained optional horizon, constructors preserve backward compatibility, new_full supports explicit horizon, and update_horizon enforces Active-only lifecycle semantics while returning previous horizon.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "PASS: commit 0b637d0 satisfies horizon-tension requirements with no blocking or non-blocking issues identified in the reviewed diff/transcript evidence."
+}

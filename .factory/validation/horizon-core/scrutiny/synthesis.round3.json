@@ -1,0 +1,48 @@
+{
+  "milestone": "horizon-core",
+  "round": 3,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cargo test --workspace --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -- --test-threads=5",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cargo build --workspace --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cargo clippy --workspace --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -- -D warnings",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "fix-scrutiny-blocking-issues"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "fix-scrutiny-blocking-issues",
+      "severity": "blocking",
+      "description": "sd-core/src/horizon.rs range_start()/range_end() still rely on .expect() in public code paths; since Horizon is publicly constructible, malformed variants can still panic (e.g. Horizon::Month(2026, 13))."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": ".factory/skills/rust-library-worker/SKILL.md",
+      "suggestion": "Tighten enforcement of Step 6 evidence (manual verification/cargo doc) before allowing followedProcedure=true in worker handoffs.",
+      "evidence": "The fix-scrutiny-blocking-issues handoff reports followedProcedure=true but does not include manual verification evidence despite skill requirements.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/horizon-core/scrutiny/synthesis.round2.json"
+}

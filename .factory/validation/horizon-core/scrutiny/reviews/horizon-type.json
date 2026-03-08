@@ -1,0 +1,39 @@
+{
+  "featureId": "horizon-type",
+  "reviewedAt": "2026-03-08T03:06:37Z",
+  "commitId": "90746072fd8fc34f9dd1aed24c24bf9b91acf101",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Re-review of current code shows the previously reported blocking issues still remain unresolved: DateTime urgency semantics for width=0 are internally inconsistent, and public Horizon variant handling still contains panic paths via expect().",
+    "issues": [
+      {
+        "file": "sd-core/src/horizon.rs",
+        "line": 230,
+        "severity": "blocking",
+        "description": "`urgency()` still computes `time_elapsed / max(total_window, 1)`. For `DateTime(dt)` with `created_at == now == dt`, this returns `0.0`, while the method docs at line 228 state DateTime urgency should be `>= 1.0` for instant horizons. The test at line 1113 still permits `0.0`, so the semantic mismatch remains uncorrected."
+      },
+      {
+        "file": "sd-core/src/horizon.rs",
+        "line": 155,
+        "severity": "blocking",
+        "description": "`range_start()`/`range_end()` still call `.expect(...)` in public library paths (lines 155, 159, 162, 177, 188, 194). Because `Horizon` variants are publicly constructible (e.g., `Horizon::Month(i32, u32)`), invalid values like `Horizon::Month(2026, 13)` can panic at runtime, violating the project no-panics convention."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`rust-library-worker` requires manual verification with `cargo doc -p sd-core --no-deps`, but the transcript skeleton for this worker session does not show that step while handoff skill feedback reports procedure-followed=true.",
+      "evidence": ".factory/skills/rust-library-worker/SKILL.md (Step 6) vs worker-transcripts.jsonl entry for workerSessionId 241b4773-8927-4d4c-9f02-930fb2eb666f (no cargo doc command)."
+    },
+    {
+      "area": "conventions",
+      "observation": "Shared conventions require no panics in library code, but current horizon implementation still uses `.expect(...)` in non-test public methods.",
+      "evidence": "/Users/moritzbierling/.factory/missions/30fe7d21-09b3-49fb-8f42-d5d2ffc0b72b/AGENTS.md (\"No panics in library code\"), .factory/library/architecture.md line 41 (\"Result everywhere: No panics in library code\"), and sd-core/src/horizon.rs lines 155/159/162/177/188/194."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/horizon-core/scrutiny/reviews/horizon-type.json",
+  "summary": "FAIL: re-review confirms the two prior blocking concerns are still present in current code (DateTime width=0 urgency semantics mismatch and panic risk from expect() in public Horizon handling)."
+}

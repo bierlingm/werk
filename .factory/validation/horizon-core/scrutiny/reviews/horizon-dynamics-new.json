@@ -1,0 +1,33 @@
+{
+  "featureId": "horizon-dynamics-new",
+  "reviewedAt": "2026-03-08T03:07:10Z",
+  "commitId": "bfd6b063e5752d1ac4eef0392a9b78410e06fc23",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Re-review confirms urgency/pressure/drift functionality is present, but the previously reported blocking drift-classification bug is still present in current code.",
+    "issues": [
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 901,
+        "severity": "blocking",
+        "description": "`detect_horizon_drift` still skips `(None -> Some(_))` as \"not a shift\" (line 844), then classifies with `shifts.iter().all(|s| *s > 0)` without guarding for an empty `shifts` vector. Because `all()` is true on empty iterators, first-time horizon assignment is incorrectly labeled `Postponement` instead of a baseline non-shift state (expected `Stable`)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "H6 drift validation does not include a first-time horizon assignment case (`None -> Some`), which let the empty-iterator misclassification slip through.",
+      "evidence": "validation-contract.md covers VAL-HDYN-010..015 for stable/postponement/repeated/tightening/loosening/oscillating, but no assertion for initial set; sd-core/src/dynamics.rs tests around lines 5708-5936 also omit a None->Some classification test."
+    },
+    {
+      "area": "skills",
+      "observation": "The rust-library-worker procedure requires `cargo doc -p sd-core --no-deps`, but this session still reports procedure compliance without that step.",
+      "evidence": "Step 6 in .factory/skills/rust-library-worker/SKILL.md requires cargo doc; handoff for session 85d6c8b7-f121-4f26-8e9d-3ef6949a642e lists test/clippy/fmt only and sets `skillFeedback.followedProcedure: true`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/horizon-core/scrutiny/reviews/horizon-dynamics-new.json",
+  "summary": "Fail: the prior blocking concern remains unresolved. detect_horizon_drift still misclassifies first-time horizon assignment as Postponement due to an empty-iterator `all()` path."
+}
