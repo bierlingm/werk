@@ -1,0 +1,105 @@
+{
+  "groupId": "group-e-context",
+  "testedAt": "2026-03-08T09:19:13.596543+00:00",
+  "credentials": {
+    "account": "horizon_cli_uve@example.com",
+    "namespace": "/tmp/horizon-cli-utv-ge"
+  },
+  "toolsUsed": [
+    "werk-cli-binary",
+    "python3"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HCLI-014",
+      "title": "Context JSON with horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run werk context on horizon tension",
+          "expected": "horizon, horizon_range, urgency, pressure, staleness_ratio populated",
+          "observed": "horizon=2026-05, range_is_object=True, urgency_type=float, pressure_type=float, staleness_type=float"
+        },
+        {
+          "action": "Inspect siblings array in context",
+          "expected": "siblings include horizon field",
+          "observed": "sibling_horizons=['2026-08', None]"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-ge/evidence/init.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-parent.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-a.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-b.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-c.json",
+          "/tmp/horizon-cli-utv-ge/evidence/context-child-a.json",
+          "/tmp/horizon-cli-utv-ge/evidence/summary.txt"
+        ],
+        "exitCodes": "0 for init/add/context command sequence",
+        "commandSurface": "/Users/moritzbierling/werk/desk/werk/target/debug/werk"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-015",
+      "title": "Context JSON without horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run werk context on no-horizon tension",
+          "expected": "horizon-dependent fields null/absent",
+          "observed": "horizon=None, horizon_range=None, urgency=None, pressure=None, staleness_ratio=None"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-c.json",
+          "/tmp/horizon-cli-utv-ge/evidence/context-child-c.json",
+          "/tmp/horizon-cli-utv-ge/evidence/summary.txt"
+        ],
+        "exitCodes": "0 for add/context commands",
+        "commandSurface": "/Users/moritzbierling/werk/desk/werk/target/debug/werk"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCROSS-004",
+      "title": "Create-context JSON shape",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create multiple tensions with horizons and one without horizon",
+          "expected": "context output follows spec 7.5 horizon fields",
+          "observed": "Created parent + child A (2026-05) + child B (2026-08) + child C (none)"
+        },
+        {
+          "action": "Run werk context for child A",
+          "expected": "tension horizon fields present and siblings horizons represented",
+          "observed": "tension.horizon=2026-05, sibling_horizons=['2026-08', None]"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-ge/evidence/add-parent.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-a.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-b.json",
+          "/tmp/horizon-cli-utv-ge/evidence/add-child-c.json",
+          "/tmp/horizon-cli-utv-ge/evidence/context-child-a.json"
+        ],
+        "jsonShapeChecks": {
+          "tension_has_horizon": true,
+          "tension_has_horizon_range": true,
+          "tension_has_urgency": true,
+          "tension_has_pressure": true,
+          "tension_has_staleness_ratio": true,
+          "siblings_include_horizon_field": true
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 3 assertions: 3 passed, 0 failed, 0 blocked."
+}

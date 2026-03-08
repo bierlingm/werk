@@ -1,0 +1,156 @@
+{
+  "groupId": "group-c-show-verbose",
+  "testedAt": "2026-03-08T09:21:04.714184+00:00",
+  "credentials": {
+    "account": "horizon_cli_uvc@example.com",
+    "namespace": "/tmp/horizon-cli-utv-gc"
+  },
+  "toolsUsed": [
+    "werk-cli"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HCLI-008",
+      "title": "Show with horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk add \"ship horizon output\" \"blocked\" --horizon 2026-05 --json`",
+          "expected": "Creates tension with stored horizon value",
+          "observed": "Created tension 01KK6BW56QNYC3SPER7JXMR9PC with `horizon: \"2026-05\"`"
+        },
+        {
+          "action": "Run `werk show 01KK6BW56QNYC3SPER7JXMR9PC`",
+          "expected": "Output includes Horizon line with value and interpretation",
+          "observed": "Output includes `Horizon:    2026-05 (May 2026, 84 days remaining)`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/02_add_with_horizon.stdout",
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/04_show_with_horizon.stdout"
+        ],
+        "exitCodes": {
+          "02_add_with_horizon": 0,
+          "04_show_with_horizon": 0
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-009",
+      "title": "Show without horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk add \"ship no horizon output\" \"blocked\" --json`",
+          "expected": "Creates tension with null horizon",
+          "observed": "Created tension 01KK6BW57KDSMNHEMMTXGES72S with `horizon: null`"
+        },
+        {
+          "action": "Run `werk show 01KK6BW57KDSMNHEMMTXGES72S`",
+          "expected": "Horizon line omitted or shown as none; no urgency/pressure section",
+          "observed": "No `Horizon:` line present, and no urgency/pressure lines are shown"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/03_add_without_horizon.stdout",
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/05_show_without_horizon.stdout"
+        ],
+        "exitCodes": {
+          "03_add_without_horizon": 0,
+          "05_show_without_horizon": 0
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-010",
+      "title": "Show --verbose with horizon dynamics",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk show 01KK6BW56QNYC3SPER7JXMR9PC --verbose`",
+          "expected": "Verbose output contains Urgency, Pressure, and HorizonDrift labels",
+          "observed": "Output contains `Urgency:`, `Pressure:`, and `HorizonDrift: Stable ...`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/06_show_verbose_with_horizon.stdout"
+        ],
+        "exitCodes": {
+          "06_show_verbose_with_horizon": 0
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-011",
+      "title": "Show --verbose without horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk show 01KK6BW57KDSMNHEMMTXGES72S --verbose`",
+          "expected": "Verbose output shows horizon-dependent values as absent/N/A",
+          "observed": "`Urgency:`, `Pressure:`, and `HorizonDrift:` lines are absent from verbose output"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/07_show_verbose_without_horizon.stdout"
+        ],
+        "exitCodes": {
+          "07_show_verbose_without_horizon": 0
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCROSS-006",
+      "title": "Full create-mutate-compute-display pipeline",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk add \"ship cross pipeline pressure\" \"blocked\" --horizon 2026-03-01 --json`",
+          "expected": "Creates horizon-bearing tension for pipeline test",
+          "observed": "Created tension 01KK6BXTH43WJQHNZNHESPZQKB with `horizon: \"2026-03-01\"`"
+        },
+        {
+          "action": "Run `werk show 01KK6BXTH43WJQHNZNHESPZQKB --verbose`",
+          "expected": "Shows urgency/pressure/drift and baseline magnitude",
+          "observed": "Verbose output shows `Urgency:`, `Pressure:`, `HorizonDrift: Stable`; magnitude is `0.88`"
+        },
+        {
+          "action": "Run `werk reality 01KK6BXTH43WJQHNZNHESPZQKB \"draft in progress\"`",
+          "expected": "Actual state updates successfully",
+          "observed": "CLI confirms update from `blocked` to `draft in progress`"
+        },
+        {
+          "action": "Run `werk show 01KK6BXTH43WJQHNZNHESPZQKB --verbose` again",
+          "expected": "Dynamics recomputed after mutation; drift remains stable without horizon edits",
+          "observed": "Magnitude changed from `0.88` to `0.68`, urgency/pressure labels remain present, and `HorizonDrift: Stable` persists"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/14_add_cross_horizon_past.stdout",
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/15_show_verbose_cross_past_before.stdout",
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/16_reality_cross_past_update.stdout",
+          "/tmp/horizon-cli-utv-gc/run.eTIybi/artifacts/17_show_verbose_cross_past_after.stdout"
+        ],
+        "exitCodes": {
+          "14_add_cross_horizon_past": 0,
+          "15_show_verbose_cross_past_before": 0,
+          "16_reality_cross_past_update": 0,
+          "17_show_verbose_cross_past_after": 0
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions (VAL-HCLI-008/009/010/011, VAL-HCROSS-006) via real werk CLI commands in isolated namespace /tmp/horizon-cli-utv-gc; all 5 passed with terminal snapshot evidence and zero command failures."
+}

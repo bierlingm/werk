@@ -1,0 +1,129 @@
+{
+  "groupId": "group-f-errors",
+  "testedAt": "2026-03-08T09:23:57Z",
+  "credentials": {
+    "account": "horizon_cli_uvf@example.com",
+    "namespace": "/tmp/horizon-cli-utv-gf"
+  },
+  "toolsUsed": ["shell", "werk-cli"],
+  "assertions": [
+    {
+      "id": "VAL-HCLI-016",
+      "title": "Invalid horizon format error",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk add \"desired-016\" \"actual-016\" --horizon \"abc\"` in isolated workspace",
+          "expected": "Exit code 1 with meaningful stderr including horizon format guidance/examples",
+          "observed": "Exit code 1; stderr: `error: Invalid horizon 'abc': invalid horizon format: invalid year. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-016.err",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-016.out"
+        ],
+        "exitCode": 1,
+        "stderr": "error: Invalid horizon 'abc': invalid horizon format: invalid year. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-017",
+      "title": "Invalid month/day rejected",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk add \"desired-017-month\" \"actual-017-month\" --horizon \"2026-13\"`",
+          "expected": "Exit code 1 with meaningful invalid month error",
+          "observed": "Exit code 1; stderr: `error: Invalid horizon '2026-13': value out of range: month must be 1-12, got 13. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z`"
+        },
+        {
+          "action": "Run `werk horizon 01KK6C3TW56CF33WF2VZ7K03VQ \"2026-05-32\"`",
+          "expected": "Exit code 1 with meaningful invalid day/date error",
+          "observed": "Exit code 1; stderr: `error: Invalid horizon '2026-05-32': value out of range: invalid date 2026-5-32. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-017a.err",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-017a.out",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-017b.err",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-017b.out"
+        ],
+        "exitCodes": [1, 1],
+        "stderr": [
+          "error: Invalid horizon '2026-13': value out of range: month must be 1-12, got 13. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z",
+          "error: Invalid horizon '2026-05-32': value out of range: invalid date 2026-5-32. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-018",
+      "title": "Horizon on nonexistent tension",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `werk horizon BOGUS123 2026-05`",
+          "expected": "Exit code 1 with not-found stderr",
+          "observed": "Exit code 1; stderr: `error: tension not found: BOGUS123`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-018.err",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-018.out"
+        ],
+        "exitCode": 1,
+        "stderr": "error: tension not found: BOGUS123"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-019",
+      "title": "Horizon on resolved tension rejected",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tension 01KK6C3Z20DEGGZWR7XVPYW9N5 and resolve it, then run `werk horizon 01KK6C3Z20DEGGZWR7XVPYW9N5 2026-05`",
+          "expected": "Exit code 1 with status constraint stderr for Resolved tension",
+          "observed": "Exit code 1; stderr: `error: cannot update horizon on Resolved tension (must be Active)`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-019.err",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-019.out"
+        ],
+        "exitCode": 1,
+        "stderr": "error: cannot update horizon on Resolved tension (must be Active)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HCLI-020",
+      "title": "Horizon on released tension rejected",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create tension 01KK6C426MTETH4BDGDS9HDV35 and release it, then run `werk horizon 01KK6C426MTETH4BDGDS9HDV35 2026-05`",
+          "expected": "Exit code 1 with status constraint stderr for Released tension",
+          "observed": "Exit code 1; stderr: `error: cannot update horizon on Released tension (must be Active)`"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-020.err",
+          "/tmp/horizon-cli-utv-gf/ws/val-hcli-020.out"
+        ],
+        "exitCode": 1,
+        "stderr": "error: cannot update horizon on Released tension (must be Active)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assigned error-path assertions (VAL-HCLI-016..020) in isolated namespace; all passed with expected exit code 1 and meaningful stderr messages for invalid formats, nonexistent tension, and resolved/released status rejections."
+}
