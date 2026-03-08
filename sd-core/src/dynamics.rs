@@ -3329,11 +3329,11 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
 
         // Create tensions with problem-solving keywords
-        let t1 = store.create_tension("fix the bug", "debugging").unwrap();
-        let t2 = store
+        let _t1 = store.create_tension("fix the bug", "debugging").unwrap();
+        let _t2 = store
             .create_tension("solve the issue", "analyzing")
             .unwrap();
-        let t3 = store
+        let _t3 = store
             .create_tension("remove the problem", "investigating")
             .unwrap();
 
@@ -3357,13 +3357,13 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
 
         // Create tensions with reactive keywords
-        let t1 = store
+        let _t1 = store
             .create_tension("need to respond to request", "pending")
             .unwrap();
-        let t2 = store
+        let _t2 = store
             .create_tension("must handle deadline", "waiting")
             .unwrap();
-        let t3 = store
+        let _t3 = store
             .create_tension("required to fix this", "not started")
             .unwrap();
 
@@ -3653,14 +3653,14 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result_valid =
+        let _result_valid =
             detect_compensating_strategy(&t.id, &mutations, None, &cs_thresholds_valid, Utc::now());
 
         // If structural changes happened more than 1 second ago, they shouldn't block
         // But since they just happened, let's use a time slightly in the future to make
         // them fall outside the window
         let future_time = Utc::now() + chrono::Duration::seconds(2);
-        let result_with_future_time = detect_compensating_strategy(
+        let _result_with_future_time = detect_compensating_strategy(
             &t.id,
             &mutations,
             None,
@@ -4452,7 +4452,7 @@ mod tests {
         let child1 = store
             .create_tension_with_parent("child1", "c1", Some(parent.id.clone()))
             .unwrap();
-        let child2 = store
+        let _child2 = store
             .create_tension_with_parent("child2", "c2", Some(parent.id.clone()))
             .unwrap();
 
@@ -5012,7 +5012,7 @@ mod tests {
     fn test_compute_urgency_at_zero_percent() {
         // VAL-HDYN-002: Tension just created with distant horizon: urgency value ~0.0
         use crate::Horizon;
-        use chrono::{Datelike, TimeZone};
+        use chrono::Datelike;
 
         let now = Utc::now();
         let h = Horizon::Month(now.year() + 1, 1); // Next year January

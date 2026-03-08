@@ -1342,7 +1342,7 @@ mod tests {
     #[test]
     fn test_horizon_is_debug_clone_partialeq_eq_hash() {
         use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use std::hash::Hash;
 
         let h = Horizon::Month(2026, 5);
         let _ = format!("{h:?}"); // Debug

@@ -824,7 +824,6 @@ mod tests {
 
     #[test]
     fn test_replay_with_horizon_clear_to_none() {
-        use crate::Horizon;
         let now = Utc::now();
         let mutations = vec![
             Mutation::new(
@@ -980,7 +979,6 @@ mod tests {
 
     #[test]
     fn test_replay_horizon_set_update_clear_sequence() {
-        use crate::Horizon;
         let now = Utc::now();
         let mutations = vec![
             Mutation::new(
