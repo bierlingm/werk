@@ -6,8 +6,8 @@ A Rust workspace implementing Robert Fritz's structural dynamics as computationa
 
 This workspace contains two crates:
 
-- **sd-core**: A pure Rust library implementing structural dynamics as a computational grammar. Fully implemented with 313 tests.
-- **werk-cli**: Command-line interface for working with structural tensions and launching agent sessions. Fully implemented with 331 tests.
+- **sd-core**: A pure Rust library implementing structural dynamics as a computational grammar. Fully implemented with 572 tests.
+- **werk-cli**: Command-line interface for working with structural tensions and launching agent sessions. Fully implemented with 360 tests.
 
 ## sd-core
 
@@ -39,6 +39,7 @@ Everything else — structural conflicts, oscillation patterns, resolution detec
 | `store` | fsqlite-backed persistence with CRUD operations |
 | `tree` | Forest topology: multiple roots, parent-child hierarchies |
 | `dynamics` | All structural dynamics computations |
+| `horizon` | Temporal horizon type with range computation, urgency, staleness, drift detection |
 | `events` | Typed event system with subscription API |
 | `engine` | `DynamicsEngine` for integrated dynamics computation |
 
@@ -50,7 +51,7 @@ Everything else — structural conflicts, oscillation patterns, resolution detec
 - **Events as extension boundary**: Grammar emits events; instruments subscribe and react. Clean separation.
 - **Zero unsafe code**: `#![forbid(unsafe_code)]` at crate root.
 
-### Dynamics (10 Total)
+### Dynamics (13 Total)
 
 **Core Dynamics:**
 
@@ -77,6 +78,14 @@ Everything else — structural conflicts, oscillation patterns, resolution detec
 |---------|----------|---------|
 | Neglect | `detect_neglect` | Detect tensions abandoned despite opportunity |
 
+**Horizon Dynamics:**
+
+| Dynamic | Function | Purpose |
+|---------|----------|---------|
+| Urgency | `compute_urgency` | Temporal pressure from approaching horizon |
+| TemporalPressure | `compute_temporal_pressure` | Combined magnitude × urgency weighting |
+| HorizonDrift | `detect_horizon_drift` | Detect shifting horizons (postponement, tightening, oscillation) |
+
 ## Setup
 
 Requires nightly Rust (edition 2024), pinned via `rust-toolchain.toml`:
@@ -95,14 +104,14 @@ cargo build -p werk-cli     # CLI binary
 Run tests:
 
 ```bash
-cargo test -p sd-core       # 313 tests
-cargo test -p werk-cli      # 331 tests
-cargo test                  # All 644 tests
+cargo test -p sd-core       # 572 tests
+cargo test -p werk          # 360 tests
+cargo test                  # All 932 tests
 ```
 
 ## Test Suite
 
-- **644 tests total**: 313 sd-core (277 unit + 18 integration + 10 store discovery + 1 doctest) + 331 werk-cli (integration and unit tests)
+- **932 tests total**: 572 sd-core (543 unit + 18 integration + 10 store discovery + 1 doctest) + 360 werk-cli (integration and unit tests)
 - **Zero unsafe code**
 - **Deterministic**: Same operations always produce same results
 
@@ -117,13 +126,16 @@ cargo fmt --check
 ## Quick Example
 
 ```rust
-use sd_core::{Store, Tension, TensionStatus};
+use sd_core::{Horizon, Store, Tension, TensionStatus};
 
 // Create an in-memory store
 let store = Store::new_in_memory()?;
 
-// Create a tension: gap between "write a novel" and "have an outline"
-let tension = store.create_tension("write a novel", "have an outline")?;
+// Create a tension with a temporal horizon
+let horizon = Horizon::new_month(2026, 6)?;
+let tension = store.create_tension_full(
+    "write a novel", "have an outline", None, Some(horizon),
+)?;
 
 // Update actual as progress is made
 store.update_actual(&tension.id, "have a draft chapter")?;
@@ -144,7 +156,8 @@ The operative instrument. Command-line interface to sd-core for working with str
 | `nuke` | `--confirm`, `--global` | Delete workspace (.werk/ directory). Requires --confirm for safety. --global targets ~/.werk/ |
 | `config set` | | Set configuration key=value |
 | `config get` | | Get configuration value |
-| `add` | `--parent <id>` | Create tension (desired state, actual state) |
+| `add` | `--parent <id>`, `--horizon <date>` | Create tension (desired state, actual state) |
+| `horizon` | `<id> [value]` | Set, clear, or display temporal horizon with urgency |
 | `show` | `--verbose` | Display tension with computed dynamics |
 | `tree` | `--open`, `--all`, `--resolved`, `--released` | Forest tree with dynamics indicators |
 | `reality` | | Update actual state of a tension |
@@ -183,11 +196,15 @@ Agents receive full structural context via stdin piping, including tension fores
 # Initialize workspace
 werk init
 
-# Create a tension: gap between desired and actual
-werk add "ship v1.0" "have working prototype"
+# Create a tension with a temporal horizon
+werk add --horizon 2026-06 "ship v1.0" "have working prototype"
 
 # Update reality as progress happens
 werk reality <id> "have alpha build"
+
+# Set or display horizon with urgency
+werk horizon <id>
+werk horizon <id> 2026-05-15
 
 # View forest with dynamics indicators
 werk tree --open
