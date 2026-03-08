@@ -1,0 +1,178 @@
+{
+  "milestone": "horizon-core",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 111,
+    "passed": 97,
+    "failed": 0,
+    "blocked": 14
+  },
+  "passedAssertions": [
+    "VAL-HCOMPAT-001",
+    "VAL-HCOMPAT-002",
+    "VAL-HCOMPAT-003",
+    "VAL-HDYN-001",
+    "VAL-HDYN-002",
+    "VAL-HDYN-003",
+    "VAL-HDYN-004",
+    "VAL-HDYN-005",
+    "VAL-HDYN-006",
+    "VAL-HDYN-007",
+    "VAL-HDYN-008",
+    "VAL-HDYN-009",
+    "VAL-HDYN-010",
+    "VAL-HDYN-011",
+    "VAL-HDYN-012",
+    "VAL-HDYN-013",
+    "VAL-HDYN-014",
+    "VAL-HDYN-015",
+    "VAL-HDYN-016",
+    "VAL-HENG-001",
+    "VAL-HENG-002",
+    "VAL-HENG-003",
+    "VAL-HENG-004",
+    "VAL-HENG-005",
+    "VAL-HENG-006",
+    "VAL-HENG-007",
+    "VAL-HENG-008",
+    "VAL-HENG-009",
+    "VAL-HEVT-001",
+    "VAL-HEVT-002",
+    "VAL-HEVT-003",
+    "VAL-HEVT-004",
+    "VAL-HEVT-005",
+    "VAL-HEVT-006",
+    "VAL-HEVT-007",
+    "VAL-HMUT-001",
+    "VAL-HMUT-002",
+    "VAL-HMUT-003",
+    "VAL-HMUT-004",
+    "VAL-HMUT-005",
+    "VAL-HMUT-006",
+    "VAL-HREL-005",
+    "VAL-HREL-008",
+    "VAL-HREL-010",
+    "VAL-HREL-011",
+    "VAL-HREL-012",
+    "VAL-HREL-013",
+    "VAL-HREL-016",
+    "VAL-HREL-018",
+    "VAL-HREL-020",
+    "VAL-HREL-022",
+    "VAL-HREL-024",
+    "VAL-HSTORE-001",
+    "VAL-HSTORE-003",
+    "VAL-HSTORE-004",
+    "VAL-HSTORE-005",
+    "VAL-HSTORE-006",
+    "VAL-HSTORE-007",
+    "VAL-HSTORE-008",
+    "VAL-HSTORE-009",
+    "VAL-HSTORE-010",
+    "VAL-HTENS-001",
+    "VAL-HTENS-002",
+    "VAL-HTENS-003",
+    "VAL-HTENS-004",
+    "VAL-HTENS-005",
+    "VAL-HTENS-006",
+    "VAL-HTENS-007",
+    "VAL-HTENS-008",
+    "VAL-HTENS-009",
+    "VAL-HTENS-010",
+    "VAL-HTREE-001",
+    "VAL-HTREE-002",
+    "VAL-HTREE-003",
+    "VAL-HTREE-004",
+    "VAL-HTREE-005",
+    "VAL-HTREE-006",
+    "VAL-HTREE-007",
+    "VAL-HTREE-008",
+    "VAL-HTYPE-001",
+    "VAL-HTYPE-002",
+    "VAL-HTYPE-003",
+    "VAL-HTYPE-004",
+    "VAL-HTYPE-005",
+    "VAL-HTYPE-006",
+    "VAL-HTYPE-007",
+    "VAL-HTYPE-008",
+    "VAL-HTYPE-009",
+    "VAL-HTYPE-010",
+    "VAL-HTYPE-011",
+    "VAL-HTYPE-012",
+    "VAL-HTYPE-013",
+    "VAL-HTYPE-014",
+    "VAL-HTYPE-015",
+    "VAL-HTYPE-016",
+    "VAL-HTYPE-017",
+    "VAL-HTYPE-018"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-HREL-001",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-002",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-003",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-004",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-006",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-007",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-009",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-014",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-015",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-017",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-019",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-021",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HREL-023",
+      "blockedBy": "No directly matching user-surface cargo test was discoverable for this assertion under the assigned command-only validation surface."
+    },
+    {
+      "id": "VAL-HSTORE-002",
+      "blockedBy": "Blocked on evidence: with allowed surface (cargo fmt/clippy/test only), no dedicated observable test output confirmed migration from DBs that lacked the horizon column."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance: sd-core-library section with command-surface and isolation rules for parallel validators.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "generatedAt": "2026-03-08T07:41:30.705360+00:00"
+}

@@ -1,0 +1,422 @@
+{
+  "groupId": "group2-persistence-events-tree",
+  "testedAt": "2026-03-08T07:36:15Z",
+  "credentials": {
+    "account": "horizon_validator_g2@example.com",
+    "namespace": "/tmp/horizon-core-utv-g2"
+  },
+  "toolsUsed": [
+    "cargo fmt",
+    "cargo clippy",
+    "cargo test"
+  ],
+  "commands": [
+    {
+      "command": "TMPDIR=/tmp/horizon-core-utv-g2 cargo fmt --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml --all --check",
+      "exitCode": 0,
+      "output": "Command completed successfully"
+    },
+    {
+      "command": "TMPDIR=/tmp/horizon-core-utv-g2 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g2/target cargo clippy --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core -- -D warnings",
+      "exitCode": 0,
+      "output": "Finished dev profile; no clippy warnings with -D warnings"
+    },
+    {
+      "command": "TMPDIR=/tmp/horizon-core-utv-g2 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g2/target cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core store -- --test-threads=5",
+      "exitCode": 0,
+      "output": "test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 438 filtered out"
+    },
+    {
+      "command": "TMPDIR=/tmp/horizon-core-utv-g2 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g2/target cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core events -- --test-threads=5",
+      "exitCode": 0,
+      "output": "test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out"
+    },
+    {
+      "command": "TMPDIR=/tmp/horizon-core-utv-g2 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g2/target cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core tree -- --test-threads=5",
+      "exitCode": 0,
+      "output": "test result: ok. 55 passed; 0 failed; 0 ignored; 0 measured; 474 filtered out"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HSTORE-001",
+      "title": "Schema includes horizon column",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_schema_tensions_columns"
+        ],
+        "output": "test store::tests::test_schema_tensions_columns ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-002",
+      "title": "Migration of existing databases",
+      "status": "blocked",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5 and cargo test -p sd-core store -- --list",
+        "tests": [
+          "store::tests::test_init_idempotent"
+        ],
+        "output": "No explicit test in cargo output validated opening a pre-horizon schema then ALTER TABLE migration with existing row horizon=None"
+      },
+      "issues": "Blocked on evidence: with allowed surface (cargo fmt/clippy/test only), no dedicated observable test output confirmed migration from DBs that lacked the horizon column."
+    },
+    {
+      "id": "VAL-HSTORE-003",
+      "title": "create_tension_full persists horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_create_tension_full_with_horizon_year",
+          "store::tests::test_create_tension_full_with_horizon_month",
+          "store::tests::test_create_tension_full_with_horizon_day",
+          "store::tests::test_create_tension_full_with_horizon_datetime"
+        ],
+        "output": "all listed tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-004",
+      "title": "create_tension default no horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_create_tension_defaults_no_horizon_event",
+          "store::tests::test_create_tension_full_without_horizon"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-005",
+      "title": "update_horizon persists and records mutation",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_update_horizon_on_active",
+          "store::tests::test_update_horizon_records_mutation"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-006",
+      "title": "update_horizon on non-Active fails",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_update_horizon_on_resolved_fails",
+          "store::tests::test_update_horizon_on_released_fails"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-007",
+      "title": "list_tensions returns horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_list_tensions_returns_horizon"
+        ],
+        "output": "test store::tests::test_list_tensions_returns_horizon ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-008",
+      "title": "get_children returns horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_get_children_returns_horizon"
+        ],
+        "output": "test store::tests::test_get_children_returns_horizon ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-009",
+      "title": "get_roots returns horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store::tests::test_get_roots_returns_horizon"
+        ],
+        "output": "test store::tests::test_get_roots_returns_horizon ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HSTORE-010",
+      "title": "Existing store tests pass",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "store module filtered suite"
+        ],
+        "output": "test result: ok. 91 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-001",
+      "title": "TensionCreated with horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5",
+        "tests": [
+          "events::tests::test_tension_created_with_horizon"
+        ],
+        "output": "test events::tests::test_tension_created_with_horizon ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-002",
+      "title": "TensionCreated without horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5",
+        "tests": [
+          "events::tests::test_tension_created_without_horizon"
+        ],
+        "output": "test events::tests::test_tension_created_without_horizon ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-003",
+      "title": "HorizonChanged event on update",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5 and cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "events::tests::test_horizon_changed_event_on_update",
+          "store::tests::test_update_horizon_emits_event"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-004",
+      "title": "HorizonChanged event on clear",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5 and cargo test -p sd-core store -- --test-threads=5",
+        "tests": [
+          "events::tests::test_horizon_changed_event_on_clear",
+          "store::tests::test_update_horizon_clear_emits_event_with_none"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-005",
+      "title": "HorizonChanged serialization roundtrip",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5",
+        "tests": [
+          "events::tests::test_horizon_changed_serialization_roundtrip"
+        ],
+        "output": "test events::tests::test_horizon_changed_serialization_roundtrip ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-006",
+      "title": "EventBuilder horizon_changed method",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5",
+        "tests": [
+          "events::tests::test_event_builder_horizon_changed"
+        ],
+        "output": "test events::tests::test_event_builder_horizon_changed ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HEVT-007",
+      "title": "Existing event tests pass",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core events -- --test-threads=5",
+        "tests": [
+          "events module filtered suite"
+        ],
+        "output": "test result: ok. 32 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-001",
+      "title": "children_by_horizon sorting",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_children_by_horizon_sorted_earliest_first",
+          "tree::tests::test_children_by_horizon_none_last"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-002",
+      "title": "children_by_horizon precision ties",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_children_by_horizon_precision_ties"
+        ],
+        "output": "test tree::tests::test_children_by_horizon_precision_ties ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-003",
+      "title": "children_by_horizon all None",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_children_by_horizon_all_none"
+        ],
+        "output": "test tree::tests::test_children_by_horizon_all_none ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-004",
+      "title": "tensions_past_horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_tensions_past_horizon_active_only",
+          "tree::tests::test_tensions_past_horizon_at_boundary"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-005",
+      "title": "tensions_approaching_horizon",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_tensions_approaching_horizon_within_duration"
+        ],
+        "output": "test tree::tests::test_tensions_approaching_horizon_within_duration ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-006",
+      "title": "tensions_approaching_horizon zero duration",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_tensions_approaching_horizon_zero_duration"
+        ],
+        "output": "test tree::tests::test_tensions_approaching_horizon_zero_duration ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-007",
+      "title": "No horizons set returns empty",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree::tests::test_tensions_past_horizon_empty_when_none",
+          "tree::tests::test_tensions_approaching_horizon_no_horizon_empty"
+        ],
+        "output": "both tests ... ok"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HTREE-008",
+      "title": "Existing tree tests pass",
+      "status": "pass",
+      "evidence": {
+        "command": "cargo test -p sd-core tree -- --test-threads=5",
+        "tests": [
+          "tree module filtered suite"
+        ],
+        "output": "test result: ok. 55 passed; 0 failed"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Running filtered cargo test commands emitted repeated rustc warnings from test code (unused imports/variables), even though clippy with -D warnings passed for sd-core.",
+      "resolved": true,
+      "resolution": "Collected command exit codes as source of truth; warnings did not change pass/fail status.",
+      "affectedAssertions": [
+        "VAL-HSTORE-001",
+        "VAL-HSTORE-002",
+        "VAL-HSTORE-003",
+        "VAL-HSTORE-004",
+        "VAL-HSTORE-005",
+        "VAL-HSTORE-006",
+        "VAL-HSTORE-007",
+        "VAL-HSTORE-008",
+        "VAL-HSTORE-009",
+        "VAL-HSTORE-010",
+        "VAL-HEVT-001",
+        "VAL-HEVT-002",
+        "VAL-HEVT-003",
+        "VAL-HEVT-004",
+        "VAL-HEVT-005",
+        "VAL-HEVT-006",
+        "VAL-HEVT-007",
+        "VAL-HTREE-001",
+        "VAL-HTREE-002",
+        "VAL-HTREE-003",
+        "VAL-HTREE-004",
+        "VAL-HTREE-005",
+        "VAL-HTREE-006",
+        "VAL-HTREE-007",
+        "VAL-HTREE-008"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Could not obtain direct observable evidence for migration from a pre-horizon tensions schema (missing horizon column) using only allowed cargo fmt/clippy/test user-surface commands.",
+      "affectedAssertions": [
+        "VAL-HSTORE-002"
+      ],
+      "quickFixAttempted": "Ran store filtered tests and test list to locate migration-specific coverage; no explicit migration test output found."
+    }
+  ],
+  "summary": "Tested 25 assigned assertions (Store/Event/Tree): 24 passed, 0 failed, 1 blocked (VAL-HSTORE-002: migration evidence gap under allowed command-only surface)."
+}

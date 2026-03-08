@@ -47,3 +47,11 @@ Set `HOME` to temp dir for global workspace tests.
 - Keep all files inside your assigned namespace prefix (e.g. `/tmp/werk-foundation-<group>`).
 - Do not modify source code while validating; only execute commands and inspect outputs/exit codes.
 - Validate assertions by observable user behavior (stdout/stderr, exit code, and command-visible state).
+
+## Flow Validator Guidance: sd-core-library
+
+- Use only user-surface validation commands for the library (`cargo test -p sd-core -- <filter>`, `cargo test -p sd-core -- --test-threads=5`, `cargo clippy -p sd-core -- -D warnings`, `cargo fmt --all --check` when assigned).
+- Isolation boundary: each flow validator must run from the repo root but keep any temporary artifacts in its assigned namespace path (e.g. `/tmp/horizon-core-<group>`).
+- Do not modify production source code during validation. Only execute tests/checks and collect observable outcomes.
+- If a test command fails, capture the first relevant failing assertion/test name and stderr fragment in the flow report.
+- Treat test output and command exit codes as the source of truth for assertion pass/fail/blocked status mapping.

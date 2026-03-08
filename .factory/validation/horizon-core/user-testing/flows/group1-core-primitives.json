@@ -1,0 +1,707 @@
+{
+  "groupId": "group1-core-primitives",
+  "testedAt": "2026-03-08T07:34:23Z",
+  "credentials": {
+    "account": "horizon_validator_g1@example.com",
+    "namespace": "/tmp/horizon-core-utv-g1"
+  },
+  "toolsUsed": [
+    "cargo test"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HTYPE-001",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test for horizon module",
+          "expected": "Year parse and boundaries validated",
+          "observed": "test_parse_year_valid, test_year_range_start, test_year_range_end all passed"
+        }
+      ],
+      "evidence": {
+        "command": "TMPDIR=/tmp/horizon-core-utv-g1 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g1/target cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_parse_year_valid",
+          "horizon::tests::test_year_range_start",
+          "horizon::tests::test_year_range_end"
+        ],
+        "output": "... test_parse_year_valid ... ok; ... test_year_range_start ... ok; ... test_year_range_end ... ok; test result: ok. 122 passed"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-002",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test for horizon month parsing/range",
+          "expected": "Month parse and May boundaries validated",
+          "observed": "test_parse_month_valid, test_month_range_start, test_month_range_end_may passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_parse_month_valid",
+          "horizon::tests::test_month_range_start",
+          "horizon::tests::test_month_range_end_may"
+        ],
+        "output": "... test_parse_month_valid ... ok; ... test_month_range_end_may ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-003",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test for day variant",
+          "expected": "Day parse and single-day range validated",
+          "observed": "test_parse_day_valid, test_day_range_start, test_day_range_end passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_parse_day_valid",
+          "horizon::tests::test_day_range_start",
+          "horizon::tests::test_day_range_end"
+        ],
+        "output": "... test_parse_day_valid ... ok; ... test_day_range_start ... ok; ... test_day_range_end ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-004",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cargo test for datetime variant",
+          "expected": "DateTime parse, zero-width range start/end equality",
+          "observed": "test_parse_datetime_valid, test_datetime_range_start_equals_end, test_datetime_width_zero passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_parse_datetime_valid",
+          "horizon::tests::test_datetime_range_start_equals_end",
+          "horizon::tests::test_datetime_width_zero"
+        ],
+        "output": "... test_parse_datetime_valid ... ok; ... test_datetime_width_zero ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-005",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run horizon roundtrip tests",
+          "expected": "Parse/display roundtrip holds for all variants",
+          "observed": "test_roundtrip_year/month/day/datetime all passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_roundtrip_year",
+          "horizon::tests::test_roundtrip_month",
+          "horizon::tests::test_roundtrip_day",
+          "horizon::tests::test_roundtrip_datetime"
+        ],
+        "output": "... test_roundtrip_year ... ok; ... test_roundtrip_month ... ok; ... test_roundtrip_day ... ok; ... test_roundtrip_datetime ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-006",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run leap-year range tests",
+          "expected": "2024 year width and Feb boundary correct",
+          "observed": "test_year_width_leap and test_month_range_end_february_leap passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_year_width_leap",
+          "horizon::tests::test_month_range_end_february_leap"
+        ],
+        "output": "... test_year_width_leap ... ok; ... test_month_range_end_february_leap ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-007",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run month boundary edge-case tests",
+          "expected": "Dec/Feb/Jan boundaries computed correctly",
+          "observed": "test_month_range_end_december, test_month_range_end_february_non_leap, test_month_range_end_january passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_month_range_end_december",
+          "horizon::tests::test_month_range_end_february_non_leap",
+          "horizon::tests::test_month_range_end_january"
+        ],
+        "output": "... month boundary tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-008",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run precision tie-break ordering tests",
+          "expected": "Narrower precision sorts first on same range_start",
+          "observed": "test_ordering_day_before_month_same_range_start and related precision-chain tests passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_ordering_day_before_month_same_range_start",
+          "horizon::tests::test_ordering_month_before_year_same_range_start",
+          "horizon::tests::test_ordering_precision_chain"
+        ],
+        "output": "... ordering precision tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-009",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run cross-period ordering tests",
+          "expected": "Earlier range_start sorts first across periods",
+          "observed": "test_ordering_different_months and test_ordering_year_before_day_next_year passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_ordering_different_months",
+          "horizon::tests::test_ordering_year_before_day_next_year"
+        ],
+        "output": "... cross-period ordering tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-010",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run contains boundary tests",
+          "expected": "Day contains start/end and excludes next day",
+          "observed": "test_day_contains_start, test_day_contains_end, test_day_does_not_contain_day_after passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_day_contains_start",
+          "horizon::tests::test_day_contains_end",
+          "horizon::tests::test_day_does_not_contain_day_after"
+        ],
+        "output": "... contains tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-011",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run is_past semantic tests",
+          "expected": "Past only after day end, not during",
+          "observed": "test_day_is_past_after_end and test_day_is_not_past_during_day passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_day_is_past_after_end",
+          "horizon::tests::test_day_is_not_past_during_day"
+        ],
+        "output": "... is_past tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-012",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run urgency progression tests",
+          "expected": "Urgency tracks 0%, ~50%, ~100%, and >100%",
+          "observed": "test_urgency_at_zero_percent/fifty_percent/one_hundred_percent/past_horizon passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_urgency_at_zero_percent",
+          "horizon::tests::test_urgency_at_fifty_percent",
+          "horizon::tests::test_urgency_at_one_hundred_percent",
+          "horizon::tests::test_urgency_past_horizon"
+        ],
+        "output": "... urgency key-point tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-013",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run DateTime urgency safety tests",
+          "expected": "No panic/NaN/infinity for width=0; urgency >= 1.0",
+          "observed": "test_urgency_datetime_at_instant, test_urgency_datetime_past_instant, test_urgency_datetime_no_panic_or_nan passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_urgency_datetime_at_instant",
+          "horizon::tests::test_urgency_datetime_past_instant",
+          "horizon::tests::test_urgency_datetime_no_panic_or_nan"
+        ],
+        "output": "... DateTime urgency tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-014",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run staleness ratio tests",
+          "expected": "Staleness scales at 0.1/1.0/>1 patterns",
+          "observed": "test_staleness_at_zero, test_staleness_at_one, test_staleness_greater_than_one, test_staleness_year_horizon passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_staleness_at_zero",
+          "horizon::tests::test_staleness_at_one",
+          "horizon::tests::test_staleness_greater_than_one",
+          "horizon::tests::test_staleness_year_horizon"
+        ],
+        "output": "... staleness ratio tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-015",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run DateTime staleness safety tests",
+          "expected": "No panic/NaN/infinity for width=0",
+          "observed": "test_staleness_datetime_no_panic_or_nan and test_staleness_datetime_one_second_silence passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_staleness_datetime_no_panic_or_nan",
+          "horizon::tests::test_staleness_datetime_one_second_silence"
+        ],
+        "output": "... DateTime staleness tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-016",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run invalid parse input tests",
+          "expected": "Invalid formats/ranges return parse errors",
+          "observed": "test_parse_empty_rejected, test_parse_garbage_rejected, test_parse_month_thirteen_rejected, test_parse_day_day_32_rejected, test_parse_month_zero_rejected passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_parse_empty_rejected",
+          "horizon::tests::test_parse_garbage_rejected",
+          "horizon::tests::test_parse_month_thirteen_rejected",
+          "horizon::tests::test_parse_day_day_32_rejected",
+          "horizon::tests::test_parse_month_zero_rejected"
+        ],
+        "output": "... invalid parse tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-017",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run serde roundtrip tests",
+          "expected": "Horizon serializes as ISO string and deserializes back",
+          "observed": "test_serde_year/month/day/datetime passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_serde_year",
+          "horizon::tests::test_serde_month",
+          "horizon::tests::test_serde_day",
+          "horizon::tests::test_serde_datetime"
+        ],
+        "output": "... serde tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTYPE-018",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run width computation tests",
+          "expected": "Year/Month/Day widths and DateTime zero width validated",
+          "observed": "test_year_width_non_leap, test_year_width_leap, test_month_width_31_days, test_month_width_30_days, test_day_width, test_datetime_width_zero passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core horizon::tests:: -- --test-threads=5",
+        "tests": [
+          "horizon::tests::test_year_width_non_leap",
+          "horizon::tests::test_year_width_leap",
+          "horizon::tests::test_month_width_31_days",
+          "horizon::tests::test_month_width_30_days",
+          "horizon::tests::test_day_width",
+          "horizon::tests::test_datetime_width_zero"
+        ],
+        "output": "... width tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-001",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run full tension test subset",
+          "expected": "Existing constructors remain horizon=None and tension suite passes",
+          "observed": "test_tension_horizon_defaults_to_none, test_tension_new_with_parent_horizon_defaults_to_none passed; overall 54/54 passed"
+        }
+      ],
+      "evidence": {
+        "command": "TMPDIR=/tmp/horizon-core-utv-g1 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g1/target cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_tension_horizon_defaults_to_none",
+          "tension::tests::test_tension_new_with_parent_horizon_defaults_to_none"
+        ],
+        "output": "... test result: ok. 54 passed; 0 failed ..."
+      }
+    },
+    {
+      "id": "VAL-HTENS-002",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run new_full horizon constructor tests",
+          "expected": "new_full stores provided horizon",
+          "observed": "new_full with year/month/day/datetime horizon tests passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_tension_new_full_with_year_horizon",
+          "tension::tests::test_tension_new_full_with_month_horizon",
+          "tension::tests::test_tension_new_full_with_day_horizon",
+          "tension::tests::test_tension_new_full_with_datetime_horizon"
+        ],
+        "output": "... new_full horizon tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-003",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run new_full None-horizon test",
+          "expected": "new_full(None) behaves like default constructor horizon=None",
+          "observed": "test_tension_new_full_with_none_horizon passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_tension_new_full_with_none_horizon"
+        ],
+        "output": "... test_tension_new_full_with_none_horizon ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-004",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run update_horizon active-path tests",
+          "expected": "Active tensions can set/update horizon and old value returned",
+          "observed": "test_update_horizon_on_active_succeeds and test_update_horizon_on_active_from_none_to_some passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_update_horizon_on_active_succeeds",
+          "tension::tests::test_update_horizon_on_active_from_none_to_some"
+        ],
+        "output": "... active update_horizon tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-005",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run resolved-state update_horizon test",
+          "expected": "Resolved tension rejects horizon update and preserves original value",
+          "observed": "test_update_horizon_on_resolved_fails passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_update_horizon_on_resolved_fails"
+        ],
+        "output": "... test_update_horizon_on_resolved_fails ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-006",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run released-state update_horizon test",
+          "expected": "Released tension rejects horizon update and preserves original value",
+          "observed": "test_update_horizon_on_released_fails passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_update_horizon_on_released_fails"
+        ],
+        "output": "... test_update_horizon_on_released_fails ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-007",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run horizon clear test",
+          "expected": "update_horizon(None) clears and returns old value",
+          "observed": "test_update_horizon_clear_to_none passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_update_horizon_clear_to_none"
+        ],
+        "output": "... test_update_horizon_clear_to_none ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-008",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run past-horizon creation test",
+          "expected": "new_full accepts past horizon",
+          "observed": "test_tension_new_full_with_past_horizon_succeeds passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_tension_new_full_with_past_horizon_succeeds"
+        ],
+        "output": "... test_tension_new_full_with_past_horizon_succeeds ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-009",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run serialization-with-horizon test",
+          "expected": "JSON has horizon string and roundtrip succeeds",
+          "observed": "test_tension_serialization_with_horizon passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_tension_serialization_with_horizon"
+        ],
+        "output": "... test_tension_serialization_with_horizon ... ok"
+      }
+    },
+    {
+      "id": "VAL-HTENS-010",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run serialization-without-horizon test",
+          "expected": "JSON has horizon=null and roundtrip succeeds",
+          "observed": "test_tension_serialization_without_horizon passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core tension::tests:: -- --test-threads=5",
+        "tests": [
+          "tension::tests::test_tension_serialization_without_horizon"
+        ],
+        "output": "... test_tension_serialization_without_horizon ... ok"
+      }
+    },
+    {
+      "id": "VAL-HMUT-001",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run mutation replay horizon-field tests",
+          "expected": "field=\"horizon\" updates reconstructed tension horizon",
+          "observed": "test_replay_with_horizon_update_year/month/day passed"
+        }
+      ],
+      "evidence": {
+        "command": "TMPDIR=/tmp/horizon-core-utv-g1 CARGO_TARGET_DIR=/tmp/horizon-core-utv-g1/target cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core mutation::tests:: -- --test-threads=5",
+        "tests": [
+          "mutation::tests::test_replay_with_horizon_update_year",
+          "mutation::tests::test_replay_with_horizon_update_month",
+          "mutation::tests::test_replay_with_horizon_update_day"
+        ],
+        "output": "... replay_with_horizon_update_year/month/day ... ok"
+      }
+    },
+    {
+      "id": "VAL-HMUT-002",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run creation-with-horizon replay tests",
+          "expected": "creation mutation with horizon parses to reconstructed horizon",
+          "observed": "test_replay_creation_with_horizon_year/month/day passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core mutation::tests:: -- --test-threads=5",
+        "tests": [
+          "mutation::tests::test_replay_creation_with_horizon_year",
+          "mutation::tests::test_replay_creation_with_horizon_month",
+          "mutation::tests::test_replay_creation_with_horizon_day"
+        ],
+        "output": "... replay_creation_with_horizon_* ... ok"
+      }
+    },
+    {
+      "id": "VAL-HMUT-003",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run backward-compat creation replay tests",
+          "expected": "creation mutation without horizon yields horizon=None",
+          "observed": "test_replay_creation_without_horizon_backward_compat and parent variant passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core mutation::tests:: -- --test-threads=5",
+        "tests": [
+          "mutation::tests::test_replay_creation_without_horizon_backward_compat",
+          "mutation::tests::test_replay_creation_with_parent_without_horizon_backward_compat"
+        ],
+        "output": "... backward_compat replay tests ... ok"
+      }
+    },
+    {
+      "id": "VAL-HMUT-004",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run set-update-clear replay sequence test",
+          "expected": "Horizon set->update->clear sequence applies correctly",
+          "observed": "test_replay_horizon_set_update_clear_sequence passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core mutation::tests:: -- --test-threads=5",
+        "tests": [
+          "mutation::tests::test_replay_horizon_set_update_clear_sequence"
+        ],
+        "output": "... test_replay_horizon_set_update_clear_sequence ... ok"
+      }
+    },
+    {
+      "id": "VAL-HMUT-005",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run reconstructed horizon preservation test",
+          "expected": "ReconstructedTension exposes horizon and to_tension preserves it",
+          "observed": "test_reconstructed_tension_horizon_field passed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core mutation::tests:: -- --test-threads=5",
+        "tests": [
+          "mutation::tests::test_reconstructed_tension_horizon_field"
+        ],
+        "output": "... test_reconstructed_tension_horizon_field ... ok"
+      }
+    },
+    {
+      "id": "VAL-HMUT-006",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run full mutation::tests subset",
+          "expected": "Existing mutation tests remain green",
+          "observed": "Mutation test subset completed with 35 passed, 0 failed"
+        }
+      ],
+      "evidence": {
+        "command": "cargo test -p sd-core mutation::tests:: -- --test-threads=5",
+        "tests": [
+          "mutation::tests::test_mutation_new",
+          "mutation::tests::test_replay_creation_only",
+          "mutation::tests::test_replay_multiple_updates"
+        ],
+        "output": "test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 494 filtered out"
+      }
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Initial horizon test command hit the default 60s executor timeout during first-time compilation into isolated CARGO_TARGET_DIR.",
+      "resolved": true,
+      "resolution": "Re-ran the same command with a longer timeout; subsequent runs completed successfully.",
+      "affectedAssertions": [
+        "VAL-HTYPE-001",
+        "VAL-HTYPE-002",
+        "VAL-HTYPE-003",
+        "VAL-HTYPE-004",
+        "VAL-HTYPE-005",
+        "VAL-HTYPE-006",
+        "VAL-HTYPE-007",
+        "VAL-HTYPE-008",
+        "VAL-HTYPE-009",
+        "VAL-HTYPE-010",
+        "VAL-HTYPE-011",
+        "VAL-HTYPE-012",
+        "VAL-HTYPE-013",
+        "VAL-HTYPE-014",
+        "VAL-HTYPE-015",
+        "VAL-HTYPE-016",
+        "VAL-HTYPE-017",
+        "VAL-HTYPE-018"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 34 assigned assertions (VAL-HTYPE-001..018, VAL-HTENS-001..010, VAL-HMUT-001..006) via cargo test command outputs and exit codes. Result: 34 passed, 0 failed, 0 blocked."
+}
