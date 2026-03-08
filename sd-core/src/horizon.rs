@@ -254,8 +254,8 @@ impl Horizon {
     /// Return the precision level for ordering purposes.
     ///
     /// Lower values = narrower = higher precision.
-    /// Used for tie-breaking in Ord implementation.
-    fn precision_level(&self) -> u8 {
+    /// Used for tie-breaking in Ord implementation and drift detection.
+    pub fn precision_level(&self) -> u8 {
         match self {
             Horizon::DateTime(_) => 0, // Most precise
             Horizon::Day(_) => 1,
