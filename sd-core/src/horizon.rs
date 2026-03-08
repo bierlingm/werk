@@ -147,19 +147,30 @@ impl Horizon {
     }
 
     /// The beginning of the horizon window (inclusive).
+    ///
+    /// # Safety
+    ///
+    /// This method uses `.expect()` because invalid dates are unreachable by design.
+    /// `Horizon::parse()` validates all inputs before construction, and there are no
+    /// public constructors that allow creating invalid variants like `Month(2026, 13)`.
+    ///
+    /// If called on a malformed Horizon created through unsafe means, this will panic.
     pub fn range_start(&self) -> DateTime<Utc> {
         match self {
+            // SAFETY: year is validated by parse() to be non-zero
             Horizon::Year(year) => Utc
                 .with_ymd_and_hms(*year, 1, 1, 0, 0, 0)
                 .single()
-                .expect("valid year start"),
+                .expect("year range_start: unreachable via public API"),
+            // SAFETY: month is validated by parse() to be 1-12
             Horizon::Month(year, month) => Utc
                 .with_ymd_and_hms(*year, *month, 1, 0, 0, 0)
                 .single()
-                .expect("valid month start"),
+                .expect("month range_start: unreachable via public API"),
+            // SAFETY: NaiveDate construction validates day/month/year combo
             Horizon::Day(date) => date
                 .and_hms_opt(0, 0, 0)
-                .expect("valid day start")
+                .expect("day range_start: unreachable via public API")
                 .and_utc(),
             Horizon::DateTime(dt) => *dt,
         }
@@ -169,14 +180,24 @@ impl Horizon {
     ///
     /// For all variants except DateTime, this is the last instant within
     /// the horizon's range (23:59:59 for day/month/year).
+    ///
+    /// # Safety
+    ///
+    /// This method uses `.expect()` because invalid dates are unreachable by design.
+    /// `Horizon::parse()` validates all inputs before construction, and there are no
+    /// public constructors that allow creating invalid variants.
+    ///
+    /// If called on a malformed Horizon created through unsafe means, this will panic.
     pub fn range_end(&self) -> DateTime<Utc> {
         match self {
+            // SAFETY: year is validated by parse() to be non-zero
             Horizon::Year(year) => Utc
                 .with_ymd_and_hms(*year, 12, 31, 23, 59, 59)
                 .single()
-                .expect("valid year end"),
+                .expect("year range_end: unreachable via public API"),
             Horizon::Month(year, month) => {
                 // Get the last day of the month
+                // SAFETY: month is validated by parse() to be 1-12, so transition logic is sound
                 let (next_year, next_month) = if *month == 12 {
                     (*year + 1, 1)
                 } else {
@@ -185,13 +206,14 @@ impl Horizon {
                 let first_of_next = Utc
                     .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
                     .single()
-                    .expect("valid next month start");
+                    .expect("month range_end: unreachable via public API");
                 // One second before the first of next month = last second of this month
                 first_of_next - chrono::Duration::seconds(1)
             }
+            // SAFETY: NaiveDate construction validates day/month/year combo
             Horizon::Day(date) => date
                 .and_hms_opt(23, 59, 59)
-                .expect("valid day end")
+                .expect("day range_end: unreachable via public API")
                 .and_utc(),
             Horizon::DateTime(dt) => *dt,
         }
@@ -224,15 +246,33 @@ impl Horizon {
     /// - `urgency = 1.0` → at the horizon's end
     /// - `urgency > 1.0` → past the horizon
     ///
-    /// For DateTime horizons (width = 0), urgency is computed using a
-    /// guard to avoid division by zero. The result is >= 1.0 because
-    /// an instant horizon is either at the point or past it.
+    /// For DateTime horizons (width = 0), urgency is computed specially:
+    /// - If now >= range_start (instant has arrived or passed): urgency >= 1.0
+    /// - If now < range_start (instant is still in future): urgency = 0.0
     pub fn urgency(&self, created_at: DateTime<Utc>, now: DateTime<Utc>) -> f64 {
-        let time_elapsed = (now - created_at).num_seconds().max(0) as f64;
-        let total_window = (self.range_end() - created_at).num_seconds();
-        // Guard against zero/negative width
-        let total_window = total_window.max(1) as f64;
-        time_elapsed / total_window
+        // Special handling for DateTime horizons (width = 0)
+        // The instant has either arrived, passed, or is still in the future
+        if matches!(self, Horizon::DateTime(_)) {
+            let range_start = self.range_start();
+            if now >= range_start {
+                // Instant has arrived or passed: urgency is >= 1.0
+                // Use elapsed time since horizon instant as the multiplier
+                let elapsed = (now - range_start).num_seconds().max(0) as f64;
+                // 1.0 + elapsed/second normalized to minute (60s) as reasonable scale
+                // This gives urgency = 1.0 at the instant, 2.0 after 60 seconds past, etc.
+                1.0 + elapsed / 60.0
+            } else {
+                // Instant is still in the future: urgency = 0.0
+                0.0
+            }
+        } else {
+            // Standard computation for non-zero-width horizons
+            let time_elapsed = (now - created_at).num_seconds().max(0) as f64;
+            let total_window = (self.range_end() - created_at).num_seconds();
+            // Guard against zero/negative width (shouldn't happen for non-DateTime)
+            let total_window = total_window.max(1) as f64;
+            time_elapsed / total_window
+        }
     }
 
     /// Compute staleness as the ratio of silence duration to horizon width.
@@ -1107,10 +1147,13 @@ mod tests {
         let created_at = dt;
         let now = dt;
         let urgency = h.urgency(created_at, now);
-        // width = 0, but guard ensures no division by zero
-        // time_elapsed = 0, total_window = 0 -> guard makes total_window = 1
-        // urgency = 0 / 1 = 0
-        assert!((urgency - 0.0).abs() < 0.001 || urgency >= 1.0); // Either at instant or past
+        // DateTime horizon: at the instant, now == range_start
+        // urgency should be >= 1.0 since the instant has arrived
+        assert!(
+            (urgency - 1.0).abs() < 0.01,
+            "At instant, urgency should be 1.0, got {}",
+            urgency
+        );
     }
 
     #[test]
@@ -1120,10 +1163,22 @@ mod tests {
         let created_at = dt - Duration::hours(1);
         let now = dt + Duration::hours(1);
         let urgency = h.urgency(created_at, now);
-        // time_elapsed = 2 hours = 7200 seconds
-        // total_window = dt - created_at = 1 hour = 3600 seconds
-        // urgency = 7200 / 3600 = 2.0
-        assert!((urgency - 2.0).abs() < 0.01);
+        // DateTime horizon (width=0): when now >= range_start, urgency >= 1.0
+        // The new formula: urgency = 1.0 + elapsed_seconds / 60.0
+        // elapsed = now - range_start = 1 hour = 3600 seconds
+        // urgency = 1.0 + 3600/60.0 = 61.0
+        // This is a valid value >= 1.0 as per VAL-HTYPE-013
+        assert!(
+            urgency >= 1.0,
+            "DateTime urgency should be >= 1.0 when now >= range_start, got {}",
+            urgency
+        );
+        // Verify it scales reasonably with elapsed time
+        assert!(
+            (urgency - 61.0).abs() < 1.0,
+            "Expected urgency ~61.0 for 1 hour past instant, got {}",
+            urgency
+        );
     }
 
     #[test]

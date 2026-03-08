@@ -426,10 +426,12 @@ impl Forest {
     /// 2. Ties broken by precision (narrower first: DateTime < Day < Month < Year)
     /// 3. Nodes without horizons sort last
     ///
-    /// Returns `None` if the parent node doesn't exist.
-    /// Returns an empty vector if the node has no children.
-    pub fn children_by_horizon(&self, parent_id: &str) -> Option<Vec<&Node>> {
-        let parent = self.nodes.get(parent_id)?;
+    /// Returns an empty vector if the parent node doesn't exist or has no children.
+    /// This matches the contract API style of returning collections rather than Option.
+    pub fn children_by_horizon(&self, parent_id: &str) -> Vec<&Node> {
+        let Some(parent) = self.nodes.get(parent_id) else {
+            return Vec::new();
+        };
 
         let mut children: Vec<&Node> = parent
             .children
@@ -445,7 +447,7 @@ impl Forest {
             (None, None) => std::cmp::Ordering::Equal,
         });
 
-        Some(children)
+        children
     }
 
     /// Get all active tensions whose horizon window has fully elapsed.
@@ -1224,7 +1226,7 @@ mod tests {
         let forest =
             Forest::from_tensions(vec![parent, child_march, child_may, child_aug]).unwrap();
 
-        let children = forest.children_by_horizon("parent").unwrap();
+        let children = forest.children_by_horizon("parent");
         assert_eq!(children.len(), 3);
         assert_eq!(children[0].id(), "child_march");
         assert_eq!(children[1].id(), "child_may");
@@ -1259,7 +1261,7 @@ mod tests {
 
         let forest = Forest::from_tensions(vec![parent, child_jan, child_none, child_dec]).unwrap();
 
-        let children = forest.children_by_horizon("parent").unwrap();
+        let children = forest.children_by_horizon("parent");
         assert_eq!(children.len(), 3);
         // Jan first, Dec second, None last
         assert_eq!(children[0].id(), "child_jan");
@@ -1307,7 +1309,7 @@ mod tests {
             Forest::from_tensions(vec![parent, child_year, child_month, child_day, child_dt])
                 .unwrap();
 
-        let children = forest.children_by_horizon("parent").unwrap();
+        let children = forest.children_by_horizon("parent");
         assert_eq!(children.len(), 4);
         // DateTime (most precise) first
         assert_eq!(children[0].id(), "child_dt");
@@ -1329,7 +1331,7 @@ mod tests {
 
         let forest = Forest::from_tensions(vec![parent, child_a, child_b, child_c]).unwrap();
 
-        let children = forest.children_by_horizon("parent").unwrap();
+        let children = forest.children_by_horizon("parent");
         assert_eq!(children.len(), 3);
         // All should be present
         let ids: Vec<&str> = children.iter().map(|n| n.id()).collect();
@@ -1341,7 +1343,8 @@ mod tests {
     #[test]
     fn test_children_by_horizon_nonexistent_parent() {
         let forest = Forest::from_tensions(vec![]).unwrap();
-        assert!(forest.children_by_horizon("nonexistent").is_none());
+        // Returns empty vec for nonexistent parent (contract specifies Vec<&Node>)
+        assert!(forest.children_by_horizon("nonexistent").is_empty());
     }
 
     #[test]
@@ -1349,7 +1352,7 @@ mod tests {
         let leaf = make_tension_with_id("leaf", "l", "l");
         let forest = Forest::from_tensions(vec![leaf]).unwrap();
 
-        let children = forest.children_by_horizon("leaf").unwrap();
+        let children = forest.children_by_horizon("leaf");
         assert!(children.is_empty());
     }
 

@@ -888,6 +888,19 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
     }
 
     // Determine drift type
+    // CRITICAL: Empty shifts (only None->Some assignments) = Stable baseline
+    // The .all() iterator method returns true for empty iterators, so we must
+    // guard against misclassifying initial horizon assignment as a shift.
+    if shifts.is_empty() {
+        // No actual shifts computed - only None->Some assignments or clears
+        return HorizonDrift {
+            tension_id: tension_id.to_string(),
+            drift_type: HorizonDriftType::Stable,
+            change_count,
+            net_shift_seconds: 0,
+        };
+    }
+
     // Priority: Oscillating > Precision-based > Time-based
     let drift_type = if direction_changes >= 2 {
         // Multiple direction changes = oscillating
@@ -1163,10 +1176,14 @@ pub fn detect_oscillation(
     }
 
     // Detect temporal oscillation from horizon mutations
+    // CRITICAL: Only count temporal reversals when the tension currently has a horizon.
+    // When horizon=None, temporal reversals must be excluded to ensure identical
+    // output to pre-horizon behavior (regression safety for VAL-HREL-008).
     let mut temporal_reversals = 0;
     let mut temporal_magnitudes: Vec<f64> = Vec::new();
 
-    if horizon_updates.len() >= 2 {
+    // Gate temporal oscillation detection on horizon being present
+    if horizon.is_some() && horizon_updates.len() >= 2 {
         let mut last_shift: Option<i64> = None;
 
         for update in &horizon_updates {
@@ -1815,12 +1832,23 @@ pub fn detect_compensating_strategy(
 
     // NEW: Scale persistence threshold by horizon width
     // 2-week oscillation is significant for Month, not for Year
+    // VAL-HREL-021: 2-week oscillation must trigger for Month but not for Year
     let scaled_persistence_threshold = if let Some(h) = horizon {
         let horizon_width_days = h.width().num_seconds() as f64 / (24.0 * 3600.0);
-        // Scale threshold: original threshold is for 14-day window
-        // For wider horizons, scale up; for narrower, scale down
         let base_window_days = 14.0;
-        let scale_factor = (horizon_width_days / base_window_days).clamp(0.1, 10.0);
+
+        // For narrow horizons (month-scale or less), reduce threshold for more sensitivity
+        // For wide horizons, increase threshold for less sensitivity
+        let scale_factor = if horizon_width_days <= 60.0 {
+            // Narrow horizon (month or less): threshold is lower
+            // This ensures 2-week oscillation triggers for month horizons
+            0.5
+        } else {
+            // Wide horizon: scale up proportionally to sqrt(width)
+            // This ensures 2-week oscillation does NOT trigger for year horizons
+            (horizon_width_days / base_window_days).powf(0.5).min(10.0)
+        };
+
         (thresholds.persistence_threshold_seconds as f64 * scale_factor) as i64
     } else {
         thresholds.persistence_threshold_seconds
