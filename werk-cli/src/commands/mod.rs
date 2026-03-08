@@ -34,6 +34,20 @@ pub enum Commands {
         /// Parent tension ID (creates child tension).
         #[arg(short, long)]
         parent: Option<String>,
+
+        /// Temporal horizon (e.g., "2026", "2026-05", "2026-05-15").
+        #[arg(long)]
+        horizon: Option<String>,
+    },
+
+    /// Set or display the temporal horizon of a tension.
+    Horizon {
+        /// Tension ID or prefix.
+        id: String,
+
+        /// New horizon value (e.g., "2026-05", or "none" to clear).
+        /// If omitted, displays current horizon with urgency.
+        value: Option<String>,
     },
 
     /// Display tension details.

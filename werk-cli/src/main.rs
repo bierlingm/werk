@@ -45,7 +45,9 @@ fn main() {
             desired,
             actual,
             parent,
-        } => cmd_add(&output, desired, actual, parent),
+            horizon,
+        } => cmd_add(&output, desired, actual, parent, horizon),
+        Commands::Horizon { id, value } => cmd_horizon(&output, id, value),
         Commands::Show { id, verbose } => cmd_show(&output, id, verbose),
         Commands::Reality { id, value } => cmd_reality(&output, id, value),
         Commands::Desire { id, value } => cmd_desire(&output, id, value),
@@ -268,8 +270,10 @@ fn cmd_add(
     desired: Option<String>,
     actual: Option<String>,
     parent: Option<String>,
+    horizon: Option<String>,
 ) -> Result<(), WerkError> {
     use serde::Serialize;
+    use sd_core::Horizon;
     use werk::workspace::Workspace;
 
     /// JSON output structure for add command.
@@ -280,6 +284,7 @@ fn cmd_add(
         actual: String,
         status: String,
         parent_id: Option<String>,
+        horizon: Option<String>,
     }
 
     // Require both desired and actual as positional args
@@ -304,6 +309,18 @@ fn cmd_add(
         ));
     }
 
+    // Parse horizon if provided
+    let horizon_parsed: Option<Horizon> = if let Some(h_str) = horizon {
+        Some(Horizon::parse(&h_str).map_err(|e| {
+            WerkError::InvalidInput(format!(
+                "Invalid horizon '{}': {}. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z",
+                h_str, e
+            ))
+        })?)
+    } else {
+        None
+    };
+
     // Discover workspace
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
@@ -318,8 +335,13 @@ fn cmd_add(
         None
     };
 
-    // Create the tension
-    let tension = store.create_tension_with_parent(&desired, &actual, parent_id.clone())?;
+    // Create the tension with horizon
+    let tension = store.create_tension_full(
+        &desired,
+        &actual,
+        parent_id.clone(),
+        horizon_parsed.clone(),
+    )?;
 
     let result = AddResult {
         id: tension.id.clone(),
@@ -327,6 +349,7 @@ fn cmd_add(
         actual: tension.actual.clone(),
         status: tension.status.to_string(),
         parent_id,
+        horizon: tension.horizon.as_ref().map(|h| h.to_string()),
     };
 
     if output.is_json() {
@@ -358,20 +381,193 @@ fn cmd_add(
                 output.styled(pid, werk::output::ColorStyle::Id)
             );
         }
+        if let Some(h) = &tension.horizon {
+            println!(
+                "  Horizon: {}",
+                output.styled(&h.to_string(), werk::output::ColorStyle::Highlight)
+            );
+        }
     }
 
     Ok(())
+}
+
+fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(), WerkError> {
+    use chrono::Utc;
+    use sd_core::{compute_urgency, Horizon, TensionStatus};
+    use serde::Serialize;
+    use werk::workspace::Workspace;
+
+    /// JSON output structure for horizon command.
+    #[derive(Serialize)]
+    struct HorizonResult {
+        id: String,
+        horizon: Option<String>,
+        old_horizon: Option<String>,
+    }
+
+    /// JSON output structure for horizon display (no value provided).
+    #[derive(Serialize)]
+    struct HorizonDisplayResult {
+        id: String,
+        horizon: Option<String>,
+        urgency: Option<f64>,
+        days_remaining: Option<i64>,
+    }
+
+    // Discover workspace
+    let workspace = Workspace::discover()?;
+    let store = workspace.open_store()?;
+
+    // Get all tensions for prefix resolution
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = werk::prefix::PrefixResolver::new(tensions);
+
+    // Resolve the ID/prefix
+    let tension = resolver.resolve(&id)?;
+
+    match value {
+        Some(new_value) => {
+            // Set or clear horizon
+            let horizon_parsed = if new_value.to_lowercase() == "none" {
+                None
+            } else {
+                Some(Horizon::parse(&new_value).map_err(|e| {
+                    WerkError::InvalidInput(format!(
+                        "Invalid horizon '{}': {}. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z",
+                        new_value, e
+                    ))
+                })?)
+            };
+
+            // Check status - only Active tensions can have horizon updated
+            if tension.status != TensionStatus::Active {
+                return Err(WerkError::InvalidInput(format!(
+                    "cannot update horizon on {} tension (must be Active)",
+                    tension.status
+                )));
+            }
+
+            // Record old horizon
+            let old_horizon = tension.horizon.as_ref().map(|h| h.to_string());
+
+            // Update horizon
+            store
+                .update_horizon(&tension.id, horizon_parsed.clone())
+                .map_err(WerkError::SdError)?;
+
+            let result = HorizonResult {
+                id: tension.id.clone(),
+                horizon: horizon_parsed.as_ref().map(|h| h.to_string()),
+                old_horizon,
+            };
+
+            if output.is_json() {
+                let json = serde_json::to_string_pretty(&result)
+                    .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+                println!("{}", json);
+            } else {
+                let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+                match &horizon_parsed {
+                    Some(h) => {
+                        output
+                            .success(&format!("Set horizon for tension {} to {}", id_styled, 
+                                output.styled(&h.to_string(), werk::output::ColorStyle::Highlight)))
+                            .map_err(|e| WerkError::IoError(e.to_string()))?;
+                    }
+                    None => {
+                        output
+                            .success(&format!("Cleared horizon for tension {}", id_styled))
+                            .map_err(|e| WerkError::IoError(e.to_string()))?;
+                    }
+                }
+            }
+
+            Ok(())
+        }
+        None => {
+            // Display current horizon with urgency
+            let now = Utc::now();
+            let urgency = compute_urgency(&tension, now);
+
+            let days_remaining = tension.horizon.as_ref().and_then(|h| {
+                let remaining = h.range_end().signed_duration_since(now).num_days();
+                if remaining >= 0 { Some(remaining) } else { None }
+            });
+
+            let result = HorizonDisplayResult {
+                id: tension.id.clone(),
+                horizon: tension.horizon.as_ref().map(|h| h.to_string()),
+                urgency: urgency.as_ref().map(|u| u.value),
+                days_remaining,
+            };
+
+            if output.is_json() {
+                let json = serde_json::to_string_pretty(&result)
+                    .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
+                println!("{}", json);
+            } else {
+                let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
+                println!("Tension {}", id_styled);
+
+                match &tension.horizon {
+                    Some(h) => {
+                        println!(
+                            "  Horizon: {}",
+                            output.styled(&h.to_string(), werk::output::ColorStyle::Highlight)
+                        );
+
+                        // Human interpretation
+                        let interpretation = match h.kind() {
+                            sd_core::HorizonKind::Year(y) => format!("Year {}", y),
+                            sd_core::HorizonKind::Month(y, m) => format!("{}-{:02}", y, m),
+                            sd_core::HorizonKind::Day(d) => d.format("%Y-%m-%d").to_string(),
+                            sd_core::HorizonKind::DateTime(_) => h.to_string(),
+                        };
+                        println!(
+                            "  Interpreted: {}",
+                            output.styled(&interpretation, werk::output::ColorStyle::Muted)
+                        );
+
+                        if let Some(urg) = &urgency {
+                            let urgency_pct = (urg.value * 100.0).min(999.0);
+                            println!(
+                                "  Urgency:    {:.0}% of time window elapsed",
+                                urgency_pct
+                            );
+                        }
+
+                        if let Some(days) = days_remaining {
+                            println!(
+                                "  Days remaining: {}",
+                                output.styled(&format!("{}", days), werk::output::ColorStyle::Highlight)
+                            );
+                        }
+                    }
+                    None => {
+                        println!(
+                            "  Horizon:    {}",
+                            output.styled("None", werk::output::ColorStyle::Muted)
+                        );
+                    }
+                }
+            }
+
+            Ok(())
+        }
+    }
 }
 
 fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError> {
     use chrono::Utc;
     use sd_core::{
         classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
-        detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
-        AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
-        CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, NeglectThresholds,
-        OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
+        compute_urgency, detect_compensating_strategy, detect_horizon_drift, detect_neglect,
+        detect_oscillation, detect_resolution, detect_structural_conflict,
+        measure_assimilation_depth, predict_structural_tendency, AssimilationDepthThresholds,
+        CompensatingStrategyThresholds, ConflictThresholds, CreativeCyclePhase, Forest,
+        LifecycleThresholds, NeglectThresholds, OrientationThresholds, OscillationThresholds,
+        ResolutionThresholds, TensionStatus,
     };
     use serde::Serialize;
     use werk::workspace::Workspace;
@@ -385,9 +581,19 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         status: String,
         parent_id: Option<String>,
         created_at: String,
+        horizon: Option<String>,
+        horizon_range: Option<HorizonRangeJson>,
+        urgency: Option<f64>,
+        pressure: Option<f64>,
         dynamics: DynamicsJson,
         mutations: Vec<MutationInfo>,
         children: Vec<ChildInfo>,
+    }
+
+    #[derive(Serialize)]
+    struct HorizonRangeJson {
+        start: String,
+        end: String,
     }
 
     /// All 10 dynamics in JSON format.
@@ -563,6 +769,10 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
     // 1. Structural Tension
     let structural_tension = compute_structural_tension(tension);
 
+    // Horizon dynamics
+    let urgency = compute_urgency(tension, now);
+    let horizon_drift = detect_horizon_drift(&tension.id, &mutations);
+
     // 2. Structural Conflict
     let conflict = detect_structural_conflict(
         &forest,
@@ -578,7 +788,7 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         &mutations,
         &oscillation_thresholds,
         now,
-        None::<&Horizon>,
+        tension.horizon.as_ref(),
     );
 
     // 4. Resolution
@@ -604,12 +814,12 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         oscillation.as_ref(),
         &compensating_thresholds,
         now,
-        None::<&Horizon>,
+        tension.horizon.as_ref(),
     );
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, None);
+    let tendency_result = predict_structural_tendency(tension, has_conflict, Some(now));
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(
@@ -753,6 +963,13 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         status: tension.status.to_string(),
         parent_id: tension.parent_id.clone(),
         created_at: tension.created_at.to_rfc3339(),
+        horizon: tension.horizon.as_ref().map(|h| h.to_string()),
+        horizon_range: tension.horizon.as_ref().map(|h| HorizonRangeJson {
+            start: h.range_start().to_rfc3339(),
+            end: h.range_end().to_rfc3339(),
+        }),
+        urgency: urgency.as_ref().map(|u| u.value),
+        pressure: structural_tension.as_ref().and_then(|st| st.pressure),
         dynamics: dynamics_json,
         mutations: mutation_infos,
         children,
@@ -797,6 +1014,38 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
             println!(
                 "  Parent:     {}",
                 output.styled(pid, werk::output::ColorStyle::Id)
+            );
+        }
+
+        // Horizon display
+        if let Some(h) = &tension.horizon {
+            let horizon_str = h.to_string();
+            // Human interpretation
+            let interpretation = match h.kind() {
+                sd_core::HorizonKind::Year(y) => format!("Year {}", y),
+                sd_core::HorizonKind::Month(y, m) => {
+                    let month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    format!("{} {}", month_names[(m - 1) as usize], y)
+                }
+                sd_core::HorizonKind::Day(d) => d.format("%B %d, %Y").to_string(),
+                sd_core::HorizonKind::DateTime(dt) => dt.format("%B %d, %Y %H:%M UTC").to_string(),
+            };
+
+            // Days remaining
+            let days_remaining = h.range_end().signed_duration_since(now).num_days();
+            let days_str = if days_remaining > 0 {
+                format!(", {} days remaining", days_remaining)
+            } else if days_remaining == 0 {
+                ", today is the horizon".to_string()
+            } else {
+                format!(", {} days past horizon", -days_remaining)
+            };
+
+            println!(
+                "  Horizon:    {} ({}{})",
+                output.styled(&horizon_str, werk::output::ColorStyle::Highlight),
+                output.styled(&interpretation, werk::output::ColorStyle::Muted),
+                output.styled(&days_str, werk::output::ColorStyle::Muted)
             );
         }
 
@@ -889,6 +1138,61 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         if verbose {
             println!();
             println!("All Dynamics:");
+
+            // Horizon dynamics (if present)
+            if tension.horizon.is_some() {
+                // Urgency
+                match &urgency {
+                    Some(urg) => {
+                        let pct = (urg.value * 100.0).min(999.0);
+                        println!(
+                            "  Urgency:      {:.0}% ({}s remaining of {}s window)",
+                            pct,
+                            urg.time_remaining,
+                            urg.total_window
+                        );
+                    }
+                    None => {
+                        println!(
+                            "  Urgency:      {}",
+                            output.styled("None", werk::output::ColorStyle::Muted)
+                        );
+                    }
+                }
+
+                // Pressure
+                match &structural_tension {
+                    Some(st) if st.pressure.is_some() => {
+                        println!(
+                            "  Pressure:     {:.2} (magnitude * urgency)",
+                            st.pressure.unwrap()
+                        );
+                    }
+                    _ => {
+                        println!(
+                            "  Pressure:     {}",
+                            output.styled("None", werk::output::ColorStyle::Muted)
+                        );
+                    }
+                }
+
+                // Horizon drift
+                println!(
+                    "  HorizonDrift: {} ({} changes, net shift {}s)",
+                    match horizon_drift.drift_type {
+                        sd_core::HorizonDriftType::Stable => "Stable",
+                        sd_core::HorizonDriftType::Tightening => "Tightening",
+                        sd_core::HorizonDriftType::Postponement => "Postponement",
+                        sd_core::HorizonDriftType::RepeatedPostponement => "RepeatedPostponement",
+                        sd_core::HorizonDriftType::Loosening => "Loosening",
+                        sd_core::HorizonDriftType::Oscillating => "Oscillating",
+                    },
+                    horizon_drift.change_count,
+                    horizon_drift.net_shift_seconds
+                );
+
+                println!();
+            }
 
             // 1. Structural Tension
             match &result.dynamics.structural_tension {
