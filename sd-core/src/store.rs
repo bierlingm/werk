@@ -2972,4 +2972,105 @@ mod tests {
             panic!("expected TensionCreated event");
         }
     }
+
+    // ── Migration Tests (VAL-HSTORE-002) ───────────────────────────
+
+    /// VAL-HSTORE-002: Migration of existing databases without horizon column
+    /// When opening an existing DB without horizon column, the migration
+    /// should add the column via ALTER TABLE and existing tensions should
+    /// have horizon = None.
+    #[test]
+    fn test_migration_adds_horizon_column() {
+        use fsqlite::Connection;
+        use std::path::PathBuf;
+
+        // For a proper legacy DB test, we need to use a file-based database
+        // Store::init() expects a directory and creates .werk/sd.db inside it
+        let temp_base = std::env::temp_dir().join("werk_migration_test_dir");
+        let werk_dir = temp_base.join(".werk");
+
+        // Clean up any existing test directory
+        let _ = std::fs::remove_dir_all(&temp_base);
+
+        // Create the base temp directory
+        std::fs::create_dir_all(&temp_base).unwrap();
+        std::fs::create_dir_all(&werk_dir).unwrap();
+
+        let db_path = werk_dir.join("sd.db");
+        let db_path_str = db_path.to_string_lossy().into_owned();
+
+        // Create legacy file-based database with OLD schema (no horizon column)
+        {
+            let legacy_conn = Connection::open(&db_path_str).unwrap();
+            legacy_conn
+                .execute(
+                    "CREATE TABLE tensions (
+                    id TEXT PRIMARY KEY,
+                    desired TEXT NOT NULL,
+                    actual TEXT NOT NULL,
+                    parent_id TEXT,
+                    created_at TEXT NOT NULL,
+                    status TEXT NOT NULL
+                )",
+                )
+                .unwrap();
+            legacy_conn
+                .execute(
+                    "CREATE TABLE mutations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tension_id TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    field TEXT NOT NULL,
+                    old_value TEXT,
+                    new_value TEXT
+                )",
+                )
+                .unwrap();
+            legacy_conn
+                .execute(
+                    "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status)
+                     VALUES ('LEGACY001', 'legacy goal', 'legacy reality', NULL, '2025-01-01T00:00:00Z', 'Active')",
+                )
+                .unwrap();
+            legacy_conn
+                .execute(
+                    "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status)
+                     VALUES ('LEGACY002', 'another goal', 'another reality', NULL, '2025-01-02T00:00:00Z', 'Active')",
+                )
+                .unwrap();
+            // Verify no horizon column exists
+            let cols: Vec<fsqlite::Row> = legacy_conn.query("PRAGMA table_info(tensions)").unwrap();
+            let has_horiz = cols.iter().any(|r| {
+                if let Some(fsqlite_types::value::SqliteValue::Text(s)) = r.get(1) {
+                    s == "horizon"
+                } else {
+                    false
+                }
+            });
+            assert!(!has_horiz, "Should have no horizon column in legacy DB");
+        } // Connection closed
+
+        // Open via Store::init - this should trigger migration
+        let store = Store::init(&temp_base).unwrap();
+
+        // Verify horizon column was added
+        let tensions = store.list_tensions().unwrap();
+        assert_eq!(tensions.len(), 2, "Should have 2 legacy tensions");
+
+        // All legacy tensions should have horizon = None
+        for t in &tensions {
+            assert!(
+                t.horizon.is_none(),
+                "Legacy tension {} should have horizon=None",
+                t.id
+            );
+        }
+
+        // Creating a new tension should work
+        let new_t = store.create_tension("new goal", "new reality").unwrap();
+        assert!(new_t.horizon.is_none());
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_base);
+    }
 }
