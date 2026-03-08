@@ -33,12 +33,12 @@ pub use dynamics::{
     Conflict,
     ConflictPattern,
     ConflictThresholds,
-    // Horizon dynamics
-    HorizonDrift,
-    HorizonDriftType,
     // Lifecycle and orientation
     CreativeCyclePhase,
     CreativeCyclePhaseResult,
+    // Horizon dynamics
+    HorizonDrift,
+    HorizonDriftType,
     LifecycleThresholds,
     Neglect,
     NeglectThresholds,

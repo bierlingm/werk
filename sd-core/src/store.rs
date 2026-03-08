@@ -2908,11 +2908,7 @@ mod tests {
 
         let evts = events.lock().unwrap();
         assert_eq!(evts.len(), 1);
-        if let Event::TensionCreated {
-            horizon,
-            ..
-        } = &evts[0]
-        {
+        if let Event::TensionCreated { horizon, .. } = &evts[0] {
             assert_eq!(horizon, &Some("2026-05".to_owned()));
         } else {
             panic!("expected TensionCreated event");
@@ -2936,15 +2932,13 @@ mod tests {
 
         store.set_event_bus(bus);
 
-        let _t = store.create_tension_full("goal", "reality", None, None).unwrap();
+        let _t = store
+            .create_tension_full("goal", "reality", None, None)
+            .unwrap();
 
         let evts = events.lock().unwrap();
         assert_eq!(evts.len(), 1);
-        if let Event::TensionCreated {
-            horizon,
-            ..
-        } = &evts[0]
-        {
+        if let Event::TensionCreated { horizon, .. } = &evts[0] {
             assert!(horizon.is_none());
         } else {
             panic!("expected TensionCreated event");
@@ -2972,11 +2966,7 @@ mod tests {
 
         let evts = events.lock().unwrap();
         assert_eq!(evts.len(), 1);
-        if let Event::TensionCreated {
-            horizon,
-            ..
-        } = &evts[0]
-        {
+        if let Event::TensionCreated { horizon, .. } = &evts[0] {
             assert!(horizon.is_none());
         } else {
             panic!("expected TensionCreated event");

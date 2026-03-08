@@ -828,10 +828,10 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
     let mut last_positive: Option<bool> = None;
     for shift in &shifts {
         let is_positive = *shift >= 0;
-        if let Some(was_positive) = last_positive {
-            if is_positive != was_positive {
-                direction_changes += 1;
-            }
+        if let Some(was_positive) = last_positive
+            && is_positive != was_positive
+        {
+            direction_changes += 1;
         }
         last_positive = Some(is_positive);
     }
@@ -4735,8 +4735,17 @@ mod tests {
         // Test each dynamic
         let start = Instant::now();
 
-        // Structural tension (should be instant)
+        // Structural tension (now includes temporal pressure computation)
         let _st = compute_structural_tension(&t_updated);
+
+        // Urgency (new)
+        let _urgency = compute_urgency(&t_updated, now);
+
+        // Temporal pressure (new)
+        let _pressure = compute_temporal_pressure(&t_updated, now);
+
+        // Horizon drift (new)
+        let _drift = detect_horizon_drift(&t.id, &mutations);
 
         // Oscillation
         let osc_thresholds = OscillationThresholds {
@@ -4776,10 +4785,10 @@ mod tests {
 
         println!("10k mutations dynamics computation: {:?}", elapsed);
 
-        // Must complete in < 100ms
+        // Must complete in < 200ms (increased from 100ms due to new horizon dynamics computations)
         assert!(
-            elapsed.as_millis() < 100,
-            "10k mutation computation took {:?}, expected < 100ms",
+            elapsed.as_millis() < 200,
+            "10k mutation computation took {:?}, expected < 200ms",
             elapsed
         );
     }
@@ -5021,7 +5030,11 @@ mod tests {
         };
 
         let result = compute_urgency(&t_created, now).unwrap();
-        assert!((result.value - 0.0).abs() < 0.01, "urgency should be ~0.0, got {}", result.value);
+        assert!(
+            (result.value - 0.0).abs() < 0.01,
+            "urgency should be ~0.0, got {}",
+            result.value
+        );
         assert!(result.time_remaining > 0);
         assert!(result.total_window > 0);
         assert_eq!(result.tension_id, t_created.id);
@@ -5051,7 +5064,11 @@ mod tests {
         // 1 hour in (25% of 4 hours)
         let now = start + Duration::hours(1);
         let result = compute_urgency(&t, now).unwrap();
-        assert!((result.value - 0.25).abs() < 0.02, "urgency should be ~0.25, got {}", result.value);
+        assert!(
+            (result.value - 0.25).abs() < 0.02,
+            "urgency should be ~0.25, got {}",
+            result.value
+        );
     }
 
     #[test]
@@ -5078,7 +5095,11 @@ mod tests {
         // 1 day in (50% of 2 days)
         let now = start + Duration::hours(24);
         let result = compute_urgency(&t, now).unwrap();
-        assert!((result.value - 0.5).abs() < 0.02, "urgency should be ~0.5, got {}", result.value);
+        assert!(
+            (result.value - 0.5).abs() < 0.02,
+            "urgency should be ~0.5, got {}",
+            result.value
+        );
     }
 
     #[test]
@@ -5105,7 +5126,11 @@ mod tests {
         // 3 hours in (75% of 4 hours)
         let now = start + Duration::hours(3);
         let result = compute_urgency(&t, now).unwrap();
-        assert!((result.value - 0.75).abs() < 0.02, "urgency should be ~0.75, got {}", result.value);
+        assert!(
+            (result.value - 0.75).abs() < 0.02,
+            "urgency should be ~0.75, got {}",
+            result.value
+        );
     }
 
     #[test]
@@ -5131,7 +5156,11 @@ mod tests {
         // At the horizon end
         let now = end;
         let result = compute_urgency(&t, now).unwrap();
-        assert!((result.value - 1.0).abs() < 0.02, "urgency should be ~1.0, got {}", result.value);
+        assert!(
+            (result.value - 1.0).abs() < 0.02,
+            "urgency should be ~1.0, got {}",
+            result.value
+        );
     }
 
     #[test]
@@ -5157,8 +5186,16 @@ mod tests {
         // 2 hours past the horizon (150% = 6 hours / 4 hours)
         let now = end + Duration::hours(2);
         let result = compute_urgency(&t, now).unwrap();
-        assert!(result.value > 1.0, "urgency should be > 1.0, got {}", result.value);
-        assert!((result.value - 1.5).abs() < 0.05, "urgency should be ~1.5, got {}", result.value);
+        assert!(
+            result.value > 1.0,
+            "urgency should be > 1.0, got {}",
+            result.value
+        );
+        assert!(
+            (result.value - 1.5).abs() < 0.05,
+            "urgency should be ~1.5, got {}",
+            result.value
+        );
     }
 
     #[test]
@@ -5289,7 +5326,10 @@ mod tests {
         let result = compute_structural_tension(&t);
         assert!(result.is_some());
         let st = result.unwrap();
-        assert!(st.pressure.is_some(), "pressure should be Some with horizon");
+        assert!(
+            st.pressure.is_some(),
+            "pressure should be Some with horizon"
+        );
         assert!(st.pressure.unwrap() >= 0.0);
     }
 
@@ -5300,7 +5340,10 @@ mod tests {
         let result = compute_structural_tension(&t);
         assert!(result.is_some());
         let st = result.unwrap();
-        assert!(st.pressure.is_none(), "pressure should be None without horizon");
+        assert!(
+            st.pressure.is_none(),
+            "pressure should be None without horizon"
+        );
     }
 
     // ── Horizon Drift Tests ────────────────────────────────────────────────
@@ -5349,7 +5392,10 @@ mod tests {
         let result = detect_horizon_drift("test-postpone", &[m1]);
         assert_eq!(result.drift_type, HorizonDriftType::Postponement);
         assert_eq!(result.change_count, 1);
-        assert!(result.net_shift_seconds > 0, "postponement should have positive net shift");
+        assert!(
+            result.net_shift_seconds > 0,
+            "postponement should have positive net shift"
+        );
     }
 
     #[test]
@@ -5402,7 +5448,10 @@ mod tests {
 
         let result = detect_horizon_drift("test-tighten", &[m1]);
         assert_eq!(result.drift_type, HorizonDriftType::Tightening);
-        assert!(result.net_shift_seconds < 0, "tightening should have negative net shift");
+        assert!(
+            result.net_shift_seconds < 0,
+            "tightening should have negative net shift"
+        );
     }
 
     #[test]
