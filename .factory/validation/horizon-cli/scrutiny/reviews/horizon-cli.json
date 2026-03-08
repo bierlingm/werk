@@ -1,0 +1,26 @@
+{
+  "featureId": "horizon-cli",
+  "reviewedAt": "2026-03-08T09:04:36Z",
+  "commitId": "ed35dde",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed handoff, transcript skeleton, and commit ed35dde diff. The implementation in werk-cli covers add --horizon parsing and create_tension_full wiring, horizon set/clear/display with status gating, show horizon interpretation with days remaining plus verbose urgency/pressure/drift, horizon-sorted tree annotations, and context JSON horizon fields (including siblings horizon/urgency). Invalid horizon parsing paths return clear examples via InvalidInput (exit code 1). No blocking correctness issues found.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Shared architecture docs describe werk-cli as split across per-command modules, but active implementation remains command handlers in a single large main.rs file. This mismatch can mislead workers about where feature edits should land.",
+      "evidence": ".factory/library/architecture.md:65-70 documents commands/*.rs layout; actual handlers are in werk-cli/src/main.rs (e.g., cmd_add at line 272, cmd_horizon at 391, cmd_tree at 2068, cmd_context at 2477)."
+    },
+    {
+      "area": "skills",
+      "observation": "Transcript shows repeated EndFeatureRun retries caused by handoff schema constraints, suggesting worker-facing guidance should more explicitly call out strict handoff formatting requirements.",
+      "evidence": "worker-transcripts.jsonl skeleton for session 345d5360-87ae-4c86-88a4-4e97fae08901 includes repeated EndFeatureRun attempts and schema errors: line 2039 ('handoff.salientSummary must be 1–4 sentences; got 5') and line 2058 ('Expected object, received string')."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature horizon-cli passes scrutiny for commit ed35dde: expected CLI behavior and error handling are implemented with no blocking defects identified. I also noted two shared-state gaps (architecture-doc drift and handoff-schema guidance clarity) for validator triage."
+}
