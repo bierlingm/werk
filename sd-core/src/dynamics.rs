@@ -5399,7 +5399,7 @@ mod tests {
         use chrono::Datelike;
 
         let now = Utc::now();
-        let h = Horizon::Month(now.year() + 1, 1); // Next year January
+        let h = Horizon::new_month(now.year() + 1, 1).unwrap(); // Next year January
         let t = Tension::new_full("goal", "reality", None, Some(h)).unwrap();
 
         // Create the tension with created_at at now
@@ -5433,7 +5433,7 @@ mod tests {
         // Create a 4-hour horizon
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-25".to_string(),
@@ -5464,7 +5464,7 @@ mod tests {
         // Create a 2-day horizon
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
         let end = start + Duration::hours(48);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-50".to_string(),
@@ -5495,7 +5495,7 @@ mod tests {
         // Create a 4-hour horizon
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-75".to_string(),
@@ -5525,7 +5525,7 @@ mod tests {
 
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-100".to_string(),
@@ -5555,7 +5555,7 @@ mod tests {
 
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-150".to_string(),
@@ -5590,7 +5590,7 @@ mod tests {
 
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-fields".to_string(),
@@ -5622,7 +5622,7 @@ mod tests {
 
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-pressure".to_string(),
@@ -5665,7 +5665,7 @@ mod tests {
 
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-no-gap".to_string(),
@@ -5695,7 +5695,7 @@ mod tests {
 
         let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
         let end = start + Duration::hours(4);
-        let h = Horizon::DateTime(end);
+        let h = Horizon::new_datetime(end);
 
         let t = Tension {
             id: "test-st-pressure".to_string(),

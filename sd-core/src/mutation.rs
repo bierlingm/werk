@@ -767,7 +767,7 @@ mod tests {
             ),
         ];
         let result = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(result.horizon, Some(Horizon::Year(2026)));
+        assert_eq!(result.horizon, Some(Horizon::new_year(2026).unwrap()));
     }
 
     #[test]
@@ -791,7 +791,7 @@ mod tests {
             ),
         ];
         let result = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(result.horizon, Some(Horizon::Month(2026, 5)));
+        assert_eq!(result.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
     }
 
     #[test]
@@ -818,7 +818,7 @@ mod tests {
         let result = super::replay_mutations(&mutations).unwrap();
         assert_eq!(
             result.horizon,
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()))
+            Some(Horizon::new_day(2026, 5, 15).unwrap())
         );
     }
 
@@ -895,7 +895,7 @@ mod tests {
         let result = super::replay_mutations(&mutations).unwrap();
         assert_eq!(result.desired, "goal");
         assert_eq!(result.actual, "reality");
-        assert_eq!(result.horizon, Some(Horizon::Year(2026)));
+        assert_eq!(result.horizon, Some(Horizon::new_year(2026).unwrap()));
     }
 
     #[test]
@@ -910,7 +910,7 @@ mod tests {
             "desired='goal';actual='reality';horizon='2026-05'".to_owned(),
         )];
         let result = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(result.horizon, Some(Horizon::Month(2026, 5)));
+        assert_eq!(result.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
     }
 
     #[test]
@@ -928,7 +928,7 @@ mod tests {
         let result = super::replay_mutations(&mutations).unwrap();
         assert_eq!(
             result.horizon,
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()))
+            Some(Horizon::new_day(2026, 5, 15).unwrap())
         );
     }
 
@@ -1031,11 +1031,11 @@ mod tests {
             "desired='goal';actual='reality';horizon='2026-05'".to_owned(),
         )];
         let reconstructed = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(reconstructed.horizon, Some(Horizon::Month(2026, 5)));
+        assert_eq!(reconstructed.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
 
         // to_tension() preserves horizon
         let tension = reconstructed.to_tension();
-        assert_eq!(tension.horizon, Some(Horizon::Month(2026, 5)));
+        assert_eq!(tension.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
     }
 
     // ── Unicode in creation value with horizon ──────────────────────────
@@ -1054,6 +1054,6 @@ mod tests {
         let result = super::replay_mutations(&mutations).unwrap();
         assert_eq!(result.desired, "写小说");
         assert_eq!(result.actual, "有大纲");
-        assert_eq!(result.horizon, Some(Horizon::Month(2026, 5)));
+        assert_eq!(result.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
     }
 }

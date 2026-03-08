@@ -2547,7 +2547,7 @@ mod tests {
     #[test]
     fn test_create_tension_full_with_horizon_year() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Year(2026);
+        let h = Horizon::new_year(2026).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2562,7 +2562,7 @@ mod tests {
     #[test]
     fn test_create_tension_full_with_horizon_month() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2577,7 +2577,7 @@ mod tests {
     fn test_create_tension_full_with_horizon_day() {
         use chrono::NaiveDate;
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap());
+        let h = Horizon::new_day(2026, 5, 15).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2593,7 +2593,7 @@ mod tests {
         use chrono::{TimeZone, Utc};
         let store = Store::new_in_memory().unwrap();
         let dt = Utc.with_ymd_and_hms(2026, 5, 15, 14, 30, 0).unwrap();
-        let h = Horizon::DateTime(dt);
+        let h = Horizon::new_datetime(dt);
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2620,7 +2620,7 @@ mod tests {
     #[test]
     fn test_create_tension_full_with_parent_and_horizon() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let parent = store.create_tension("parent", "p").unwrap();
 
         let t = store
@@ -2634,7 +2634,7 @@ mod tests {
     #[test]
     fn test_create_tension_full_records_mutation_with_horizon() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2664,7 +2664,7 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
         let t = store.create_tension("goal", "reality").unwrap();
 
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         store.update_horizon(&t.id, Some(h.clone())).unwrap();
 
         let retrieved = store.get_tension(&t.id).unwrap().unwrap();
@@ -2676,7 +2676,7 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
         let t = store.create_tension("goal", "reality").unwrap();
 
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         store.update_horizon(&t.id, Some(h.clone())).unwrap();
 
         let mutations = store.get_mutations(&t.id).unwrap();
@@ -2692,7 +2692,7 @@ mod tests {
         let t = store.create_tension("goal", "reality").unwrap();
         store.update_status(&t.id, TensionStatus::Resolved).unwrap();
 
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let result = store.update_horizon(&t.id, Some(h));
         assert!(result.is_err());
 
@@ -2712,7 +2712,7 @@ mod tests {
         let t = store.create_tension("goal", "reality").unwrap();
         store.update_status(&t.id, TensionStatus::Released).unwrap();
 
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let result = store.update_horizon(&t.id, Some(h));
         assert!(result.is_err());
     }
@@ -2720,7 +2720,7 @@ mod tests {
     #[test]
     fn test_update_horizon_clear_to_none() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2741,12 +2741,12 @@ mod tests {
     #[test]
     fn test_update_horizon_change_value() {
         let store = Store::new_in_memory().unwrap();
-        let h1 = Horizon::Year(2026);
+        let h1 = Horizon::new_year(2026).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h1.clone()))
             .unwrap();
 
-        let h2 = Horizon::Month(2026, 5);
+        let h2 = Horizon::new_month(2026, 5).unwrap();
         store.update_horizon(&t.id, Some(h2.clone())).unwrap();
 
         let retrieved = store.get_tension(&t.id).unwrap().unwrap();
@@ -2762,7 +2762,7 @@ mod tests {
     #[test]
     fn test_list_tensions_returns_horizon() {
         let store = Store::new_in_memory().unwrap();
-        let h1 = Horizon::Year(2026);
+        let h1 = Horizon::new_year(2026).unwrap();
         let _t1 = store
             .create_tension_full("goal1", "reality1", None, Some(h1.clone()))
             .unwrap();
@@ -2777,7 +2777,7 @@ mod tests {
     #[test]
     fn test_get_roots_returns_horizon() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let _root = store
             .create_tension_full("root", "r", None, Some(h.clone()))
             .unwrap();
@@ -2791,7 +2791,7 @@ mod tests {
     fn test_get_children_returns_horizon() {
         let store = Store::new_in_memory().unwrap();
         let parent = store.create_tension("parent", "p").unwrap();
-        let h = Horizon::Day(chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap());
+        let h = Horizon::new_day(2026, 5, 15).unwrap();
         let _child = store
             .create_tension_full("child", "c", Some(parent.id.clone()), Some(h.clone()))
             .unwrap();
@@ -2819,7 +2819,7 @@ mod tests {
         store.set_event_bus(bus);
 
         let t = store.create_tension("goal", "reality").unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         store.update_horizon(&t.id, Some(h)).unwrap();
 
         assert_eq!(count.load(Ordering::SeqCst), 1);
@@ -2842,7 +2842,7 @@ mod tests {
 
         store.set_event_bus(bus);
 
-        let h = Horizon::Year(2026);
+        let h = Horizon::new_year(2026).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
@@ -2866,12 +2866,12 @@ mod tests {
     #[test]
     fn test_replay_matches_direct_query_with_horizon() {
         let store = Store::new_in_memory().unwrap();
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();
         store.update_actual(&t.id, "new reality").unwrap();
-        let new_h = Horizon::Year(2027);
+        let new_h = Horizon::new_year(2027).unwrap();
         store.update_horizon(&t.id, Some(new_h.clone())).unwrap();
 
         let mutations = store.get_mutations(&t.id).unwrap();
@@ -2901,7 +2901,7 @@ mod tests {
 
         store.set_event_bus(bus);
 
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let _t = store
             .create_tension_full("goal", "reality", None, Some(h.clone()))
             .unwrap();

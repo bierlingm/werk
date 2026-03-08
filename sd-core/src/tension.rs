@@ -599,7 +599,7 @@ mod tests {
     #[test]
     fn test_tension_new_full_with_year_horizon() {
         use crate::Horizon;
-        let h = Horizon::Year(2026);
+        let h = Horizon::new_year(2026).unwrap();
         let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
         assert_eq!(t.horizon, Some(h));
     }
@@ -607,7 +607,7 @@ mod tests {
     #[test]
     fn test_tension_new_full_with_month_horizon() {
         use crate::Horizon;
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
         assert_eq!(t.horizon, Some(h));
     }
@@ -616,7 +616,7 @@ mod tests {
     fn test_tension_new_full_with_day_horizon() {
         use crate::Horizon;
         use chrono::NaiveDate;
-        let h = Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap());
+        let h = Horizon::new_day(2026, 5, 15).unwrap();
         let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
         assert_eq!(t.horizon, Some(h));
     }
@@ -626,7 +626,7 @@ mod tests {
         use crate::Horizon;
         use chrono::{TimeZone, Utc};
         let dt = Utc.with_ymd_and_hms(2026, 5, 15, 14, 30, 0).unwrap();
-        let h = Horizon::DateTime(dt);
+        let h = Horizon::new_datetime(dt);
         let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
         assert_eq!(t.horizon, Some(h));
     }
@@ -640,7 +640,7 @@ mod tests {
     #[test]
     fn test_tension_new_full_with_parent_and_horizon() {
         use crate::Horizon;
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let t = Tension::new_full(
             "goal",
             "reality",
@@ -655,14 +655,14 @@ mod tests {
     #[test]
     fn test_tension_new_full_validates_desired() {
         use crate::Horizon;
-        let result = Tension::new_full("", "reality", None, Some(Horizon::Year(2026)));
+        let result = Tension::new_full("", "reality", None, Some(Horizon::new_year(2026).unwrap()));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_tension_new_full_validates_actual() {
         use crate::Horizon;
-        let result = Tension::new_full("goal", "", None, Some(Horizon::Year(2026)));
+        let result = Tension::new_full("goal", "", None, Some(Horizon::new_year(2026).unwrap()));
         assert!(result.is_err());
     }
 
@@ -671,7 +671,7 @@ mod tests {
         // Past horizons are allowed at creation — grammar doesn't judge
         use crate::Horizon;
         use chrono::NaiveDate;
-        let past = Horizon::Day(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap());
+        let past = Horizon::new_day(2020, 1, 1).unwrap();
         let t = Tension::new_full("goal", "reality", None, Some(past.clone())).unwrap();
         assert_eq!(t.horizon, Some(past));
     }
@@ -681,36 +681,36 @@ mod tests {
     #[test]
     fn test_update_horizon_on_active_succeeds() {
         use crate::Horizon;
-        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
-        let old = t.update_horizon(Some(Horizon::Month(2026, 5))).unwrap();
-        assert_eq!(old, Some(Horizon::Year(2026)));
-        assert_eq!(t.horizon, Some(Horizon::Month(2026, 5)));
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::new_year(2026).unwrap())).unwrap();
+        let old = t.update_horizon(Some(Horizon::new_month(2026, 5).unwrap())).unwrap();
+        assert_eq!(old, Some(Horizon::new_year(2026).unwrap()));
+        assert_eq!(t.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
     }
 
     #[test]
     fn test_update_horizon_on_active_from_none_to_some() {
         use crate::Horizon;
         let mut t = Tension::new("goal", "reality").unwrap();
-        let old = t.update_horizon(Some(Horizon::Year(2026))).unwrap();
+        let old = t.update_horizon(Some(Horizon::new_year(2026).unwrap())).unwrap();
         assert!(old.is_none());
-        assert_eq!(t.horizon, Some(Horizon::Year(2026)));
+        assert_eq!(t.horizon, Some(Horizon::new_year(2026).unwrap()));
     }
 
     #[test]
     fn test_update_horizon_clear_to_none() {
         use crate::Horizon;
-        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::new_year(2026).unwrap())).unwrap();
         let old = t.update_horizon(None).unwrap();
-        assert_eq!(old, Some(Horizon::Year(2026)));
+        assert_eq!(old, Some(Horizon::new_year(2026).unwrap()));
         assert!(t.horizon.is_none());
     }
 
     #[test]
     fn test_update_horizon_on_resolved_fails() {
         use crate::Horizon;
-        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::new_year(2026).unwrap())).unwrap();
         t.resolve().unwrap();
-        let result = t.update_horizon(Some(Horizon::Month(2026, 5)));
+        let result = t.update_horizon(Some(Horizon::new_month(2026, 5).unwrap()));
         assert!(result.is_err());
         match result.unwrap_err() {
             SdError::UpdateOnInactiveTension(status) => {
@@ -719,15 +719,15 @@ mod tests {
             other => panic!("expected UpdateOnInactiveTension, got {other:?}"),
         }
         // Original horizon preserved
-        assert_eq!(t.horizon, Some(Horizon::Year(2026)));
+        assert_eq!(t.horizon, Some(Horizon::new_year(2026).unwrap()));
     }
 
     #[test]
     fn test_update_horizon_on_released_fails() {
         use crate::Horizon;
-        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::new_year(2026).unwrap())).unwrap();
         t.release().unwrap();
-        let result = t.update_horizon(Some(Horizon::Month(2026, 5)));
+        let result = t.update_horizon(Some(Horizon::new_month(2026, 5).unwrap()));
         assert!(result.is_err());
         match result.unwrap_err() {
             SdError::UpdateOnInactiveTension(status) => {
@@ -736,7 +736,7 @@ mod tests {
             other => panic!("expected UpdateOnInactiveTension, got {other:?}"),
         }
         // Original horizon preserved
-        assert_eq!(t.horizon, Some(Horizon::Year(2026)));
+        assert_eq!(t.horizon, Some(Horizon::new_year(2026).unwrap()));
     }
 
     // ── Horizon serialization ─────────────────────────────────────────
@@ -744,7 +744,7 @@ mod tests {
     #[test]
     fn test_tension_serialization_with_horizon() {
         use crate::Horizon;
-        let t = Tension::new_full("goal", "reality", None, Some(Horizon::Month(2026, 5))).unwrap();
+        let t = Tension::new_full("goal", "reality", None, Some(Horizon::new_month(2026, 5).unwrap())).unwrap();
         let json = serde_json::to_string(&t).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value.get("horizon").unwrap().as_str().unwrap(), "2026-05");
@@ -770,10 +770,10 @@ mod tests {
         use chrono::{NaiveDate, TimeZone, Utc};
 
         let horizons = [
-            Some(Horizon::Year(2026)),
-            Some(Horizon::Month(2026, 5)),
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap())),
-            Some(Horizon::DateTime(
+            Some(Horizon::new_year(2026).unwrap()),
+            Some(Horizon::new_month(2026, 5).unwrap()),
+            Some(Horizon::new_day(2026, 5, 15).unwrap()),
+            Some(Horizon::new_datetime(
                 Utc.with_ymd_and_hms(2026, 5, 15, 14, 30, 0).unwrap(),
             )),
             None,

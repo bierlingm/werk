@@ -1204,7 +1204,7 @@ mod tests {
             "march",
             "march",
             Some("parent".to_string()),
-            Some(Horizon::Month(2026, 3)),
+            Some(Horizon::new_month(2026, 3).unwrap()),
         );
         // May (middle)
         let child_may = make_tension_with_parent_and_horizon(
@@ -1212,7 +1212,7 @@ mod tests {
             "may",
             "may",
             Some("parent".to_string()),
-            Some(Horizon::Month(2026, 5)),
+            Some(Horizon::new_month(2026, 5).unwrap()),
         );
         // August (latest)
         let child_aug = make_tension_with_parent_and_horizon(
@@ -1220,7 +1220,7 @@ mod tests {
             "aug",
             "aug",
             Some("parent".to_string()),
-            Some(Horizon::Month(2026, 8)),
+            Some(Horizon::new_month(2026, 8).unwrap()),
         );
 
         let forest =
@@ -1242,7 +1242,7 @@ mod tests {
             "jan",
             "jan",
             Some("parent".to_string()),
-            Some(Horizon::Month(2026, 1)),
+            Some(Horizon::new_month(2026, 1).unwrap()),
         );
         let child_none = make_tension_with_parent_and_horizon(
             "child_none",
@@ -1256,7 +1256,7 @@ mod tests {
             "dec",
             "dec",
             Some("parent".to_string()),
-            Some(Horizon::Month(2026, 12)),
+            Some(Horizon::new_month(2026, 12).unwrap()),
         );
 
         let forest = Forest::from_tensions(vec![parent, child_jan, child_none, child_dec]).unwrap();
@@ -1279,28 +1279,28 @@ mod tests {
             "year",
             "year",
             Some("parent".to_string()),
-            Some(Horizon::Year(2026)),
+            Some(Horizon::new_year(2026).unwrap()),
         );
         let child_month = make_tension_with_parent_and_horizon(
             "child_month",
             "month",
             "month",
             Some("parent".to_string()),
-            Some(Horizon::Month(2026, 1)),
+            Some(Horizon::new_month(2026, 1).unwrap()),
         );
         let child_day = make_tension_with_parent_and_horizon(
             "child_day",
             "day",
             "day",
             Some("parent".to_string()),
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap())),
+            Some(Horizon::new_day(2026, 1, 1).unwrap()),
         );
         let child_dt = make_tension_with_parent_and_horizon(
             "child_dt",
             "dt",
             "dt",
             Some("parent".to_string()),
-            Some(Horizon::DateTime(
+            Some(Horizon::new_datetime(
                 Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
             )),
         );
@@ -1365,14 +1365,14 @@ mod tests {
 
         // Past horizon (May 2026) - should be included
         let past_active =
-            make_tension_with_horizon("past_active", "past", "past", Some(Horizon::Month(2026, 5)));
+            make_tension_with_horizon("past_active", "past", "past", Some(Horizon::new_month(2026, 5).unwrap()));
 
         // Past horizon but resolved - should be excluded
         let mut past_resolved = make_tension_with_horizon(
             "past_resolved",
             "resolved",
             "resolved",
-            Some(Horizon::Month(2026, 4)),
+            Some(Horizon::new_month(2026, 4).unwrap()),
         );
         past_resolved.resolve().unwrap();
 
@@ -1381,7 +1381,7 @@ mod tests {
             "past_released",
             "released",
             "released",
-            Some(Horizon::Month(2026, 3)),
+            Some(Horizon::new_month(2026, 3).unwrap()),
         );
         past_released.release().unwrap();
 
@@ -1390,7 +1390,7 @@ mod tests {
             "future_active",
             "future",
             "future",
-            Some(Horizon::Month(2026, 12)),
+            Some(Horizon::new_month(2026, 12).unwrap()),
         );
 
         // No horizon - should be excluded
@@ -1429,8 +1429,8 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
 
         // All horizons are in the future
-        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::Month(2026, 12)));
-        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::Year(2027)));
+        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 12).unwrap()));
+        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_year(2027).unwrap()));
 
         let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
 
@@ -1444,7 +1444,7 @@ mod tests {
         let dt_past = Utc.with_ymd_and_hms(2026, 5, 15, 14, 0, 0).unwrap();
         let now = Utc.with_ymd_and_hms(2026, 5, 15, 15, 0, 0).unwrap();
 
-        let t = make_tension_with_horizon("t", "a", "a", Some(Horizon::DateTime(dt_past)));
+        let t = make_tension_with_horizon("t", "a", "a", Some(Horizon::new_datetime(dt_past)));
 
         let forest = Forest::from_tensions(vec![t]).unwrap();
 
@@ -1455,7 +1455,7 @@ mod tests {
     #[test]
     fn test_tensions_past_horizon_at_boundary() {
         // At the exact end of the horizon, is_past should be false
-        let h = Horizon::Month(2026, 5);
+        let h = Horizon::new_month(2026, 5).unwrap();
         let end = h.range_end(); // 2026-05-31 23:59:59
 
         let t = make_tension_with_horizon("t", "a", "a", Some(h));
@@ -1485,7 +1485,7 @@ mod tests {
             "approaching",
             "approaching",
             "approaching",
-            Some(Horizon::Month(2026, 5)),
+            Some(Horizon::new_month(2026, 5).unwrap()),
         );
 
         // Ends June 10 - NOT within 5 days, should be excluded
@@ -1493,7 +1493,7 @@ mod tests {
             "not_yet",
             "not_yet",
             "not_yet",
-            Some(Horizon::Month(2026, 6)),
+            Some(Horizon::new_month(2026, 6).unwrap()),
         );
 
         // Already past (April) - should be excluded
@@ -1501,7 +1501,7 @@ mod tests {
             "already_past",
             "past",
             "past",
-            Some(Horizon::Month(2026, 4)),
+            Some(Horizon::new_month(2026, 4).unwrap()),
         );
 
         // No horizon - should be excluded
@@ -1524,7 +1524,7 @@ mod tests {
             "t",
             "a",
             "a",
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 28).unwrap())),
+            Some(Horizon::new_day(2026, 5, 28).unwrap()),
         );
 
         let forest = Forest::from_tensions(vec![t]).unwrap();
@@ -1544,13 +1544,13 @@ mod tests {
             "resolved",
             "resolved",
             "resolved",
-            Some(Horizon::Month(2026, 5)),
+            Some(Horizon::new_month(2026, 5).unwrap()),
         );
         resolved.resolve().unwrap();
 
         // Active tension approaching horizon
         let active =
-            make_tension_with_horizon("active", "active", "active", Some(Horizon::Month(2026, 5)));
+            make_tension_with_horizon("active", "active", "active", Some(Horizon::new_month(2026, 5).unwrap()));
 
         let forest = Forest::from_tensions(vec![resolved, active]).unwrap();
 
@@ -1569,13 +1569,13 @@ mod tests {
             "released",
             "released",
             "released",
-            Some(Horizon::Month(2026, 5)),
+            Some(Horizon::new_month(2026, 5).unwrap()),
         );
         released.release().unwrap();
 
         // Active tension approaching horizon
         let active =
-            make_tension_with_horizon("active", "active", "active", Some(Horizon::Month(2026, 5)));
+            make_tension_with_horizon("active", "active", "active", Some(Horizon::new_month(2026, 5).unwrap()));
 
         let forest = Forest::from_tensions(vec![released, active]).unwrap();
 
@@ -1605,8 +1605,8 @@ mod tests {
         let within = chrono::Duration::days(5);
 
         // All horizons are in the past
-        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::Month(2026, 5)));
-        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::Month(2026, 4)));
+        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 5).unwrap()));
+        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_month(2026, 4).unwrap()));
 
         let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
 
@@ -1620,8 +1620,8 @@ mod tests {
         let within = chrono::Duration::days(5);
 
         // All horizons are far in the future
-        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::Month(2026, 12)));
-        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::Year(2027)));
+        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 12).unwrap()));
+        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_year(2027).unwrap()));
 
         let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
 
@@ -1640,7 +1640,7 @@ mod tests {
             "approaching",
             "a",
             "a",
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 29).unwrap())),
+            Some(Horizon::new_day(2026, 5, 29).unwrap()),
         );
 
         // Day horizon ending after 36 hours
@@ -1648,7 +1648,7 @@ mod tests {
             "not_yet",
             "b",
             "b",
-            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 30).unwrap())),
+            Some(Horizon::new_day(2026, 5, 30).unwrap()),
         );
 
         let forest = Forest::from_tensions(vec![approaching, not_yet]).unwrap();
@@ -1669,7 +1669,7 @@ mod tests {
             "approaching",
             "a",
             "a",
-            Some(Horizon::DateTime(
+            Some(Horizon::new_datetime(
                 Utc.with_ymd_and_hms(2026, 5, 28, 13, 30, 0).unwrap(),
             )),
         );
@@ -1679,7 +1679,7 @@ mod tests {
             "not_yet",
             "b",
             "b",
-            Some(Horizon::DateTime(
+            Some(Horizon::new_datetime(
                 Utc.with_ymd_and_hms(2026, 5, 28, 15, 0, 0).unwrap(),
             )),
         );
@@ -1702,7 +1702,7 @@ mod tests {
             "boundary",
             "a",
             "a",
-            Some(Horizon::DateTime(
+            Some(Horizon::new_datetime(
                 Utc.with_ymd_and_hms(2026, 5, 29, 12, 0, 0).unwrap(),
             )),
         );
