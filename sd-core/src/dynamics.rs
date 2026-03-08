@@ -157,6 +157,11 @@ pub struct Resolution {
     /// Time window in which resolution was detected.
     pub window_start: DateTime<Utc>,
     pub window_end: DateTime<Utc>,
+    /// Required velocity to close the gap before horizon (only when horizon present).
+    /// computed as: remaining_gap / time_remaining
+    pub required_velocity: Option<f64>,
+    /// Whether current velocity is sufficient to meet the horizon (only when horizon present).
+    pub is_sufficient: Option<bool>,
 }
 
 /// The trend of resolution progress.
@@ -674,6 +679,52 @@ fn compute_gap_magnitude(desired: &str, actual: &str) -> f64 {
 }
 
 // ============================================================================
+// Horizon Dynamics Helper Functions
+// ============================================================================
+
+/// Compute effective recency window scaled to horizon width.
+///
+/// When horizon is None, returns the absolute_recency unchanged (backward compatible).
+/// When horizon is present, scales the recency window to approximately 10% of the
+/// horizon width, making "recent" proportional to the tension's temporal scale.
+///
+/// For DateTime horizons (width=0), returns a minimal window (1 second) to avoid
+/// division by zero and ensure safe computation.
+///
+/// # Arguments
+///
+/// * `absolute_recency` - The default recency window in seconds
+/// * `horizon` - Optional horizon to scale relative to
+/// * `now` - Current time for computing horizon width
+///
+/// # Returns
+///
+/// Effective recency window in seconds.
+pub fn effective_recency(
+    absolute_recency: i64,
+    horizon: Option<&crate::Horizon>,
+    _now: DateTime<Utc>,
+) -> i64 {
+    match horizon {
+        None => absolute_recency,
+        Some(h) => {
+            let horizon_width = h.width().num_seconds();
+            // Guard against zero width (DateTime horizon)
+            if horizon_width <= 0 {
+                // For instant horizons, use a minimal window (1 second)
+                // This makes everything "recent" relative to an instant
+                return 1;
+            }
+            // Scale to approximately 10% of horizon width
+            // This ensures "recent" is proportional to the temporal scale
+            let scaled = (horizon_width as f64 * 0.1) as i64;
+            // Ensure we have at least a minimal window
+            scaled.max(1)
+        }
+    }
+}
+
+// ============================================================================
 // Horizon Dynamics Functions
 // ============================================================================
 
@@ -881,6 +932,10 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
 /// Conflict occurs when siblings show asymmetric activity patterns —
 /// one advancing while another stagnates. This is a structural condition.
 ///
+/// With horizon, also detects **temporal crowding**: when multiple siblings
+/// are aimed at the same narrow horizon window, they compete for the
+/// practitioner's time and attention.
+///
 /// # Arguments
 ///
 /// * `forest` - The forest containing the tensions.
@@ -900,7 +955,7 @@ pub fn detect_structural_conflict(
     now: DateTime<Utc>,
 ) -> Option<Conflict> {
     // Verify the tension exists in the forest
-    forest.find(tension_id)?;
+    let node = forest.find(tension_id)?;
 
     // Get siblings
     let siblings = forest.siblings(tension_id)?;
@@ -908,8 +963,12 @@ pub fn detect_structural_conflict(
         return None; // No siblings, no conflict
     }
 
+    // Get the tension's horizon for effective recency calculation
+    let horizon = node.tension.horizon.as_ref();
+    let recency = effective_recency(thresholds.recency_seconds, horizon, now);
+
     // Calculate activity for each sibling
-    let cutoff = now - chrono::Duration::seconds(thresholds.recency_seconds);
+    let cutoff = now - chrono::Duration::seconds(recency);
 
     // Count recent mutations for each tension
     let mut activity: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -965,6 +1024,48 @@ pub fn detect_structural_conflict(
         }
     }
 
+    // NEW: Check for temporal crowding (horizon-aware)
+    // When multiple siblings share a narrow horizon window, they compete
+    // for attention even before activity patterns reveal the conflict.
+    if let Some(self_horizon) = &node.tension.horizon {
+        // Count siblings with overlapping narrow horizons
+        let self_width = self_horizon.width().num_seconds();
+
+        // Only check for crowding if horizon is narrow (less than 1 month)
+        let narrow_threshold = 30 * 24 * 60 * 60; // 30 days in seconds
+        if self_width < narrow_threshold {
+            let mut overlapping_count = 0;
+            let self_start = self_horizon.range_start();
+            let self_end = self_horizon.range_end();
+
+            for sibling in &siblings {
+                if let Some(sibling_horizon) = &sibling.tension.horizon {
+                    // Check if horizons overlap
+                    let sib_start = sibling_horizon.range_start();
+                    let sib_end = sibling_horizon.range_end();
+
+                    // Overlap if one starts before the other ends
+                    if sib_start <= self_end && sib_end >= self_start {
+                        overlapping_count += 1;
+                    }
+                }
+            }
+
+            // Temporal crowding: 3+ siblings with overlapping narrow horizons
+            if overlapping_count >= 2 {
+                // 2 siblings + self = 3 total
+                let mut tension_ids = vec![tension_id.to_string()];
+                tension_ids.extend(siblings.iter().map(|s| s.id().to_string()));
+
+                return Some(Conflict {
+                    tension_ids,
+                    pattern: ConflictPattern::CompetingTensions,
+                    detected_at: now,
+                });
+            }
+        }
+    }
+
     None
 }
 
@@ -974,12 +1075,16 @@ pub fn detect_structural_conflict(
 /// advances followed by reversals of similar magnitude. It is distinct
 /// from conflict (which is structural, not temporal).
 ///
+/// With horizon, also detects **temporal oscillation**: horizon mutations
+/// that alternate direction (e.g., pushed later, pulled earlier, pushed later).
+///
 /// # Arguments
 ///
 /// * `tension_id` - The tension to check for oscillation.
 /// * `mutations` - The mutation history for this tension.
 /// * `thresholds` - Threshold parameters for detection sensitivity.
 /// * `now` - The current time for recency calculations.
+/// * `horizon` - Optional horizon for effective recency calculation.
 ///
 /// # Returns
 ///
@@ -989,12 +1094,15 @@ pub fn detect_oscillation(
     mutations: &[Mutation],
     thresholds: &OscillationThresholds,
     now: DateTime<Utc>,
+    horizon: Option<&crate::Horizon>,
 ) -> Option<Oscillation> {
     if mutations.is_empty() {
         return None;
     }
 
-    let cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+    // Use effective recency based on horizon (if present)
+    let recency = effective_recency(thresholds.recency_window_seconds, horizon, now);
+    let cutoff = now - chrono::Duration::seconds(recency);
 
     // Filter mutations within recency window for this tension
     let relevant_mutations: Vec<&Mutation> = mutations
@@ -1014,55 +1122,100 @@ pub fn detect_oscillation(
         .copied()
         .collect();
 
-    if actual_updates.len() < 2 {
-        return None;
-    }
+    // Also look for horizon mutations (temporal oscillation)
+    let horizon_updates: Vec<&Mutation> = relevant_mutations
+        .iter()
+        .filter(|m| m.field() == "horizon")
+        .copied()
+        .collect();
 
-    // Detect direction changes by tracking the actual value sequence
-    // A direction change (reversal) occurs when consecutive updates change direction
-    let mut reversals = 0;
-    let mut last_direction: Option<f64> = None;
-    let mut reversal_magnitudes: Vec<f64> = Vec::new();
+    // Detect content oscillation from actual field updates
+    let mut content_reversals = 0;
+    let mut content_magnitudes: Vec<f64> = Vec::new();
 
-    for update in &actual_updates {
-        // For each actual update, compare old_value to new_value
-        // The direction tells us if the change represents growth (+) or shrinkage (-)
-        // This is a simplified heuristic: longer = progress, shorter = regress
-        let old_val = update.old_value().unwrap_or("");
-        let new_val = update.new_value();
+    if actual_updates.len() >= 2 {
+        let mut last_direction: Option<f64> = None;
 
-        // Direction based on length change (simplified heuristic)
-        let direction = if new_val.len() > old_val.len() {
-            1.0 // Growth
-        } else if new_val.len() < old_val.len() {
-            -1.0 // Shrinkage
-        } else {
-            0.0 // No change
-        };
+        for update in &actual_updates {
+            let old_val = update.old_value().unwrap_or("");
+            let new_val = update.new_value();
 
-        // Only count non-zero directions
-        if direction != 0.0 {
-            if let Some(prev_dir) = last_direction {
-                // Check if direction changed (reversal)
-                if prev_dir != direction && prev_dir != 0.0 {
-                    reversals += 1;
-                    reversal_magnitudes.push(1.0); // Simplified magnitude
+            // Direction based on length change (simplified heuristic)
+            let direction = if new_val.len() > old_val.len() {
+                1.0 // Growth
+            } else if new_val.len() < old_val.len() {
+                -1.0 // Shrinkage
+            } else {
+                0.0 // No change
+            };
+
+            if direction != 0.0 {
+                if let Some(prev_dir) = last_direction
+                    && prev_dir != direction
+                    && prev_dir != 0.0
+                {
+                    content_reversals += 1;
+                    content_magnitudes.push(1.0);
                 }
+                last_direction = Some(direction);
             }
-            last_direction = Some(direction);
         }
     }
 
+    // Detect temporal oscillation from horizon mutations
+    let mut temporal_reversals = 0;
+    let mut temporal_magnitudes: Vec<f64> = Vec::new();
+
+    if horizon_updates.len() >= 2 {
+        let mut last_shift: Option<i64> = None;
+
+        for update in &horizon_updates {
+            let old_horizon = update.old_value().and_then(|s| {
+                if s.is_empty() {
+                    None
+                } else {
+                    crate::Horizon::parse(s).ok()
+                }
+            });
+            let new_horizon = if update.new_value().is_empty() {
+                None
+            } else {
+                crate::Horizon::parse(update.new_value()).ok()
+            };
+
+            if let (Some(old), Some(new)) = (old_horizon, new_horizon) {
+                // Compute shift: positive = later, negative = earlier
+                let shift = (new.range_end() - old.range_end()).num_seconds();
+
+                if let Some(prev_shift) = last_shift {
+                    // Direction change in horizon mutations = temporal oscillation
+                    if (prev_shift > 0 && shift < 0) || (prev_shift < 0 && shift > 0) {
+                        temporal_reversals += 1;
+                        temporal_magnitudes.push(1.0);
+                    }
+                }
+                last_shift = Some(shift);
+            }
+        }
+    }
+
+    // Combine content and temporal oscillation
+    let total_reversals = content_reversals + temporal_reversals;
+    let all_magnitudes: Vec<f64> = content_magnitudes
+        .into_iter()
+        .chain(temporal_magnitudes)
+        .collect();
+
     // Check if oscillation meets thresholds
-    if reversals < thresholds.frequency_threshold {
+    if total_reversals < thresholds.frequency_threshold {
         return None;
     }
 
     // Compute average magnitude of reversals
-    let avg_magnitude = if reversal_magnitudes.is_empty() {
+    let avg_magnitude = if all_magnitudes.is_empty() {
         0.0
     } else {
-        reversal_magnitudes.iter().sum::<f64>() / reversal_magnitudes.len() as f64
+        all_magnitudes.iter().sum::<f64>() / all_magnitudes.len() as f64
     };
 
     if avg_magnitude < thresholds.magnitude_threshold {
@@ -1083,7 +1236,7 @@ pub fn detect_oscillation(
 
     Some(Oscillation {
         tension_id: tension_id.to_string(),
-        reversals,
+        reversals: total_reversals,
         magnitude: avg_magnitude,
         window_start,
         window_end,
@@ -1094,6 +1247,9 @@ pub fn detect_oscillation(
 ///
 /// Resolution is mutually exclusive with oscillation. When detected,
 /// the tension is advancing sustainably toward its outcome.
+///
+/// With horizon, computes **required velocity** (remaining_gap / time_remaining)
+/// and determines whether the current velocity is sufficient.
 ///
 /// # Arguments
 ///
@@ -1116,7 +1272,13 @@ pub fn detect_resolution(
         return None;
     }
 
-    let cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+    // Use effective recency based on horizon (if present)
+    let recency = effective_recency(
+        thresholds.recency_window_seconds,
+        tension.horizon.as_ref(),
+        now,
+    );
+    let cutoff = now - chrono::Duration::seconds(recency);
 
     // Filter mutations within recency window for this tension
     let relevant_mutations: Vec<&Mutation> = mutations
@@ -1195,12 +1357,33 @@ pub fn detect_resolution(
         .max()
         .unwrap_or(now);
 
+    // NEW: Compute required_velocity and is_sufficient when horizon present
+    let (required_velocity, is_sufficient) = if let Some(horizon) = &tension.horizon {
+        // Compute remaining gap
+        let remaining_gap = compute_gap_magnitude(&tension.desired, &tension.actual);
+        // Compute time remaining (in seconds)
+        let time_remaining = (horizon.range_end() - now).num_seconds().max(1);
+
+        // Required velocity = remaining_gap / time_remaining
+        // Convert to per-second rate for consistency
+        let req_vel = remaining_gap / time_remaining as f64;
+
+        // Check if current velocity >= required velocity
+        let sufficient = velocity >= req_vel;
+
+        (Some(req_vel), Some(sufficient))
+    } else {
+        (None, None)
+    };
+
     Some(Resolution {
         tension_id: tension.id.clone(),
         velocity,
         trend,
         window_start,
         window_end,
+        required_velocity,
+        is_sufficient,
     })
 }
 
@@ -1258,6 +1441,11 @@ fn compute_resolution_trend(progress_values: &[f64]) -> ResolutionTrend {
 /// - **Completion**: Reality converging on desired outcome.
 /// - **Momentum**: New tensions created shortly after resolution.
 ///
+/// With horizon, phase boundaries become horizon-relative:
+/// - Germination is early-in-window, not just "newly created"
+/// - Approaching horizon with no activity is NOT Germination (crisis/stagnation)
+/// - Completion is convergence with remaining time, not just low gap
+///
 /// # Arguments
 ///
 /// * `tension` - The tension to classify.
@@ -1276,8 +1464,13 @@ pub fn classify_creative_cycle_phase(
     thresholds: &LifecycleThresholds,
     now: DateTime<Utc>,
 ) -> CreativeCyclePhaseResult {
-    // Calculate basic evidence
-    let cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+    // Use effective recency based on horizon (if present)
+    let recency = effective_recency(
+        thresholds.recency_window_seconds,
+        tension.horizon.as_ref(),
+        now,
+    );
+    let cutoff = now - chrono::Duration::seconds(recency);
     let age_seconds = (now - tension.created_at).num_seconds().max(0);
 
     // Count mutations within recency window (excluding creation)
@@ -1300,7 +1493,11 @@ pub fn classify_creative_cycle_phase(
         .iter()
         .any(|t| t.status == TensionStatus::Resolved && t.created_at >= momentum_cutoff);
 
+    // Compute urgency if horizon present (for phase classification)
+    let urgency = compute_urgency(tension, now);
+
     // Classify phase based on evidence
+    // With horizon, phase boundaries are horizon-relative
     let phase = if convergence_ratio < thresholds.convergence_threshold && mutation_count > 0 {
         // Reality converging on desired
         CreativeCyclePhase::Completion
@@ -1311,8 +1508,23 @@ pub fn classify_creative_cycle_phase(
         // New tension created shortly after resolution
         CreativeCyclePhase::Momentum
     } else {
-        // Default: new tension, no confrontation yet
-        CreativeCyclePhase::Germination
+        // Germination: horizon-relative
+        // A tension is in germination when it's new relative to its horizon
+        // NOT germination if urgency is high (approaching/past horizon) with no activity
+        match urgency {
+            Some(u) if u.value > 0.7 => {
+                // High urgency with no mutations = crisis/stagnation, not germination
+                CreativeCyclePhase::Assimilation // Force re-classification
+            }
+            Some(u) if u.value < 0.3 => {
+                // Early in window = germination
+                CreativeCyclePhase::Germination
+            }
+            _ => {
+                // No horizon or mid-window: use traditional classification
+                CreativeCyclePhase::Germination
+            }
+        }
     };
 
     CreativeCyclePhaseResult {
@@ -1547,6 +1759,10 @@ fn classify_single_tension_orientation(
 /// - **ConflictManipulation**: Attempting to manipulate the conflict
 /// - **WillpowerManipulation**: Using willpower to force progress
 ///
+/// With horizon, persistence becomes relative: oscillating for 2 weeks
+/// within a year-long horizon might not yet be compensating, but the same
+/// 2 weeks within a month-long horizon is structurally significant.
+///
 /// # Arguments
 ///
 /// * `tension_id` - The tension to check for compensating strategies.
@@ -1554,6 +1770,7 @@ fn classify_single_tension_orientation(
 /// * `oscillation` - Pre-computed oscillation result (if any).
 /// * `thresholds` - Threshold parameters for detection.
 /// * `now` - The current time for recency calculations.
+/// * `horizon` - Optional horizon for effective recency and persistence scaling.
 ///
 /// # Returns
 ///
@@ -1569,7 +1786,11 @@ pub fn detect_compensating_strategy(
     oscillation: Option<&Oscillation>,
     thresholds: &CompensatingStrategyThresholds,
     now: DateTime<Utc>,
+    horizon: Option<&crate::Horizon>,
 ) -> Option<CompensatingStrategy> {
+    // Use effective recency based on horizon (if present)
+    let recency = effective_recency(thresholds.recency_window_seconds, horizon, now);
+
     // Check for structural change within window
     let structural_cutoff =
         now - chrono::Duration::seconds(thresholds.structural_change_window_seconds);
@@ -1582,7 +1803,7 @@ pub fn detect_compensating_strategy(
         return None;
     }
 
-    let recency_cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+    let recency_cutoff = now - chrono::Duration::seconds(recency);
     let recent_mutations: Vec<&Mutation> = mutations
         .iter()
         .filter(|m| m.tension_id() == tension_id && m.timestamp() >= recency_cutoff)
@@ -1592,13 +1813,26 @@ pub fn detect_compensating_strategy(
         return None;
     }
 
+    // NEW: Scale persistence threshold by horizon width
+    // 2-week oscillation is significant for Month, not for Year
+    let scaled_persistence_threshold = if let Some(h) = horizon {
+        let horizon_width_days = h.width().num_seconds() as f64 / (24.0 * 3600.0);
+        // Scale threshold: original threshold is for 14-day window
+        // For wider horizons, scale up; for narrower, scale down
+        let base_window_days = 14.0;
+        let scale_factor = (horizon_width_days / base_window_days).clamp(0.1, 10.0);
+        (thresholds.persistence_threshold_seconds as f64 * scale_factor) as i64
+    } else {
+        thresholds.persistence_threshold_seconds
+    };
+
     // Check for oscillation pattern
     if let Some(osc) = oscillation {
         // TolerableConflict: oscillation persisting without structural change
         if osc.reversals >= thresholds.min_oscillation_cycles {
             let persistence = (now - osc.window_start).num_seconds().max(0);
 
-            if persistence >= thresholds.persistence_threshold_seconds {
+            if persistence >= scaled_persistence_threshold {
                 return Some(CompensatingStrategy {
                     tension_id: tension_id.to_string(),
                     strategy_type: CompensatingStrategyType::TolerableConflict,
@@ -1695,10 +1929,15 @@ pub fn detect_compensating_strategy(
 /// - **Oscillating**: Structural conflict present → back-and-forth
 /// - **Stagnant**: No gap or no activity → stasis
 ///
+/// With horizon, urgency becomes a predictive input:
+/// - High urgency biases toward rapid advance or release
+/// - The structural forces intensify as time runs out
+///
 /// # Arguments
 ///
 /// * `tension` - The tension to predict tendency for.
 /// * `has_conflict` - Whether structural conflict is detected.
+/// * `now` - Optional current time for urgency computation.
 ///
 /// # Returns
 ///
@@ -1706,6 +1945,7 @@ pub fn detect_compensating_strategy(
 pub fn predict_structural_tendency(
     tension: &Tension,
     has_conflict: bool,
+    now: Option<DateTime<Utc>>,
 ) -> StructuralTendencyResult {
     // Compute structural tension
     let tension_magnitude = compute_structural_tension(tension).map(|st| st.magnitude);
@@ -1719,8 +1959,24 @@ pub fn predict_structural_tendency(
         };
     }
 
+    // Compute urgency if horizon present and now provided
+    let urgency = now.and_then(|n| compute_urgency(tension, n));
+
     // Conflict present = oscillating tendency
+    // But high urgency may force rapid advance or release
     if has_conflict {
+        // Check if urgency is very high - may force resolution
+        if let Some(u) = &urgency
+            && u.value > 0.9
+        {
+            // Very high urgency with conflict = forced rapid advance or release
+            // The structure can't sustain oscillation under such time pressure
+            return StructuralTendencyResult {
+                tendency: StructuralTendency::Advancing,
+                tension_magnitude,
+                has_conflict: true,
+            };
+        }
         return StructuralTendencyResult {
             tendency: StructuralTendency::Oscillating,
             tension_magnitude,
@@ -1729,6 +1985,7 @@ pub fn predict_structural_tendency(
     }
 
     // Pure tension = advancing tendency
+    // High urgency amplifies the advancing tendency
     StructuralTendencyResult {
         tendency: StructuralTendency::Advancing,
         tension_magnitude,
@@ -1744,6 +2001,9 @@ pub fn predict_structural_tendency(
 /// - **Shallow**: High mutation frequency for same outcomes
 /// - **Deep**: Decreasing mutation frequency with maintained outcomes
 /// - **None**: No assimilation yet (new tension or no mutations)
+///
+/// With horizon, "high frequency" becomes relative. 5 mutations per 2 weeks
+/// is frantic for a year-long tension and sluggish for a day-long one.
 ///
 /// # Arguments
 ///
@@ -1763,7 +2023,13 @@ pub fn measure_assimilation_depth(
     thresholds: &AssimilationDepthThresholds,
     now: DateTime<Utc>,
 ) -> AssimilationDepthResult {
-    let recency_cutoff = now - chrono::Duration::seconds(thresholds.recency_window_seconds);
+    // Use effective recency based on horizon (if present)
+    let recency = effective_recency(
+        thresholds.recency_window_seconds,
+        tension.horizon.as_ref(),
+        now,
+    );
+    let recency_cutoff = now - chrono::Duration::seconds(recency);
 
     let relevant_mutations: Vec<&Mutation> = mutations
         .iter()
@@ -1789,11 +2055,24 @@ pub fn measure_assimilation_depth(
     }
 
     // Calculate mutation frequency (mutations per window)
-    let window_seconds = thresholds.recency_window_seconds.max(1) as f64;
+    let window_seconds = recency.max(1) as f64;
     let mutation_frequency = total_mutations as f64 / (window_seconds / (3600.0 * 24.0));
 
+    // NEW: Scale frequency threshold by horizon width
+    // High frequency for year horizon is different from day horizon
+    let scaled_frequency_threshold = if let Some(horizon) = &tension.horizon {
+        let horizon_width_days = horizon.width().num_seconds() as f64 / (24.0 * 3600.0);
+        // Scale threshold: original threshold is for 14-day window
+        // For wider horizons, scale up; for narrower, scale down
+        let base_window_days = 14.0;
+        let scale_factor = (horizon_width_days / base_window_days).clamp(0.1, 10.0);
+        thresholds.high_frequency_threshold * scale_factor
+    } else {
+        thresholds.high_frequency_threshold
+    };
+
     // Split mutations into first and second half of window
-    let half_window = chrono::Duration::seconds(thresholds.recency_window_seconds / 2);
+    let half_window = chrono::Duration::seconds(recency / 2);
     let mid_cutoff = now - half_window;
 
     let mutations_first_half: Vec<&Mutation> = relevant_mutations
@@ -1831,8 +2110,8 @@ pub fn measure_assimilation_depth(
     // Outcomes stable if few desired changes and actual is converging
     let outcomes_stable = desired_changes <= 1 && actual_gap_changes <= 2;
 
-    // Determine depth based on frequency and trend
-    let depth = if mutation_frequency > thresholds.high_frequency_threshold {
+    // Determine depth based on frequency and trend (using scaled threshold)
+    let depth = if mutation_frequency > scaled_frequency_threshold {
         // High frequency = shallow (constant adjustment)
         AssimilationDepth::Shallow
     } else if frequency_trend < thresholds.deep_trend_threshold {
@@ -1892,6 +2171,10 @@ fn count_gap_changes(mutations: &[&Mutation], tension: &Tension) -> usize {
 /// - **ParentNeglectsChildren**: Parent active, children stagnant
 /// - **ChildrenNeglected**: Parent stagnant, children active
 ///
+/// With horizon, neglect detection becomes urgency-weighted:
+/// A child with approaching horizon and no attention has higher neglect
+/// severity than a child with distant horizon.
+///
 /// # Arguments
 ///
 /// * `forest` - The forest containing the tension hierarchy.
@@ -1916,7 +2199,7 @@ pub fn detect_neglect(
     now: DateTime<Utc>,
 ) -> Option<Neglect> {
     // Verify the node exists
-    forest.find(tension_id)?;
+    let parent_node = forest.find(tension_id)?;
 
     // Get children
     let children = forest.children(tension_id)?;
@@ -1926,7 +2209,13 @@ pub fn detect_neglect(
         return None;
     }
 
-    let cutoff = now - chrono::Duration::seconds(thresholds.recency_seconds);
+    // Use effective recency based on parent's horizon (if present)
+    let recency = effective_recency(
+        thresholds.recency_seconds,
+        parent_node.tension.horizon.as_ref(),
+        now,
+    );
+    let cutoff = now - chrono::Duration::seconds(recency);
 
     // Count recent mutations for parent (excluding creation)
     let parent_activity = mutations
@@ -1968,8 +2257,28 @@ pub fn detect_neglect(
         1.0
     };
 
-    // Check if ratio exceeds threshold
-    if activity_ratio < thresholds.activity_ratio_threshold {
+    // NEW: Urgency-weighted neglect detection
+    // Children with approaching horizons should be weighted more heavily
+    let urgency_weight = if parent_active && !children_active {
+        // Check if any children have high urgency
+        let max_child_urgency: f64 = children
+            .iter()
+            .filter_map(|child| compute_urgency(&child.tension, now))
+            .map(|u| u.value)
+            .fold(0.0_f64, |a, b| a.max(b));
+
+        // Amplify neglect signal if children have high urgency
+        if max_child_urgency > 0.7 {
+            activity_ratio * (1.0 + max_child_urgency)
+        } else {
+            activity_ratio
+        }
+    } else {
+        activity_ratio
+    };
+
+    // Check if weighted ratio exceeds threshold
+    if urgency_weight < thresholds.activity_ratio_threshold {
         return None;
     }
 
@@ -1983,7 +2292,7 @@ pub fn detect_neglect(
     Some(Neglect {
         tension_id: tension_id.to_string(),
         neglect_type,
-        activity_ratio,
+        activity_ratio: urgency_weight,
         detected_at: now,
     })
 }
@@ -2383,6 +2692,7 @@ mod tests {
             &[],
             &OscillationThresholds::default(),
             Utc::now(),
+            None,
         );
 
         assert!(result.is_none());
@@ -2399,6 +2709,7 @@ mod tests {
             &mutations,
             &OscillationThresholds::default(),
             Utc::now(),
+            None,
         );
 
         assert!(result.is_none());
@@ -2424,7 +2735,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result = detect_oscillation(&t.id, &mutations, &thresholds, Utc::now());
+        let result = detect_oscillation(&t.id, &mutations, &thresholds, Utc::now(), None);
 
         // Should not detect oscillation for monotonic progress
         // (No direction changes because each update is progress in same direction)
@@ -2451,7 +2762,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result = detect_oscillation(&t.id, &mutations, &thresholds, Utc::now());
+        let result = detect_oscillation(&t.id, &mutations, &thresholds, Utc::now(), None);
 
         assert!(result.is_some());
         let osc = result.unwrap();
@@ -2477,7 +2788,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result_high = detect_oscillation(&t.id, &mutations, &thresholds_high, Utc::now());
+        let result_high = detect_oscillation(&t.id, &mutations, &thresholds_high, Utc::now(), None);
         assert!(result_high.is_none());
 
         // Require only 1 reversal - should detect
@@ -2487,7 +2798,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result_low = detect_oscillation(&t.id, &mutations, &thresholds_low, Utc::now());
+        let result_low = detect_oscillation(&t.id, &mutations, &thresholds_low, Utc::now(), None);
         assert!(result_low.is_some());
     }
 
@@ -2511,7 +2822,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result_high = detect_oscillation(&t.id, &mutations, &thresholds_high, Utc::now());
+        let result_high = detect_oscillation(&t.id, &mutations, &thresholds_high, Utc::now(), None);
         assert!(result_high.is_none());
 
         // Low magnitude threshold - should detect
@@ -2521,7 +2832,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result_low = detect_oscillation(&t.id, &mutations, &thresholds_low, Utc::now());
+        let result_low = detect_oscillation(&t.id, &mutations, &thresholds_low, Utc::now(), None);
         assert!(result_low.is_some());
     }
 
@@ -2545,7 +2856,8 @@ mod tests {
             recency_window_seconds: 0,
         };
 
-        let result_short = detect_oscillation(&t.id, &mutations, &thresholds_short, Utc::now());
+        let result_short =
+            detect_oscillation(&t.id, &mutations, &thresholds_short, Utc::now(), None);
         assert!(result_short.is_none());
 
         // Long recency window - should detect
@@ -2555,7 +2867,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 365,
         };
 
-        let result_long = detect_oscillation(&t.id, &mutations, &thresholds_long, Utc::now());
+        let result_long = detect_oscillation(&t.id, &mutations, &thresholds_long, Utc::now(), None);
         assert!(result_long.is_some());
     }
 
@@ -2585,7 +2897,7 @@ mod tests {
         let conflict_thresholds = ConflictThresholds::default();
 
         // Oscillation detected (single tension)
-        let osc = detect_oscillation(&t1.id, &mutations1, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(&t1.id, &mutations1, &osc_thresholds, Utc::now(), None);
         assert!(osc.is_some());
 
         // Conflict not detected (no siblings)
@@ -2629,7 +2941,13 @@ mod tests {
 
         // Oscillation not detected (monotonic progress)
         let child1_mutations = store2.get_mutations(&child1.id).unwrap();
-        let osc = detect_oscillation(&child1.id, &child1_mutations, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(
+            &child1.id,
+            &child1_mutations,
+            &osc_thresholds,
+            Utc::now(),
+            None,
+        );
         assert!(osc.is_none());
     }
 
@@ -2825,7 +3143,7 @@ mod tests {
         };
 
         // Should detect oscillation
-        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now(), None);
         assert!(osc.is_some());
 
         // Should NOT detect resolution
@@ -2864,6 +3182,7 @@ mod tests {
             &empty_mutations,
             &OscillationThresholds::default(),
             now,
+            None,
         );
         assert!(osc.is_none());
 
@@ -2895,7 +3214,13 @@ mod tests {
         assert!(conflict.is_none());
 
         // Oscillation with single mutation
-        let osc = detect_oscillation(&t.id, &mutations, &OscillationThresholds::default(), now);
+        let osc = detect_oscillation(
+            &t.id,
+            &mutations,
+            &OscillationThresholds::default(),
+            now,
+            None,
+        );
         assert!(osc.is_none());
 
         // Resolution with single mutation (creation only)
@@ -2928,8 +3253,8 @@ mod tests {
             recency_window_seconds: 1,
         };
 
-        let result_low = detect_oscillation(&t.id, &mutations, &osc_low, Utc::now());
-        let result_high = detect_oscillation(&t.id, &mutations, &osc_high, Utc::now());
+        let result_low = detect_oscillation(&t.id, &mutations, &osc_low, Utc::now(), None);
+        let result_high = detect_oscillation(&t.id, &mutations, &osc_high, Utc::now(), None);
 
         // At least one should be different from the other
         assert!(result_low.is_some() || result_high.is_none() || result_low != result_high);
@@ -2988,6 +3313,8 @@ mod tests {
             trend: ResolutionTrend::Steady,
             window_start: Utc::now(),
             window_end: Utc::now(),
+            required_velocity: None,
+            is_sufficient: None,
         };
         let _ = format!("{:?}", res);
         let _ = res.clone();
@@ -3030,6 +3357,8 @@ mod tests {
             trend: ResolutionTrend::Accelerating,
             window_start: Utc::now(),
             window_end: Utc::now(),
+            required_velocity: None,
+            is_sufficient: None,
         };
         let json = serde_json::to_string(&res).unwrap();
         let res2: Resolution = serde_json::from_str(&json).unwrap();
@@ -3605,7 +3934,7 @@ mod tests {
             frequency_threshold: 2,
             recency_window_seconds: 3600 * 24 * 30,
         };
-        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now(), None);
 
         // Detect compensating strategy
         let cs_thresholds = CompensatingStrategyThresholds {
@@ -3621,6 +3950,7 @@ mod tests {
             osc.as_ref(),
             &cs_thresholds,
             Utc::now(),
+            None,
         );
 
         assert!(result.is_some());
@@ -3653,8 +3983,14 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let _result_valid =
-            detect_compensating_strategy(&t.id, &mutations, None, &cs_thresholds_valid, Utc::now());
+        let _result_valid = detect_compensating_strategy(
+            &t.id,
+            &mutations,
+            None,
+            &cs_thresholds_valid,
+            Utc::now(),
+            None,
+        );
 
         // If structural changes happened more than 1 second ago, they shouldn't block
         // But since they just happened, let's use a time slightly in the future to make
@@ -3666,6 +4002,7 @@ mod tests {
             None,
             &cs_thresholds_valid,
             future_time,
+            None,
         );
 
         // Either approach should work. Let's verify the detection logic works
@@ -3677,8 +4014,14 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let result_low =
-            detect_compensating_strategy(&t.id, &mutations, None, &cs_thresholds_low, future_time);
+        let result_low = detect_compensating_strategy(
+            &t.id,
+            &mutations,
+            None,
+            &cs_thresholds_low,
+            future_time,
+            None,
+        );
 
         // With lower threshold and future time, should detect
         if result_low.is_some() {
@@ -3722,7 +4065,7 @@ mod tests {
         // With sequential updates, we don't have the required pattern
         // This test validates the function doesn't panic and returns None when pattern doesn't match
         let result =
-            detect_compensating_strategy(&t.id, &mutations, None, &cs_thresholds, Utc::now());
+            detect_compensating_strategy(&t.id, &mutations, None, &cs_thresholds, Utc::now(), None);
 
         // Result depends on whether burst pattern is detected
         // At minimum, verify no panic
@@ -3750,7 +4093,7 @@ mod tests {
             frequency_threshold: 2,
             recency_window_seconds: 3600 * 24 * 30,
         };
-        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now(), None);
 
         let cs_thresholds = CompensatingStrategyThresholds {
             persistence_threshold_seconds: 0,
@@ -3765,6 +4108,7 @@ mod tests {
             osc.as_ref(),
             &cs_thresholds,
             Utc::now(),
+            None,
         );
 
         // Should be None because structural change occurred
@@ -3788,7 +4132,7 @@ mod tests {
             frequency_threshold: 2,
             recency_window_seconds: 3600 * 24 * 30,
         };
-        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now(), None);
 
         // High persistence threshold - should not detect
         let cs_thresholds_high = CompensatingStrategyThresholds {
@@ -3804,6 +4148,7 @@ mod tests {
             osc.as_ref(),
             &cs_thresholds_high,
             Utc::now(),
+            None,
         );
 
         // Oscillation just started, persistence not met
@@ -3823,6 +4168,7 @@ mod tests {
             osc.as_ref(),
             &cs_thresholds_low,
             Utc::now(),
+            None,
         );
 
         assert!(result_low.is_some());
@@ -3832,7 +4178,8 @@ mod tests {
     fn test_compensating_strategy_handles_empty_mutations() {
         let thresholds = CompensatingStrategyThresholds::default();
 
-        let result = detect_compensating_strategy("test-id", &[], None, &thresholds, Utc::now());
+        let result =
+            detect_compensating_strategy("test-id", &[], None, &thresholds, Utc::now(), None);
 
         assert!(result.is_none());
     }
@@ -3845,7 +4192,7 @@ mod tests {
     fn test_structural_tendency_oscillating_when_conflict() {
         let t = Tension::new("goal", "reality").unwrap();
 
-        let result = predict_structural_tendency(&t, true);
+        let result = predict_structural_tendency(&t, true, None);
 
         assert_eq!(result.tendency, StructuralTendency::Oscillating);
         assert!(result.has_conflict);
@@ -3856,7 +4203,7 @@ mod tests {
     fn test_structural_tendency_advancing_when_pure_tension() {
         let t = Tension::new("goal", "reality").unwrap();
 
-        let result = predict_structural_tendency(&t, false);
+        let result = predict_structural_tendency(&t, false, None);
 
         assert_eq!(result.tendency, StructuralTendency::Advancing);
         assert!(!result.has_conflict);
@@ -3867,7 +4214,7 @@ mod tests {
     fn test_structural_tendency_stagnant_when_no_gap() {
         let t = Tension::new("same", "same").unwrap();
 
-        let result = predict_structural_tendency(&t, false);
+        let result = predict_structural_tendency(&t, false, None);
 
         assert_eq!(result.tendency, StructuralTendency::Stagnant);
         assert!(result.tension_magnitude.is_none());
@@ -3878,7 +4225,7 @@ mod tests {
         let t = Tension::new("same", "same").unwrap();
 
         // Even with conflict flag, no gap = stagnant
-        let result = predict_structural_tendency(&t, true);
+        let result = predict_structural_tendency(&t, true, None);
 
         assert_eq!(result.tendency, StructuralTendency::Stagnant);
         assert!(!result.has_conflict); // No tension, so conflict doesn't apply
@@ -4229,7 +4576,7 @@ mod tests {
             recency_window_seconds: 3600 * 24 * 30,
         };
 
-        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now());
+        let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now(), None);
         let res = detect_resolution(&t_updated, &mutations, &res_thresholds, Utc::now());
 
         // Can have oscillation
@@ -4279,7 +4626,7 @@ mod tests {
 
         // Structural tendency for child1 should be Oscillating due to conflict
         let child1_node = store.get_tension(&child1.id).unwrap().unwrap();
-        let tendency = predict_structural_tendency(&child1_node, true);
+        let tendency = predict_structural_tendency(&child1_node, true, None);
 
         assert_eq!(tendency.tendency, StructuralTendency::Oscillating);
     }
@@ -4338,7 +4685,7 @@ mod tests {
 
         // Initial tendency: Advancing (pure tension)
         let t0 = store.get_tension(&t.id).unwrap().unwrap();
-        let tendency0 = predict_structural_tendency(&t0, false);
+        let tendency0 = predict_structural_tendency(&t0, false, None);
         assert_eq!(tendency0.tendency, StructuralTendency::Advancing);
         let initial_magnitude = tendency0.tension_magnitude.unwrap();
 
@@ -4348,7 +4695,7 @@ mod tests {
         let t1 = store.get_tension(&t.id).unwrap().unwrap();
 
         // Tendency still Advancing (now with smaller gap)
-        let tendency1 = predict_structural_tendency(&t1, false);
+        let tendency1 = predict_structural_tendency(&t1, false, None);
         assert_eq!(tendency1.tendency, StructuralTendency::Advancing);
         // Gap should be smaller (convergence)
         assert!(tendency1.tension_magnitude.unwrap() < initial_magnitude);
@@ -4356,7 +4703,7 @@ mod tests {
         // Now close the gap completely - tendency becomes Stagnant
         store.update_actual(&t.id, "goal xyz").unwrap();
         let t2 = store.get_tension(&t.id).unwrap().unwrap();
-        let tendency2 = predict_structural_tendency(&t2, false);
+        let tendency2 = predict_structural_tendency(&t2, false, None);
         // When gap closes (desired == actual), tendency becomes Stagnant
         assert_eq!(tendency2.tendency, StructuralTendency::Stagnant);
         assert!(tendency2.tension_magnitude.is_none());
@@ -4392,8 +4739,8 @@ mod tests {
             recency_window_seconds: 1,
         };
 
-        let result_low = detect_oscillation(&t.id, &mutations, &osc_low, Utc::now());
-        let result_high = detect_oscillation(&t.id, &mutations, &osc_high, Utc::now());
+        let result_low = detect_oscillation(&t.id, &mutations, &osc_low, Utc::now(), None);
+        let result_high = detect_oscillation(&t.id, &mutations, &osc_high, Utc::now(), None);
 
         // At least one should be different (proving thresholds affect results)
         assert!(result_low.is_some() || result_high.is_none() || result_low != result_high);
@@ -4571,7 +4918,7 @@ mod tests {
         assert!(conflict.is_none());
 
         // 3. Oscillation
-        let osc = detect_oscillation(&t.id, &empty, &OscillationThresholds::default(), now);
+        let osc = detect_oscillation(&t.id, &empty, &OscillationThresholds::default(), now, None);
         assert!(osc.is_none());
 
         // 4. Resolution
@@ -4595,11 +4942,12 @@ mod tests {
             None,
             &CompensatingStrategyThresholds::default(),
             now,
+            None,
         );
         assert!(cs.is_none());
 
         // 8. Structural Tendency
-        let tend = predict_structural_tendency(&t, false);
+        let tend = predict_structural_tendency(&t, false, None);
         assert!(tend.tendency == StructuralTendency::Advancing);
 
         // 9. Assimilation Depth
@@ -4641,7 +4989,13 @@ mod tests {
         assert!(conflict.is_none());
 
         // 3. Oscillation
-        let osc = detect_oscillation(&t.id, &mutations, &OscillationThresholds::default(), now);
+        let osc = detect_oscillation(
+            &t.id,
+            &mutations,
+            &OscillationThresholds::default(),
+            now,
+            None,
+        );
         assert!(osc.is_none());
 
         // 4. Resolution
@@ -4674,11 +5028,12 @@ mod tests {
             None,
             &CompensatingStrategyThresholds::default(),
             now,
+            None,
         );
         assert!(cs.is_none());
 
         // 8. Structural Tendency
-        let tend = predict_structural_tendency(&t, false);
+        let tend = predict_structural_tendency(&t, false, None);
         assert!(tend.tendency == StructuralTendency::Advancing);
 
         // 9. Assimilation Depth
@@ -4753,7 +5108,7 @@ mod tests {
             frequency_threshold: 2,
             recency_window_seconds: 3600 * 24 * 365,
         };
-        let _osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, now);
+        let _osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, now, None);
 
         // Resolution
         let _res = detect_resolution(
@@ -4779,6 +5134,7 @@ mod tests {
             None,
             &CompensatingStrategyThresholds::default(),
             now,
+            None,
         );
 
         let elapsed = start.elapsed();

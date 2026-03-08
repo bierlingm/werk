@@ -263,6 +263,7 @@ fn test_oscillation_detection_and_stabilization() {
             recency_window_seconds: 3600 * 24 * 365,
         },
         Utc::now(),
+        None,
     );
     assert!(
         oscillation_sensitive.is_some(),
@@ -279,6 +280,7 @@ fn test_oscillation_detection_and_stabilization() {
             recency_window_seconds: 3600 * 24 * 365,
         },
         Utc::now(),
+        None,
     );
     assert!(
         oscillation_high_threshold.is_none(),
@@ -314,7 +316,7 @@ fn test_oscillation_resolution_mutually_exclusive() {
         recency_window_seconds: 3600 * 24 * 365,
     };
 
-    let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now());
+    let osc = detect_oscillation(&t.id, &mutations, &osc_thresholds, Utc::now(), None);
     let res = detect_resolution(&t_updated, &mutations, &res_thresholds, Utc::now());
 
     // Should detect oscillation

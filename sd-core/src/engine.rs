@@ -301,8 +301,13 @@ impl DynamicsEngine {
         }
 
         // --- Compute oscillation ---
-        let oscillation =
-            detect_oscillation(tension_id, &mutations, &self.thresholds.oscillation, now);
+        let oscillation = detect_oscillation(
+            tension_id,
+            &mutations,
+            &self.thresholds.oscillation,
+            now,
+            tension.horizon.as_ref(),
+        );
         let has_oscillation = oscillation.is_some();
 
         // Check for oscillation transition
