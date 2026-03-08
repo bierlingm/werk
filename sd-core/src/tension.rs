@@ -615,7 +615,6 @@ mod tests {
     #[test]
     fn test_tension_new_full_with_day_horizon() {
         use crate::Horizon;
-        use chrono::NaiveDate;
         let h = Horizon::new_day(2026, 5, 15).unwrap();
         let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
         assert_eq!(t.horizon, Some(h));
@@ -670,7 +669,6 @@ mod tests {
     fn test_tension_new_full_with_past_horizon_succeeds() {
         // Past horizons are allowed at creation — grammar doesn't judge
         use crate::Horizon;
-        use chrono::NaiveDate;
         let past = Horizon::new_day(2020, 1, 1).unwrap();
         let t = Tension::new_full("goal", "reality", None, Some(past.clone())).unwrap();
         assert_eq!(t.horizon, Some(past));
@@ -801,7 +799,7 @@ mod tests {
     #[test]
     fn test_tension_serialization_roundtrip_all_horizon_variants() {
         use crate::Horizon;
-        use chrono::{NaiveDate, TimeZone, Utc};
+        use chrono::{TimeZone, Utc};
 
         let horizons = [
             Some(Horizon::new_year(2026).unwrap()),

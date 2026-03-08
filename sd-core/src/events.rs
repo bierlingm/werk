@@ -1081,6 +1081,7 @@ mod tests {
                 assert_eq!(desired, "desired state");
                 assert_eq!(actual, "actual state");
                 assert_eq!(parent_id, Some("parent123".to_owned()));
+                assert_eq!(horizon, None);
                 assert!(timestamp <= Utc::now());
             }
             _ => panic!("wrong event type"),
@@ -1438,6 +1439,9 @@ mod tests {
         // Verify reconstructed state
         assert_eq!(tension_id, Some("01ABC".to_owned()));
         assert_eq!(desired, "write a bestseller");
+        assert_eq!(actual, "have a chapter");
+        assert_eq!(parent_id, Some("parent123".to_owned()));
+        assert_eq!(status, TensionStatus::Resolved);
         // Note: The TensionResolved event has final_desired and final_actual
         // In a real implementation, we'd use those for the resolved state
     }

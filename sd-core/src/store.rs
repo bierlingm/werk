@@ -2575,7 +2575,6 @@ mod tests {
 
     #[test]
     fn test_create_tension_full_with_horizon_day() {
-        use chrono::NaiveDate;
         let store = Store::new_in_memory().unwrap();
         let h = Horizon::new_day(2026, 5, 15).unwrap();
         let t = store
@@ -2982,7 +2981,6 @@ mod tests {
     #[test]
     fn test_migration_adds_horizon_column() {
         use fsqlite::Connection;
-        use std::path::PathBuf;
 
         // For a proper legacy DB test, we need to use a file-based database
         // Store::init() expects a directory and creates .werk/sd.db inside it

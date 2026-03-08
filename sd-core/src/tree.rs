@@ -531,7 +531,7 @@ mod tests {
     use super::*;
     use crate::Horizon;
     use crate::tension::Tension;
-    use chrono::{NaiveDate, TimeZone, Utc};
+    use chrono::{TimeZone, Utc};
 
     // Helper to create tensions with specific IDs for testing
     fn make_tension_with_id(id: &str, desired: &str, actual: &str) -> Tension {

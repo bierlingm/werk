@@ -797,7 +797,6 @@ mod tests {
     #[test]
     fn test_replay_with_horizon_update_day() {
         use crate::Horizon;
-        use chrono::NaiveDate;
         let now = Utc::now();
         let mutations = vec![
             Mutation::new(
@@ -913,7 +912,6 @@ mod tests {
     #[test]
     fn test_replay_creation_with_horizon_day() {
         use crate::Horizon;
-        use chrono::NaiveDate;
         let now = Utc::now();
         let mutations = vec![Mutation::new(
             "01ABC".to_owned(),
