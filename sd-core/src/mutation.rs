@@ -88,7 +88,7 @@ pub fn replay_mutations(mutations: &[Mutation]) -> Result<ReconstructedTension, 
     }
 
     // Parse the initial state from the creation mutation's new_value
-    // Format: "desired='...';actual='...'"
+    // Format: "desired='...';actual='...'" or "desired='...';actual='...';horizon='...'"
     let initial_state = parse_creation_value(first.new_value())?;
 
     let mut reconstructed = ReconstructedTension {
@@ -98,7 +98,7 @@ pub fn replay_mutations(mutations: &[Mutation]) -> Result<ReconstructedTension, 
         parent_id: None, // Parent is set via separate mutation if needed
         created_at: first.timestamp(),
         status: TensionStatus::Active,
-        horizon: None, // Horizon is set via separate mutation (H3 will add creation format support)
+        horizon: initial_state.horizon,
     };
 
     // Replay subsequent mutations
@@ -113,11 +113,13 @@ pub fn replay_mutations(mutations: &[Mutation]) -> Result<ReconstructedTension, 
 struct InitialState {
     desired: String,
     actual: String,
+    horizon: Option<Horizon>,
 }
 
 /// Parse the creation mutation's new_value format.
+///
+/// Format: "desired='...';actual='...'" or "desired='...';actual='...';horizon='...'"
 fn parse_creation_value(value: &str) -> Result<InitialState, ReplayError> {
-    // Format: "desired='...';actual='...'"
     // We need to extract the values, handling potential edge cases
 
     let desired = extract_field_value(value, "desired")
@@ -125,7 +127,20 @@ fn parse_creation_value(value: &str) -> Result<InitialState, ReplayError> {
     let actual = extract_field_value(value, "actual")
         .ok_or_else(|| ReplayError::InvalidCreationFormat(value.to_owned()))?;
 
-    Ok(InitialState { desired, actual })
+    // Horizon is optional in the creation format
+    let horizon =
+        match extract_field_value(value, "horizon") {
+            Some(h) if !h.is_empty() => Some(Horizon::parse(&h).map_err(|_| {
+                ReplayError::InvalidCreationFormat(format!("invalid horizon: {}", h))
+            })?),
+            _ => None,
+        };
+
+    Ok(InitialState {
+        desired,
+        actual,
+        horizon,
+    })
 }
 
 /// Extract a field value from the creation format.
@@ -168,6 +183,17 @@ fn apply_mutation(
                 _ => return Err(ReplayError::InvalidStatus(mutation.new_value().to_owned())),
             };
         }
+        "horizon" => {
+            // Empty string represents None; otherwise parse as Horizon
+            tension.horizon =
+                if mutation.new_value().is_empty() {
+                    None
+                } else {
+                    Some(Horizon::parse(mutation.new_value()).map_err(|_| {
+                        ReplayError::InvalidHorizon(mutation.new_value().to_owned())
+                    })?)
+                };
+        }
         "created" => {
             // Creation should only appear as the first mutation
             return Err(ReplayError::UnexpectedCreation);
@@ -205,6 +231,10 @@ pub enum ReplayError {
     /// An unknown field was encountered.
     #[error("unknown field: {0}")]
     UnknownField(String),
+
+    /// An invalid horizon value was encountered.
+    #[error("invalid horizon value: {0}")]
+    InvalidHorizon(String),
 }
 
 /// An immutable record of a change to a tension.
@@ -712,5 +742,320 @@ mod tests {
         assert_eq!(tension.id, "01ABC");
         assert_eq!(tension.desired, "goal");
         assert_eq!(tension.actual, "reality");
+    }
+
+    // ── VAL-HMUT-001: Horizon recognized as mutation field ─────────────
+
+    #[test]
+    fn test_replay_with_horizon_update_year() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "horizon".to_owned(),
+                None,
+                "2026".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.horizon, Some(Horizon::Year(2026)));
+    }
+
+    #[test]
+    fn test_replay_with_horizon_update_month() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "horizon".to_owned(),
+                None,
+                "2026-05".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.horizon, Some(Horizon::Month(2026, 5)));
+    }
+
+    #[test]
+    fn test_replay_with_horizon_update_day() {
+        use crate::Horizon;
+        use chrono::NaiveDate;
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "horizon".to_owned(),
+                None,
+                "2026-05-15".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(
+            result.horizon,
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()))
+        );
+    }
+
+    #[test]
+    fn test_replay_with_horizon_clear_to_none() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "horizon".to_owned(),
+                None,
+                "2026".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(2),
+                "horizon".to_owned(),
+                Some("2026".to_owned()),
+                "".to_owned(), // Empty string means None
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert!(result.horizon.is_none());
+    }
+
+    #[test]
+    fn test_replay_with_horizon_invalid_format_fails() {
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "horizon".to_owned(),
+                None,
+                "invalid-horizon".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            super::ReplayError::InvalidHorizon(s) => assert_eq!(s, "invalid-horizon"),
+            other => panic!("expected InvalidHorizon, got {other:?}"),
+        }
+    }
+
+    // ── VAL-HMUT-002: Replay creation with horizon ──────────────────────
+
+    #[test]
+    fn test_replay_creation_with_horizon_year() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='goal';actual='reality';horizon='2026'".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.desired, "goal");
+        assert_eq!(result.actual, "reality");
+        assert_eq!(result.horizon, Some(Horizon::Year(2026)));
+    }
+
+    #[test]
+    fn test_replay_creation_with_horizon_month() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='goal';actual='reality';horizon='2026-05'".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.horizon, Some(Horizon::Month(2026, 5)));
+    }
+
+    #[test]
+    fn test_replay_creation_with_horizon_day() {
+        use crate::Horizon;
+        use chrono::NaiveDate;
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='goal';actual='reality';horizon='2026-05-15'".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(
+            result.horizon,
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()))
+        );
+    }
+
+    // ── VAL-HMUT-003: Replay creation without horizon (backward compat) ─
+
+    #[test]
+    fn test_replay_creation_without_horizon_backward_compat() {
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='goal';actual='reality'".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.desired, "goal");
+        assert_eq!(result.actual, "reality");
+        assert!(result.horizon.is_none());
+    }
+
+    #[test]
+    fn test_replay_creation_with_parent_without_horizon_backward_compat() {
+        // Existing format with parent_id as a separate field (not in creation value)
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "parent_id".to_owned(),
+                None,
+                "parent123".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.parent_id, Some("parent123".to_owned()));
+        assert!(result.horizon.is_none());
+    }
+
+    // ── VAL-HMUT-004: Horizon set-update-clear sequence ─────────────────
+
+    #[test]
+    fn test_replay_horizon_set_update_clear_sequence() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![
+            Mutation::new(
+                "01ABC".to_owned(),
+                now,
+                "created".to_owned(),
+                None,
+                "desired='goal';actual='reality'".to_owned(),
+            ),
+            // Set to Year(2026)
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(1),
+                "horizon".to_owned(),
+                None,
+                "2026".to_owned(),
+            ),
+            // Update to Month(2026, 5)
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(2),
+                "horizon".to_owned(),
+                Some("2026".to_owned()),
+                "2026-05".to_owned(),
+            ),
+            // Clear to None
+            Mutation::new(
+                "01ABC".to_owned(),
+                now + chrono::Duration::seconds(3),
+                "horizon".to_owned(),
+                Some("2026-05".to_owned()),
+                "".to_owned(),
+            ),
+        ];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert!(result.horizon.is_none());
+    }
+
+    // ── VAL-HMUT-005: ReconstructedTension includes horizon ─────────────
+
+    #[test]
+    fn test_reconstructed_tension_horizon_field() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='goal';actual='reality';horizon='2026-05'".to_owned(),
+        )];
+        let reconstructed = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(reconstructed.horizon, Some(Horizon::Month(2026, 5)));
+
+        // to_tension() preserves horizon
+        let tension = reconstructed.to_tension();
+        assert_eq!(tension.horizon, Some(Horizon::Month(2026, 5)));
+    }
+
+    // ── Unicode in creation value with horizon ──────────────────────────
+
+    #[test]
+    fn test_replay_creation_with_horizon_unicode() {
+        use crate::Horizon;
+        let now = Utc::now();
+        let mutations = vec![Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "created".to_owned(),
+            None,
+            "desired='写小说';actual='有大纲';horizon='2026-05'".to_owned(),
+        )];
+        let result = super::replay_mutations(&mutations).unwrap();
+        assert_eq!(result.desired, "写小说");
+        assert_eq!(result.actual, "有大纲");
+        assert_eq!(result.horizon, Some(Horizon::Month(2026, 5)));
     }
 }
