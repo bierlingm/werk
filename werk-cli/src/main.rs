@@ -370,8 +370,8 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
         detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
         AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
-        CreativeCyclePhase, Forest, LifecycleThresholds, NeglectThresholds, OrientationThresholds,
-        OscillationThresholds, ResolutionThresholds, TensionStatus,
+        CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, NeglectThresholds,
+        OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
     };
     use serde::Serialize;
     use werk::workspace::Workspace;
@@ -573,7 +573,13 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
     );
 
     // 3. Oscillation
-    let oscillation = detect_oscillation(&tension.id, &mutations, &oscillation_thresholds, now);
+    let oscillation = detect_oscillation(
+        &tension.id,
+        &mutations,
+        &oscillation_thresholds,
+        now,
+        None::<&Horizon>,
+    );
 
     // 4. Resolution
     let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
@@ -598,11 +604,12 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         oscillation.as_ref(),
         &compensating_thresholds,
         now,
+        None::<&Horizon>,
     );
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict);
+    let tendency_result = predict_structural_tendency(tension, has_conflict, None);
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(
@@ -1902,7 +1909,7 @@ fn cmd_tree(
         .is_some();
 
         // Predict movement tendency
-        let tendency = predict_structural_tendency(tension, has_conflict);
+        let tendency = predict_structural_tendency(tension, has_conflict, None);
         let movement_signal = match tendency.tendency {
             sd_core::StructuralTendency::Advancing => "→",
             sd_core::StructuralTendency::Oscillating => "↔",
@@ -2141,8 +2148,8 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
         detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
         AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
-        CreativeCyclePhase, Forest, LifecycleThresholds, NeglectThresholds, OrientationThresholds,
-        OscillationThresholds, ResolutionThresholds, TensionStatus,
+        CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, NeglectThresholds,
+        OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
     };
     use serde::Serialize;
     use werk::workspace::Workspace;
@@ -2369,7 +2376,13 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     );
 
     // 3. Oscillation
-    let oscillation = detect_oscillation(&tension.id, &mutations, &oscillation_thresholds, now);
+    let oscillation = detect_oscillation(
+        &tension.id,
+        &mutations,
+        &oscillation_thresholds,
+        now,
+        None::<&Horizon>,
+    );
 
     // 4. Resolution
     let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
@@ -2394,11 +2407,12 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         oscillation.as_ref(),
         &compensating_thresholds,
         now,
+        None::<&Horizon>,
     );
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict);
+    let tendency_result = predict_structural_tendency(tension, has_conflict, None);
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(
@@ -2559,7 +2573,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
         detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
         AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
-        CreativeCyclePhase, Forest, LifecycleThresholds, Mutation, NeglectThresholds,
+        CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, Mutation, NeglectThresholds,
         OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
     };
     use serde::Serialize;
@@ -2790,7 +2804,13 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
     );
 
     // 3. Oscillation
-    let oscillation = detect_oscillation(&tension.id, &mutations, &oscillation_thresholds, now);
+    let oscillation = detect_oscillation(
+        &tension.id,
+        &mutations,
+        &oscillation_thresholds,
+        now,
+        None::<&Horizon>,
+    );
 
     // 4. Resolution
     let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
@@ -2815,11 +2835,12 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         oscillation.as_ref(),
         &compensating_thresholds,
         now,
+        None::<&Horizon>,
     );
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict);
+    let tendency_result = predict_structural_tendency(tension, has_conflict, None);
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(
