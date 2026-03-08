@@ -1,0 +1,183 @@
+{
+  "groupId": "round2-group-a",
+  "testedAt": "2026-03-08T08:00:28Z",
+  "credentials": {
+    "account": "horizon_validator_r2a@example.com",
+    "namespace": "/tmp/horizon-core-utv-r2a"
+  },
+  "toolsUsed": [
+    "cargo test"
+  ],
+  "commands": [
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core test_val_hrel_ -- --list",
+      "exitCode": 0,
+      "output": "Listed traceable tests including test_val_hrel_001/002/003/004/006/007 (13 total test_val_hrel_* tests)."
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core test_migration_adds_horizon_column -- --list",
+      "exitCode": 0,
+      "output": "Listed store::tests::test_migration_adds_horizon_column."
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core dynamics::tests::test_val_hrel_001_effective_recency_no_horizon -- --exact",
+      "exitCode": 0,
+      "output": "test dynamics::tests::test_val_hrel_001_effective_recency_no_horizon ... ok"
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core dynamics::tests::test_val_hrel_002_effective_recency_wide -- --exact",
+      "exitCode": 0,
+      "output": "test dynamics::tests::test_val_hrel_002_effective_recency_wide ... ok"
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core dynamics::tests::test_val_hrel_003_effective_recency_narrow -- --exact",
+      "exitCode": 0,
+      "output": "test dynamics::tests::test_val_hrel_003_effective_recency_narrow ... ok"
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core dynamics::tests::test_val_hrel_004_effective_recency_datetime -- --exact",
+      "exitCode": 0,
+      "output": "test dynamics::tests::test_val_hrel_004_effective_recency_datetime ... ok"
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core dynamics::tests::test_val_hrel_006_conflict_temporal_crowding -- --exact",
+      "exitCode": 0,
+      "output": "test dynamics::tests::test_val_hrel_006_conflict_temporal_crowding ... ok"
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core dynamics::tests::test_val_hrel_007_conflict_no_crowding_different_scales -- --exact",
+      "exitCode": 0,
+      "output": "test dynamics::tests::test_val_hrel_007_conflict_no_crowding_different_scales ... ok"
+    },
+    {
+      "command": "TMPDIR=\"/tmp/horizon-core-utv-r2a\" CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2a/target\" cargo test --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -p sd-core store::tests::test_migration_adds_horizon_column -- --exact",
+      "exitCode": 0,
+      "output": "test store::tests::test_migration_adds_horizon_column ... ok"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HSTORE-002",
+      "title": "Migration of existing databases",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "store::tests::test_migration_adds_horizon_column"
+        ],
+        "command": "cargo test -p sd-core store::tests::test_migration_adds_horizon_column -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-001",
+      "title": "effective_recency without horizon",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_001_effective_recency_no_horizon"
+        ],
+        "command": "cargo test -p sd-core dynamics::tests::test_val_hrel_001_effective_recency_no_horizon -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-002",
+      "title": "effective_recency wide horizon",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_002_effective_recency_wide"
+        ],
+        "command": "cargo test -p sd-core dynamics::tests::test_val_hrel_002_effective_recency_wide -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-003",
+      "title": "effective_recency narrow horizon",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_003_effective_recency_narrow"
+        ],
+        "command": "cargo test -p sd-core dynamics::tests::test_val_hrel_003_effective_recency_narrow -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-004",
+      "title": "effective_recency DateTime horizon (width=0)",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_004_effective_recency_datetime"
+        ],
+        "command": "cargo test -p sd-core dynamics::tests::test_val_hrel_004_effective_recency_datetime -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-006",
+      "title": "Conflict temporal crowding",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_006_conflict_temporal_crowding"
+        ],
+        "command": "cargo test -p sd-core dynamics::tests::test_val_hrel_006_conflict_temporal_crowding -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-007",
+      "title": "Conflict no crowding different scales",
+      "status": "pass",
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_007_conflict_no_crowding_different_scales"
+        ],
+        "command": "cargo test -p sd-core dynamics::tests::test_val_hrel_007_conflict_no_crowding_different_scales -- --exact",
+        "output": "test result: ok. 1 passed; 0 failed"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Skill invocation requirement could not be satisfied because Skill(\"user-testing-flow-validator\") is not available in this environment.",
+      "resolved": true,
+      "resolution": "Attempted invocation first, captured tool error, then continued with the required command-surface validation flow.",
+      "affectedAssertions": [
+        "VAL-HSTORE-002",
+        "VAL-HREL-001",
+        "VAL-HREL-002",
+        "VAL-HREL-003",
+        "VAL-HREL-004",
+        "VAL-HREL-006",
+        "VAL-HREL-007"
+      ]
+    },
+    {
+      "description": "cargo test emitted repeated unrelated compiler warnings, adding noise to focused assertion evidence collection.",
+      "resolved": true,
+      "resolution": "Used exact test filters and recorded explicit per-test \"... ok\" lines and exit codes.",
+      "affectedAssertions": [
+        "VAL-HSTORE-002",
+        "VAL-HREL-001",
+        "VAL-HREL-002",
+        "VAL-HREL-003",
+        "VAL-HREL-004",
+        "VAL-HREL-006",
+        "VAL-HREL-007"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assigned assertions for rerun group A using command-surface cargo test evidence; 7 passed, 0 failed, 0 blocked."
+}

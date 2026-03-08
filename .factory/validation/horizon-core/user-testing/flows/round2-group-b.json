@@ -1,0 +1,232 @@
+{
+  "groupId": "round2-group-b",
+  "testedAt": "2026-03-08T08:00:32Z",
+  "credentials": {
+    "account": "horizon_validator_r2b@example.com",
+    "namespace": "/tmp/horizon-core-utv-r2b"
+  },
+  "toolsUsed": [
+    "cargo fmt",
+    "cargo clippy",
+    "cargo test"
+  ],
+  "commands": [
+    {
+      "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo fmt --all --check --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\"",
+      "exitCode": 1,
+      "log": "/tmp/horizon-core-utv-r2b/cargo-fmt-check.log",
+      "output": "Diff reported in sd-core/src/dynamics.rs (formatting drift), command exited with 1"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo clippy -p sd-core --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- -D warnings",
+      "exitCode": 0,
+      "log": "/tmp/horizon-core-utv-r2b/cargo-clippy-sd-core.log",
+      "output": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.22s"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_ --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --list",
+      "exitCode": 0,
+      "log": "/tmp/horizon-core-utv-r2b/cargo-test-val-hrel-list.log",
+      "output": "Listed all assigned traceable tests: test_val_hrel_009/014/015/017/019/021/023"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core <test_val_hrel_* filter> --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+      "exitCode": 0,
+      "log": "/tmp/horizon-core-utv-r2b/test_val_hrel_*.run.log",
+      "output": "All seven assigned traceable tests executed and passed"
+    },
+    {
+      "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_ --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --test-threads=5",
+      "exitCode": 0,
+      "log": "/tmp/horizon-core-utv-r2b/final-cargo-test-val-hrel.log",
+      "output": "Final targeted validation sweep passed: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 530 filtered out"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HREL-009",
+      "title": "Temporal oscillation detection",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_009_temporal_oscillation",
+          "expected": "Temporal oscillation from alternating horizon mutation direction is detected",
+          "observed": "test dynamics::tests::test_val_hrel_009_temporal_oscillation ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_009_temporal_oscillation"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_009_temporal_oscillation --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-014",
+      "title": "Lifecycle germination wide horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_014_lifecycle_germination_wide",
+          "expected": "New tension with distant horizon is classified as Germination",
+          "observed": "test dynamics::tests::test_val_hrel_014_lifecycle_germination_wide ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_014_lifecycle_germination_wide"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_014_lifecycle_germination_wide --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-015",
+      "title": "Lifecycle not germination approaching horizon",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_015_lifecycle_not_germination_approaching",
+          "expected": "Approaching horizon with no mutations is not classified as Germination",
+          "observed": "test dynamics::tests::test_val_hrel_015_lifecycle_not_germination_approaching ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_015_lifecycle_not_germination_approaching"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_015_lifecycle_not_germination_approaching --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-017",
+      "title": "Neglect urgency-weighted",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_017_neglect_urgency_weighted",
+          "expected": "Approaching-horizon child has higher neglect severity than distant-horizon child",
+          "observed": "test dynamics::tests::test_val_hrel_017_neglect_urgency_weighted ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_017_neglect_urgency_weighted"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_017_neglect_urgency_weighted --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-019",
+      "title": "Assimilation relative frequency",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_019_assimilation_relative_frequency",
+          "expected": "Same mutation count classifies differently under wide vs narrow horizons",
+          "observed": "test dynamics::tests::test_val_hrel_019_assimilation_relative_frequency ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_019_assimilation_relative_frequency"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_019_assimilation_relative_frequency --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-021",
+      "title": "Compensating strategy relative persistence",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_021_compensating_relative_persistence",
+          "expected": "2-week oscillation does not trigger for Year horizon but triggers for Month horizon",
+          "observed": "test dynamics::tests::test_val_hrel_021_compensating_relative_persistence ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_021_compensating_relative_persistence"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_021_compensating_relative_persistence --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HREL-023",
+      "title": "Structural tendency urgency bias",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted test filter test_val_hrel_023_tendency_urgency_bias",
+          "expected": "High urgency biases tendency toward rapid advance/release",
+          "observed": "test dynamics::tests::test_val_hrel_023_tendency_urgency_bias ... ok"
+        }
+      ],
+      "evidence": {
+        "tests": [
+          "dynamics::tests::test_val_hrel_023_tendency_urgency_bias"
+        ],
+        "command": "CARGO_TARGET_DIR=\"/tmp/horizon-core-utv-r2b/target\" cargo test -p sd-core test_val_hrel_023_tendency_urgency_bias --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\" -- --nocapture",
+        "exitCode": 0,
+        "output": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 542 filtered out"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Required initial invocation Skill(\"user-testing-flow-validator\") was unavailable in this runtime (skill not found).",
+      "resolved": true,
+      "resolution": "Proceeded with the mandated sd-core-library command-surface guidance using cargo fmt/clippy/test evidence only.",
+      "affectedAssertions": [
+        "VAL-HREL-009",
+        "VAL-HREL-014",
+        "VAL-HREL-015",
+        "VAL-HREL-017",
+        "VAL-HREL-019",
+        "VAL-HREL-021",
+        "VAL-HREL-023"
+      ]
+    },
+    {
+      "description": "An initial exact-match cargo test attempt filtered out all tests because libtest exact matching requires full test path context.",
+      "resolved": true,
+      "resolution": "Reran each assigned test without --exact using unique function-name filters; each test executed and passed.",
+      "affectedAssertions": [
+        "VAL-HREL-009",
+        "VAL-HREL-014",
+        "VAL-HREL-015",
+        "VAL-HREL-017",
+        "VAL-HREL-019",
+        "VAL-HREL-021",
+        "VAL-HREL-023"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Workspace formatter check failed (cargo fmt --all --check) due existing formatting diffs in sd-core/src/dynamics.rs.",
+      "affectedAssertions": [],
+      "quickFixAttempted": "Captured formatter diff output as evidence; no source edits were allowed under this validation-only assignment."
+    }
+  ],
+  "summary": "Validated rerun group B with command-surface evidence: all 7 assigned assertions passed (VAL-HREL-009, 014, 015, 017, 019, 021, 023); no assertion failures or assertion-level blockers. Clippy passed; final HREL sweep passed (13 tests); fmt check reported pre-existing formatting drift."
+}
