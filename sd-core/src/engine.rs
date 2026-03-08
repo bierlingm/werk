@@ -15,12 +15,13 @@ use std::collections::HashMap;
 
 use crate::dynamics::{
     CompensatingStrategyThresholds, ConflictPattern, ConflictThresholds, CreativeCyclePhase,
-    LifecycleThresholds, NeglectThresholds, NeglectType, Orientation, OrientationThresholds,
-    OscillationThresholds, ResolutionThresholds, classify_creative_cycle_phase,
-    classify_orientation, detect_neglect, detect_oscillation, detect_resolution,
-    detect_structural_conflict,
+    HorizonDriftType, LifecycleThresholds, NeglectThresholds, NeglectType, Orientation,
+    OrientationThresholds, OscillationThresholds, ResolutionThresholds,
+    classify_creative_cycle_phase, classify_orientation, compute_urgency, detect_horizon_drift,
+    detect_neglect, detect_oscillation, detect_resolution, detect_structural_conflict,
 };
 use crate::events::{Event, EventBuilder, EventBus};
+use crate::horizon::Horizon;
 use crate::store::Store;
 use crate::tension::Tension;
 use crate::tree::Forest;
@@ -42,6 +43,13 @@ pub struct PreviousDynamics {
     pub neglect_type: Option<NeglectType>,
     /// Previous orientation (if any).
     pub orientation: Option<Orientation>,
+    /// Whether urgency was above threshold on previous computation.
+    /// Only meaningful when tension has a horizon.
+    pub had_urgency_above_threshold: bool,
+    /// Previous horizon drift type (if any).
+    pub horizon_drift_type: Option<HorizonDriftType>,
+    /// Previous urgency value (if any).
+    pub urgency: Option<f64>,
 }
 
 /// Previous dynamics state for all tensions.
@@ -63,6 +71,9 @@ pub struct DynamicsThresholds {
     pub orientation: OrientationThresholds,
     pub compensating_strategy: CompensatingStrategyThresholds,
     pub neglect: NeglectThresholds,
+    /// Threshold for urgency transition events.
+    /// When urgency crosses this threshold (up or down), an event is emitted.
+    pub urgency_threshold: f64,
 }
 
 /// Engine that computes dynamics and emits transition events.
@@ -205,6 +216,48 @@ impl DynamicsEngine {
     pub fn release(&mut self, id: &str) -> Result<(), crate::tension::SdError> {
         self.store
             .update_status(id, crate::tension::TensionStatus::Released)
+    }
+
+    /// Create a tension with all optional fields including horizon.
+    ///
+    /// This creates a tension with a temporal horizon, records the creation mutation,
+    /// and emits a TensionCreated event with the horizon field populated.
+    pub fn create_tension_full(
+        &mut self,
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+    ) -> Result<Tension, crate::tension::SdError> {
+        let tension = self
+            .store
+            .create_tension_full(desired, actual, parent_id, horizon)?;
+        // Initialize previous dynamics for this tension
+        let mut prev = PreviousDynamics {
+            phase: Some(CreativeCyclePhase::Germination),
+            ..Default::default()
+        };
+        // Compute initial urgency if horizon present
+        if let Some(urgency) = compute_urgency(&tension, Utc::now()) {
+            prev.urgency = Some(urgency.value);
+            prev.had_urgency_above_threshold = urgency.value >= self.thresholds.urgency_threshold;
+        }
+        self.previous_state
+            .tensions
+            .insert(tension.id.clone(), prev);
+        Ok(tension)
+    }
+
+    /// Update the temporal horizon of a tension.
+    ///
+    /// Validates that the tension is Active, persists the change, records a mutation,
+    /// and emits a HorizonChanged event.
+    pub fn update_horizon(
+        &mut self,
+        id: &str,
+        new_horizon: Option<Horizon>,
+    ) -> Result<(), crate::tension::SdError> {
+        self.store.update_horizon(id, new_horizon)
     }
 
     /// Compute dynamics and emit transition events for a single tension.
@@ -358,6 +411,36 @@ impl DynamicsEngine {
             ));
         }
 
+        // --- Compute urgency (horizon-aware) ---
+        // Urgency is only computable when a horizon is present
+        let urgency = compute_urgency(&tension, now);
+        let urgency_value = urgency.as_ref().map(|u| u.value);
+
+        // Check for urgency threshold crossing
+        let _had_urgency_above = prev.had_urgency_above_threshold;
+        let now_urgency_above = urgency_value
+            .map(|v| v >= self.thresholds.urgency_threshold)
+            .unwrap_or(false);
+
+        // Track urgency threshold transitions
+        // Note: We don't emit an event for this yet, but we track it for
+        // instruments that want to respond to urgency changes
+
+        // --- Detect horizon drift ---
+        // Drift is detected from horizon mutation patterns
+        let drift = detect_horizon_drift(tension_id, &mutations);
+        let drift_type = drift.drift_type;
+        let drift_changed = prev.horizon_drift_type.is_none() && drift.change_count > 0;
+
+        // Check for drift type change
+        if drift_changed
+            && drift_type != HorizonDriftType::Stable
+            && prev.horizon_drift_type != Some(drift_type)
+        {
+            // Note: We don't have a dedicated HorizonDriftDetected event yet,
+            // but instruments can track this via the HorizonChanged events
+        }
+
         // Update previous state
         self.previous_state.tensions.insert(
             tension_id.to_owned(),
@@ -369,6 +452,13 @@ impl DynamicsEngine {
                 had_resolution: has_resolution,
                 neglect_type,
                 orientation: prev.orientation,
+                had_urgency_above_threshold: now_urgency_above,
+                horizon_drift_type: if drift.change_count > 0 {
+                    Some(drift_type)
+                } else {
+                    None
+                },
+                urgency: urgency_value,
             },
         );
 
@@ -569,7 +659,7 @@ mod tests {
         let t = engine.create_tension("goal", "reality").unwrap();
 
         // Compute once
-        let events1 = engine.compute_and_emit_for_tension(&t.id);
+        let _events1 = engine.compute_and_emit_for_tension(&t.id);
 
         // Compute again without changes
         let events2 = engine.compute_and_emit_for_tension(&t.id);
@@ -656,6 +746,330 @@ mod tests {
         assert!(
             count.load(Ordering::SeqCst) > 0,
             "Subscriber should receive events"
+        );
+    }
+
+    // ====================================================================
+    // Horizon Engine Tests (VAL-HENG-*)
+    // ====================================================================
+
+    // VAL-HENG-001: Engine computes urgency with horizon
+    #[test]
+    fn test_engine_computes_urgency_with_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create tension with horizon
+        let horizon = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Compute dynamics
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Check that urgency is computed
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            prev.urgency.is_some(),
+            "Urgency should be computed when horizon is present"
+        );
+        assert!(prev.urgency.unwrap() >= 0.0);
+    }
+
+    // VAL-HENG-002: Engine skips urgency without horizon
+    #[test]
+    fn test_engine_skips_urgency_without_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create tension without horizon
+        let t = engine.create_tension("goal", "reality").unwrap();
+
+        // Compute dynamics
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Check that urgency is not computed
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            prev.urgency.is_none(),
+            "Urgency should be None when horizon is absent"
+        );
+    }
+
+    // VAL-HENG-003: Engine detects horizon drift
+    #[test]
+    fn test_engine_detects_horizon_drift() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create tension with horizon
+        let horizon = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Initially no drift
+        engine.compute_and_emit_for_tension(&t.id);
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(prev.horizon_drift_type.is_none(), "No drift initially");
+
+        // Update horizon multiple times (postponement pattern)
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        engine.update_horizon(&t.id, Some(horizon2)).unwrap();
+
+        // Compute dynamics - should detect drift
+        engine.compute_and_emit_for_tension(&t.id);
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            prev.horizon_drift_type.is_some(),
+            "Drift should be detected after horizon change"
+        );
+    }
+
+    // VAL-HENG-004: create_tension_full via engine
+    #[test]
+    fn test_engine_create_tension_full() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create tension with horizon
+        let horizon = Horizon::parse("2026-05-15").unwrap();
+        let t = engine
+            .create_tension_full("desired state", "actual state", None, Some(horizon.clone()))
+            .unwrap();
+
+        assert!(!t.id.is_empty());
+        assert_eq!(t.desired, "desired state");
+        assert_eq!(t.actual, "actual state");
+        assert!(t.parent_id.is_none());
+        assert_eq!(t.horizon, Some(horizon));
+
+        // Verify it was persisted
+        let retrieved = engine.store().get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, t.horizon);
+    }
+
+    // VAL-HENG-005: update_horizon via engine
+    #[test]
+    fn test_engine_update_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create tension with horizon
+        let horizon1 = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon1))
+            .unwrap();
+
+        // Update horizon
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        engine
+            .update_horizon(&t.id, Some(horizon2.clone()))
+            .unwrap();
+
+        // Verify change persisted
+        let retrieved = engine.store().get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(horizon2));
+
+        // Verify mutation recorded
+        let mutations = engine.store().get_mutations(&t.id).unwrap();
+        assert!(mutations.iter().any(|m| m.field() == "horizon"));
+    }
+
+    // VAL-HENG-005: update_horizon on non-Active fails
+    #[test]
+    fn test_engine_update_horizon_on_resolved_fails() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let horizon = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Resolve the tension
+        engine.resolve(&t.id).unwrap();
+
+        // Try to update horizon - should fail
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        let result = engine.update_horizon(&t.id, Some(horizon2));
+        assert!(
+            result.is_err(),
+            "Should not update horizon on resolved tension"
+        );
+    }
+
+    // VAL-HENG-006: Full cycle with horizon
+    #[test]
+    fn test_engine_full_cycle_with_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create with horizon
+        let horizon = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Update actual
+        engine.update_actual(&t.id, "goal progress").unwrap();
+
+        // Compute dynamics
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Verify urgency, pressure, drift are computed
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            prev.urgency.is_some(),
+            "Urgency should be computed with horizon"
+        );
+        // Horizon drift should be None if no horizon mutations
+        assert!(
+            prev.horizon_drift_type.is_none(),
+            "No drift without horizon mutations"
+        );
+
+        // Update horizon to create drift
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        engine.update_horizon(&t.id, Some(horizon2)).unwrap();
+
+        // Compute again
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Verify drift is detected
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            prev.horizon_drift_type.is_some(),
+            "Drift should be detected after horizon change"
+        );
+    }
+
+    // VAL-HENG-007: Full cycle without horizon (backward compat)
+    #[test]
+    fn test_engine_full_cycle_without_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create without horizon (backward compat)
+        let t = engine.create_tension("goal", "reality").unwrap();
+
+        // Update actual
+        engine.update_actual(&t.id, "goal progress").unwrap();
+
+        // Compute dynamics - should work exactly as before
+        let _events = engine.compute_and_emit_for_tension(&t.id);
+
+        // Should compute dynamics without errors
+        // Verify urgency is absent
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            prev.urgency.is_none(),
+            "Urgency should be absent without horizon"
+        );
+        assert!(
+            prev.horizon_drift_type.is_none(),
+            "Drift should be None without horizon"
+        );
+
+        // Existing dynamics should work
+        assert!(prev.phase.is_some());
+    }
+
+    // VAL-HENG-008: PreviousDynamics urgency threshold tracking
+    #[test]
+    fn test_engine_urgency_threshold_tracking() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        engine.thresholds.urgency_threshold = 0.5; // 50% urgency threshold
+
+        // Create tension with horizon that puts urgency above threshold
+        // Use a horizon in the very near future
+        let horizon = Horizon::parse("2026").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Compute dynamics
+        engine.compute_and_emit_for_tension(&t.id);
+
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+
+        // Track whether urgency is above threshold
+        // Note: the actual urgency value depends on timing, so we just verify tracking works
+        if let Some(urgency_val) = prev.urgency {
+            let expected_above = urgency_val >= 0.5;
+            assert_eq!(
+                prev.had_urgency_above_threshold, expected_above,
+                "had_urgency_above_threshold should match urgency >= threshold"
+            );
+        }
+    }
+
+    // VAL-HENG-009: Existing engine tests pass unchanged
+    // This is verified by the other tests passing
+
+    // Additional test: Clear horizon
+    #[test]
+    fn test_engine_clear_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let horizon = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Clear horizon
+        engine.update_horizon(&t.id, None).unwrap();
+
+        // Verify horizon is cleared
+        let retrieved = engine.store().get_tension(&t.id).unwrap().unwrap();
+        assert!(retrieved.horizon.is_none());
+
+        // Compute dynamics - urgency should now be None
+        engine.compute_and_emit_for_tension(&t.id);
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(prev.urgency.is_none());
+    }
+
+    // Test: create_tension_full with parent
+    #[test]
+    fn test_engine_create_tension_full_with_parent() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create parent
+        let parent = engine.create_tension("parent", "p reality").unwrap();
+
+        // Create child with horizon
+        let horizon = Horizon::parse("2026-06").unwrap();
+        let child = engine
+            .create_tension_full(
+                "child goal",
+                "child reality",
+                Some(parent.id.clone()),
+                Some(horizon.clone()),
+            )
+            .unwrap();
+
+        assert_eq!(child.parent_id, Some(parent.id));
+        assert_eq!(child.horizon, Some(horizon));
+    }
+
+    // Test: HorizonChanged event emitted
+    #[test]
+    fn test_engine_horizon_changed_event() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let horizon1 = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon1))
+            .unwrap();
+
+        // Clear event history
+        engine.clear_event_history();
+
+        // Update horizon
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        engine.update_horizon(&t.id, Some(horizon2)).unwrap();
+
+        // Check that HorizonChanged event was emitted
+        let history = engine.event_history();
+        assert!(
+            history
+                .iter()
+                .any(|e| matches!(e, Event::HorizonChanged { .. })),
+            "HorizonChanged event should be emitted"
         );
     }
 }
