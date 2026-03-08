@@ -7,6 +7,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::horizon::Horizon;
 use crate::tension::{Tension, TensionStatus};
 
 /// Reconstructed tension state from mutation replay.
@@ -28,6 +29,8 @@ pub struct ReconstructedTension {
     pub created_at: DateTime<Utc>,
     /// Current lifecycle status.
     pub status: TensionStatus,
+    /// Optional temporal horizon.
+    pub horizon: Option<Horizon>,
 }
 
 impl ReconstructedTension {
@@ -40,6 +43,7 @@ impl ReconstructedTension {
             parent_id: self.parent_id.clone(),
             created_at: self.created_at,
             status: self.status,
+            horizon: self.horizon.clone(),
         }
     }
 }
@@ -94,6 +98,7 @@ pub fn replay_mutations(mutations: &[Mutation]) -> Result<ReconstructedTension, 
         parent_id: None, // Parent is set via separate mutation if needed
         created_at: first.timestamp(),
         status: TensionStatus::Active,
+        horizon: None, // Horizon is set via separate mutation (H3 will add creation format support)
     };
 
     // Replay subsequent mutations

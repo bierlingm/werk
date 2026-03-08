@@ -3,6 +3,7 @@
 //! A tension represents the gap between a desired state and current reality.
 //! It is the generative force in Fritz's structural dynamics model.
 
+use crate::Horizon;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -67,28 +68,50 @@ pub struct Tension {
     pub created_at: DateTime<Utc>,
     /// Current lifecycle status.
     pub status: TensionStatus,
+    /// Optional temporal horizon — when this tension is aimed at.
+    pub horizon: Option<Horizon>,
 }
 
 impl Tension {
     /// Create a new tension with the given desired and actual states.
     ///
     /// Returns an error if either `desired` or `actual` is empty.
+    /// The horizon defaults to None.
     pub fn new(desired: &str, actual: &str) -> Result<Self, SdError> {
-        Self::new_inner(desired, actual, None)
+        Self::new_inner(desired, actual, None, None)
     }
 
     /// Create a new tension with a parent reference.
     ///
     /// Returns an error if either `desired` or `actual` is empty.
+    /// The horizon defaults to None.
     pub fn new_with_parent(
         desired: &str,
         actual: &str,
         parent_id: Option<String>,
     ) -> Result<Self, SdError> {
-        Self::new_inner(desired, actual, parent_id)
+        Self::new_inner(desired, actual, parent_id, None)
     }
 
-    fn new_inner(desired: &str, actual: &str, parent_id: Option<String>) -> Result<Self, SdError> {
+    /// Create a new tension with all optional fields.
+    ///
+    /// Returns an error if either `desired` or `actual` is empty.
+    /// Past horizons are allowed at creation — the grammar doesn't judge.
+    pub fn new_full(
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+    ) -> Result<Self, SdError> {
+        Self::new_inner(desired, actual, parent_id, horizon)
+    }
+
+    fn new_inner(
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+    ) -> Result<Self, SdError> {
         if desired.is_empty() {
             return Err(SdError::ValidationError(
                 "desired state cannot be empty".to_owned(),
@@ -107,6 +130,7 @@ impl Tension {
             parent_id,
             created_at: Utc::now(),
             status: TensionStatus::Active,
+            horizon,
         })
     }
 
@@ -168,6 +192,21 @@ impl Tension {
         }
         self.status = TensionStatus::Released;
         Ok(())
+    }
+
+    /// Update the temporal horizon.
+    ///
+    /// Returns an error if the tension is not active.
+    /// Returns the previous horizon value on success.
+    pub fn update_horizon(
+        &mut self,
+        new_horizon: Option<Horizon>,
+    ) -> Result<Option<Horizon>, SdError> {
+        if self.status != TensionStatus::Active {
+            return Err(SdError::UpdateOnInactiveTension(self.status));
+        }
+        let old = std::mem::replace(&mut self.horizon, new_horizon);
+        Ok(old)
     }
 }
 
@@ -541,5 +580,210 @@ mod tests {
 
         let e = SdError::UpdateOnInactiveTension(TensionStatus::Resolved);
         assert!(e.to_string().contains("Resolved"));
+    }
+
+    // ── Horizon field ──────────────────────────────────────────────
+
+    #[test]
+    fn test_tension_horizon_defaults_to_none() {
+        let t = Tension::new("goal", "reality").unwrap();
+        assert!(t.horizon.is_none());
+    }
+
+    #[test]
+    fn test_tension_new_with_parent_horizon_defaults_to_none() {
+        let t = Tension::new_with_parent("goal", "reality", Some("parent123".to_owned())).unwrap();
+        assert!(t.horizon.is_none());
+    }
+
+    #[test]
+    fn test_tension_new_full_with_year_horizon() {
+        use crate::Horizon;
+        let h = Horizon::Year(2026);
+        let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
+        assert_eq!(t.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_tension_new_full_with_month_horizon() {
+        use crate::Horizon;
+        let h = Horizon::Month(2026, 5);
+        let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
+        assert_eq!(t.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_tension_new_full_with_day_horizon() {
+        use crate::Horizon;
+        use chrono::NaiveDate;
+        let h = Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap());
+        let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
+        assert_eq!(t.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_tension_new_full_with_datetime_horizon() {
+        use crate::Horizon;
+        use chrono::{TimeZone, Utc};
+        let dt = Utc.with_ymd_and_hms(2026, 5, 15, 14, 30, 0).unwrap();
+        let h = Horizon::DateTime(dt);
+        let t = Tension::new_full("goal", "reality", None, Some(h.clone())).unwrap();
+        assert_eq!(t.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_tension_new_full_with_none_horizon() {
+        let t = Tension::new_full("goal", "reality", None, None).unwrap();
+        assert!(t.horizon.is_none());
+    }
+
+    #[test]
+    fn test_tension_new_full_with_parent_and_horizon() {
+        use crate::Horizon;
+        let h = Horizon::Month(2026, 5);
+        let t = Tension::new_full(
+            "goal",
+            "reality",
+            Some("parent123".to_owned()),
+            Some(h.clone()),
+        )
+        .unwrap();
+        assert_eq!(t.parent_id, Some("parent123".to_owned()));
+        assert_eq!(t.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_tension_new_full_validates_desired() {
+        use crate::Horizon;
+        let result = Tension::new_full("", "reality", None, Some(Horizon::Year(2026)));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tension_new_full_validates_actual() {
+        use crate::Horizon;
+        let result = Tension::new_full("goal", "", None, Some(Horizon::Year(2026)));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tension_new_full_with_past_horizon_succeeds() {
+        // Past horizons are allowed at creation — grammar doesn't judge
+        use crate::Horizon;
+        use chrono::NaiveDate;
+        let past = Horizon::Day(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap());
+        let t = Tension::new_full("goal", "reality", None, Some(past.clone())).unwrap();
+        assert_eq!(t.horizon, Some(past));
+    }
+
+    // ── update_horizon ──────────────────────────────────────────────
+
+    #[test]
+    fn test_update_horizon_on_active_succeeds() {
+        use crate::Horizon;
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        let old = t.update_horizon(Some(Horizon::Month(2026, 5))).unwrap();
+        assert_eq!(old, Some(Horizon::Year(2026)));
+        assert_eq!(t.horizon, Some(Horizon::Month(2026, 5)));
+    }
+
+    #[test]
+    fn test_update_horizon_on_active_from_none_to_some() {
+        use crate::Horizon;
+        let mut t = Tension::new("goal", "reality").unwrap();
+        let old = t.update_horizon(Some(Horizon::Year(2026))).unwrap();
+        assert!(old.is_none());
+        assert_eq!(t.horizon, Some(Horizon::Year(2026)));
+    }
+
+    #[test]
+    fn test_update_horizon_clear_to_none() {
+        use crate::Horizon;
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        let old = t.update_horizon(None).unwrap();
+        assert_eq!(old, Some(Horizon::Year(2026)));
+        assert!(t.horizon.is_none());
+    }
+
+    #[test]
+    fn test_update_horizon_on_resolved_fails() {
+        use crate::Horizon;
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        t.resolve().unwrap();
+        let result = t.update_horizon(Some(Horizon::Month(2026, 5)));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            SdError::UpdateOnInactiveTension(status) => {
+                assert_eq!(status, TensionStatus::Resolved);
+            }
+            other => panic!("expected UpdateOnInactiveTension, got {other:?}"),
+        }
+        // Original horizon preserved
+        assert_eq!(t.horizon, Some(Horizon::Year(2026)));
+    }
+
+    #[test]
+    fn test_update_horizon_on_released_fails() {
+        use crate::Horizon;
+        let mut t = Tension::new_full("goal", "reality", None, Some(Horizon::Year(2026))).unwrap();
+        t.release().unwrap();
+        let result = t.update_horizon(Some(Horizon::Month(2026, 5)));
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            SdError::UpdateOnInactiveTension(status) => {
+                assert_eq!(status, TensionStatus::Released);
+            }
+            other => panic!("expected UpdateOnInactiveTension, got {other:?}"),
+        }
+        // Original horizon preserved
+        assert_eq!(t.horizon, Some(Horizon::Year(2026)));
+    }
+
+    // ── Horizon serialization ─────────────────────────────────────────
+
+    #[test]
+    fn test_tension_serialization_with_horizon() {
+        use crate::Horizon;
+        let t = Tension::new_full("goal", "reality", None, Some(Horizon::Month(2026, 5))).unwrap();
+        let json = serde_json::to_string(&t).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value.get("horizon").unwrap().as_str().unwrap(), "2026-05");
+
+        let deserialized: Tension = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, deserialized);
+    }
+
+    #[test]
+    fn test_tension_serialization_without_horizon() {
+        let t = Tension::new("goal", "reality").unwrap();
+        let json = serde_json::to_string(&t).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(value.get("horizon").unwrap().is_null());
+
+        let deserialized: Tension = serde_json::from_str(&json).unwrap();
+        assert_eq!(t, deserialized);
+    }
+
+    #[test]
+    fn test_tension_serialization_roundtrip_all_horizon_variants() {
+        use crate::Horizon;
+        use chrono::{NaiveDate, TimeZone, Utc};
+
+        let horizons = [
+            Some(Horizon::Year(2026)),
+            Some(Horizon::Month(2026, 5)),
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap())),
+            Some(Horizon::DateTime(
+                Utc.with_ymd_and_hms(2026, 5, 15, 14, 30, 0).unwrap(),
+            )),
+            None,
+        ];
+
+        for horizon in horizons {
+            let t = Tension::new_full("goal", "reality", None, horizon.clone()).unwrap();
+            let json = serde_json::to_string(&t).unwrap();
+            let deserialized: Tension = serde_json::from_str(&json).unwrap();
+            assert_eq!(t, deserialized);
+        }
     }
 }

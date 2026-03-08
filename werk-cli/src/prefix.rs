@@ -110,6 +110,7 @@ mod tests {
             parent_id: None,
             created_at: Utc::now(),
             status: TensionStatus::Active,
+            horizon: None,
         }
     }
 

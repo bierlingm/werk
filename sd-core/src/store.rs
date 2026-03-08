@@ -365,6 +365,7 @@ impl Store {
             parent_id,
             created_at,
             status,
+            horizon: None, // H4 will add database column and parsing
         }))
     }
 
@@ -472,6 +473,7 @@ impl Store {
                 parent_id,
                 created_at,
                 status,
+                horizon: None, // H4 will add database column and parsing
             });
         }
 
