@@ -418,12 +418,118 @@ impl Forest {
 
         Some(depth)
     }
+
+    /// Get the children of a node, sorted by horizon.
+    ///
+    /// Children are sorted by:
+    /// 1. Earliest `range_start` first
+    /// 2. Ties broken by precision (narrower first: DateTime < Day < Month < Year)
+    /// 3. Nodes without horizons sort last
+    ///
+    /// Returns `None` if the parent node doesn't exist.
+    /// Returns an empty vector if the node has no children.
+    pub fn children_by_horizon(&self, parent_id: &str) -> Option<Vec<&Node>> {
+        let parent = self.nodes.get(parent_id)?;
+
+        let mut children: Vec<&Node> = parent
+            .children
+            .iter()
+            .filter_map(|cid| self.nodes.get(cid))
+            .collect();
+
+        // Sort by horizon: Some(horizon) < None, then by horizon ordering
+        children.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
+            (Some(ha), Some(hb)) => ha.cmp(hb),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
+
+        Some(children)
+    }
+
+    /// Get all active tensions whose horizon window has fully elapsed.
+    ///
+    /// Returns tensions where:
+    /// - Status is Active
+    /// - Horizon exists and `is_past(now)` is true
+    ///
+    /// Excludes:
+    /// - Resolved/Released tensions
+    /// - Tensions without horizons
+    pub fn tensions_past_horizon(&self, now: chrono::DateTime<chrono::Utc>) -> Vec<&Node> {
+        self.nodes
+            .values()
+            .filter(|node| {
+                // Must be Active
+                if node.tension.status != crate::tension::TensionStatus::Active {
+                    return false;
+                }
+                // Must have a horizon
+                let horizon = match &node.tension.horizon {
+                    Some(h) => h,
+                    None => return false,
+                };
+                // Horizon must be past
+                horizon.is_past(now)
+            })
+            .collect()
+    }
+
+    /// Get all active tensions whose horizon ends within the given duration.
+    ///
+    /// Returns tensions where:
+    /// - Status is Active
+    /// - Horizon exists and ends within `now + within`
+    /// - Horizon is NOT already past
+    ///
+    /// Excludes:
+    /// - Resolved/Released tensions
+    /// - Tensions without horizons
+    /// - Tensions where horizon is already past
+    ///
+    /// Zero duration returns an empty vector.
+    pub fn tensions_approaching_horizon(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        within: chrono::Duration,
+    ) -> Vec<&Node> {
+        // Zero duration is degenerate - nothing can be "approaching" in zero time
+        if within.is_zero() {
+            return Vec::new();
+        }
+
+        let deadline = now + within;
+
+        self.nodes
+            .values()
+            .filter(|node| {
+                // Must be Active
+                if node.tension.status != crate::tension::TensionStatus::Active {
+                    return false;
+                }
+                // Must have a horizon
+                let horizon = match &node.tension.horizon {
+                    Some(h) => h,
+                    None => return false,
+                };
+                // Must not be past
+                if horizon.is_past(now) {
+                    return false;
+                }
+                // Horizon ends within the duration (range_end <= deadline)
+                horizon.range_end() <= deadline
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Horizon;
     use crate::tension::Tension;
+    use chrono::{NaiveDate, TimeZone, Utc};
 
     // Helper to create tensions with specific IDs for testing
     fn make_tension_with_id(id: &str, desired: &str, actual: &str) -> Tension {
@@ -439,6 +545,29 @@ mod tests {
         parent_id: Option<String>,
     ) -> Tension {
         let mut t = Tension::new_with_parent(desired, actual, parent_id).unwrap();
+        t.id = id.to_string();
+        t
+    }
+
+    fn make_tension_with_horizon(
+        id: &str,
+        desired: &str,
+        actual: &str,
+        horizon: Option<Horizon>,
+    ) -> Tension {
+        let mut t = Tension::new_full(desired, actual, None, horizon).unwrap();
+        t.id = id.to_string();
+        t
+    }
+
+    fn make_tension_with_parent_and_horizon(
+        id: &str,
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+    ) -> Tension {
+        let mut t = Tension::new_full(desired, actual, parent_id, horizon).unwrap();
         t.id = id.to_string();
         t
     }
@@ -1059,5 +1188,526 @@ mod tests {
 
         let e = TreeError::CircularReference("A -> B".to_string());
         assert!(e.to_string().contains("circular"));
+    }
+
+    // ── children_by_horizon ─────────────────────────────────────────
+
+    #[test]
+    fn test_children_by_horizon_sorted_earliest_first() {
+        // Parent with three children at different horizons
+        let parent = make_tension_with_id("parent", "p", "p");
+        // March (earliest)
+        let child_march = make_tension_with_parent_and_horizon(
+            "child_march",
+            "march",
+            "march",
+            Some("parent".to_string()),
+            Some(Horizon::Month(2026, 3)),
+        );
+        // May (middle)
+        let child_may = make_tension_with_parent_and_horizon(
+            "child_may",
+            "may",
+            "may",
+            Some("parent".to_string()),
+            Some(Horizon::Month(2026, 5)),
+        );
+        // August (latest)
+        let child_aug = make_tension_with_parent_and_horizon(
+            "child_aug",
+            "aug",
+            "aug",
+            Some("parent".to_string()),
+            Some(Horizon::Month(2026, 8)),
+        );
+
+        let forest =
+            Forest::from_tensions(vec![parent, child_march, child_may, child_aug]).unwrap();
+
+        let children = forest.children_by_horizon("parent").unwrap();
+        assert_eq!(children.len(), 3);
+        assert_eq!(children[0].id(), "child_march");
+        assert_eq!(children[1].id(), "child_may");
+        assert_eq!(children[2].id(), "child_aug");
+    }
+
+    #[test]
+    fn test_children_by_horizon_none_last() {
+        // Parent with children including one without horizon
+        let parent = make_tension_with_id("parent", "p", "p");
+        let child_jan = make_tension_with_parent_and_horizon(
+            "child_jan",
+            "jan",
+            "jan",
+            Some("parent".to_string()),
+            Some(Horizon::Month(2026, 1)),
+        );
+        let child_none = make_tension_with_parent_and_horizon(
+            "child_none",
+            "none",
+            "none",
+            Some("parent".to_string()),
+            None,
+        );
+        let child_dec = make_tension_with_parent_and_horizon(
+            "child_dec",
+            "dec",
+            "dec",
+            Some("parent".to_string()),
+            Some(Horizon::Month(2026, 12)),
+        );
+
+        let forest = Forest::from_tensions(vec![parent, child_jan, child_none, child_dec]).unwrap();
+
+        let children = forest.children_by_horizon("parent").unwrap();
+        assert_eq!(children.len(), 3);
+        // Jan first, Dec second, None last
+        assert_eq!(children[0].id(), "child_jan");
+        assert_eq!(children[1].id(), "child_dec");
+        assert_eq!(children[2].id(), "child_none");
+    }
+
+    #[test]
+    fn test_children_by_horizon_precision_ties() {
+        // All children have same range_start (2026-01-01)
+        // Should sort by precision: DateTime < Day < Month < Year
+        let parent = make_tension_with_id("parent", "p", "p");
+        let child_year = make_tension_with_parent_and_horizon(
+            "child_year",
+            "year",
+            "year",
+            Some("parent".to_string()),
+            Some(Horizon::Year(2026)),
+        );
+        let child_month = make_tension_with_parent_and_horizon(
+            "child_month",
+            "month",
+            "month",
+            Some("parent".to_string()),
+            Some(Horizon::Month(2026, 1)),
+        );
+        let child_day = make_tension_with_parent_and_horizon(
+            "child_day",
+            "day",
+            "day",
+            Some("parent".to_string()),
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap())),
+        );
+        let child_dt = make_tension_with_parent_and_horizon(
+            "child_dt",
+            "dt",
+            "dt",
+            Some("parent".to_string()),
+            Some(Horizon::DateTime(
+                Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+            )),
+        );
+
+        let forest =
+            Forest::from_tensions(vec![parent, child_year, child_month, child_day, child_dt])
+                .unwrap();
+
+        let children = forest.children_by_horizon("parent").unwrap();
+        assert_eq!(children.len(), 4);
+        // DateTime (most precise) first
+        assert_eq!(children[0].id(), "child_dt");
+        // Day second
+        assert_eq!(children[1].id(), "child_day");
+        // Month third
+        assert_eq!(children[2].id(), "child_month");
+        // Year (least precise) last
+        assert_eq!(children[3].id(), "child_year");
+    }
+
+    #[test]
+    fn test_children_by_horizon_all_none() {
+        // All children without horizon - should return in stable order
+        let parent = make_tension_with_id("parent", "p", "p");
+        let child_a = make_tension_with_parent("child_a", "a", "a", Some("parent".to_string()));
+        let child_b = make_tension_with_parent("child_b", "b", "b", Some("parent".to_string()));
+        let child_c = make_tension_with_parent("child_c", "c", "c", Some("parent".to_string()));
+
+        let forest = Forest::from_tensions(vec![parent, child_a, child_b, child_c]).unwrap();
+
+        let children = forest.children_by_horizon("parent").unwrap();
+        assert_eq!(children.len(), 3);
+        // All should be present
+        let ids: Vec<&str> = children.iter().map(|n| n.id()).collect();
+        assert!(ids.contains(&"child_a"));
+        assert!(ids.contains(&"child_b"));
+        assert!(ids.contains(&"child_c"));
+    }
+
+    #[test]
+    fn test_children_by_horizon_nonexistent_parent() {
+        let forest = Forest::from_tensions(vec![]).unwrap();
+        assert!(forest.children_by_horizon("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_children_by_horizon_leaf_node() {
+        let leaf = make_tension_with_id("leaf", "l", "l");
+        let forest = Forest::from_tensions(vec![leaf]).unwrap();
+
+        let children = forest.children_by_horizon("leaf").unwrap();
+        assert!(children.is_empty());
+    }
+
+    // ── tensions_past_horizon ──────────────────────────────────────────
+
+    #[test]
+    fn test_tensions_past_horizon_active_only() {
+        // Now is 2026-06-01
+        let now = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
+
+        // Past horizon (May 2026) - should be included
+        let past_active =
+            make_tension_with_horizon("past_active", "past", "past", Some(Horizon::Month(2026, 5)));
+
+        // Past horizon but resolved - should be excluded
+        let mut past_resolved = make_tension_with_horizon(
+            "past_resolved",
+            "resolved",
+            "resolved",
+            Some(Horizon::Month(2026, 4)),
+        );
+        past_resolved.resolve().unwrap();
+
+        // Past horizon but released - should be excluded
+        let mut past_released = make_tension_with_horizon(
+            "past_released",
+            "released",
+            "released",
+            Some(Horizon::Month(2026, 3)),
+        );
+        past_released.release().unwrap();
+
+        // Future horizon - should be excluded
+        let future_active = make_tension_with_horizon(
+            "future_active",
+            "future",
+            "future",
+            Some(Horizon::Month(2026, 12)),
+        );
+
+        // No horizon - should be excluded
+        let no_horizon = make_tension_with_horizon("no_horizon", "none", "none", None);
+
+        let forest = Forest::from_tensions(vec![
+            past_active,
+            past_resolved,
+            past_released,
+            future_active,
+            no_horizon,
+        ])
+        .unwrap();
+
+        let past = forest.tensions_past_horizon(now);
+        assert_eq!(past.len(), 1);
+        assert_eq!(past[0].id(), "past_active");
+    }
+
+    #[test]
+    fn test_tensions_past_horizon_empty_when_none() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
+
+        // All tensions have no horizon
+        let t1 = make_tension_with_id("t1", "a", "a");
+        let t2 = make_tension_with_id("t2", "b", "b");
+
+        let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
+
+        let past = forest.tensions_past_horizon(now);
+        assert!(past.is_empty());
+    }
+
+    #[test]
+    fn test_tensions_past_horizon_empty_when_future() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
+
+        // All horizons are in the future
+        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::Month(2026, 12)));
+        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::Year(2027)));
+
+        let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
+
+        let past = forest.tensions_past_horizon(now);
+        assert!(past.is_empty());
+    }
+
+    #[test]
+    fn test_tensions_past_horizon_datetime_past() {
+        // DateTime horizons should work correctly
+        let dt_past = Utc.with_ymd_and_hms(2026, 5, 15, 14, 0, 0).unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 5, 15, 15, 0, 0).unwrap();
+
+        let t = make_tension_with_horizon("t", "a", "a", Some(Horizon::DateTime(dt_past)));
+
+        let forest = Forest::from_tensions(vec![t]).unwrap();
+
+        let past = forest.tensions_past_horizon(now);
+        assert_eq!(past.len(), 1);
+    }
+
+    #[test]
+    fn test_tensions_past_horizon_at_boundary() {
+        // At the exact end of the horizon, is_past should be false
+        let h = Horizon::Month(2026, 5);
+        let end = h.range_end(); // 2026-05-31 23:59:59
+
+        let t = make_tension_with_horizon("t", "a", "a", Some(h));
+
+        let forest = Forest::from_tensions(vec![t]).unwrap();
+
+        // At the boundary, not past yet
+        let past = forest.tensions_past_horizon(end);
+        assert!(past.is_empty());
+
+        // One second after boundary, is past
+        let past = forest.tensions_past_horizon(end + chrono::Duration::seconds(1));
+        assert_eq!(past.len(), 1);
+    }
+
+    // ── tensions_approaching_horizon ────────────────────────────────────
+
+    #[test]
+    fn test_tensions_approaching_horizon_within_duration() {
+        // Now is 2026-05-28
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        // Within 5 days = May 28 + 5 days = June 2
+        let within = chrono::Duration::days(5);
+
+        // Ends May 31 - within 5 days, should be included
+        let approaching = make_tension_with_horizon(
+            "approaching",
+            "approaching",
+            "approaching",
+            Some(Horizon::Month(2026, 5)),
+        );
+
+        // Ends June 10 - NOT within 5 days, should be excluded
+        let not_yet = make_tension_with_horizon(
+            "not_yet",
+            "not_yet",
+            "not_yet",
+            Some(Horizon::Month(2026, 6)),
+        );
+
+        // Already past (April) - should be excluded
+        let already_past = make_tension_with_horizon(
+            "already_past",
+            "past",
+            "past",
+            Some(Horizon::Month(2026, 4)),
+        );
+
+        // No horizon - should be excluded
+        let no_horizon = make_tension_with_horizon("no_horizon", "none", "none", None);
+
+        let forest =
+            Forest::from_tensions(vec![approaching, not_yet, already_past, no_horizon]).unwrap();
+
+        let approaching_list = forest.tensions_approaching_horizon(now, within);
+        assert_eq!(approaching_list.len(), 1);
+        assert_eq!(approaching_list[0].id(), "approaching");
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_zero_duration() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+
+        // Horizon ending very soon
+        let t = make_tension_with_horizon(
+            "t",
+            "a",
+            "a",
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 28).unwrap())),
+        );
+
+        let forest = Forest::from_tensions(vec![t]).unwrap();
+
+        // Zero duration should return empty
+        let approaching = forest.tensions_approaching_horizon(now, chrono::Duration::zero());
+        assert!(approaching.is_empty());
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_resolved_excluded() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        let within = chrono::Duration::days(5);
+
+        // Resolved tension approaching horizon
+        let mut resolved = make_tension_with_horizon(
+            "resolved",
+            "resolved",
+            "resolved",
+            Some(Horizon::Month(2026, 5)),
+        );
+        resolved.resolve().unwrap();
+
+        // Active tension approaching horizon
+        let active =
+            make_tension_with_horizon("active", "active", "active", Some(Horizon::Month(2026, 5)));
+
+        let forest = Forest::from_tensions(vec![resolved, active]).unwrap();
+
+        let approaching = forest.tensions_approaching_horizon(now, within);
+        assert_eq!(approaching.len(), 1);
+        assert_eq!(approaching[0].id(), "active");
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_released_excluded() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        let within = chrono::Duration::days(5);
+
+        // Released tension approaching horizon
+        let mut released = make_tension_with_horizon(
+            "released",
+            "released",
+            "released",
+            Some(Horizon::Month(2026, 5)),
+        );
+        released.release().unwrap();
+
+        // Active tension approaching horizon
+        let active =
+            make_tension_with_horizon("active", "active", "active", Some(Horizon::Month(2026, 5)));
+
+        let forest = Forest::from_tensions(vec![released, active]).unwrap();
+
+        let approaching = forest.tensions_approaching_horizon(now, within);
+        assert_eq!(approaching.len(), 1);
+        assert_eq!(approaching[0].id(), "active");
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_no_horizon_empty() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        let within = chrono::Duration::days(5);
+
+        // All tensions without horizon
+        let t1 = make_tension_with_id("t1", "a", "a");
+        let t2 = make_tension_with_id("t2", "b", "b");
+
+        let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
+
+        let approaching = forest.tensions_approaching_horizon(now, within);
+        assert!(approaching.is_empty());
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_empty_when_all_past() {
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).unwrap();
+        let within = chrono::Duration::days(5);
+
+        // All horizons are in the past
+        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::Month(2026, 5)));
+        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::Month(2026, 4)));
+
+        let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
+
+        let approaching = forest.tensions_approaching_horizon(now, within);
+        assert!(approaching.is_empty());
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_empty_when_all_future() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap();
+        let within = chrono::Duration::days(5);
+
+        // All horizons are far in the future
+        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::Month(2026, 12)));
+        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::Year(2027)));
+
+        let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
+
+        let approaching = forest.tensions_approaching_horizon(now, within);
+        assert!(approaching.is_empty());
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_day_precision() {
+        // Day precision should work correctly
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        let within = chrono::Duration::hours(36); // 1.5 days
+
+        // Day horizon ending within 36 hours
+        let approaching = make_tension_with_horizon(
+            "approaching",
+            "a",
+            "a",
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 29).unwrap())),
+        );
+
+        // Day horizon ending after 36 hours
+        let not_yet = make_tension_with_horizon(
+            "not_yet",
+            "b",
+            "b",
+            Some(Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 30).unwrap())),
+        );
+
+        let forest = Forest::from_tensions(vec![approaching, not_yet]).unwrap();
+
+        let approaching_list = forest.tensions_approaching_horizon(now, within);
+        assert_eq!(approaching_list.len(), 1);
+        assert_eq!(approaching_list[0].id(), "approaching");
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_datetime_precision() {
+        // DateTime precision should work correctly
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        let within = chrono::Duration::hours(2);
+
+        // DateTime horizon ending within 2 hours
+        let approaching = make_tension_with_horizon(
+            "approaching",
+            "a",
+            "a",
+            Some(Horizon::DateTime(
+                Utc.with_ymd_and_hms(2026, 5, 28, 13, 30, 0).unwrap(),
+            )),
+        );
+
+        // DateTime horizon ending after 2 hours
+        let not_yet = make_tension_with_horizon(
+            "not_yet",
+            "b",
+            "b",
+            Some(Horizon::DateTime(
+                Utc.with_ymd_and_hms(2026, 5, 28, 15, 0, 0).unwrap(),
+            )),
+        );
+
+        let forest = Forest::from_tensions(vec![approaching, not_yet]).unwrap();
+
+        let approaching_list = forest.tensions_approaching_horizon(now, within);
+        assert_eq!(approaching_list.len(), 1);
+        assert_eq!(approaching_list[0].id(), "approaching");
+    }
+
+    #[test]
+    fn test_tensions_approaching_horizon_at_boundary() {
+        // Horizon that ends exactly at (now + within)
+        let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
+        let within = chrono::Duration::hours(24);
+
+        // Horizon ends exactly at now + 24h
+        let boundary = make_tension_with_horizon(
+            "boundary",
+            "a",
+            "a",
+            Some(Horizon::DateTime(
+                Utc.with_ymd_and_hms(2026, 5, 29, 12, 0, 0).unwrap(),
+            )),
+        );
+
+        let forest = Forest::from_tensions(vec![boundary]).unwrap();
+
+        let approaching = forest.tensions_approaching_horizon(now, within);
+        // Should be included (ends within the duration, inclusive)
+        assert_eq!(approaching.len(), 1);
     }
 }
