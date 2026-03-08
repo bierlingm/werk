@@ -13,6 +13,7 @@
 pub mod dynamics;
 pub mod engine;
 pub mod events;
+pub mod horizon;
 pub mod mutation;
 pub mod store;
 pub mod tension;
@@ -66,6 +67,7 @@ pub use dynamics::{
 };
 pub use engine::{DynamicsEngine, DynamicsThresholds, PreviousDynamics, PreviousState};
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
+pub use horizon::{Horizon, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use store::{Store, StoreError};
 pub use tension::{SdError, Tension, TensionStatus};
