@@ -63,6 +63,8 @@ pub enum Event {
         actual: String,
         /// Optional parent reference.
         parent_id: Option<String>,
+        /// Optional temporal horizon (ISO-8601 string).
+        horizon: Option<String>,
         /// When the tension was created.
         timestamp: DateTime<Utc>,
     },
@@ -425,12 +427,14 @@ impl EventBuilder {
         desired: String,
         actual: String,
         parent_id: Option<String>,
+        horizon: Option<String>,
     ) -> Event {
         Event::TensionCreated {
             tension_id,
             desired,
             actual,
             parent_id,
+            horizon,
             timestamp: Utc::now(),
         }
     }
@@ -612,6 +616,7 @@ mod tests {
                 "goal".to_owned(),
                 "reality".to_owned(),
                 None,
+                None,
             ),
             EventBuilder::reality_confronted(
                 "01ABC".to_owned(),
@@ -678,6 +683,7 @@ mod tests {
             "goal".to_owned(),
             "reality".to_owned(),
             None,
+            None,
         );
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"tension_created\""));
@@ -689,6 +695,7 @@ mod tests {
             "01ABC".to_owned(),
             "goal".to_owned(),
             "reality".to_owned(),
+            None,
             None,
         );
         assert_eq!(event.tension_id(), Some("01ABC"));
@@ -707,6 +714,7 @@ mod tests {
             "01ABC".to_owned(),
             "goal".to_owned(),
             "reality".to_owned(),
+            None,
             None,
         );
         let after = Utc::now();
@@ -733,6 +741,7 @@ mod tests {
             "goal".to_owned(),
             "reality".to_owned(),
             None,
+            None,
         );
         bus.emit(&event);
         bus.emit(&event);
@@ -754,6 +763,7 @@ mod tests {
             "01ABC".to_owned(),
             "goal".to_owned(),
             "reality".to_owned(),
+            None,
             None,
         );
         bus.emit(&event);
@@ -788,6 +798,7 @@ mod tests {
             "goal".to_owned(),
             "reality".to_owned(),
             None,
+            None,
         );
         bus.emit(&event);
 
@@ -819,6 +830,7 @@ mod tests {
             "g1".to_owned(),
             "r1".to_owned(),
             None,
+            None,
         ));
         bus.emit(&EventBuilder::reality_confronted(
             "01A".to_owned(),
@@ -845,6 +857,7 @@ mod tests {
             "01A".to_owned(),
             "g1".to_owned(),
             "r1".to_owned(),
+            None,
             None,
         ));
         bus.emit(&EventBuilder::reality_confronted(
@@ -874,6 +887,7 @@ mod tests {
             "g".to_owned(),
             "r".to_owned(),
             None,
+            None,
         ));
         assert_eq!(received.lock().unwrap().len(), 1);
 
@@ -883,6 +897,7 @@ mod tests {
             "01B".to_owned(),
             "g".to_owned(),
             "r".to_owned(),
+            None,
             None,
         ));
         // Still only 1 event received (second one not delivered)
@@ -902,8 +917,13 @@ mod tests {
         });
 
         // Emit events in specific causal order
-        let t1 =
-            EventBuilder::tension_created("01A".to_owned(), "g".to_owned(), "r".to_owned(), None);
+        let t1 = EventBuilder::tension_created(
+            "01A".to_owned(),
+            "g".to_owned(),
+            "r".to_owned(),
+            None,
+            None,
+        );
         let t2 =
             EventBuilder::reality_confronted("01A".to_owned(), "r".to_owned(), "r2".to_owned());
         let t3 = EventBuilder::conflict_detected(
@@ -958,6 +978,7 @@ mod tests {
                 "g".to_owned(),
                 "r".to_owned(),
                 None,
+                None,
             );
             bus1.emit(&event);
             bus2.emit(&event);
@@ -991,8 +1012,13 @@ mod tests {
             gc.fetch_add(1, Ordering::SeqCst);
         });
 
-        let event =
-            EventBuilder::tension_created("01A".to_owned(), "g".to_owned(), "r".to_owned(), None);
+        let event = EventBuilder::tension_created(
+            "01A".to_owned(),
+            "g".to_owned(),
+            "r".to_owned(),
+            None,
+            None,
+        );
 
         // Emit should not panic overall
         bus.emit(&event);
@@ -1011,8 +1037,13 @@ mod tests {
 
         assert_eq!(bus.subscriber_count(), 1);
 
-        let event =
-            EventBuilder::tension_created("01A".to_owned(), "g".to_owned(), "r".to_owned(), None);
+        let event = EventBuilder::tension_created(
+            "01A".to_owned(),
+            "g".to_owned(),
+            "r".to_owned(),
+            None,
+            None,
+        );
         bus.emit(&event);
 
         // Panicking subscriber should be removed
@@ -1032,6 +1063,7 @@ mod tests {
             "desired state".to_owned(),
             "actual state".to_owned(),
             Some("parent123".to_owned()),
+            None,
         );
 
         match e {
@@ -1040,6 +1072,7 @@ mod tests {
                 desired,
                 actual,
                 parent_id,
+                horizon,
                 timestamp,
             } => {
                 assert!(
@@ -1116,6 +1149,7 @@ mod tests {
                 desired: "d".to_owned(),
                 actual: "a".to_owned(),
                 parent_id: None,
+                horizon: None,
                 timestamp: Utc::now(),
             },
             Event::RealityConfronted {
@@ -1210,6 +1244,7 @@ mod tests {
             desired: "d".to_owned(),
             actual: "a".to_owned(),
             parent_id: None,
+            horizon: None,
             timestamp: Utc::now(),
         };
         assert!(matches!(e, Event::TensionCreated { .. }));
@@ -1334,6 +1369,7 @@ mod tests {
                 desired: "write a novel".to_owned(),
                 actual: "have an outline".to_owned(),
                 parent_id: None,
+                horizon: None,
                 timestamp: Utc::now(),
             },
             Event::RealityConfronted {
@@ -1415,6 +1451,7 @@ mod tests {
             desired: "写一本小说 📚".to_owned(),
             actual: "有一个大纲 📝".to_owned(),
             parent_id: None,
+            horizon: None,
             timestamp: Utc::now(),
         };
 
@@ -1443,10 +1480,150 @@ mod tests {
 
     #[test]
     fn test_event_is_debug_clone_partialeq() {
-        let e =
-            EventBuilder::tension_created("01A".to_owned(), "g".to_owned(), "r".to_owned(), None);
+        let e = EventBuilder::tension_created(
+            "01A".to_owned(),
+            "g".to_owned(),
+            "r".to_owned(),
+            None,
+            None,
+        );
         let _ = format!("{e:?}"); // Debug
         let e2 = e.clone(); // Clone
         assert_eq!(e, e2); // PartialEq
+    }
+
+    // ── Horizon Event Tests ───────────────────────────────────────
+
+    // VAL-HEVT-001: TensionCreated with horizon
+    #[test]
+    fn test_tension_created_with_horizon() {
+        let event = EventBuilder::tension_created(
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            Some("2026-05".to_owned()),
+        );
+
+        match event {
+            Event::TensionCreated { horizon, .. } => {
+                assert_eq!(horizon, Some("2026-05".to_owned()));
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    // VAL-HEVT-002: TensionCreated without horizon
+    #[test]
+    fn test_tension_created_without_horizon() {
+        let event = EventBuilder::tension_created(
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            None,
+        );
+
+        match event {
+            Event::TensionCreated { horizon, .. } => {
+                assert!(horizon.is_none());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    // VAL-HEVT-003: HorizonChanged event on update
+    #[test]
+    fn test_horizon_changed_event_on_update() {
+        let event = EventBuilder::horizon_changed(
+            "01ABC".to_owned(),
+            Some("2026-05".to_owned()),
+            Some("2026-08".to_owned()),
+        );
+
+        match event {
+            Event::HorizonChanged {
+                tension_id,
+                old_horizon,
+                new_horizon,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert_eq!(old_horizon, Some("2026-05".to_owned()));
+                assert_eq!(new_horizon, Some("2026-08".to_owned()));
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    // VAL-HEVT-004: HorizonChanged event on clear
+    #[test]
+    fn test_horizon_changed_event_on_clear() {
+        let event =
+            EventBuilder::horizon_changed("01ABC".to_owned(), Some("2026-05".to_owned()), None);
+
+        match event {
+            Event::HorizonChanged {
+                tension_id,
+                old_horizon,
+                new_horizon,
+                ..
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert_eq!(old_horizon, Some("2026-05".to_owned()));
+                assert!(new_horizon.is_none());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    // VAL-HEVT-005: HorizonChanged serialization roundtrip
+    #[test]
+    fn test_horizon_changed_serialization_roundtrip() {
+        let event = Event::HorizonChanged {
+            tension_id: "01ABC".to_owned(),
+            old_horizon: Some("2026-05".to_owned()),
+            new_horizon: Some("2026-08".to_owned()),
+            timestamp: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+
+        // Also test with None values
+        let event_clear = Event::HorizonChanged {
+            tension_id: "01ABC".to_owned(),
+            old_horizon: Some("2026-05".to_owned()),
+            new_horizon: None,
+            timestamp: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&event_clear).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event_clear, deserialized);
+    }
+
+    // VAL-HEVT-006: EventBuilder horizon_changed method
+    #[test]
+    fn test_event_builder_horizon_changed() {
+        let event =
+            EventBuilder::horizon_changed("01ABC".to_owned(), None, Some("2026".to_owned()));
+
+        match event {
+            Event::HorizonChanged {
+                tension_id,
+                old_horizon,
+                new_horizon,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert!(old_horizon.is_none());
+                assert_eq!(new_horizon, Some("2026".to_owned()));
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
     }
 }

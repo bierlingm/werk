@@ -286,6 +286,7 @@ impl Store {
             tension.desired.clone(),
             tension.actual.clone(),
             tension.parent_id.clone(),
+            tension.horizon.as_ref().map(|h| h.to_string()),
         ));
 
         Ok(tension)
@@ -2879,5 +2880,106 @@ mod tests {
 
         assert_eq!(reconstructed.horizon, direct.horizon);
         assert_eq!(reconstructed.horizon, Some(new_h));
+    }
+
+    // ── Horizon Event Emission Tests ───────────────────────────────
+
+    #[test]
+    fn test_create_tension_full_emits_event_with_horizon() {
+        use crate::events::{Event, EventBus};
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+
+        let e = events.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if let Event::TensionCreated { .. } = ev {
+                e.lock().unwrap().push(ev.clone());
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let h = Horizon::Month(2026, 5);
+        let _t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        let evts = events.lock().unwrap();
+        assert_eq!(evts.len(), 1);
+        if let Event::TensionCreated {
+            horizon,
+            ..
+        } = &evts[0]
+        {
+            assert_eq!(horizon, &Some("2026-05".to_owned()));
+        } else {
+            panic!("expected TensionCreated event");
+        }
+    }
+
+    #[test]
+    fn test_create_tension_full_emits_event_without_horizon() {
+        use crate::events::{Event, EventBus};
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+
+        let e = events.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if let Event::TensionCreated { .. } = ev {
+                e.lock().unwrap().push(ev.clone());
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let _t = store.create_tension_full("goal", "reality", None, None).unwrap();
+
+        let evts = events.lock().unwrap();
+        assert_eq!(evts.len(), 1);
+        if let Event::TensionCreated {
+            horizon,
+            ..
+        } = &evts[0]
+        {
+            assert!(horizon.is_none());
+        } else {
+            panic!("expected TensionCreated event");
+        }
+    }
+
+    #[test]
+    fn test_create_tension_defaults_no_horizon_event() {
+        use crate::events::{Event, EventBus};
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+
+        let e = events.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if let Event::TensionCreated { .. } = ev {
+                e.lock().unwrap().push(ev.clone());
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let _t = store.create_tension("goal", "reality").unwrap();
+
+        let evts = events.lock().unwrap();
+        assert_eq!(evts.len(), 1);
+        if let Event::TensionCreated {
+            horizon,
+            ..
+        } = &evts[0]
+        {
+            assert!(horizon.is_none());
+        } else {
+            panic!("expected TensionCreated event");
+        }
     }
 }
