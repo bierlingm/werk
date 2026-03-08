@@ -772,6 +772,8 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
 
     // Parse horizon mutations and compute shifts
     let mut shifts: Vec<i64> = Vec::new(); // positive = later, negative = earlier
+    let mut precision_tightenings = 0i32; // higher precision (DateTime < Day < Month < Year)
+    let mut precision_loosenings = 0i32; // lower precision
 
     for mutation in &horizon_mutations {
         let old_horizon = mutation.old_value().and_then(|s| {
@@ -795,6 +797,17 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
                 // Compute shift: new.range_end - old.range_end
                 let shift = (new.range_end() - old.range_end()).num_seconds();
                 shifts.push(shift);
+
+                // Track precision changes (lower precision_level = higher precision)
+                let old_precision = old.precision_level();
+                let new_precision = new.precision_level();
+                if new_precision < old_precision {
+                    // Higher precision (e.g., Year → Month)
+                    precision_tightenings += 1;
+                } else if new_precision > old_precision {
+                    // Lower precision (e.g., Day → Month)
+                    precision_loosenings += 1;
+                }
             }
             (Some(_old), None) => {
                 // Clearing horizon - treat as extreme loosening
@@ -824,9 +837,16 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
     }
 
     // Determine drift type
+    // Priority: Oscillating > Precision-based > Time-based
     let drift_type = if direction_changes >= 2 {
         // Multiple direction changes = oscillating
         HorizonDriftType::Oscillating
+    } else if precision_tightenings > precision_loosenings {
+        // Net precision increase = tightening
+        HorizonDriftType::Tightening
+    } else if precision_loosenings > precision_tightenings {
+        // Net precision decrease = loosening
+        HorizonDriftType::Loosening
     } else if shifts.iter().all(|s| *s > 0) {
         // All shifts are positive (postponements)
         if shifts.len() >= 3 {
