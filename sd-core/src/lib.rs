@@ -74,7 +74,7 @@ pub use dynamics::{
 };
 pub use engine::{DynamicsEngine, DynamicsThresholds, PreviousDynamics, PreviousState};
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
-pub use horizon::{Horizon, HorizonParseError};
+pub use horizon::{Horizon, HorizonKind, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use store::{Store, StoreError};
 pub use tension::{SdError, Tension, TensionStatus};
