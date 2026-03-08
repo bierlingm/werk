@@ -1364,8 +1364,12 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
 
         // Past horizon (May 2026) - should be included
-        let past_active =
-            make_tension_with_horizon("past_active", "past", "past", Some(Horizon::new_month(2026, 5).unwrap()));
+        let past_active = make_tension_with_horizon(
+            "past_active",
+            "past",
+            "past",
+            Some(Horizon::new_month(2026, 5).unwrap()),
+        );
 
         // Past horizon but resolved - should be excluded
         let mut past_resolved = make_tension_with_horizon(
@@ -1429,7 +1433,8 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
 
         // All horizons are in the future
-        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 12).unwrap()));
+        let t1 =
+            make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 12).unwrap()));
         let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_year(2027).unwrap()));
 
         let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
@@ -1520,12 +1525,8 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 5, 28, 12, 0, 0).unwrap();
 
         // Horizon ending very soon
-        let t = make_tension_with_horizon(
-            "t",
-            "a",
-            "a",
-            Some(Horizon::new_day(2026, 5, 28).unwrap()),
-        );
+        let t =
+            make_tension_with_horizon("t", "a", "a", Some(Horizon::new_day(2026, 5, 28).unwrap()));
 
         let forest = Forest::from_tensions(vec![t]).unwrap();
 
@@ -1549,8 +1550,12 @@ mod tests {
         resolved.resolve().unwrap();
 
         // Active tension approaching horizon
-        let active =
-            make_tension_with_horizon("active", "active", "active", Some(Horizon::new_month(2026, 5).unwrap()));
+        let active = make_tension_with_horizon(
+            "active",
+            "active",
+            "active",
+            Some(Horizon::new_month(2026, 5).unwrap()),
+        );
 
         let forest = Forest::from_tensions(vec![resolved, active]).unwrap();
 
@@ -1574,8 +1579,12 @@ mod tests {
         released.release().unwrap();
 
         // Active tension approaching horizon
-        let active =
-            make_tension_with_horizon("active", "active", "active", Some(Horizon::new_month(2026, 5).unwrap()));
+        let active = make_tension_with_horizon(
+            "active",
+            "active",
+            "active",
+            Some(Horizon::new_month(2026, 5).unwrap()),
+        );
 
         let forest = Forest::from_tensions(vec![released, active]).unwrap();
 
@@ -1605,8 +1614,10 @@ mod tests {
         let within = chrono::Duration::days(5);
 
         // All horizons are in the past
-        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 5).unwrap()));
-        let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_month(2026, 4).unwrap()));
+        let t1 =
+            make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 5).unwrap()));
+        let t2 =
+            make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_month(2026, 4).unwrap()));
 
         let forest = Forest::from_tensions(vec![t1, t2]).unwrap();
 
@@ -1620,7 +1631,8 @@ mod tests {
         let within = chrono::Duration::days(5);
 
         // All horizons are far in the future
-        let t1 = make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 12).unwrap()));
+        let t1 =
+            make_tension_with_horizon("t1", "a", "a", Some(Horizon::new_month(2026, 12).unwrap()));
         let t2 = make_tension_with_horizon("t2", "b", "b", Some(Horizon::new_year(2027).unwrap()));
 
         let forest = Forest::from_tensions(vec![t1, t2]).unwrap();

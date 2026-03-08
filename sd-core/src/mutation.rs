@@ -816,10 +816,7 @@ mod tests {
             ),
         ];
         let result = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(
-            result.horizon,
-            Some(Horizon::new_day(2026, 5, 15).unwrap())
-        );
+        assert_eq!(result.horizon, Some(Horizon::new_day(2026, 5, 15).unwrap()));
     }
 
     #[test]
@@ -926,10 +923,7 @@ mod tests {
             "desired='goal';actual='reality';horizon='2026-05-15'".to_owned(),
         )];
         let result = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(
-            result.horizon,
-            Some(Horizon::new_day(2026, 5, 15).unwrap())
-        );
+        assert_eq!(result.horizon, Some(Horizon::new_day(2026, 5, 15).unwrap()));
     }
 
     // ── VAL-HMUT-003: Replay creation without horizon (backward compat) ─
@@ -1031,7 +1025,10 @@ mod tests {
             "desired='goal';actual='reality';horizon='2026-05'".to_owned(),
         )];
         let reconstructed = super::replay_mutations(&mutations).unwrap();
-        assert_eq!(reconstructed.horizon, Some(Horizon::new_month(2026, 5).unwrap()));
+        assert_eq!(
+            reconstructed.horizon,
+            Some(Horizon::new_month(2026, 5).unwrap())
+        );
 
         // to_tension() preserves horizon
         let tension = reconstructed.to_tension();

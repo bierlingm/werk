@@ -17,10 +17,24 @@
 //! - [`Horizon::new_day`] for day precision (validates calendar date)
 //! - [`Horizon::new_datetime`] for instant precision
 
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use std::cmp::Ordering;
 use std::fmt;
+
+/// Minimum valid year for horizons.
+///
+/// Year 0 does not exist in the Gregorian calendar (it goes from 1 BC to 1 AD).
+/// We restrict years to positive values for simplicity.
+pub const MIN_VALID_YEAR: i32 = 1;
+
+/// Maximum valid year for horizons.
+///
+/// Limited to 9999 to ensure:
+/// 1. ISO-8601/RFC 3339 compatibility (standard year range)
+/// 2. Year + 1 for December months never overflows (9999 + 1 = 10000)
+/// 3. All date arithmetic remains within i32 bounds
+pub const MAX_VALID_YEAR: i32 = 9999;
 
 /// Errors that can occur when parsing a horizon string.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -77,47 +91,50 @@ pub struct Horizon(Inner);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Inner {
     /// A full year. Range: Jan 1 00:00:00 UTC – Dec 31 23:59:59 UTC.
-    /// Invariant: year != 0 (validated by constructors).
+    /// Invariant: year in 1..=9999 (validated by constructors).
     Year(i32),
     /// A specific month. Range: 1st day 00:00 – last day 23:59:59 UTC.
-    /// Invariants: year != 0, month in 1..=12 (validated by constructors).
+    /// Invariants: year in 1..=9999, month in 1..=12 (validated by constructors).
     Month(i32, u32),
     /// A specific day. Range: 00:00:00 – 23:59:59 UTC.
-    /// Invariant: NaiveDate is valid (guaranteed by chrono construction).
+    /// Invariant: year in 1..=9999, NaiveDate is valid (guaranteed by chrono construction).
     Day(NaiveDate),
     /// A specific instant. Range_start == range_end, width == 0.
+    /// Invariant: year in 1..=9999 (validated in parse/constructors).
     DateTime(DateTime<Utc>),
 }
 
 impl Horizon {
     // ===== Validated Constructors =====
-    
+
     /// Create a year-precision horizon.
     ///
     /// # Errors
     ///
-    /// Returns `HorizonParseError::OutOfRange` if year is 0.
+    /// Returns `HorizonParseError::OutOfRange` if year is outside the valid range (1-9999).
     pub fn new_year(year: i32) -> Result<Self, HorizonParseError> {
-        if year == 0 {
-            return Err(HorizonParseError::OutOfRange(
-                "year cannot be zero (use 1 BC or 1 AD)".to_owned(),
-            ));
+        if !(MIN_VALID_YEAR..=MAX_VALID_YEAR).contains(&year) {
+            return Err(HorizonParseError::OutOfRange(format!(
+                "year must be {}-{}, got {}",
+                MIN_VALID_YEAR, MAX_VALID_YEAR, year
+            )));
         }
         Ok(Horizon(Inner::Year(year)))
     }
-    
+
     /// Create a month-precision horizon.
     ///
     /// # Errors
     ///
     /// Returns `HorizonParseError::OutOfRange` if:
-    /// - year is 0
+    /// - year is outside the valid range (1-9999)
     /// - month is not in 1..=12
     pub fn new_month(year: i32, month: u32) -> Result<Self, HorizonParseError> {
-        if year == 0 {
-            return Err(HorizonParseError::OutOfRange(
-                "year cannot be zero (use 1 BC or 1 AD)".to_owned(),
-            ));
+        if !(MIN_VALID_YEAR..=MAX_VALID_YEAR).contains(&year) {
+            return Err(HorizonParseError::OutOfRange(format!(
+                "year must be {}-{}, got {}",
+                MIN_VALID_YEAR, MAX_VALID_YEAR, year
+            )));
         }
         if month == 0 || month > 12 {
             return Err(HorizonParseError::OutOfRange(format!(
@@ -126,26 +143,27 @@ impl Horizon {
         }
         Ok(Horizon(Inner::Month(year, month)))
     }
-    
+
     /// Create a day-precision horizon.
     ///
     /// # Errors
     ///
     /// Returns `HorizonParseError::OutOfRange` if:
-    /// - year is 0
+    /// - year is outside the valid range (1-9999)
     /// - the date is invalid (e.g., Feb 30)
     pub fn new_day(year: i32, month: u32, day: u32) -> Result<Self, HorizonParseError> {
-        if year == 0 {
-            return Err(HorizonParseError::OutOfRange(
-                "year cannot be zero (use 1 BC or 1 AD)".to_owned(),
-            ));
+        if !(MIN_VALID_YEAR..=MAX_VALID_YEAR).contains(&year) {
+            return Err(HorizonParseError::OutOfRange(format!(
+                "year must be {}-{}, got {}",
+                MIN_VALID_YEAR, MAX_VALID_YEAR, year
+            )));
         }
         let date = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| {
             HorizonParseError::OutOfRange(format!("invalid date {year}-{month}-{day}"))
         })?;
         Ok(Horizon(Inner::Day(date)))
     }
-    
+
     /// Create a datetime-precision horizon (an instant).
     ///
     /// DateTime horizons have zero width — the range is exactly that instant.
@@ -160,7 +178,8 @@ impl Horizon {
     /// - `"2026-05"` → `Month(2026, 5)`
     /// - `"2026-05-15"` → `Day(NaiveDate)`
     /// - `"2026-05-15T14:00:00Z"` → `DateTime(DateTime<Utc>)`
-    /// - Negative years are supported: `"-100"` → `Year(-100)`
+    ///
+    /// Years must be in the range 1-9999. Negative years (BC dates) are not supported.
     pub fn parse(s: &str) -> Result<Self, HorizonParseError> {
         let s = s.trim();
         if s.is_empty() {
@@ -171,47 +190,46 @@ impl Horizon {
         if s.contains('T') {
             let dt = DateTime::parse_from_rfc3339(s)
                 .map_err(|e| HorizonParseError::InvalidFormat(format!("invalid datetime: {e}")))?;
-            return Ok(Horizon(Inner::DateTime(dt.with_timezone(&Utc))));
+            let utc_dt = dt.with_timezone(&Utc);
+            // Validate year range for datetime
+            let year = utc_dt.year();
+            if !(MIN_VALID_YEAR..=MAX_VALID_YEAR).contains(&year) {
+                return Err(HorizonParseError::OutOfRange(format!(
+                    "year must be {}-{}, got {}",
+                    MIN_VALID_YEAR, MAX_VALID_YEAR, year
+                )));
+            }
+            return Ok(Horizon(Inner::DateTime(utc_dt)));
         }
 
-        // Handle negative years specially
-        // ISO-8601 uses extended format for negative years with more than 4 digits
-        // But for simplicity, we handle "-YYYY" style negative years
-        let (year_part, rest) = if let Some(after_minus) = s.strip_prefix('-') {
-            // Negative year - find where the year ends
-            // The format could be "-2026" or "-2026-05" or "-2026-05-15"
-            // Split on '-' after the initial negative sign
-            let components: Vec<&str> = after_minus.split('-').collect();
-            if components.is_empty() {
-                return Err(HorizonParseError::InvalidFormat("invalid year".to_owned()));
-            }
-            // The year is the negative of the first component
-            let year_str = format!("-{}", components[0]);
-            (year_str, components.into_iter().skip(1).collect::<Vec<_>>())
-        } else {
-            // Positive year
-            let components: Vec<&str> = s.split('-').collect();
-            if components.is_empty() {
-                return Err(HorizonParseError::InvalidFormat("empty input".to_owned()));
-            }
-            (
-                components[0].to_owned(),
-                components.into_iter().skip(1).collect::<Vec<_>>(),
-            )
-        };
+        // Reject negative years immediately
+        if s.starts_with('-') {
+            return Err(HorizonParseError::OutOfRange(format!(
+                "year must be {}-{}",
+                MIN_VALID_YEAR, MAX_VALID_YEAR
+            )));
+        }
+
+        // Positive year
+        let components: Vec<&str> = s.split('-').collect();
+        if components.is_empty() {
+            return Err(HorizonParseError::InvalidFormat("empty input".to_owned()));
+        }
 
         // Parse year
-        let year: i32 = year_part
+        let year: i32 = components[0]
             .parse()
             .map_err(|_| HorizonParseError::InvalidFormat("invalid year".to_owned()))?;
 
-        if year == 0 {
-            return Err(HorizonParseError::OutOfRange(
-                "year cannot be zero (use 1 BC or 1 AD)".to_owned(),
-            ));
+        if !(MIN_VALID_YEAR..=MAX_VALID_YEAR).contains(&year) {
+            return Err(HorizonParseError::OutOfRange(format!(
+                "year must be {}-{}, got {}",
+                MIN_VALID_YEAR, MAX_VALID_YEAR, year
+            )));
         }
 
         // Determine precision based on remaining components
+        let rest: Vec<&str> = components.into_iter().skip(1).collect();
         match rest.len() {
             0 => Ok(Horizon(Inner::Year(year))),
             1 => {
@@ -250,7 +268,7 @@ impl Horizon {
             ))),
         }
     }
-    
+
     /// Return the kind of horizon for pattern matching.
     ///
     /// This allows external code to inspect the horizon's precision and values
@@ -271,17 +289,17 @@ impl Horizon {
     /// reject invalid values before construction.
     pub fn range_start(&self) -> DateTime<Utc> {
         match &self.0 {
-            // Invariant: year is validated to be non-zero
+            // Invariant: year is validated to be 1-9999
             Inner::Year(year) => Utc
                 .with_ymd_and_hms(*year, 1, 1, 0, 0, 0)
                 .single()
                 .unwrap_or(DateTime::UNIX_EPOCH),
-            // Invariant: month is validated to be 1-12
+            // Invariant: year is 1-9999, month is 1-12
             Inner::Month(year, month) => Utc
                 .with_ymd_and_hms(*year, *month, 1, 0, 0, 0)
                 .single()
                 .unwrap_or(DateTime::UNIX_EPOCH),
-            // Invariant: NaiveDate construction validates day/month/year combo
+            // Invariant: year is 1-9999, NaiveDate construction validates day/month/year combo
             Inner::Day(date) => date
                 .and_hms_opt(0, 0, 0)
                 .map(|nd| nd.and_utc())
@@ -297,19 +315,21 @@ impl Horizon {
     ///
     /// This method is safe because invalid dates are unreachable by design.
     /// All validated constructors reject invalid values before construction.
+    /// The year constraint (1-9999) ensures year + 1 for December months never overflows.
     pub fn range_end(&self) -> DateTime<Utc> {
         // End of Unix epoch day (1970-01-01 23:59:59 UTC) - a known valid fallback
         const FALLBACK_END: DateTime<Utc> = DateTime::UNIX_EPOCH;
-        
+
         match &self.0 {
-            // Invariant: year is validated to be non-zero
+            // Invariant: year is validated to be 1-9999
             Inner::Year(year) => Utc
                 .with_ymd_and_hms(*year, 12, 31, 23, 59, 59)
                 .single()
                 .unwrap_or(FALLBACK_END),
             Inner::Month(year, month) => {
                 // Get the last day of the month
-                // Invariant: month is validated to be 1-12, so transition logic is sound
+                // Invariant: year is 1-9999, month is 1-12
+                // Year + 1 for December is safe: 9999 + 1 = 10000, fits in i32
                 let (next_year, next_month) = if *month == 12 {
                     (*year + 1, 1)
                 } else {
@@ -487,10 +507,16 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_year_negative() {
-        // Negative years are allowed (BC dates)
-        let h = Horizon::parse("-100").unwrap();
-        assert_eq!(h, Horizon::new_year(-100).unwrap());
+    fn test_parse_year_negative_rejected() {
+        // Negative years are not supported; only years 1-9999 are valid
+        let result = Horizon::parse("-100");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            HorizonParseError::OutOfRange(msg) => {
+                assert!(msg.contains("1-9999") || msg.contains("year must be"));
+            }
+            other => panic!("expected OutOfRange, got {other:?}"),
+        }
     }
 
     #[test]
@@ -498,7 +524,9 @@ mod tests {
         let result = Horizon::parse("0");
         assert!(result.is_err());
         match result.unwrap_err() {
-            HorizonParseError::OutOfRange(msg) => assert!(msg.contains("zero")),
+            HorizonParseError::OutOfRange(msg) => {
+                assert!(msg.contains("1-9999") || msg.contains("year must be"));
+            }
             other => panic!("expected OutOfRange, got {other:?}"),
         }
     }
@@ -1571,28 +1599,58 @@ mod tests {
         assert_eq!(start.day(), 1);
     }
 
-    // ── Negative Years (BC dates) ───────────────────────────────────────
+    // ── Year Boundary Validation ────────────────────────────────────────
 
     #[test]
-    fn test_negative_year_valid() {
-        let h = Horizon::parse("-100").unwrap();
-        assert_eq!(h, Horizon::new_year(-100).unwrap());
-    }
-
-    #[test]
-    fn test_negative_year_month_valid() {
-        let h = Horizon::parse("-100-05").unwrap();
-        assert_eq!(h, Horizon::new_month(-100, 5).unwrap());
-    }
-
-    #[test]
-    fn test_negative_year_month_day_valid() {
-        let h = Horizon::parse("-100-05-15").unwrap();
-        match h.kind() {
-            HorizonKind::Day(date) => {
-                assert_eq!(date.year(), -100);
+    fn test_year_too_large_rejected() {
+        let result = Horizon::parse("10000");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            HorizonParseError::OutOfRange(msg) => {
+                assert!(msg.contains("1-9999"));
             }
-            other => panic!("expected Day, got {other:?}"),
+            other => panic!("expected OutOfRange, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_year_max_allowed() {
+        let h = Horizon::new_year(9999).unwrap();
+        assert_eq!(h.kind(), HorizonKind::Year(9999));
+    }
+
+    #[test]
+    fn test_year_min_allowed() {
+        let h = Horizon::new_year(1).unwrap();
+        assert_eq!(h.kind(), HorizonKind::Year(1));
+    }
+
+    #[test]
+    fn test_december_max_year_range_end_no_overflow() {
+        // This tests the critical fix: December with year 9999 should not overflow
+        // when computing range_end() which does year + 1
+        let h = Horizon::new_month(9999, 12).unwrap();
+        let end = h.range_end();
+        assert_eq!(end.year(), 9999);
+        assert_eq!(end.month(), 12);
+        assert_eq!(end.day(), 31);
+    }
+
+    #[test]
+    fn test_new_year_rejects_year_too_large() {
+        let result = Horizon::new_year(10000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_month_rejects_year_too_large() {
+        let result = Horizon::new_month(10000, 5);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_day_rejects_year_too_large() {
+        let result = Horizon::new_day(10000, 5, 15);
+        assert!(result.is_err());
     }
 }
