@@ -272,8 +272,8 @@ fn cmd_add(
     parent: Option<String>,
     horizon: Option<String>,
 ) -> Result<(), WerkError> {
-    use serde::Serialize;
     use sd_core::Horizon;
+    use serde::Serialize;
     use werk::workspace::Workspace;
 
     /// JSON output structure for add command.
@@ -336,12 +336,8 @@ fn cmd_add(
     };
 
     // Create the tension with horizon
-    let tension = store.create_tension_full(
-        &desired,
-        &actual,
-        parent_id.clone(),
-        horizon_parsed.clone(),
-    )?;
+    let tension =
+        store.create_tension_full(&desired, &actual, parent_id.clone(), horizon_parsed.clone())?;
 
     let result = AddResult {
         id: tension.id.clone(),
@@ -471,8 +467,11 @@ fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(),
                 match &horizon_parsed {
                     Some(h) => {
                         output
-                            .success(&format!("Set horizon for tension {} to {}", id_styled, 
-                                output.styled(&h.to_string(), werk::output::ColorStyle::Highlight)))
+                            .success(&format!(
+                                "Set horizon for tension {} to {}",
+                                id_styled,
+                                output.styled(&h.to_string(), werk::output::ColorStyle::Highlight)
+                            ))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                     None => {
@@ -488,11 +487,15 @@ fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(),
         None => {
             // Display current horizon with urgency
             let now = Utc::now();
-            let urgency = compute_urgency(&tension, now);
+            let urgency = compute_urgency(tension, now);
 
             let days_remaining = tension.horizon.as_ref().and_then(|h| {
                 let remaining = h.range_end().signed_duration_since(now).num_days();
-                if remaining >= 0 { Some(remaining) } else { None }
+                if remaining >= 0 {
+                    Some(remaining)
+                } else {
+                    None
+                }
             });
 
             let result = HorizonDisplayResult {
@@ -531,16 +534,16 @@ fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(),
 
                         if let Some(urg) = &urgency {
                             let urgency_pct = (urg.value * 100.0).min(999.0);
-                            println!(
-                                "  Urgency:    {:.0}% of time window elapsed",
-                                urgency_pct
-                            );
+                            println!("  Urgency:    {:.0}% of time window elapsed", urgency_pct);
                         }
 
                         if let Some(days) = days_remaining {
                             println!(
                                 "  Days remaining: {}",
-                                output.styled(&format!("{}", days), werk::output::ColorStyle::Highlight)
+                                output.styled(
+                                    &format!("{}", days),
+                                    werk::output::ColorStyle::Highlight
+                                )
                             );
                         }
                     }
@@ -1024,7 +1027,10 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
             let interpretation = match h.kind() {
                 sd_core::HorizonKind::Year(y) => format!("Year {}", y),
                 sd_core::HorizonKind::Month(y, m) => {
-                    let month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    let month_names = [
+                        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
+                        "Nov", "Dec",
+                    ];
                     format!("{} {}", month_names[(m - 1) as usize], y)
                 }
                 sd_core::HorizonKind::Day(d) => d.format("%B %d, %Y").to_string(),
@@ -1147,9 +1153,7 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
                         let pct = (urg.value * 100.0).min(999.0);
                         println!(
                             "  Urgency:      {:.0}% ({}s remaining of {}s window)",
-                            pct,
-                            urg.time_remaining,
-                            urg.total_window
+                            pct, urg.time_remaining, urg.total_window
                         );
                     }
                     None => {
@@ -2301,11 +2305,19 @@ fn cmd_tree(
         prefix: &str,
         lines: &mut Vec<String>,
     ) {
-        let roots: Vec<_> = root_ids
+        let mut roots: Vec<_> = root_ids
             .iter()
             .filter(|id| filtered_ids.contains(id.as_str()))
             .filter_map(|id| forest.find(id))
             .collect();
+
+        // Sort roots by horizon (earliest first, None last)
+        roots.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
+            (Some(ha), Some(hb)) => ha.cmp(hb),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
 
         for (i, node) in roots.iter().enumerate() {
             let is_last = i == roots.len() - 1;
@@ -2330,15 +2342,22 @@ fn cmd_tree(
             // Conflict marker
             let conflict_marker = if has_conflict { "!" } else { " " };
 
-            // Format: prefix + connector + [badge] status conflict movement desired
+            // Horizon annotation
+            let horizon_annotation = match &node.tension.horizon {
+                Some(h) => format!("[{}]", h),
+                None => "[—]".to_string(),
+            };
+
+            // Format: prefix + connector + [badge] status id horizon movement desired
             let id_short = &node.id()[..8.min(node.id().len())];
             let line = format!(
-                "{}{}{}{} {} {}{} {}",
+                "{}{}{}{} {} {} {}{} {}",
                 prefix,
                 connector,
                 output.styled(&phase, werk::output::ColorStyle::Info),
                 output.styled(&node.tension.status.to_string(), status_style),
                 output.styled(id_short, werk::output::ColorStyle::Id),
+                output.styled(&horizon_annotation, werk::output::ColorStyle::Muted),
                 conflict_marker,
                 movement,
                 output.styled(
@@ -2349,12 +2368,20 @@ fn cmd_tree(
             lines.push(line);
 
             // Recurse for children (only those that pass the filter)
-            let children: Vec<_> = node
+            let mut children: Vec<_> = node
                 .children
                 .iter()
                 .filter(|id| filtered_ids.contains(id.as_str()))
                 .filter_map(|id| forest.find(id))
                 .collect();
+
+            // Sort children by horizon as well
+            children.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
+                (Some(ha), Some(hb)) => ha.cmp(hb),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            });
 
             if !children.is_empty() {
                 let new_prefix = if is_last {
@@ -2451,12 +2478,12 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     use chrono::Utc;
     use sd_core::{
         classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        compute_urgency, detect_compensating_strategy, detect_horizon_drift, detect_neglect,
-        detect_oscillation, detect_resolution, detect_structural_conflict,
-        measure_assimilation_depth, predict_structural_tendency, AssimilationDepthThresholds,
-        CompensatingStrategyThresholds, ConflictThresholds, CreativeCyclePhase, Forest,
-        Horizon, LifecycleThresholds, NeglectThresholds, OrientationThresholds,
-        OscillationThresholds, ResolutionThresholds, TensionStatus,
+        compute_urgency, detect_compensating_strategy, detect_neglect, detect_oscillation,
+        detect_resolution, detect_structural_conflict, measure_assimilation_depth,
+        predict_structural_tendency, AssimilationDepthThresholds, CompensatingStrategyThresholds,
+        ConflictThresholds, CreativeCyclePhase, Forest, Horizon, LifecycleThresholds,
+        NeglectThresholds, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
+        TensionStatus,
     };
     use serde::Serialize;
     use werk::workspace::Workspace;
@@ -2594,8 +2621,17 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         new_value: String,
     }
 
-    // Helper function to convert a tension Node to TensionInfo
-    fn node_to_info(node: &sd_core::Node) -> TensionInfo {
+    // Helper function to convert a tension Node to TensionInfo with horizon data
+    fn node_to_info(node: &sd_core::Node, now: chrono::DateTime<chrono::Utc>) -> TensionInfo {
+        let horizon = node.tension.horizon.as_ref().map(|h| h.to_string());
+        let horizon_range = node.tension.horizon.as_ref().map(|h| HorizonRangeJson {
+            start: h.range_start().to_rfc3339(),
+            end: h.range_end().to_rfc3339(),
+        });
+        let urgency = compute_urgency(&node.tension, now).map(|u| u.value);
+        let structural_tension = compute_structural_tension(&node.tension);
+        let pressure = structural_tension.as_ref().and_then(|st| st.pressure);
+
         TensionInfo {
             id: node.id().to_string(),
             desired: node.tension.desired.clone(),
@@ -2603,6 +2639,11 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
             status: node.tension.status.to_string(),
             created_at: node.tension.created_at.to_rfc3339(),
             parent_id: node.tension.parent_id.clone(),
+            horizon,
+            horizon_range,
+            urgency,
+            pressure,
+            staleness_ratio: None, // Would need mutations to compute for siblings
         }
     }
 
@@ -2629,6 +2670,28 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     let forest = Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
+    // === Compute time reference (needed for horizon dynamics) ===
+    let now = Utc::now();
+
+    // === Compute horizon dynamics for the main tension ===
+    let horizon = tension.horizon.as_ref().map(|h| h.to_string());
+    let horizon_range = tension.horizon.as_ref().map(|h| HorizonRangeJson {
+        start: h.range_start().to_rfc3339(),
+        end: h.range_end().to_rfc3339(),
+    });
+    let urgency = compute_urgency(tension, now).map(|u| u.value);
+    let structural_tension_for_info = compute_structural_tension(tension);
+    let pressure = structural_tension_for_info
+        .as_ref()
+        .and_then(|st| st.pressure);
+
+    // Staleness ratio: need last mutation timestamp
+    let last_mutation_time = mutations.last().map(|m| m.timestamp());
+    let staleness_ratio = match (&tension.horizon, last_mutation_time) {
+        (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
+        _ => None,
+    };
+
     // === Tension Info ===
     let tension_info = TensionInfo {
         id: tension.id.clone(),
@@ -2637,6 +2700,11 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         status: tension.status.to_string(),
         created_at: tension.created_at.to_rfc3339(),
         parent_id: tension.parent_id.clone(),
+        horizon,
+        horizon_range,
+        urgency,
+        pressure,
+        staleness_ratio,
     };
 
     // === Ancestors (root-first) ===
@@ -2644,7 +2712,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         .ancestors(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(node_to_info)
+        .map(|node| node_to_info(node, now))
         .collect();
 
     // === Siblings (excluding self) ===
@@ -2652,7 +2720,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         .siblings(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(node_to_info)
+        .map(|node| node_to_info(node, now))
         .collect();
 
     // === Children ===
@@ -2660,11 +2728,10 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         .children(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(node_to_info)
+        .map(|node| node_to_info(node, now))
         .collect();
 
-    // === Compute Dynamics ===
-    let now = Utc::now();
+    // === Compute Dynamics Thresholds ===
     let lifecycle_thresholds = LifecycleThresholds::default();
     let conflict_thresholds = ConflictThresholds::default();
     let oscillation_thresholds = OscillationThresholds::default();
@@ -2888,11 +2955,12 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
     use chrono::Utc;
     use sd_core::{
         classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
-        detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
-        AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
-        CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, Mutation, NeglectThresholds,
-        OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
+        compute_urgency, detect_compensating_strategy, detect_neglect, detect_oscillation,
+        detect_resolution, detect_structural_conflict, measure_assimilation_depth,
+        predict_structural_tendency, AssimilationDepthThresholds, CompensatingStrategyThresholds,
+        ConflictThresholds, CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, Mutation,
+        NeglectThresholds, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
+        TensionStatus,
     };
     use serde::Serialize;
     use std::io::Write;
@@ -2920,6 +2988,17 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         status: String,
         created_at: String,
         parent_id: Option<String>,
+        horizon: Option<String>,
+        horizon_range: Option<HorizonRangeJson>,
+        urgency: Option<f64>,
+        pressure: Option<f64>,
+        staleness_ratio: Option<f64>,
+    }
+
+    #[derive(Serialize)]
+    struct HorizonRangeJson {
+        start: String,
+        end: String,
     }
 
     /// All 10 dynamics in JSON format.
@@ -3022,8 +3101,17 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         new_value: String,
     }
 
-    // Helper function to convert a tension Node to TensionInfo
-    fn node_to_info(node: &sd_core::Node) -> TensionInfo {
+    // Helper function to convert a tension Node to TensionInfo with horizon data
+    fn node_to_info(node: &sd_core::Node, now: chrono::DateTime<chrono::Utc>) -> TensionInfo {
+        let horizon = node.tension.horizon.as_ref().map(|h| h.to_string());
+        let horizon_range = node.tension.horizon.as_ref().map(|h| HorizonRangeJson {
+            start: h.range_start().to_rfc3339(),
+            end: h.range_end().to_rfc3339(),
+        });
+        let urgency = compute_urgency(&node.tension, now).map(|u| u.value);
+        let structural_tension = compute_structural_tension(&node.tension);
+        let pressure = structural_tension.as_ref().and_then(|st| st.pressure);
+
         TensionInfo {
             id: node.id().to_string(),
             desired: node.tension.desired.clone(),
@@ -3031,6 +3119,11 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
             status: node.tension.status.to_string(),
             created_at: node.tension.created_at.to_rfc3339(),
             parent_id: node.tension.parent_id.clone(),
+            horizon,
+            horizon_range,
+            urgency,
+            pressure,
+            staleness_ratio: None, // Would need mutations to compute for siblings
         }
     }
 
@@ -3057,6 +3150,28 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
     let forest = Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
+    // === Compute time reference (needed for horizon dynamics) ===
+    let now = Utc::now();
+
+    // === Compute horizon dynamics for the main tension ===
+    let horizon = tension.horizon.as_ref().map(|h| h.to_string());
+    let horizon_range = tension.horizon.as_ref().map(|h| HorizonRangeJson {
+        start: h.range_start().to_rfc3339(),
+        end: h.range_end().to_rfc3339(),
+    });
+    let urgency = compute_urgency(tension, now).map(|u| u.value);
+    let structural_tension_for_info = compute_structural_tension(tension);
+    let pressure = structural_tension_for_info
+        .as_ref()
+        .and_then(|st| st.pressure);
+
+    // Staleness ratio: need last mutation timestamp
+    let last_mutation_time = mutations.last().map(|m| m.timestamp());
+    let staleness_ratio = match (&tension.horizon, last_mutation_time) {
+        (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
+        _ => None,
+    };
+
     // === Tension Info ===
     let tension_info = TensionInfo {
         id: tension.id.clone(),
@@ -3065,6 +3180,11 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         status: tension.status.to_string(),
         created_at: tension.created_at.to_rfc3339(),
         parent_id: tension.parent_id.clone(),
+        horizon,
+        horizon_range,
+        urgency,
+        pressure,
+        staleness_ratio,
     };
 
     // === Ancestors (root-first) ===
@@ -3072,7 +3192,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         .ancestors(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(node_to_info)
+        .map(|node| node_to_info(node, now))
         .collect();
 
     // === Siblings (excluding self) ===
@@ -3080,7 +3200,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         .siblings(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(node_to_info)
+        .map(|node| node_to_info(node, now))
         .collect();
 
     // === Children ===
@@ -3088,11 +3208,10 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         .children(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(node_to_info)
+        .map(|node| node_to_info(node, now))
         .collect();
 
-    // === Compute Dynamics ===
-    let now = Utc::now();
+    // === Compute Dynamics Thresholds ===
     let lifecycle_thresholds = LifecycleThresholds::default();
     let conflict_thresholds = ConflictThresholds::default();
     let oscillation_thresholds = OscillationThresholds::default();

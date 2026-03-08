@@ -6203,13 +6203,28 @@ mod tests {
 
         // Create 3 children with same narrow horizon
         let c1 = store
-            .create_tension_full("child1", "c1", Some(parent.id.clone()), Some(horizon.clone()))
+            .create_tension_full(
+                "child1",
+                "c1",
+                Some(parent.id.clone()),
+                Some(horizon.clone()),
+            )
             .unwrap();
         let _c2 = store
-            .create_tension_full("child2", "c2", Some(parent.id.clone()), Some(horizon.clone()))
+            .create_tension_full(
+                "child2",
+                "c2",
+                Some(parent.id.clone()),
+                Some(horizon.clone()),
+            )
             .unwrap();
         let _c3 = store
-            .create_tension_full("child3", "c3", Some(parent.id.clone()), Some(horizon.clone()))
+            .create_tension_full(
+                "child3",
+                "c3",
+                Some(parent.id.clone()),
+                Some(horizon.clone()),
+            )
             .unwrap();
 
         let forest = Forest::from_tensions(store.list_tensions().unwrap()).unwrap();
@@ -6288,9 +6303,7 @@ mod tests {
             .unwrap();
 
         // Shift later (March -> May)
-        store
-            .update_horizon(&t.id, Some(horizon2.clone()))
-            .unwrap();
+        store.update_horizon(&t.id, Some(horizon2.clone())).unwrap();
 
         // Shift earlier (May -> February) - direction change = temporal oscillation
         store.update_horizon(&t.id, Some(horizon3.clone())).unwrap();
@@ -6340,8 +6353,13 @@ mod tests {
         let now = Utc::now();
 
         // Recently created tension with distant horizon = Germination
-        let result =
-            classify_creative_cycle_phase(&t, &mutations, &[], &LifecycleThresholds::default(), now);
+        let result = classify_creative_cycle_phase(
+            &t,
+            &mutations,
+            &[],
+            &LifecycleThresholds::default(),
+            now,
+        );
 
         assert_eq!(
             result.phase,
@@ -6377,8 +6395,13 @@ mod tests {
 
         let mutations: Vec<Mutation> = Vec::new();
 
-        let result =
-            classify_creative_cycle_phase(&t, &mutations, &[], &LifecycleThresholds::default(), now);
+        let result = classify_creative_cycle_phase(
+            &t,
+            &mutations,
+            &[],
+            &LifecycleThresholds::default(),
+            now,
+        );
 
         // High urgency (>0.7) with no mutations = NOT Germination (crisis/stagnation)
         assert_ne!(
@@ -6517,8 +6540,7 @@ mod tests {
 
         // The mutation frequencies should be different due to horizon scaling
         assert_ne!(
-            result_wide.mutation_frequency,
-            result_narrow.mutation_frequency,
+            result_wide.mutation_frequency, result_narrow.mutation_frequency,
             "Mutation frequencies should differ due to horizon-relative recency"
         );
     }
@@ -6646,10 +6668,7 @@ mod tests {
 
         // Compute urgency to verify it's high
         let urgency = compute_urgency(&t, now);
-        assert!(
-            urgency.is_some(),
-            "Should have urgency with horizon"
-        );
+        assert!(urgency.is_some(), "Should have urgency with horizon");
         if let Some(u) = urgency {
             assert!(
                 u.value > 0.9,
