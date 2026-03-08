@@ -33,6 +33,9 @@ pub use dynamics::{
     Conflict,
     ConflictPattern,
     ConflictThresholds,
+    // Horizon dynamics
+    HorizonDrift,
+    HorizonDriftType,
     // Lifecycle and orientation
     CreativeCyclePhase,
     CreativeCyclePhaseResult,
@@ -53,11 +56,15 @@ pub use dynamics::{
     StructuralTendency,
     StructuralTendencyResult,
     StructuralTension,
+    Urgency,
     // Functions
     classify_creative_cycle_phase,
     classify_orientation,
     compute_structural_tension,
+    compute_temporal_pressure,
+    compute_urgency,
     detect_compensating_strategy,
+    detect_horizon_drift,
     detect_neglect,
     detect_oscillation,
     detect_resolution,

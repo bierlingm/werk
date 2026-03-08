@@ -39,6 +39,66 @@ pub struct StructuralTension {
     pub magnitude: f64,
     /// Whether the tension has any gap at all.
     pub has_gap: bool,
+    /// Temporal pressure: magnitude scaled by urgency.
+    /// Only present when the tension has a horizon.
+    pub pressure: Option<f64>,
+}
+
+// ============================================================================
+// Horizon Dynamics Types
+// ============================================================================
+
+/// Urgency — the temporal pressure on a tension.
+///
+/// Only computable when a horizon is present. Represents the ratio
+/// of elapsed time to total time window.
+///
+/// - `value = 0.0` → just created, full window ahead
+/// - `value = 0.5` → halfway through the time window
+/// - `value = 1.0` → at the horizon's end
+/// - `value > 1.0` → past the horizon
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Urgency {
+    /// The tension ID this urgency is computed for.
+    pub tension_id: String,
+    /// The urgency value: elapsed / total time window.
+    pub value: f64,
+    /// Seconds remaining until horizon.range_end().
+    pub time_remaining: i64,
+    /// Total seconds from created_at to horizon.range_end().
+    pub total_window: i64,
+}
+
+/// The type of horizon drift pattern detected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HorizonDriftType {
+    /// No horizon changes.
+    Stable,
+    /// Net shift earlier or to higher precision (Year → Month → Day).
+    Tightening,
+    /// Single shift later.
+    Postponement,
+    /// 3+ shifts later.
+    RepeatedPostponement,
+    /// Net shift later or to lower precision (Day → Month → Year).
+    Loosening,
+    /// Back and forth pattern (alternating directions).
+    Oscillating,
+}
+
+/// Horizon drift — pattern of horizon changes over time.
+///
+/// Detected from mutations where field == "horizon".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HorizonDrift {
+    /// The tension ID this drift is computed for.
+    pub tension_id: String,
+    /// The type of drift pattern detected.
+    pub drift_type: HorizonDriftType,
+    /// Number of horizon changes recorded.
+    pub change_count: usize,
+    /// Net shift in seconds (positive = postponed, negative = tightened).
+    pub net_shift_seconds: i64,
 }
 
 /// A detected structural conflict between sibling tensions.
@@ -570,9 +630,13 @@ pub fn compute_structural_tension(tension: &Tension) -> Option<StructuralTension
     // For now, we use a simple metric: the ratio of different content
     let magnitude = compute_gap_magnitude(&tension.desired, &tension.actual);
 
+    // Compute temporal pressure if horizon is present
+    let pressure = compute_temporal_pressure(tension, Utc::now());
+
     Some(StructuralTension {
         magnitude,
         has_gap: true,
+        pressure,
     })
 }
 
@@ -607,6 +671,189 @@ fn compute_gap_magnitude(desired: &str, actual: &str) -> f64 {
 
     // Combined metric: average of length and character ratios
     (length_ratio + char_ratio) / 2.0
+}
+
+// ============================================================================
+// Horizon Dynamics Functions
+// ============================================================================
+
+/// Compute urgency as the ratio of elapsed time to total time window.
+///
+/// Urgency is only computable when a horizon is present. A tension
+/// without a horizon is "outside the urgency frame entirely" — not
+/// "not urgent" but genuinely absent.
+///
+/// # Arguments
+///
+/// * `tension` - The tension to compute urgency for.
+/// * `now` - The current time.
+///
+/// # Returns
+///
+/// `Some(Urgency)` if the tension has a horizon, `None` otherwise.
+pub fn compute_urgency(tension: &Tension, now: DateTime<Utc>) -> Option<Urgency> {
+    let horizon = tension.horizon.as_ref()?;
+
+    let time_elapsed = (now - tension.created_at).num_seconds().max(0);
+    let total_window = (horizon.range_end() - tension.created_at).num_seconds();
+    // Guard against zero/negative total window
+    let total_window_guarded = total_window.max(1);
+
+    let time_remaining = (horizon.range_end() - now).num_seconds().max(0);
+    let value = time_elapsed as f64 / total_window_guarded as f64;
+
+    Some(Urgency {
+        tension_id: tension.id.clone(),
+        value,
+        time_remaining,
+        total_window: total_window_guarded,
+    })
+}
+
+/// Compute temporal pressure as magnitude scaled by urgency.
+///
+/// Temporal pressure represents the force of a structural tension
+/// accounting for both the gap size and the time remaining to close it.
+/// A large gap with plenty of time exerts gentle pressure; the same
+/// gap with imminent deadline exerts enormous pressure.
+///
+/// # Arguments
+///
+/// * `tension` - The tension to compute temporal pressure for.
+/// * `now` - The current time.
+///
+/// # Returns
+///
+/// `Some(f64)` if the tension has both a gap and horizon, `None` otherwise.
+pub fn compute_temporal_pressure(tension: &Tension, now: DateTime<Utc>) -> Option<f64> {
+    let _horizon = tension.horizon.as_ref()?;
+    let urgency = compute_urgency(tension, now)?;
+    let magnitude = compute_gap_magnitude(&tension.desired, &tension.actual);
+
+    // Pressure = magnitude * urgency
+    // When urgency > 1.0 (past horizon), pressure is amplified
+    Some(magnitude * urgency.value)
+}
+
+/// Detect horizon drift pattern from mutation history.
+///
+/// Horizon drift is detected from mutations where field == "horizon".
+/// The pattern reveals how the practitioner's temporal commitment
+/// has evolved over time.
+///
+/// # Arguments
+///
+/// * `tension_id` - The tension to check for drift.
+/// * `mutations` - All mutations for this tension.
+///
+/// # Returns
+///
+/// `HorizonDrift` with the detected pattern.
+pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> HorizonDrift {
+    use crate::Horizon;
+
+    // Filter to horizon mutations only
+    let horizon_mutations: Vec<&Mutation> = mutations
+        .iter()
+        .filter(|m| m.tension_id() == tension_id && m.field() == "horizon")
+        .collect();
+
+    let change_count = horizon_mutations.len();
+
+    // No horizon changes = Stable
+    if change_count == 0 {
+        return HorizonDrift {
+            tension_id: tension_id.to_string(),
+            drift_type: HorizonDriftType::Stable,
+            change_count: 0,
+            net_shift_seconds: 0,
+        };
+    }
+
+    // Parse horizon mutations and compute shifts
+    let mut shifts: Vec<i64> = Vec::new(); // positive = later, negative = earlier
+
+    for mutation in &horizon_mutations {
+        let old_horizon = mutation.old_value().and_then(|s| {
+            if s.is_empty() {
+                None
+            } else {
+                Horizon::parse(s).ok()
+            }
+        });
+        let new_horizon = if mutation.new_value().is_empty() {
+            None
+        } else {
+            Horizon::parse(mutation.new_value()).ok()
+        };
+
+        match (old_horizon, new_horizon) {
+            (None, Some(_new)) => {
+                // Setting horizon for the first time - not a shift
+            }
+            (Some(old), Some(new)) => {
+                // Compute shift: new.range_end - old.range_end
+                let shift = (new.range_end() - old.range_end()).num_seconds();
+                shifts.push(shift);
+            }
+            (Some(_old), None) => {
+                // Clearing horizon - treat as extreme loosening
+                // This is a conceptual "infinity" shift, but we'll skip it for computation
+                // since we can't quantify the shift to "no horizon"
+            }
+            (None, None) => {
+                // Both empty - shouldn't happen but skip
+            }
+        }
+    }
+
+    // Compute net shift
+    let net_shift_seconds: i64 = shifts.iter().sum();
+
+    // Count direction changes for oscillation detection
+    let mut direction_changes = 0;
+    let mut last_positive: Option<bool> = None;
+    for shift in &shifts {
+        let is_positive = *shift >= 0;
+        if let Some(was_positive) = last_positive {
+            if is_positive != was_positive {
+                direction_changes += 1;
+            }
+        }
+        last_positive = Some(is_positive);
+    }
+
+    // Determine drift type
+    let drift_type = if direction_changes >= 2 {
+        // Multiple direction changes = oscillating
+        HorizonDriftType::Oscillating
+    } else if shifts.iter().all(|s| *s > 0) {
+        // All shifts are positive (postponements)
+        if shifts.len() >= 3 {
+            HorizonDriftType::RepeatedPostponement
+        } else {
+            HorizonDriftType::Postponement
+        }
+    } else if shifts.iter().all(|s| *s < 0) {
+        // All shifts are negative (tightening)
+        HorizonDriftType::Tightening
+    } else if net_shift_seconds > 0 {
+        // Net shift is positive (loosening or mixed with net postponement)
+        HorizonDriftType::Loosening
+    } else if net_shift_seconds < 0 {
+        // Net shift is negative (tightening or mixed with net tightening)
+        HorizonDriftType::Tightening
+    } else {
+        // Net zero but with changes (unlikely but possible)
+        HorizonDriftType::Stable
+    };
+
+    HorizonDrift {
+        tension_id: tension_id.to_string(),
+        drift_type,
+        change_count,
+        net_shift_seconds,
+    }
 }
 
 /// Detect structural conflict among sibling tensions.
@@ -2692,6 +2939,7 @@ mod tests {
         let st = StructuralTension {
             magnitude: 1.0,
             has_gap: true,
+            pressure: None,
         };
         let _ = format!("{:?}", st);
         let _ = st.clone();
@@ -2730,6 +2978,7 @@ mod tests {
         let st = StructuralTension {
             magnitude: 1.0,
             has_gap: true,
+            pressure: None,
         };
         let json = serde_json::to_string(&st).unwrap();
         let st2: StructuralTension = serde_json::from_str(&json).unwrap();
@@ -4713,5 +4962,677 @@ mod tests {
         assert!(neg.recency_seconds > 0);
         assert!(neg.activity_ratio_threshold > 1.0);
         assert!(neg.min_active_mutations >= 1);
+    }
+
+    // ============================================================================
+    // Horizon Dynamics Tests (VAL-HDYN-001 through VAL-HDYN-016)
+    // ============================================================================
+
+    // ── Urgency Tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_compute_urgency_none_without_horizon() {
+        // VAL-HDYN-001: compute_urgency returns None for tension without horizon
+        let t = Tension::new("goal", "reality").unwrap();
+        let now = Utc::now();
+        let result = compute_urgency(&t, now);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_compute_urgency_at_zero_percent() {
+        // VAL-HDYN-002: Tension just created with distant horizon: urgency value ~0.0
+        use crate::Horizon;
+        use chrono::{Datelike, TimeZone};
+
+        let now = Utc::now();
+        let h = Horizon::Month(now.year() + 1, 1); // Next year January
+        let t = Tension::new_full("goal", "reality", None, Some(h)).unwrap();
+
+        // Create the tension with created_at at now
+        let t_created = Tension {
+            id: t.id,
+            desired: t.desired,
+            actual: t.actual,
+            parent_id: None,
+            created_at: now,
+            status: TensionStatus::Active,
+            horizon: t.horizon,
+        };
+
+        let result = compute_urgency(&t_created, now).unwrap();
+        assert!((result.value - 0.0).abs() < 0.01, "urgency should be ~0.0, got {}", result.value);
+        assert!(result.time_remaining > 0);
+        assert!(result.total_window > 0);
+        assert_eq!(result.tension_id, t_created.id);
+    }
+
+    #[test]
+    fn test_compute_urgency_at_25_percent() {
+        // Test urgency at 25%
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        // Create a 4-hour horizon
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-25".to_string(),
+            desired: "goal".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // 1 hour in (25% of 4 hours)
+        let now = start + Duration::hours(1);
+        let result = compute_urgency(&t, now).unwrap();
+        assert!((result.value - 0.25).abs() < 0.02, "urgency should be ~0.25, got {}", result.value);
+    }
+
+    #[test]
+    fn test_compute_urgency_at_50_percent() {
+        // VAL-HDYN-003: Urgency at 50%
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        // Create a 2-day horizon
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let end = start + Duration::hours(48);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-50".to_string(),
+            desired: "goal".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // 1 day in (50% of 2 days)
+        let now = start + Duration::hours(24);
+        let result = compute_urgency(&t, now).unwrap();
+        assert!((result.value - 0.5).abs() < 0.02, "urgency should be ~0.5, got {}", result.value);
+    }
+
+    #[test]
+    fn test_compute_urgency_at_75_percent() {
+        // Test urgency at 75%
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        // Create a 4-hour horizon
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-75".to_string(),
+            desired: "goal".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // 3 hours in (75% of 4 hours)
+        let now = start + Duration::hours(3);
+        let result = compute_urgency(&t, now).unwrap();
+        assert!((result.value - 0.75).abs() < 0.02, "urgency should be ~0.75, got {}", result.value);
+    }
+
+    #[test]
+    fn test_compute_urgency_at_100_percent() {
+        // VAL-HDYN-004: Urgency at 100%
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-100".to_string(),
+            desired: "goal".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // At the horizon end
+        let now = end;
+        let result = compute_urgency(&t, now).unwrap();
+        assert!((result.value - 1.0).abs() < 0.02, "urgency should be ~1.0, got {}", result.value);
+    }
+
+    #[test]
+    fn test_compute_urgency_past_horizon_150_percent() {
+        // VAL-HDYN-005: Urgency past horizon > 1.0
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-150".to_string(),
+            desired: "goal".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // 2 hours past the horizon (150% = 6 hours / 4 hours)
+        let now = end + Duration::hours(2);
+        let result = compute_urgency(&t, now).unwrap();
+        assert!(result.value > 1.0, "urgency should be > 1.0, got {}", result.value);
+        assert!((result.value - 1.5).abs() < 0.05, "urgency should be ~1.5, got {}", result.value);
+    }
+
+    #[test]
+    fn test_compute_urgency_struct_fields() {
+        // VAL-HDYN-006: Urgency struct contains tension_id, value, time_remaining, total_window
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-fields".to_string(),
+            desired: "goal".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        let now = start + Duration::hours(1);
+        let result = compute_urgency(&t, now).unwrap();
+
+        // Verify all fields are populated
+        assert_eq!(result.tension_id, "test-fields");
+        assert!(result.value >= 0.0);
+        assert!(result.time_remaining >= 0);
+        assert!(result.total_window > 0);
+    }
+
+    // ── Temporal Pressure Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_compute_temporal_pressure_with_horizon() {
+        // VAL-HDYN-007: pressure = magnitude * urgency
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-pressure".to_string(),
+            desired: "goal xyz abc".to_string(), // Has a gap
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // At 50% urgency
+        let now = start + Duration::hours(2);
+        let pressure = compute_temporal_pressure(&t, now);
+
+        assert!(pressure.is_some());
+        let pressure_val = pressure.unwrap();
+
+        // Verify pressure is magnitude * urgency
+        let urgency = compute_urgency(&t, now).unwrap();
+        let magnitude = compute_gap_magnitude(&t.desired, &t.actual);
+        let expected = magnitude * urgency.value;
+        assert!((pressure_val - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_compute_temporal_pressure_none_without_horizon() {
+        // VAL-HDYN-008: compute_temporal_pressure returns None for tension without horizon
+        let t = Tension::new("goal", "reality").unwrap();
+        let now = Utc::now();
+        let result = compute_temporal_pressure(&t, now);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_compute_temporal_pressure_none_no_gap() {
+        // Pressure should be None when desired == actual (no gap)
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-no-gap".to_string(),
+            desired: "same".to_string(),
+            actual: "same".to_string(), // No gap
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        let now = start + Duration::hours(1);
+        let pressure = compute_temporal_pressure(&t, now);
+
+        // No gap = no magnitude = no pressure (magnitude = 0)
+        assert!(pressure.is_some());
+        assert!((pressure.unwrap() - 0.0).abs() < 0.001);
+    }
+
+    // ── Structural Tension Pressure Field Tests ────────────────────────────
+
+    #[test]
+    fn test_structural_tension_pressure_with_horizon() {
+        // VAL-HDYN-009: StructuralTension.pressure: Some(f64) with horizon
+        use crate::Horizon;
+        use chrono::{Duration, TimeZone};
+
+        let start = Utc.with_ymd_and_hms(2026, 5, 15, 10, 0, 0).unwrap();
+        let end = start + Duration::hours(4);
+        let h = Horizon::DateTime(end);
+
+        let t = Tension {
+            id: "test-st-pressure".to_string(),
+            desired: "goal state".to_string(),
+            actual: "reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        let result = compute_structural_tension(&t);
+        assert!(result.is_some());
+        let st = result.unwrap();
+        assert!(st.pressure.is_some(), "pressure should be Some with horizon");
+        assert!(st.pressure.unwrap() >= 0.0);
+    }
+
+    #[test]
+    fn test_structural_tension_pressure_none_without_horizon() {
+        // VAL-HDYN-016 (partial): pressure = None when no horizon
+        let t = Tension::new("goal state", "reality").unwrap();
+        let result = compute_structural_tension(&t);
+        assert!(result.is_some());
+        let st = result.unwrap();
+        assert!(st.pressure.is_none(), "pressure should be None without horizon");
+    }
+
+    // ── Horizon Drift Tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_detect_horizon_drift_stable() {
+        // VAL-HDYN-010: No horizon mutations: drift_type = Stable, change_count = 0
+        let result = detect_horizon_drift("test-stable", &[]);
+        assert_eq!(result.drift_type, HorizonDriftType::Stable);
+        assert_eq!(result.change_count, 0);
+        assert_eq!(result.net_shift_seconds, 0);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_stable_with_non_horizon_mutations() {
+        // Even with other mutations, if no horizon mutations, it's stable
+        use crate::mutation::Mutation;
+
+        let m1 = Mutation::new(
+            "test-stable".to_string(),
+            Utc::now(),
+            "actual".to_string(),
+            Some("old".to_string()),
+            "new".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-stable", &[m1]);
+        assert_eq!(result.drift_type, HorizonDriftType::Stable);
+        assert_eq!(result.change_count, 0);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_postponement() {
+        // VAL-HDYN-011: Single shift later: drift_type = Postponement
+        use crate::mutation::Mutation;
+
+        // Shift horizon from May to June (later)
+        let m1 = Mutation::new(
+            "test-postpone".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-postpone", &[m1]);
+        assert_eq!(result.drift_type, HorizonDriftType::Postponement);
+        assert_eq!(result.change_count, 1);
+        assert!(result.net_shift_seconds > 0, "postponement should have positive net shift");
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_repeated_postponement() {
+        // VAL-HDYN-012: 3+ shifts later: drift_type = RepeatedPostponement
+        use crate::mutation::Mutation;
+
+        // Shift horizon 3 times, all later
+        let m1 = Mutation::new(
+            "test-rep-postpone".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
+        );
+        let m2 = Mutation::new(
+            "test-rep-postpone".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-08".to_string(),
+        );
+        let m3 = Mutation::new(
+            "test-rep-postpone".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-08".to_string()),
+            "2026-12".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-rep-postpone", &[m1, m2, m3]);
+        assert_eq!(result.drift_type, HorizonDriftType::RepeatedPostponement);
+        assert_eq!(result.change_count, 3);
+        assert!(result.net_shift_seconds > 0);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_tightening() {
+        // VAL-HDYN-013: Shifts earlier or to higher precision: drift_type = Tightening
+        use crate::mutation::Mutation;
+
+        // Shift horizon from June to May (earlier)
+        let m1 = Mutation::new(
+            "test-tighten".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-05".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-tighten", &[m1]);
+        assert_eq!(result.drift_type, HorizonDriftType::Tightening);
+        assert!(result.net_shift_seconds < 0, "tightening should have negative net shift");
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_tightening_to_higher_precision() {
+        // Shift from Year to Month (higher precision = tightening)
+        use crate::mutation::Mutation;
+
+        let m1 = Mutation::new(
+            "test-precision".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026".to_string()),
+            "2026-05".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-precision", &[m1]);
+        assert_eq!(result.drift_type, HorizonDriftType::Tightening);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_loosening() {
+        // VAL-HDYN-014: Shift later or to lower precision: drift_type = Loosening
+        use crate::mutation::Mutation;
+
+        // Shift from Day to Month (lower precision = loosening)
+        let m1 = Mutation::new(
+            "test-loosen".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05-15".to_string()),
+            "2026-06".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-loosen", &[m1]);
+        assert_eq!(result.drift_type, HorizonDriftType::Loosening);
+        assert!(result.net_shift_seconds > 0);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_oscillating() {
+        // VAL-HDYN-015: Alternating direction shifts: drift_type = Oscillating
+        use crate::mutation::Mutation;
+
+        // Shift back and forth
+        let m1 = Mutation::new(
+            "test-oscillate".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(), // Later
+        );
+        let m2 = Mutation::new(
+            "test-oscillate".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-04".to_string(), // Earlier (direction change)
+        );
+        let m3 = Mutation::new(
+            "test-oscillate".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-04".to_string()),
+            "2026-07".to_string(), // Later again (another direction change)
+        );
+
+        let result = detect_horizon_drift("test-oscillate", &[m1, m2, m3]);
+        assert_eq!(result.drift_type, HorizonDriftType::Oscillating);
+        assert_eq!(result.change_count, 3);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_oscillating_two_direction_changes() {
+        // Need at least 2 direction changes for oscillation
+        use crate::mutation::Mutation;
+
+        let m1 = Mutation::new(
+            "test-osc2".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-08".to_string(), // Later
+        );
+        let m2 = Mutation::new(
+            "test-osc2".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-08".to_string()),
+            "2026-03".to_string(), // Earlier (direction change 1)
+        );
+        let m3 = Mutation::new(
+            "test-osc2".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-03".to_string()),
+            "2026-09".to_string(), // Later (direction change 2)
+        );
+
+        let result = detect_horizon_drift("test-osc2", &[m1, m2, m3]);
+        assert_eq!(result.drift_type, HorizonDriftType::Oscillating);
+    }
+
+    #[test]
+    fn test_detect_horizon_drift_two_shifts_later_is_postponement() {
+        // Only 2 shifts later = Postponement, not RepeatedPostponement (needs 3+)
+        use crate::mutation::Mutation;
+
+        let m1 = Mutation::new(
+            "test-two".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
+        );
+        let m2 = Mutation::new(
+            "test-two".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-08".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-two", &[m1, m2]);
+        assert_eq!(result.drift_type, HorizonDriftType::Postponement);
+        assert_eq!(result.change_count, 2);
+    }
+
+    #[test]
+    fn test_horizon_drift_struct_fields() {
+        use crate::mutation::Mutation;
+
+        let m1 = Mutation::new(
+            "test-fields".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
+        );
+
+        let result = detect_horizon_drift("test-fields", &[m1]);
+
+        assert_eq!(result.tension_id, "test-fields");
+        assert!(result.change_count > 0);
+        // net_shift_seconds should be computed
+    }
+
+    // ── Urgency and HorizonDrift Types Trait Tests ─────────────────────────
+
+    #[test]
+    fn test_urgency_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Urgency>();
+        assert_send_sync::<HorizonDrift>();
+        assert_send_sync::<HorizonDriftType>();
+    }
+
+    #[test]
+    fn test_urgency_is_debug_clone() {
+        let u = Urgency {
+            tension_id: "test".to_string(),
+            value: 0.5,
+            time_remaining: 3600,
+            total_window: 7200,
+        };
+        let _ = format!("{:?}", u);
+        let u2 = u.clone();
+        assert_eq!(u, u2);
+
+        let hd = HorizonDrift {
+            tension_id: "test".to_string(),
+            drift_type: HorizonDriftType::Stable,
+            change_count: 0,
+            net_shift_seconds: 0,
+        };
+        let _ = format!("{:?}", hd);
+        let hd2 = hd.clone();
+        assert_eq!(hd, hd2);
+
+        for dt in [
+            HorizonDriftType::Stable,
+            HorizonDriftType::Tightening,
+            HorizonDriftType::Postponement,
+            HorizonDriftType::RepeatedPostponement,
+            HorizonDriftType::Loosening,
+            HorizonDriftType::Oscillating,
+        ] {
+            let _ = format!("{:?}", dt);
+            let dt2 = dt.clone();
+            assert_eq!(dt, dt2);
+        }
+    }
+
+    #[test]
+    fn test_urgency_serializes_deserializes() {
+        let u = Urgency {
+            tension_id: "test-123".to_string(),
+            value: 0.75,
+            time_remaining: 1800,
+            total_window: 7200,
+        };
+        let json = serde_json::to_string(&u).unwrap();
+        let u2: Urgency = serde_json::from_str(&json).unwrap();
+        assert_eq!(u, u2);
+
+        let hd = HorizonDrift {
+            tension_id: "test-456".to_string(),
+            drift_type: HorizonDriftType::RepeatedPostponement,
+            change_count: 5,
+            net_shift_seconds: 12345,
+        };
+        let json = serde_json::to_string(&hd).unwrap();
+        let hd2: HorizonDrift = serde_json::from_str(&json).unwrap();
+        assert_eq!(hd, hd2);
+
+        // Test all drift types serialize
+        for dt in [
+            HorizonDriftType::Stable,
+            HorizonDriftType::Tightening,
+            HorizonDriftType::Postponement,
+            HorizonDriftType::RepeatedPostponement,
+            HorizonDriftType::Loosening,
+            HorizonDriftType::Oscillating,
+        ] {
+            let json = serde_json::to_string(&dt).unwrap();
+            let dt2: HorizonDriftType = serde_json::from_str(&json).unwrap();
+            assert_eq!(dt, dt2);
+        }
+    }
+
+    #[test]
+    fn test_structural_tension_pressure_serializes() {
+        // Test that pressure field serializes correctly
+        let st_with_pressure = StructuralTension {
+            magnitude: 0.5,
+            has_gap: true,
+            pressure: Some(0.25),
+        };
+        let json = serde_json::to_string(&st_with_pressure).unwrap();
+        let st2: StructuralTension = serde_json::from_str(&json).unwrap();
+        assert_eq!(st_with_pressure, st2);
+        assert_eq!(st2.pressure, Some(0.25));
+
+        let st_no_pressure = StructuralTension {
+            magnitude: 0.5,
+            has_gap: true,
+            pressure: None,
+        };
+        let json = serde_json::to_string(&st_no_pressure).unwrap();
+        let st2: StructuralTension = serde_json::from_str(&json).unwrap();
+        assert_eq!(st_no_pressure, st2);
+        assert_eq!(st2.pressure, None);
     }
 }
