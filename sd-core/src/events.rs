@@ -214,6 +214,18 @@ pub enum Event {
         /// When detected.
         timestamp: DateTime<Utc>,
     },
+
+    /// Temporal horizon was changed.
+    HorizonChanged {
+        /// ULID of the tension.
+        tension_id: String,
+        /// Previous horizon (ISO-8601 string).
+        old_horizon: Option<String>,
+        /// New horizon (ISO-8601 string).
+        new_horizon: Option<String>,
+        /// When change occurred.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 impl Event {
@@ -234,6 +246,7 @@ impl Event {
             Event::NeglectDetected { .. } => None,
             Event::StructureChanged { tension_id, .. } => Some(tension_id),
             Event::OrientationShift { .. } => None,
+            Event::HorizonChanged { tension_id, .. } => Some(tension_id),
         }
     }
 
@@ -254,6 +267,7 @@ impl Event {
             Event::NeglectDetected { timestamp, .. } => *timestamp,
             Event::StructureChanged { timestamp, .. } => *timestamp,
             Event::OrientationShift { timestamp, .. } => *timestamp,
+            Event::HorizonChanged { timestamp, .. } => *timestamp,
         }
     }
 }
@@ -559,6 +573,20 @@ impl EventBuilder {
             tension_ids,
             old_orientation,
             new_orientation,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build a HorizonChanged event.
+    pub fn horizon_changed(
+        tension_id: String,
+        old_horizon: Option<String>,
+        new_horizon: Option<String>,
+    ) -> Event {
+        Event::HorizonChanged {
+            tension_id,
+            old_horizon,
+            new_horizon,
             timestamp: Utc::now(),
         }
     }

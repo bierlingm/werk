@@ -19,7 +19,8 @@
 //!     actual TEXT NOT NULL,
 //!     parent_id TEXT,
 //!     created_at TEXT NOT NULL,
-//!     status TEXT NOT NULL
+//!     status TEXT NOT NULL,
+//!     horizon TEXT
 //! );
 //!
 //! CREATE TABLE mutations (
@@ -40,6 +41,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::events::{Event, EventBuilder, EventBus};
+use crate::horizon::Horizon;
 use crate::mutation::Mutation;
 use crate::tension::{SdError, Tension, TensionStatus};
 
@@ -178,7 +180,8 @@ impl Store {
                 actual TEXT NOT NULL,
                 parent_id TEXT,
                 created_at TEXT NOT NULL,
-                status TEXT NOT NULL
+                status TEXT NOT NULL,
+                horizon TEXT
             )",
         )
         .map_err(|e| {
@@ -199,31 +202,82 @@ impl Store {
             StoreError::DatabaseError(format!("failed to create mutations table: {:?}", e))
         })?;
 
+        // Migration: Add horizon column to existing databases
+        // Check if the column exists, and if not, add it
+        let columns: Vec<fsqlite::Row> =
+            conn.query("PRAGMA table_info(tensions)").map_err(|e| {
+                StoreError::DatabaseError(format!("failed to query table schema: {:?}", e))
+            })?;
+
+        let has_horizon = columns.iter().any(|row| {
+            // PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+            // Column 1 is the name
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "horizon"
+            } else {
+                false
+            }
+        });
+
+        if !has_horizon {
+            conn.execute("ALTER TABLE tensions ADD COLUMN horizon TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add horizon column: {:?}", e))
+                })?;
+        }
+
         Ok(())
     }
 
     /// Create a new tension and persist it.
     ///
     /// Generates a ULID id, persists the tension, and records a "created" mutation.
+    /// The horizon defaults to None.
     pub fn create_tension(&self, desired: &str, actual: &str) -> Result<Tension, SdError> {
         self.create_tension_with_parent(desired, actual, None)
     }
 
     /// Create a new tension with a parent reference.
+    ///
+    /// The horizon defaults to None.
     pub fn create_tension_with_parent(
         &self,
         desired: &str,
         actual: &str,
         parent_id: Option<String>,
     ) -> Result<Tension, SdError> {
-        let tension = Tension::new_with_parent(desired, actual, parent_id)?;
+        self.create_tension_full(desired, actual, parent_id, None)
+    }
+
+    /// Create a new tension with all optional fields including horizon.
+    ///
+    /// Generates a ULID id, persists the tension, and records a "created" mutation.
+    /// The creation mutation includes horizon if present.
+    pub fn create_tension_full(
+        &self,
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+    ) -> Result<Tension, SdError> {
+        let tension = Tension::new_full(desired, actual, parent_id, horizon)?;
         self.persist_tension(&tension)?;
+
+        // Build creation mutation value with optional horizon
+        let creation_value = match &tension.horizon {
+            Some(h) => format!(
+                "desired='{}';actual='{}';horizon='{}'",
+                tension.desired, tension.actual, h
+            ),
+            None => format!("desired='{}';actual='{}'", tension.desired, tension.actual),
+        };
+
         self.record_mutation(&Mutation::new(
             tension.id.clone(),
             tension.created_at,
             "created".to_owned(),
             None,
-            format!("desired='{}';actual='{}'", tension.desired, tension.actual),
+            creation_value,
         ))?;
 
         // Emit TensionCreated event
@@ -240,7 +294,7 @@ impl Store {
     fn persist_tension(&self, tension: &Tension) -> Result<(), SdError> {
         let conn = self.conn.borrow();
         conn.execute_with_params(
-            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[
                 SqliteValue::Text(tension.id.clone()),
                 SqliteValue::Text(tension.desired.clone()),
@@ -251,6 +305,10 @@ impl Store {
                 },
                 SqliteValue::Text(tension.created_at.to_rfc3339()),
                 SqliteValue::Text(tension.status.to_string()),
+                match &tension.horizon {
+                    Some(h) => SqliteValue::Text(h.to_string()),
+                    None => SqliteValue::Null,
+                },
             ],
         )
         .map_err(|e| SdError::ValidationError(format!("failed to persist tension: {:?}", e)))?;
@@ -287,7 +345,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status FROM tensions WHERE id = ?1",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions WHERE id = ?1",
                 &[SqliteValue::Text(id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -358,6 +416,20 @@ impl Store {
             }
         };
 
+        // Parse horizon column
+        let horizon = match row.get(6) {
+            Some(SqliteValue::Text(s)) if !s.is_empty() => Some(
+                Horizon::parse(s)
+                    .map_err(|e| StoreError::DatabaseError(format!("invalid horizon: {}", e)))?,
+            ),
+            Some(SqliteValue::Text(_)) | Some(SqliteValue::Null) | None => None,
+            _ => {
+                return Err(StoreError::DatabaseError(
+                    "invalid horizon column".to_owned(),
+                ));
+            }
+        };
+
         Ok(Some(Tension {
             id,
             desired,
@@ -365,7 +437,7 @@ impl Store {
             parent_id,
             created_at,
             status,
-            horizon: None, // H4 will add database column and parsing
+            horizon,
         }))
     }
 
@@ -373,7 +445,7 @@ impl Store {
     pub fn list_tensions(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status FROM tensions ORDER BY created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions ORDER BY created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -383,7 +455,7 @@ impl Store {
     pub fn get_roots(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status FROM tensions WHERE parent_id IS NULL ORDER BY created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions WHERE parent_id IS NULL ORDER BY created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -394,7 +466,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status FROM tensions WHERE parent_id = ?1 ORDER BY created_at ASC",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions WHERE parent_id = ?1 ORDER BY created_at ASC",
                 &[SqliteValue::Text(parent_id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -466,6 +538,21 @@ impl Store {
                 }
             };
 
+            // Parse horizon column (column 6)
+            let horizon = match row.get(6) {
+                Some(SqliteValue::Text(s)) if !s.is_empty() => {
+                    Some(Horizon::parse(s).map_err(|e| {
+                        StoreError::DatabaseError(format!("invalid horizon: {}", e))
+                    })?)
+                }
+                Some(SqliteValue::Text(_)) | Some(SqliteValue::Null) | None => None,
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid horizon column".to_owned(),
+                    ));
+                }
+            };
+
             tensions.push(Tension {
                 id,
                 desired,
@@ -473,7 +560,7 @@ impl Store {
                 parent_id,
                 created_at,
                 status,
-                horizon: None, // H4 will add database column and parsing
+                horizon,
             });
         }
 
@@ -583,6 +670,78 @@ impl Store {
         // Emit StructureChanged event
         self.emit_event(&EventBuilder::structure_changed(
             tension.id, old_parent, new_parent,
+        ));
+
+        Ok(())
+    }
+
+    /// Update the temporal horizon of a tension.
+    ///
+    /// Validates that the tension is Active, persists the change, records a mutation,
+    /// and emits a HorizonChanged event.
+    ///
+    /// Returns an error if:
+    /// - The tension doesn't exist
+    /// - The tension is not Active (Resolved or Released)
+    ///
+    /// The new_horizon can be None to clear the horizon.
+    pub fn update_horizon(&self, id: &str, new_horizon: Option<Horizon>) -> Result<(), SdError> {
+        let mut tension = self
+            .get_tension(id)
+            .map_err(|e| SdError::ValidationError(e.to_string()))?
+            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+
+        // Validate that the tension is Active
+        if tension.status != TensionStatus::Active {
+            return Err(SdError::UpdateOnInactiveTension(tension.status));
+        }
+
+        let old_horizon = tension.horizon.clone();
+        tension.horizon = new_horizon.clone();
+
+        // Persist in transaction
+        {
+            let conn = self.conn.borrow();
+            conn.execute("BEGIN;").map_err(|e| {
+                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+            })?;
+
+            let result = self
+                .update_tension_in_transaction(&conn, &tension)
+                .and_then(|_| {
+                    self.record_mutation_in_transaction(
+                        &conn,
+                        &Mutation::new(
+                            tension.id.clone(),
+                            Utc::now(),
+                            "horizon".to_owned(),
+                            old_horizon.as_ref().map(|h| h.to_string()),
+                            new_horizon
+                                .as_ref()
+                                .map(|h| h.to_string())
+                                .unwrap_or_default(),
+                        ),
+                    )
+                });
+
+            match result {
+                Ok(_) => {
+                    conn.execute("COMMIT;").map_err(|e| {
+                        SdError::ValidationError(format!("failed to commit: {:?}", e))
+                    })?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(e);
+                }
+            }
+        }
+
+        // Emit HorizonChanged event
+        self.emit_event(&EventBuilder::horizon_changed(
+            tension.id,
+            old_horizon.as_ref().map(|h| h.to_string()),
+            new_horizon.as_ref().map(|h| h.to_string()),
         ));
 
         Ok(())
@@ -809,7 +968,7 @@ impl Store {
         tension: &Tension,
     ) -> Result<(), SdError> {
         conn.execute_with_params(
-            "UPDATE tensions SET desired = ?1, actual = ?2, parent_id = ?3, status = ?4 WHERE id = ?5",
+            "UPDATE tensions SET desired = ?1, actual = ?2, parent_id = ?3, status = ?4, horizon = ?5 WHERE id = ?6",
             &[
                 SqliteValue::Text(tension.desired.clone()),
                 SqliteValue::Text(tension.actual.clone()),
@@ -818,6 +977,10 @@ impl Store {
                     None => SqliteValue::Null,
                 },
                 SqliteValue::Text(tension.status.to_string()),
+                match &tension.horizon {
+                    Some(h) => SqliteValue::Text(h.to_string()),
+                    None => SqliteValue::Null,
+                },
                 SqliteValue::Text(tension.id.clone()),
             ],
         )
@@ -1723,6 +1886,7 @@ mod tests {
         assert!(columns.contains(&"parent_id".to_owned()));
         assert!(columns.contains(&"created_at".to_owned()));
         assert!(columns.contains(&"status".to_owned()));
+        assert!(columns.contains(&"horizon".to_owned()));
     }
 
     #[test]
@@ -2375,5 +2539,345 @@ mod tests {
         store.delete_tension(&t.id).unwrap();
 
         assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    // ── Horizon Tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_create_tension_full_with_horizon_year() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Year(2026);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        assert_eq!(t.horizon, Some(h.clone()));
+
+        // Retrieve and verify
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_create_tension_full_with_horizon_month() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Month(2026, 5);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        assert_eq!(t.horizon, Some(h.clone()));
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_create_tension_full_with_horizon_day() {
+        use chrono::NaiveDate;
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Day(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap());
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        assert_eq!(t.horizon, Some(h.clone()));
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_create_tension_full_with_horizon_datetime() {
+        use chrono::{TimeZone, Utc};
+        let store = Store::new_in_memory().unwrap();
+        let dt = Utc.with_ymd_and_hms(2026, 5, 15, 14, 30, 0).unwrap();
+        let h = Horizon::DateTime(dt);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        assert_eq!(t.horizon, Some(h.clone()));
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_create_tension_full_without_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store
+            .create_tension_full("goal", "reality", None, None)
+            .unwrap();
+
+        assert!(t.horizon.is_none());
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert!(retrieved.horizon.is_none());
+    }
+
+    #[test]
+    fn test_create_tension_full_with_parent_and_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Month(2026, 5);
+        let parent = store.create_tension("parent", "p").unwrap();
+
+        let t = store
+            .create_tension_full("child", "c", Some(parent.id.clone()), Some(h.clone()))
+            .unwrap();
+
+        assert_eq!(t.parent_id, Some(parent.id));
+        assert_eq!(t.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_create_tension_full_records_mutation_with_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Month(2026, 5);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 1);
+        assert_eq!(mutations[0].field(), "created");
+        assert!(mutations[0].new_value().contains("horizon='2026-05'"));
+    }
+
+    #[test]
+    fn test_create_tension_full_records_mutation_without_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store
+            .create_tension_full("goal", "reality", None, None)
+            .unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 1);
+        assert_eq!(mutations[0].field(), "created");
+        // Should NOT contain horizon field
+        assert!(!mutations[0].new_value().contains("horizon"));
+    }
+
+    #[test]
+    fn test_update_horizon_on_active() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let h = Horizon::Month(2026, 5);
+        store.update_horizon(&t.id, Some(h.clone())).unwrap();
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(h));
+    }
+
+    #[test]
+    fn test_update_horizon_records_mutation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let h = Horizon::Month(2026, 5);
+        store.update_horizon(&t.id, Some(h.clone())).unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2); // created + horizon
+        assert_eq!(mutations[1].field(), "horizon");
+        assert!(mutations[1].old_value().is_none());
+        assert_eq!(mutations[1].new_value(), "2026-05");
+    }
+
+    #[test]
+    fn test_update_horizon_on_resolved_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+
+        let h = Horizon::Month(2026, 5);
+        let result = store.update_horizon(&t.id, Some(h));
+        assert!(result.is_err());
+
+        // Horizon should still be None
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert!(retrieved.horizon.is_none());
+
+        // No horizon mutation recorded
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2); // created + status
+        assert_eq!(mutations[1].field(), "status");
+    }
+
+    #[test]
+    fn test_update_horizon_on_released_fails() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_status(&t.id, TensionStatus::Released).unwrap();
+
+        let h = Horizon::Month(2026, 5);
+        let result = store.update_horizon(&t.id, Some(h));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_horizon_clear_to_none() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Month(2026, 5);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+
+        store.update_horizon(&t.id, None).unwrap();
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert!(retrieved.horizon.is_none());
+
+        // Check mutation recorded
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2);
+        assert_eq!(mutations[1].field(), "horizon");
+        assert_eq!(mutations[1].old_value(), Some("2026-05"));
+        assert_eq!(mutations[1].new_value(), ""); // Empty string = None
+    }
+
+    #[test]
+    fn test_update_horizon_change_value() {
+        let store = Store::new_in_memory().unwrap();
+        let h1 = Horizon::Year(2026);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h1.clone()))
+            .unwrap();
+
+        let h2 = Horizon::Month(2026, 5);
+        store.update_horizon(&t.id, Some(h2.clone())).unwrap();
+
+        let retrieved = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(retrieved.horizon, Some(h2));
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        assert_eq!(mutations.len(), 2);
+        assert_eq!(mutations[1].field(), "horizon");
+        assert_eq!(mutations[1].old_value(), Some("2026"));
+        assert_eq!(mutations[1].new_value(), "2026-05");
+    }
+
+    #[test]
+    fn test_list_tensions_returns_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let h1 = Horizon::Year(2026);
+        let _t1 = store
+            .create_tension_full("goal1", "reality1", None, Some(h1.clone()))
+            .unwrap();
+        let _t2 = store.create_tension("goal2", "reality2").unwrap();
+
+        let tensions = store.list_tensions().unwrap();
+        assert_eq!(tensions.len(), 2);
+        assert_eq!(tensions[0].horizon, Some(h1));
+        assert!(tensions[1].horizon.is_none());
+    }
+
+    #[test]
+    fn test_get_roots_returns_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Month(2026, 5);
+        let _root = store
+            .create_tension_full("root", "r", None, Some(h.clone()))
+            .unwrap();
+
+        let roots = store.get_roots().unwrap();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].horizon, Some(h));
+    }
+
+    #[test]
+    fn test_get_children_returns_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store.create_tension("parent", "p").unwrap();
+        let h = Horizon::Day(chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap());
+        let _child = store
+            .create_tension_full("child", "c", Some(parent.id.clone()), Some(h.clone()))
+            .unwrap();
+
+        let children = store.get_children(&parent.id).unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].horizon, Some(h));
+    }
+
+    #[test]
+    fn test_update_horizon_emits_event() {
+        use crate::events::EventBus;
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let count = Arc::new(AtomicUsize::new(0));
+
+        let c = count.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if matches!(ev, crate::events::Event::HorizonChanged { .. }) {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let t = store.create_tension("goal", "reality").unwrap();
+        let h = Horizon::Month(2026, 5);
+        store.update_horizon(&t.id, Some(h)).unwrap();
+
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_update_horizon_clear_emits_event_with_none() {
+        use crate::events::{Event, EventBus};
+
+        let mut store = Store::new_in_memory().unwrap();
+        let bus = EventBus::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+
+        let e = events.clone();
+        let _handle = bus.subscribe(move |ev| {
+            if let Event::HorizonChanged { .. } = ev {
+                e.lock().unwrap().push(ev.clone());
+            }
+        });
+
+        store.set_event_bus(bus);
+
+        let h = Horizon::Year(2026);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+        store.update_horizon(&t.id, None).unwrap();
+
+        let evts = events.lock().unwrap();
+        assert_eq!(evts.len(), 1);
+        if let Event::HorizonChanged {
+            old_horizon,
+            new_horizon,
+            ..
+        } = &evts[0]
+        {
+            assert_eq!(old_horizon, &Some("2026".to_owned()));
+            assert_eq!(new_horizon, &None);
+        } else {
+            panic!("expected HorizonChanged event");
+        }
+    }
+
+    #[test]
+    fn test_replay_matches_direct_query_with_horizon() {
+        let store = Store::new_in_memory().unwrap();
+        let h = Horizon::Month(2026, 5);
+        let t = store
+            .create_tension_full("goal", "reality", None, Some(h.clone()))
+            .unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        let new_h = Horizon::Year(2027);
+        store.update_horizon(&t.id, Some(new_h.clone())).unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        let reconstructed = crate::mutation::replay_mutations(&mutations).unwrap();
+        let direct = store.get_tension(&t.id).unwrap().unwrap();
+
+        assert_eq!(reconstructed.horizon, direct.horizon);
+        assert_eq!(reconstructed.horizon, Some(new_h));
     }
 }
