@@ -42,13 +42,5 @@
   "blockedAssertions": [],
   "appliedUpdates": [],
   "previousRound": null,
-  "generatedAt": "2026-03-08T09:25:37.704442+00:00",
-  "flows": [
-    "/Users/moritzbierling/werk/desk/werk/.factory/validation/horizon-cli/user-testing/flows/group-a-add-variants.json",
-    "/Users/moritzbierling/werk/desk/werk/.factory/validation/horizon-cli/user-testing/flows/group-b-horizon-command.json",
-    "/Users/moritzbierling/werk/desk/werk/.factory/validation/horizon-cli/user-testing/flows/group-c-show-verbose.json",
-    "/Users/moritzbierling/werk/desk/werk/.factory/validation/horizon-cli/user-testing/flows/group-d-tree.json",
-    "/Users/moritzbierling/werk/desk/werk/.factory/validation/horizon-cli/user-testing/flows/group-e-context.json",
-    "/Users/moritzbierling/werk/desk/werk/.factory/validation/horizon-cli/user-testing/flows/group-f-errors.json"
-  ]
+  "generatedAt": "2026-03-08T09:28:55.578084+00:00"
 }
