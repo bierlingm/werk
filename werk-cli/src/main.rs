@@ -2085,6 +2085,7 @@ fn cmd_tree(
         status: String,
         parent_id: Option<String>,
         created_at: String,
+        horizon: Option<String>,
         phase: String,
         movement: String,
         has_conflict: bool,
@@ -2247,6 +2248,7 @@ fn cmd_tree(
                     status: t.status.to_string(),
                     parent_id: t.parent_id.clone(),
                     created_at: t.created_at.to_rfc3339(),
+                    horizon: t.horizon.as_ref().map(|h| h.to_string()),
                     phase: phase.replace("[", "").replace("]", ""),
                     movement: movement.to_string(),
                     has_conflict,
@@ -2449,11 +2451,12 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     use chrono::Utc;
     use sd_core::{
         classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        detect_compensating_strategy, detect_neglect, detect_oscillation, detect_resolution,
-        detect_structural_conflict, measure_assimilation_depth, predict_structural_tendency,
-        AssimilationDepthThresholds, CompensatingStrategyThresholds, ConflictThresholds,
-        CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, NeglectThresholds,
-        OrientationThresholds, OscillationThresholds, ResolutionThresholds, TensionStatus,
+        compute_urgency, detect_compensating_strategy, detect_horizon_drift, detect_neglect,
+        detect_oscillation, detect_resolution, detect_structural_conflict,
+        measure_assimilation_depth, predict_structural_tendency, AssimilationDepthThresholds,
+        CompensatingStrategyThresholds, ConflictThresholds, CreativeCyclePhase, Forest,
+        Horizon, LifecycleThresholds, NeglectThresholds, OrientationThresholds,
+        OscillationThresholds, ResolutionThresholds, TensionStatus,
     };
     use serde::Serialize;
     use werk::workspace::Workspace;
@@ -2478,6 +2481,17 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         status: String,
         created_at: String,
         parent_id: Option<String>,
+        horizon: Option<String>,
+        horizon_range: Option<HorizonRangeJson>,
+        urgency: Option<f64>,
+        pressure: Option<f64>,
+        staleness_ratio: Option<f64>,
+    }
+
+    #[derive(Serialize)]
+    struct HorizonRangeJson {
+        start: String,
+        end: String,
     }
 
     /// All 10 dynamics in JSON format.
