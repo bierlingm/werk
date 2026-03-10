@@ -20,6 +20,8 @@ pub mod tension;
 pub mod tree;
 
 // Re-export commonly used types for convenience
+#[allow(deprecated)]
+pub use dynamics::predict_structural_tendency_default;
 pub use dynamics::{
     // Secondary dynamics
     AssimilationDepth,

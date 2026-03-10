@@ -805,11 +805,25 @@ fn jaccard_token_distance(a: &str, b: &str) -> f64 {
 // Horizon Dynamics Helper Functions
 // ============================================================================
 
+/// Reference base for horizon scaling (1 week in seconds).
+///
+/// When scaling thresholds by horizon width, this constant defines the baseline
+/// such that `effective_recency(HORIZON_SCALE_REFERENCE_BASE, Some(horizon), now)`
+/// returns approximately 10% of the horizon width. Other input values scale
+/// proportionally, preserving ratios between different thresholds.
+const HORIZON_SCALE_REFERENCE_BASE: f64 = 604_800.0; // 7 * 24 * 3600
+
 /// Compute effective recency window scaled to horizon width.
 ///
 /// When horizon is None, returns the absolute_recency unchanged (backward compatible).
-/// When horizon is present, scales the recency window to approximately 10% of the
-/// horizon width, making "recent" proportional to the tension's temporal scale.
+/// When horizon is present, scales the absolute_recency proportionally to the horizon
+/// width. The scaling preserves the ratio between different input thresholds: if
+/// burst_threshold (3600s) and stagnation_threshold (86400s) differ by 24×, their
+/// scaled outputs will also differ by 24×.
+///
+/// The formula is: `(absolute_recency * horizon_width * 0.1 / REFERENCE_BASE).max(1)`
+/// where REFERENCE_BASE is 604800 (1 week). This means the standard 1-week recency
+/// window maps to exactly 10% of horizon width, while other values scale proportionally.
 ///
 /// For DateTime horizons (width=0), returns a minimal window (1 second) to avoid
 /// division by zero and ensure safe computation.
@@ -838,9 +852,11 @@ pub fn effective_recency(
                 // This makes everything "recent" relative to an instant
                 return 1;
             }
-            // Scale to approximately 10% of horizon width
-            // This ensures "recent" is proportional to the temporal scale
-            let scaled = (horizon_width as f64 * 0.1) as i64;
+            // Scale absolute_recency proportionally to horizon width.
+            // horizon_scale = horizon_width * 0.1 / REFERENCE_BASE
+            // This preserves ratios: different inputs produce different outputs.
+            let horizon_scale = (horizon_width as f64) * 0.1 / HORIZON_SCALE_REFERENCE_BASE;
+            let scaled = (absolute_recency as f64 * horizon_scale) as i64;
             // Ensure we have at least a minimal window
             scaled.max(1)
         }
@@ -2175,6 +2191,29 @@ pub fn predict_structural_tendency(
         tension_magnitude,
         has_conflict: false,
     }
+}
+
+/// Backward-compatible 3-argument wrapper for [`predict_structural_tendency`].
+///
+/// This is a convenience function that calls the full 4-argument version with
+/// `tendency_thresholds` set to `None` (using defaults). Provided for backward
+/// compatibility after the 4th parameter was added.
+///
+/// # Arguments
+///
+/// * `tension` - The tension to predict tendency for.
+/// * `has_conflict` - Whether structural conflict is detected.
+/// * `now` - Optional current time for urgency computation.
+#[deprecated(
+    since = "0.3.0",
+    note = "Use predict_structural_tendency with explicit tendency_thresholds parameter instead"
+)]
+pub fn predict_structural_tendency_default(
+    tension: &Tension,
+    has_conflict: bool,
+    now: Option<DateTime<Utc>>,
+) -> StructuralTendencyResult {
+    predict_structural_tendency(tension, has_conflict, now, None)
 }
 
 /// Measure the assimilation depth for a tension.
@@ -5017,6 +5056,39 @@ mod tests {
         assert!(!result.has_conflict); // No tension, so conflict doesn't apply
     }
 
+    /// predict_structural_tendency_default (3-arg) produces same results as
+    /// calling predict_structural_tendency with None for tendency_thresholds.
+    #[test]
+    #[allow(deprecated)]
+    fn test_predict_structural_tendency_default_backward_compat() {
+        let t = Tension::new("goal", "reality").unwrap();
+
+        // 3-arg wrapper should produce identical results to 4-arg with None
+        let result_3arg = predict_structural_tendency_default(&t, true, None);
+        let result_4arg = predict_structural_tendency(&t, true, None, None);
+
+        assert_eq!(result_3arg.tendency, result_4arg.tendency);
+        assert_eq!(result_3arg.has_conflict, result_4arg.has_conflict);
+        assert_eq!(result_3arg.tension_magnitude, result_4arg.tension_magnitude);
+
+        // Also test without conflict
+        let result_3arg_nc = predict_structural_tendency_default(&t, false, None);
+        let result_4arg_nc = predict_structural_tendency(&t, false, None, None);
+
+        assert_eq!(result_3arg_nc.tendency, result_4arg_nc.tendency);
+        assert_eq!(result_3arg_nc.has_conflict, result_4arg_nc.has_conflict);
+    }
+
+    /// predict_structural_tendency_default works with stagnant case too.
+    #[test]
+    #[allow(deprecated)]
+    fn test_predict_structural_tendency_default_stagnant() {
+        let t = Tension::new("same", "same").unwrap();
+
+        let result = predict_structural_tendency_default(&t, false, None);
+        assert_eq!(result.tendency, StructuralTendency::Stagnant);
+    }
+
     // ============================================================================
     // Assimilation Depth Tests (VAL-DYN-017)
     // ============================================================================
@@ -7029,6 +7101,96 @@ mod tests {
         );
     }
 
+    /// Different absolute_recency inputs produce different outputs when horizon is present.
+    /// This is the key invariant: burst_threshold_seconds (3600s) and
+    /// stagnation_threshold_seconds (86400s) must NOT collapse to the same value.
+    #[test]
+    fn test_effective_recency_preserves_ratio_between_inputs() {
+        use crate::Horizon;
+
+        let horizon = Horizon::new_year(2026).unwrap();
+        let now = Utc::now();
+
+        let burst_result = effective_recency(3600, Some(&horizon), now); // 1 hour
+        let stagnation_result = effective_recency(86400, Some(&horizon), now); // 1 day
+
+        // Key assertion: different inputs produce different outputs
+        assert_ne!(
+            burst_result, stagnation_result,
+            "Different absolute_recency inputs must produce different scaled outputs. \
+             burst={}, stagnation={}",
+            burst_result, stagnation_result
+        );
+
+        // The ratio should be preserved: stagnation / burst ≈ 86400 / 3600 = 24
+        let ratio = stagnation_result as f64 / burst_result as f64;
+        assert!(
+            (ratio - 24.0).abs() < 1.0,
+            "Ratio between scaled outputs should be ~24 (got {})",
+            ratio
+        );
+
+        // Both should be positive
+        assert!(burst_result > 0, "Burst result must be positive");
+        assert!(stagnation_result > 0, "Stagnation result must be positive");
+    }
+
+    /// Different inputs produce different outputs with Month horizon too.
+    #[test]
+    fn test_effective_recency_different_inputs_month_horizon() {
+        use crate::Horizon;
+
+        let horizon = Horizon::new_month(2026, 6).unwrap();
+        let now = Utc::now();
+
+        let small = effective_recency(3600, Some(&horizon), now); // 1 hour
+        let medium = effective_recency(86400, Some(&horizon), now); // 1 day
+        let large = effective_recency(604800, Some(&horizon), now); // 1 week
+
+        // All three must be different
+        assert_ne!(
+            small, medium,
+            "3600s and 86400s must produce different results"
+        );
+        assert_ne!(
+            medium, large,
+            "86400s and 604800s must produce different results"
+        );
+
+        // Must maintain ordering
+        assert!(
+            small < medium && medium < large,
+            "Scaling must preserve ordering: {} < {} < {}",
+            small,
+            medium,
+            large
+        );
+    }
+
+    /// effective_recency with reference_base input (1 week) and horizon
+    /// returns approximately 10% of horizon width (backward compatibility).
+    #[test]
+    fn test_effective_recency_reference_base_backward_compat() {
+        use crate::Horizon;
+
+        let year_horizon = Horizon::new_year(2026).unwrap();
+        let now = Utc::now();
+        let one_week = 604800_i64;
+
+        let result = effective_recency(one_week, Some(&year_horizon), now);
+
+        // For the reference base (1 week), the result should be ~10% of horizon width
+        let year_width = year_horizon.width().num_seconds();
+        let expected = (year_width as f64 * 0.1) as i64;
+
+        assert!(
+            (result - expected).abs() < 100_000,
+            "Reference base input should produce ~10% of horizon width. got={}, expected~={}",
+            result,
+            expected
+        );
+    }
+
     /// VAL-HREL-006: Conflict temporal crowding - 3 siblings aimed at same narrow horizon.
     #[test]
     fn test_val_hrel_006_conflict_temporal_crowding() {
@@ -7542,15 +7704,24 @@ mod tests {
 
     /// VAL-DFX-003: WillpowerManipulation burst/stagnation scales by horizon.
     /// A burst pattern triggers for month-horizon but NOT for year-horizon because
-    /// the stagnation threshold (10% of horizon width) is much larger for year.
+    /// the scaled stagnation threshold is much larger for year.
     ///
-    /// effective_recency ignores the absolute value and returns 10% of horizon width:
-    /// - Month (~30 days): all thresholds ≈ 259,200s (~3 days)
-    /// - Year (~365 days): all thresholds ≈ 3,153,600s (~36.5 days)
+    /// effective_recency now scales proportionally:
+    ///   scaled = absolute_recency * horizon_width * 0.1 / REFERENCE_BASE(604800)
     ///
-    /// Burst pattern: 3 rapid updates (30-min gaps) at edge of month recency window,
-    /// then a stagnation gap of ~3.1 days. This gap exceeds month's stagnation threshold
-    /// (~3 days) but is far below year's (~36.5 days).
+    /// For Month (~30 days = 2,592,000s):
+    ///   horizon_scale ≈ 0.4286
+    ///   burst_threshold(3600) → ~1543s (~25 min)
+    ///   stagnation_threshold(86400) → ~37,029s (~10.3 hours)
+    ///
+    /// For Year (~365 days = 31,536,000s):
+    ///   horizon_scale ≈ 5.214
+    ///   burst_threshold(3600) → ~18,771s (~5.2 hours)
+    ///   stagnation_threshold(86400) → ~450,490s (~5.2 days)
+    ///
+    /// Burst pattern: 3 rapid updates (10-min gaps), then a stagnation gap of
+    /// ~12 hours. This gap exceeds month's stagnation threshold (~10.3 hours)
+    /// but is far below year's (~5.2 days).
     #[test]
     fn test_val_dfx_003_willpower_burst_scales_by_horizon() {
         use crate::Horizon;
@@ -7560,15 +7731,16 @@ mod tests {
         let year_horizon = Horizon::new_year(2026).unwrap();
         let now = Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap();
 
-        // Month recency = 10% of ~30 days = ~259,200s (~3 days)
-        // Place burst just inside the month recency window (~2.9 days ago)
-        // followed by a stagnation gap of ~3.1 days ending near "now"
-        let burst_start = now - Duration::seconds(259000); // ~2.99 days ago
+        // Place burst about 2 days ago, well within both recency windows.
+        // Burst gaps: 10-minute intervals (600s) — smaller than month's
+        // scaled burst threshold (~1543s) and year's (~18,771s).
+        let burst_start = now - Duration::days(2);
         let t1 = burst_start;
-        let t2 = burst_start + Duration::minutes(30);
-        let t3 = burst_start + Duration::minutes(60);
-        // Stagnation update: ~3.1 days after burst end, landing just before "now"
-        let t4 = t3 + Duration::seconds(268000); // ~3.1 days after burst end
+        let t2 = burst_start + Duration::minutes(10);
+        let t3 = burst_start + Duration::minutes(20);
+        // Stagnation update: ~12 hours after burst end.
+        // 43,200s > month scaled stagnation (~37,029s) but < year's (~450,490s)
+        let t4 = t3 + Duration::seconds(43200); // 12 hours after burst end
 
         let mut mutations = Vec::new();
         let creation = now - Duration::days(30);
@@ -7612,14 +7784,14 @@ mod tests {
             persistence_threshold_seconds: 0,
             min_oscillation_cycles: 10, // high to prevent other patterns
             structural_change_window_seconds: 0,
-            recency_window_seconds: 3600 * 24 * 30, // irrelevant - effective_recency ignores
+            recency_window_seconds: 3600 * 24 * 30, // 30 days base
             burst_threshold_seconds: 3600,          // 1 hour base
             stagnation_threshold_seconds: 86400,    // 1 day base
         };
 
-        // Month: burst threshold ≈ 259,200s, stagnation ≈ 259,200s
-        // 30-min gaps < 259,200s → burst ✓
-        // 268,000s gap > 259,200s → stagnation ✓ → WillpowerManipulation!
+        // Month: scaled burst ≈ 1543s, scaled stagnation ≈ 37,029s
+        // 10-min gaps (600s) < 1543s → burst ✓
+        // 43,200s gap > 37,029s → stagnation ✓ → WillpowerManipulation!
         let cs_month = detect_compensating_strategy(
             "t1",
             &mutations,
@@ -7629,9 +7801,9 @@ mod tests {
             Some(&month_horizon),
         );
 
-        // Year: burst threshold ≈ 3,153,600s, stagnation ≈ 3,153,600s
-        // 30-min gaps < 3,153,600s → burst ✓
-        // 268,000s gap < 3,153,600s → no stagnation → None
+        // Year: scaled burst ≈ 18,771s, scaled stagnation ≈ 450,490s
+        // 10-min gaps (600s) < 18,771s → burst ✓
+        // 43,200s gap < 450,490s → no stagnation → None
         let cs_year = detect_compensating_strategy(
             "t1",
             &mutations,
