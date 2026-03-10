@@ -822,7 +822,7 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, Some(now));
+    let tendency_result = predict_structural_tendency(tension, has_conflict, Some(now), None);
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(
@@ -2218,7 +2218,7 @@ fn cmd_tree(
         .is_some();
 
         // Predict movement tendency
-        let tendency = predict_structural_tendency(tension, has_conflict, None);
+        let tendency = predict_structural_tendency(tension, has_conflict, None, None);
         let movement_signal = match tendency.tendency {
             sd_core::StructuralTendency::Advancing => "→",
             sd_core::StructuralTendency::Oscillating => "↔",
@@ -2797,7 +2797,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, None);
+    let tendency_result = predict_structural_tendency(tension, has_conflict, None, None);
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(
@@ -3277,7 +3277,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
 
     // 8. Structural Tendency
     let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, None);
+    let tendency_result = predict_structural_tendency(tension, has_conflict, None, None);
 
     // 9. Assimilation Depth
     let assimilation = measure_assimilation_depth(

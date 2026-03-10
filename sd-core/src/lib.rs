@@ -56,6 +56,7 @@ pub use dynamics::{
     StructuralTendency,
     StructuralTendencyResult,
     StructuralTension,
+    TendencyThresholds,
     Urgency,
     // Functions
     classify_creative_cycle_phase,
