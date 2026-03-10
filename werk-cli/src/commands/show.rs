@@ -6,7 +6,10 @@ use crate::output::{ColorStyle, Output};
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::{compute_structural_tension, compute_urgency, Forest, HorizonKind, TensionStatus};
+use sd_core::{
+    compute_structural_tension, compute_urgency, DynamicsThresholds, Forest, HorizonKind,
+    TensionStatus,
+};
 use serde::Serialize;
 
 /// JSON output structure for show command.
@@ -293,12 +296,24 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
             // Horizon dynamics (if present)
             if tension.horizon.is_some() {
                 // Urgency
+                let default_thresholds = DynamicsThresholds::default();
                 match &urgency {
                     Some(urg) => {
                         let pct = (urg.value * 100.0).min(999.0);
                         println!(
                             "  Urgency:      {:.0}% ({}s remaining of {}s window)",
                             pct, urg.time_remaining, urg.total_window
+                        );
+                        // Urgency threshold status
+                        let threshold = default_thresholds.urgency_threshold;
+                        let status_str = if urg.value >= threshold {
+                            format!("above threshold ({:.0}% >= {:.0}%)", pct, threshold * 100.0)
+                        } else {
+                            format!("below threshold ({:.0}% < {:.0}%)", pct, threshold * 100.0)
+                        };
+                        println!(
+                            "  UrgencyThreshold: {}",
+                            output.styled(&status_str, ColorStyle::Info)
                         );
                     }
                     None => {
