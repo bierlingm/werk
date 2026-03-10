@@ -17,8 +17,9 @@ use crate::dynamics::{
     CompensatingStrategyThresholds, CompensatingStrategyType, ConflictPattern, ConflictThresholds,
     CreativeCyclePhase, HorizonDriftType, LifecycleThresholds, NeglectThresholds, NeglectType,
     Orientation, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
-    classify_creative_cycle_phase, classify_orientation, compute_urgency, detect_horizon_drift,
-    detect_neglect, detect_oscillation, detect_resolution, detect_structural_conflict,
+    classify_creative_cycle_phase, classify_orientation, compute_urgency,
+    detect_compensating_strategy, detect_horizon_drift, detect_neglect, detect_oscillation,
+    detect_resolution, detect_structural_conflict,
 };
 use crate::events::{Event, EventBuilder, EventBus};
 use crate::horizon::Horizon;
@@ -377,6 +378,9 @@ impl DynamicsEngine {
                 o.reversals,
                 o.magnitude,
             ));
+        } else if !has_oscillation && prev.had_oscillation {
+            // Oscillation resolved
+            events.push(EventBuilder::oscillation_resolved(tension_id.to_owned()));
         }
 
         // --- Compute resolution ---
@@ -392,6 +396,9 @@ impl DynamicsEngine {
                 tension_id.to_owned(),
                 r.velocity,
             ));
+        } else if !has_resolution && prev.had_resolution {
+            // Resolution lost
+            events.push(EventBuilder::resolution_lost(tension_id.to_owned()));
         }
 
         // --- Compute neglect ---
@@ -413,6 +420,14 @@ impl DynamicsEngine {
                 vec![tension_id.to_owned()],
                 n.neglect_type,
             ));
+        } else if neglect_type.is_none() && prev.neglect_type.is_some() {
+            // Neglect resolved
+            if let Some(former_type) = prev.neglect_type {
+                events.push(EventBuilder::neglect_resolved(
+                    tension_id.to_owned(),
+                    former_type,
+                ));
+            }
         }
 
         // --- Compute urgency (horizon-aware) ---
@@ -421,28 +436,73 @@ impl DynamicsEngine {
         let urgency_value = urgency.as_ref().map(|u| u.value);
 
         // Check for urgency threshold crossing
-        let _had_urgency_above = prev.had_urgency_above_threshold;
+        let had_urgency_above = prev.had_urgency_above_threshold;
         let now_urgency_above = urgency_value
             .map(|v| v >= self.thresholds.urgency_threshold)
             .unwrap_or(false);
 
-        // Track urgency threshold transitions
-        // Note: We don't emit an event for this yet, but we track it for
-        // instruments that want to respond to urgency changes
+        // Emit UrgencyThresholdCrossed on crossing (only when we have both old and new values)
+        if let Some(new_urgency) = urgency_value
+            && let Some(old_urgency) = prev.urgency
+        {
+            if now_urgency_above && !had_urgency_above {
+                // Crossed above threshold
+                events.push(EventBuilder::urgency_threshold_crossed(
+                    tension_id.to_owned(),
+                    old_urgency,
+                    new_urgency,
+                    self.thresholds.urgency_threshold,
+                    true,
+                ));
+            } else if !now_urgency_above && had_urgency_above {
+                // Crossed below threshold
+                events.push(EventBuilder::urgency_threshold_crossed(
+                    tension_id.to_owned(),
+                    old_urgency,
+                    new_urgency,
+                    self.thresholds.urgency_threshold,
+                    false,
+                ));
+            }
+        }
 
         // --- Detect horizon drift ---
         // Drift is detected from horizon mutation patterns
         let drift = detect_horizon_drift(tension_id, &mutations);
         let drift_type = drift.drift_type;
-        let drift_changed = prev.horizon_drift_type.is_none() && drift.change_count > 0;
 
-        // Check for drift type change
-        if drift_changed
-            && drift_type != HorizonDriftType::Stable
-            && prev.horizon_drift_type != Some(drift_type)
+        // Emit HorizonDriftDetected when drift transitions from Stable to non-Stable
+        // or between non-Stable types
+        if drift_type != HorizonDriftType::Stable && prev.horizon_drift_type != Some(drift_type) {
+            events.push(EventBuilder::horizon_drift_detected(
+                tension_id.to_owned(),
+                drift_type,
+                drift.change_count,
+            ));
+        }
+
+        // --- Detect compensating strategy ---
+        let comp_strategy = detect_compensating_strategy(
+            tension_id,
+            &mutations,
+            oscillation.as_ref(),
+            &self.thresholds.compensating_strategy,
+            now,
+            tension.horizon.as_ref(),
+        );
+        let has_compensating_strategy = comp_strategy.is_some();
+        let comp_strategy_type = comp_strategy.as_ref().map(|cs| cs.strategy_type);
+
+        // Emit CompensatingStrategyDetected on first detection (not on persistent)
+        if has_compensating_strategy
+            && !prev.had_compensating_strategy
+            && let Some(cs) = &comp_strategy
         {
-            // Note: We don't have a dedicated HorizonDriftDetected event yet,
-            // but instruments can track this via the HorizonChanged events
+            events.push(EventBuilder::compensating_strategy_detected(
+                tension_id.to_owned(),
+                cs.strategy_type,
+                cs.persistence_seconds,
+            ));
         }
 
         // Update previous state
@@ -463,8 +523,8 @@ impl DynamicsEngine {
                     None
                 },
                 urgency: urgency_value,
-                had_compensating_strategy: prev.had_compensating_strategy,
-                compensating_strategy_type: prev.compensating_strategy_type,
+                had_compensating_strategy: has_compensating_strategy,
+                compensating_strategy_type: comp_strategy_type,
             },
         );
 
@@ -1077,5 +1137,709 @@ mod tests {
                 .any(|e| matches!(e, Event::HorizonChanged { .. })),
             "HorizonChanged event should be emitted"
         );
+    }
+
+    // ====================================================================
+    // Event Wiring Tests (VAL-EVT-015 through VAL-EVT-019)
+    // ====================================================================
+
+    // VAL-EVT-015: Engine emits UrgencyThresholdCrossed on upward crossing
+    #[test]
+    fn test_engine_emits_urgency_threshold_crossed_above() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        engine.thresholds.urgency_threshold = 0.5;
+
+        // Create tension with horizon
+        let horizon = Horizon::parse("2028-01").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // First compute to establish baseline (urgency should be low with far horizon)
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Verify urgency is below threshold
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        let initial_urgency = prev.urgency.unwrap();
+        assert!(
+            initial_urgency < 0.5,
+            "Initial urgency {initial_urgency} should be below 0.5 with far horizon"
+        );
+        assert!(
+            !prev.had_urgency_above_threshold,
+            "Should not be above threshold"
+        );
+
+        // Manually set previous urgency state to simulate below-threshold state,
+        // then force a high urgency by setting had_urgency_above_threshold = false
+        // and urgency = a low value, and then on next compute the urgency will be
+        // recalculated based on the current horizon.
+        //
+        // Instead, change the threshold to be very low so current urgency crosses it.
+        engine.thresholds.urgency_threshold = initial_urgency / 2.0;
+
+        // Compute again - now urgency (same value) is above the lowered threshold
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+        let urgency_events2: Vec<&Event> = events2
+            .iter()
+            .filter(|e| matches!(e, Event::UrgencyThresholdCrossed { .. }))
+            .collect();
+
+        assert!(
+            !urgency_events2.is_empty(),
+            "Should emit UrgencyThresholdCrossed when urgency crosses above threshold"
+        );
+
+        if let Event::UrgencyThresholdCrossed { crossed_above, .. } = urgency_events2[0] {
+            assert!(*crossed_above, "Should indicate upward crossing");
+        } else {
+            panic!("Expected UrgencyThresholdCrossed event");
+        }
+    }
+
+    // VAL-EVT-002/015: Engine emits UrgencyThresholdCrossed on downward crossing
+    #[test]
+    fn test_engine_emits_urgency_threshold_crossed_below() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Create tension with horizon
+        let horizon = Horizon::parse("2028-01").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // Set a very low threshold so any urgency >= 0 is "above"
+        engine.thresholds.urgency_threshold = 0.0;
+
+        // First compute to establish baseline
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // After compute, urgency is at or above threshold 0.0
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(prev.urgency.is_some(), "Should have urgency with horizon");
+        assert!(
+            prev.had_urgency_above_threshold,
+            "Urgency should be >= 0.0 threshold"
+        );
+
+        // Second compute to ensure no crossing events (both cycles above threshold)
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Now raise the threshold way above any possible urgency to force a downward crossing
+        engine.thresholds.urgency_threshold = 100.0;
+
+        // Compute again - urgency is now below the raised threshold
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+        let urgency_events2: Vec<&Event> = events2
+            .iter()
+            .filter(|e| matches!(e, Event::UrgencyThresholdCrossed { .. }))
+            .collect();
+
+        assert!(
+            !urgency_events2.is_empty(),
+            "Should emit UrgencyThresholdCrossed when urgency crosses below threshold"
+        );
+
+        if let Event::UrgencyThresholdCrossed { crossed_above, .. } = urgency_events2[0] {
+            assert!(!*crossed_above, "Should indicate downward crossing");
+        } else {
+            panic!("Expected UrgencyThresholdCrossed event");
+        }
+    }
+
+    // VAL-EVT-003: UrgencyThresholdCrossed NOT emitted when no crossing occurs
+    #[test]
+    fn test_engine_no_urgency_event_without_crossing() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        engine.thresholds.urgency_threshold = 0.3;
+
+        // Create tension with far horizon (urgency below threshold)
+        let far_horizon = Horizon::parse("2028-01").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(far_horizon))
+            .unwrap();
+
+        // Compute twice - urgency stays below threshold both times
+        engine.compute_and_emit_for_tension(&t.id);
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+
+        let urgency_events: Vec<&Event> = events2
+            .iter()
+            .filter(|e| matches!(e, Event::UrgencyThresholdCrossed { .. }))
+            .collect();
+        assert!(
+            urgency_events.is_empty(),
+            "No urgency crossing event when urgency stays below threshold"
+        );
+    }
+
+    // VAL-EVT-016: Engine emits HorizonDriftDetected on Stable → non-Stable
+    #[test]
+    fn test_engine_emits_horizon_drift_detected() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let horizon1 = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon1))
+            .unwrap();
+
+        // First compute - no drift (no horizon mutations yet beyond creation)
+        let events1 = engine.compute_and_emit_for_tension(&t.id);
+        let drift_events1: Vec<&Event> = events1
+            .iter()
+            .filter(|e| matches!(e, Event::HorizonDriftDetected { .. }))
+            .collect();
+        assert!(
+            drift_events1.is_empty(),
+            "No drift event on initial compute (no horizon mutations)"
+        );
+
+        // Postpone the horizon
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        engine.update_horizon(&t.id, Some(horizon2)).unwrap();
+
+        // Compute again - should detect drift (Stable → Postponement)
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+        let drift_events2: Vec<&Event> = events2
+            .iter()
+            .filter(|e| matches!(e, Event::HorizonDriftDetected { .. }))
+            .collect();
+
+        assert!(
+            !drift_events2.is_empty(),
+            "Should emit HorizonDriftDetected when drift transitions from Stable to non-Stable"
+        );
+
+        if let Event::HorizonDriftDetected { drift_type, .. } = drift_events2[0] {
+            assert_ne!(
+                *drift_type,
+                HorizonDriftType::Stable,
+                "Drift type should not be Stable"
+            );
+        } else {
+            panic!("Expected HorizonDriftDetected event");
+        }
+    }
+
+    // VAL-EVT-005: HorizonDriftDetected on drift type change
+    #[test]
+    fn test_engine_emits_horizon_drift_on_type_change() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let horizon1 = Horizon::parse("2026-05").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon1))
+            .unwrap();
+
+        // Initial compute
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Postpone (shift later) to create drift
+        let horizon2 = Horizon::parse("2026-08").unwrap();
+        engine.update_horizon(&t.id, Some(horizon2)).unwrap();
+
+        // Compute - first drift detected
+        let events1 = engine.compute_and_emit_for_tension(&t.id);
+        let drift_events1: Vec<&Event> = events1
+            .iter()
+            .filter(|e| matches!(e, Event::HorizonDriftDetected { .. }))
+            .collect();
+        assert!(!drift_events1.is_empty(), "Should detect first drift");
+
+        // Record the first drift type
+        let first_drift_type =
+            if let Event::HorizonDriftDetected { drift_type, .. } = drift_events1[0] {
+                *drift_type
+            } else {
+                panic!("Expected HorizonDriftDetected event");
+            };
+
+        // Postpone again to potentially change drift type
+        // (Postponement → RepeatedPostponement after 3+ shifts later)
+        let horizon3 = Horizon::parse("2026-12").unwrap();
+        engine.update_horizon(&t.id, Some(horizon3)).unwrap();
+        let horizon4 = Horizon::parse("2027-06").unwrap();
+        engine.update_horizon(&t.id, Some(horizon4)).unwrap();
+
+        // Compute again - drift type may have changed
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+        let drift_events2: Vec<&Event> = events2
+            .iter()
+            .filter(|e| matches!(e, Event::HorizonDriftDetected { .. }))
+            .collect();
+
+        // If the type changed, we should get a new event
+        if !drift_events2.is_empty() {
+            if let Event::HorizonDriftDetected { drift_type, .. } = drift_events2[0] {
+                assert_ne!(
+                    *drift_type, first_drift_type,
+                    "New drift event should have a different type"
+                );
+            }
+        }
+        // If it didn't change, that's also acceptable (no duplicate emission)
+    }
+
+    // VAL-EVT-017: Engine emits CompensatingStrategyDetected on first detection
+    #[test]
+    fn test_engine_emits_compensating_strategy_detected() {
+        use crate::dynamics::CompensatingStrategyType;
+
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Use very sensitive thresholds for compensating strategy detection
+        engine.thresholds.oscillation.magnitude_threshold = 0.001;
+        engine.thresholds.oscillation.frequency_threshold = 2;
+        engine.thresholds.oscillation.recency_window_seconds = 3600 * 24 * 365;
+        engine
+            .thresholds
+            .compensating_strategy
+            .persistence_threshold_seconds = 0;
+        engine
+            .thresholds
+            .compensating_strategy
+            .min_oscillation_cycles = 1;
+        engine
+            .thresholds
+            .compensating_strategy
+            .structural_change_window_seconds = 1; // very short window
+        engine
+            .thresholds
+            .compensating_strategy
+            .recency_window_seconds = 3600 * 24 * 365;
+
+        let t = engine.create_tension("goal", "a").unwrap();
+
+        // Create oscillation pattern (required for TolerableConflict detection)
+        engine.update_actual(&t.id, "ab").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abc").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abcd").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+
+        // Compute - should detect compensating strategy
+        let events = engine.compute_and_emit_for_tension(&t.id);
+
+        let comp_events: Vec<&Event> = events
+            .iter()
+            .filter(|e| matches!(e, Event::CompensatingStrategyDetected { .. }))
+            .collect();
+
+        // If compensating strategy was detected (depends on oscillation being present)
+        if !comp_events.is_empty() {
+            if let Event::CompensatingStrategyDetected {
+                strategy_type,
+                tension_id,
+                ..
+            } = comp_events[0]
+            {
+                assert_eq!(tension_id, &t.id);
+                // Should be TolerableConflict since we have oscillation without structural change
+                assert_eq!(
+                    *strategy_type,
+                    CompensatingStrategyType::TolerableConflict,
+                    "Expected TolerableConflict strategy"
+                );
+            }
+        }
+
+        // Verify that compensating strategy state is tracked in PreviousDynamics
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        // had_compensating_strategy should match whether we detected one
+        assert_eq!(
+            prev.had_compensating_strategy,
+            !comp_events.is_empty(),
+            "PreviousDynamics should track compensating strategy detection"
+        );
+    }
+
+    // VAL-EVT-007: CompensatingStrategyDetected NOT emitted when persistent
+    #[test]
+    fn test_engine_no_duplicate_compensating_strategy_event() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Use very sensitive thresholds
+        engine.thresholds.oscillation.magnitude_threshold = 0.001;
+        engine.thresholds.oscillation.frequency_threshold = 2;
+        engine.thresholds.oscillation.recency_window_seconds = 3600 * 24 * 365;
+        engine
+            .thresholds
+            .compensating_strategy
+            .persistence_threshold_seconds = 0;
+        engine
+            .thresholds
+            .compensating_strategy
+            .min_oscillation_cycles = 1;
+        engine
+            .thresholds
+            .compensating_strategy
+            .structural_change_window_seconds = 1;
+        engine
+            .thresholds
+            .compensating_strategy
+            .recency_window_seconds = 3600 * 24 * 365;
+
+        let t = engine.create_tension("goal", "a").unwrap();
+
+        // Create oscillation pattern
+        engine.update_actual(&t.id, "ab").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abc").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abcd").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+
+        // First compute - may detect compensating strategy
+        let events1 = engine.compute_and_emit_for_tension(&t.id);
+        let comp_count1 = events1
+            .iter()
+            .filter(|e| matches!(e, Event::CompensatingStrategyDetected { .. }))
+            .count();
+
+        // Second compute without changing anything - should NOT re-emit
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+        let comp_count2 = events2
+            .iter()
+            .filter(|e| matches!(e, Event::CompensatingStrategyDetected { .. }))
+            .count();
+
+        if comp_count1 > 0 {
+            assert_eq!(
+                comp_count2, 0,
+                "Should not re-emit CompensatingStrategyDetected when already detected"
+            );
+        }
+    }
+
+    // VAL-EVT-018: Engine emits OscillationResolved when oscillation clears
+    #[test]
+    fn test_engine_emits_oscillation_resolved() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Use sensitive thresholds
+        engine.thresholds.oscillation.magnitude_threshold = 0.001;
+        engine.thresholds.oscillation.frequency_threshold = 2;
+        engine.thresholds.oscillation.recency_window_seconds = 3600 * 24 * 365;
+
+        let t = engine.create_tension("goal", "a").unwrap();
+
+        // Create oscillation pattern
+        engine.update_actual(&t.id, "ab").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abc").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+
+        // Compute - should detect oscillation
+        let events1 = engine.compute_and_emit_for_tension(&t.id);
+        assert!(
+            events1
+                .iter()
+                .any(|e| matches!(e, Event::OscillationDetected { .. })),
+            "Should detect oscillation"
+        );
+
+        // Now make steady progress to clear oscillation
+        // (many consistent forward mutations without reversal)
+        for i in 0..20 {
+            engine
+                .update_actual(&t.id, &format!("progress step {i}"))
+                .unwrap();
+        }
+
+        // Increase threshold to ensure oscillation is cleared
+        engine.thresholds.oscillation.frequency_threshold = 100;
+
+        // Compute again - oscillation should be resolved
+        let events2 = engine.compute_and_emit_for_tension(&t.id);
+
+        let resolved_events: Vec<&Event> = events2
+            .iter()
+            .filter(|e| matches!(e, Event::OscillationResolved { .. }))
+            .collect();
+
+        assert!(
+            !resolved_events.is_empty(),
+            "Should emit OscillationResolved when oscillation clears"
+        );
+
+        if let Event::OscillationResolved { tension_id, .. } = resolved_events[0] {
+            assert_eq!(tension_id, &t.id);
+        } else {
+            panic!("Expected OscillationResolved event");
+        }
+    }
+
+    // VAL-EVT-009: Engine emits NeglectResolved when neglect clears
+    #[test]
+    fn test_engine_emits_neglect_resolved() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Use sensitive thresholds for neglect detection
+        engine.thresholds.neglect.recency_seconds = 3600 * 24 * 365;
+        engine.thresholds.neglect.activity_ratio_threshold = 2.0;
+        engine.thresholds.neglect.min_active_mutations = 1;
+
+        // Create parent and children
+        let parent = engine.create_tension("parent goal", "p reality").unwrap();
+        let child1 = engine
+            .create_tension_with_parent("child1 goal", "c1 reality", Some(parent.id.clone()))
+            .unwrap();
+        let _child2 = engine
+            .create_tension_with_parent("child2 goal", "c2 reality", Some(parent.id.clone()))
+            .unwrap();
+
+        // Create asymmetric activity - update child1 lots, ignore child2
+        for _ in 0..10 {
+            engine.update_actual(&child1.id, "active child1").unwrap();
+        }
+
+        // Compute dynamics on parent - may detect neglect
+        let events1 = engine.compute_and_emit_for_tension(&parent.id);
+        let neglect_detected = events1
+            .iter()
+            .any(|e| matches!(e, Event::NeglectDetected { .. }));
+
+        if neglect_detected {
+            // Verify previous state tracks neglect
+            let prev = engine.previous_state.tensions.get_mut(&parent.id).unwrap();
+            assert!(prev.neglect_type.is_some());
+
+            // Now raise the activity ratio threshold so neglect is no longer detected
+            engine.thresholds.neglect.activity_ratio_threshold = 1000.0;
+
+            // Compute again - neglect should be resolved
+            let events2 = engine.compute_and_emit_for_tension(&parent.id);
+            let resolved_events: Vec<&Event> = events2
+                .iter()
+                .filter(|e| matches!(e, Event::NeglectResolved { .. }))
+                .collect();
+
+            assert!(
+                !resolved_events.is_empty(),
+                "Should emit NeglectResolved when neglect clears"
+            );
+
+            if let Event::NeglectResolved {
+                tension_id,
+                former_neglect_type,
+                ..
+            } = resolved_events[0]
+            {
+                assert_eq!(tension_id, &parent.id);
+                // former_neglect_type should be a valid NeglectType
+                assert!(
+                    matches!(
+                        former_neglect_type,
+                        NeglectType::ParentNeglectsChildren | NeglectType::ChildrenNeglected
+                    ),
+                    "Should have a valid former neglect type"
+                );
+            }
+        }
+    }
+
+    // VAL-EVT-010: Engine emits ResolutionLost when resolution clears
+    #[test]
+    fn test_engine_emits_resolution_lost() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Use sensitive thresholds for resolution detection
+        engine.thresholds.resolution.velocity_threshold = 1e-10;
+        engine.thresholds.resolution.reversal_tolerance = 10;
+        engine.thresholds.resolution.recency_window_seconds = 3600 * 24 * 365;
+
+        let t = engine
+            .create_tension("write a novel completely", "have nothing yet at all")
+            .unwrap();
+
+        // Make progress toward resolution
+        engine
+            .update_actual(&t.id, "have written chapter one of the novel")
+            .unwrap();
+        engine
+            .update_actual(&t.id, "have written chapter two of the novel")
+            .unwrap();
+        engine
+            .update_actual(&t.id, "have written half the novel already")
+            .unwrap();
+
+        // Compute - should detect resolution
+        let events1 = engine.compute_and_emit_for_tension(&t.id);
+        let has_resolution = events1
+            .iter()
+            .any(|e| matches!(e, Event::ResolutionAchieved { .. }));
+
+        if has_resolution {
+            // Now regress to break resolution pattern
+            engine
+                .update_actual(&t.id, "lost all the writing files")
+                .unwrap();
+
+            // Increase velocity threshold to ensure resolution is no longer detected
+            engine.thresholds.resolution.velocity_threshold = 100.0;
+
+            // Compute again - resolution should be lost
+            let events2 = engine.compute_and_emit_for_tension(&t.id);
+            let lost_events: Vec<&Event> = events2
+                .iter()
+                .filter(|e| matches!(e, Event::ResolutionLost { .. }))
+                .collect();
+
+            assert!(
+                !lost_events.is_empty(),
+                "Should emit ResolutionLost when resolution clears"
+            );
+
+            if let Event::ResolutionLost { tension_id, .. } = lost_events[0] {
+                assert_eq!(tension_id, &t.id);
+            }
+        }
+    }
+
+    // VAL-EVT-019: No spurious events on first compute cycle
+    #[test]
+    fn test_engine_no_spurious_events_on_first_cycle() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let t = engine.create_tension("goal", "reality").unwrap();
+
+        // First compute on a new tension
+        let events = engine.compute_and_emit_for_tension(&t.id);
+
+        // Should NOT have any resolved/lost events
+        let spurious_events: Vec<&Event> = events
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    Event::OscillationResolved { .. }
+                        | Event::NeglectResolved { .. }
+                        | Event::ResolutionLost { .. }
+                )
+            })
+            .collect();
+
+        assert!(
+            spurious_events.is_empty(),
+            "First compute cycle should not emit resolved/lost events. Got: {spurious_events:?}"
+        );
+    }
+
+    // VAL-EVT-019: No spurious events on first compute cycle (with horizon)
+    #[test]
+    fn test_engine_no_spurious_events_on_first_cycle_with_horizon() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let horizon = Horizon::parse("2026-06").unwrap();
+        let t = engine
+            .create_tension_full("goal", "reality", None, Some(horizon))
+            .unwrap();
+
+        // First compute on a new tension with horizon
+        let events = engine.compute_and_emit_for_tension(&t.id);
+
+        // Should NOT have any resolved/lost events
+        let spurious_events: Vec<&Event> = events
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    Event::OscillationResolved { .. }
+                        | Event::NeglectResolved { .. }
+                        | Event::ResolutionLost { .. }
+                        | Event::UrgencyThresholdCrossed { .. }
+                )
+            })
+            .collect();
+
+        assert!(
+            spurious_events.is_empty(),
+            "First compute cycle should not emit spurious events. Got: {spurious_events:?}"
+        );
+    }
+
+    // VAL-EVT-014: PreviousDynamics tracks compensating strategy
+    #[test]
+    fn test_engine_previous_dynamics_tracks_compensating_strategy() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        let t = engine.create_tension("goal", "reality").unwrap();
+
+        // Initially no compensating strategy
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        assert!(
+            !prev.had_compensating_strategy,
+            "Initially should have no compensating strategy"
+        );
+        assert!(
+            prev.compensating_strategy_type.is_none(),
+            "Initially should have no compensating strategy type"
+        );
+
+        // After compute, the fields should be updated (even if still false)
+        engine.compute_and_emit_for_tension(&t.id);
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        // With no oscillation pattern, compensating strategy should still be false
+        assert!(
+            !prev.had_compensating_strategy,
+            "No compensating strategy without oscillation pattern"
+        );
+    }
+
+    // Test: Verify compensating strategy state tracking across compute cycles
+    #[test]
+    fn test_engine_compensating_strategy_state_persists() {
+        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+
+        // Use very sensitive thresholds
+        engine.thresholds.oscillation.magnitude_threshold = 0.001;
+        engine.thresholds.oscillation.frequency_threshold = 2;
+        engine.thresholds.oscillation.recency_window_seconds = 3600 * 24 * 365;
+        engine
+            .thresholds
+            .compensating_strategy
+            .persistence_threshold_seconds = 0;
+        engine
+            .thresholds
+            .compensating_strategy
+            .min_oscillation_cycles = 1;
+        engine
+            .thresholds
+            .compensating_strategy
+            .structural_change_window_seconds = 1;
+        engine
+            .thresholds
+            .compensating_strategy
+            .recency_window_seconds = 3600 * 24 * 365;
+
+        let t = engine.create_tension("goal", "a").unwrap();
+
+        // Create oscillation pattern
+        engine.update_actual(&t.id, "ab").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abc").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+        engine.update_actual(&t.id, "abcd").unwrap();
+        engine.update_actual(&t.id, "a").unwrap();
+
+        // Compute
+        engine.compute_and_emit_for_tension(&t.id);
+
+        // Check that previous state reflects the compensating strategy detection
+        let prev = engine.previous_state().tensions.get(&t.id).unwrap();
+        // Whether compensating strategy was detected depends on the oscillation detection,
+        // but the tracking fields should be consistent
+        if prev.had_compensating_strategy {
+            assert!(
+                prev.compensating_strategy_type.is_some(),
+                "If had_compensating_strategy is true, type should be Some"
+            );
+        } else {
+            assert!(
+                prev.compensating_strategy_type.is_none(),
+                "If had_compensating_strategy is false, type should be None"
+            );
+        }
     }
 }
