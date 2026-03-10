@@ -150,7 +150,7 @@ pub struct Oscillation {
 pub struct Resolution {
     /// The tension ID that is resolving.
     pub tension_id: String,
-    /// Rate of progress (units per time).
+    /// Rate of progress in gap-per-second (total gap reduction / elapsed seconds).
     pub velocity: f64,
     /// Whether progress is accelerating, steady, or decelerating.
     pub trend: ResolutionTrend,
@@ -1425,20 +1425,6 @@ pub fn detect_resolution(
         return None;
     }
 
-    // Compute velocity (average progress per update)
-    let velocity = if progress_values.is_empty() {
-        0.0
-    } else {
-        progress_values.iter().sum::<f64>() / progress_values.len() as f64
-    };
-
-    if velocity < thresholds.velocity_threshold {
-        return None;
-    }
-
-    // Determine trend
-    let trend = compute_resolution_trend(&progress_values);
-
     // Find window bounds
     let window_start = relevant_mutations
         .iter()
@@ -1451,20 +1437,32 @@ pub fn detect_resolution(
         .max()
         .unwrap_or(now);
 
-    // NEW: Compute required_velocity and is_sufficient when horizon present
+    // Compute velocity in gap-per-second.
+    // Total gap reduction over elapsed time gives a rate that is dimensionally
+    // consistent with required_velocity (remaining_gap / time_remaining).
+    let velocity = if progress_values.is_empty() {
+        0.0
+    } else {
+        let total_gap_reduction: f64 = progress_values.iter().sum();
+        let elapsed_secs = (window_end - window_start).num_seconds().max(1) as f64;
+        total_gap_reduction / elapsed_secs
+    };
+
+    if velocity < thresholds.velocity_threshold {
+        return None;
+    }
+
+    // Determine trend
+    let trend = compute_resolution_trend(&progress_values);
+
+    // Compute required_velocity and is_sufficient when horizon present.
+    // required_velocity is remaining_gap / time_remaining (gap-per-second),
+    // which is now in the same units as velocity (gap-per-second).
     let (required_velocity, is_sufficient) = if let Some(horizon) = &tension.horizon {
-        // Compute remaining gap
         let remaining_gap = compute_gap_magnitude(&tension.desired, &tension.actual);
-        // Compute time remaining (in seconds)
         let time_remaining = (horizon.range_end() - now).num_seconds().max(1);
-
-        // Required velocity = remaining_gap / time_remaining
-        // Convert to per-second rate for consistency
         let req_vel = remaining_gap / time_remaining as f64;
-
-        // Check if current velocity >= required velocity
         let sufficient = velocity >= req_vel;
-
         (Some(req_vel), Some(sufficient))
     } else {
         (None, None)
@@ -3477,6 +3475,341 @@ mod tests {
         // Should NOT detect resolution
         let res = detect_resolution(&t_updated, &mutations, &res_thresholds, Utc::now());
         assert!(res.is_none());
+    }
+
+    // ============================================================================
+    // Resolution Velocity Units Tests (VAL-DFX-002)
+    // ============================================================================
+
+    #[test]
+    fn test_detect_resolution_velocity_units_gap_per_second() {
+        // VAL-DFX-002: required_velocity and velocity must use the same units (gap-per-second)
+        // so that is_sufficient comparison is dimensionally valid.
+        //
+        // Setup: a tension with a Year horizon (2026), a known gap,
+        // and mutations spaced over 2 days showing convergence.
+        // We construct mutations with explicit timestamps so we can compute
+        // expected velocity = total_gap_reduction / elapsed_seconds.
+
+        use crate::mutation::Mutation;
+        use chrono::TimeZone;
+
+        // Use a date well within a Year(2026) horizon so effective_recency
+        // gives a large enough window (~36 days for a year horizon)
+        let now = Utc.with_ymd_and_hms(2026, 3, 15, 12, 0, 0).unwrap();
+        let horizon = crate::Horizon::new_year(2026).unwrap();
+
+        // Create a tension with horizon. desired="complete the project", actual starts far
+        let mut t = Tension::new("complete the project", "just started planning").unwrap();
+        t.horizon = Some(horizon.clone());
+
+        // Construct mutations with specific timestamps showing monotonic progress:
+        // t0 = now - 2 days: actual changed from "just started planning" to "outline drafted"
+        // t1 = now - 1 day:  actual changed from "outline drafted" to "first draft written"
+        // t2 = now:          actual changed from "first draft written" to "nearly complete project"
+        let t0 = now - chrono::Duration::days(2);
+        let t1 = now - chrono::Duration::days(1);
+        let t2 = now;
+
+        let mutations = vec![
+            // Creation mutation
+            Mutation::new(
+                t.id.clone(),
+                t0 - chrono::Duration::hours(1),
+                "created".to_string(),
+                None,
+                format!("{}|{}", "complete the project", "just started planning"),
+            ),
+            // Progress mutations on "actual" field
+            Mutation::new(
+                t.id.clone(),
+                t0,
+                "actual".to_string(),
+                Some("just started planning".to_string()),
+                "outline drafted".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t1,
+                "actual".to_string(),
+                Some("outline drafted".to_string()),
+                "first draft written".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t2,
+                "actual".to_string(),
+                Some("first draft written".to_string()),
+                "nearly complete project".to_string(),
+            ),
+        ];
+
+        // Update tension's actual to match latest mutation
+        t.actual = "nearly complete project".to_string();
+
+        let thresholds = ResolutionThresholds {
+            velocity_threshold: 0.0, // Accept any velocity > 0
+            reversal_tolerance: 1,
+            recency_window_seconds: 3600 * 24 * 30, // 30 days
+        };
+
+        let result = detect_resolution(&t, &mutations, &thresholds, now);
+        assert!(
+            result.is_some(),
+            "Resolution should be detected for monotonic progress"
+        );
+
+        let res = result.unwrap();
+
+        // Both velocity and required_velocity must be in gap-per-second
+        assert!(res.velocity > 0.0, "velocity should be positive");
+        assert!(
+            res.required_velocity.is_some(),
+            "required_velocity should be present (horizon exists)"
+        );
+        assert!(
+            res.is_sufficient.is_some(),
+            "is_sufficient should be present (horizon exists)"
+        );
+
+        let req_vel = res.required_velocity.unwrap();
+        assert!(req_vel > 0.0, "required_velocity should be positive");
+
+        // The key dimensional check: velocity should be in gap-per-second
+        // Remaining gap = compute_gap_magnitude("complete the project", "nearly complete project")
+        let remaining_gap =
+            compute_gap_magnitude("complete the project", "nearly complete project");
+        // Time remaining from now until end of 2026
+        let time_remaining_secs = (horizon.range_end() - now).num_seconds() as f64;
+        let expected_req_vel = remaining_gap / time_remaining_secs;
+
+        // required_velocity should match our expected computation
+        assert!(
+            (req_vel - expected_req_vel).abs() < 1e-12,
+            "required_velocity should be remaining_gap/time_remaining: expected {}, got {}",
+            expected_req_vel,
+            req_vel,
+        );
+
+        // velocity should be on the same order of magnitude as required_velocity
+        // (both gap-per-second). If velocity were still in gap-per-mutation,
+        // it would be orders of magnitude larger than required_velocity.
+        // The window spans 2 days = 172800 seconds, so gap-per-second should
+        // be much smaller than gap-per-mutation. This ratio check verifies dimensional consistency.
+        let ratio = if req_vel > 0.0 {
+            res.velocity / req_vel
+        } else {
+            1.0
+        };
+        assert!(
+            ratio < 1000.0 && ratio > 0.001,
+            "velocity ({}) and required_velocity ({}) should be within 3 orders of magnitude (ratio: {}). \
+             This fails if they use different units.",
+            res.velocity,
+            req_vel,
+            ratio,
+        );
+    }
+
+    #[test]
+    fn test_detect_resolution_is_sufficient_correct_boolean() {
+        // VAL-DFX-002: Test with known gap, time remaining, and mutation rate
+        // to verify is_sufficient returns the correct boolean.
+        //
+        // Scenario 1: Fast progress, distant horizon → is_sufficient = true
+        // Scenario 2: Slow progress, near horizon → is_sufficient = false
+
+        use crate::mutation::Mutation;
+        use chrono::TimeZone;
+
+        // --- Scenario 1: Sufficient velocity ---
+        // Use a Year horizon so effective_recency allows a wide window
+        let now = Utc.with_ymd_and_hms(2026, 3, 15, 12, 0, 0).unwrap();
+        let horizon = crate::Horizon::new_year(2026).unwrap();
+
+        let mut t = Tension::new("finish report", "nothing written").unwrap();
+        t.horizon = Some(horizon.clone());
+
+        // Rapid progress over the last 2 days: gap closing quickly
+        // At this rate, the gap would close long before end of 2026
+        let t0 = now - chrono::Duration::days(2);
+        let t1 = now - chrono::Duration::days(1);
+        let t2 = now;
+
+        let mutations = vec![
+            Mutation::new(
+                t.id.clone(),
+                t0 - chrono::Duration::hours(1),
+                "created".to_string(),
+                None,
+                "finish report|nothing written".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t0,
+                "actual".to_string(),
+                Some("nothing written".to_string()),
+                "draft started on the report".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t1,
+                "actual".to_string(),
+                Some("draft started on the report".to_string()),
+                "half of the report finished".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t2,
+                "actual".to_string(),
+                Some("half of the report finished".to_string()),
+                "report nearly finished now".to_string(),
+            ),
+        ];
+
+        t.actual = "report nearly finished now".to_string();
+
+        let thresholds = ResolutionThresholds {
+            velocity_threshold: 0.0,
+            reversal_tolerance: 1,
+            recency_window_seconds: 3600 * 24 * 30,
+        };
+
+        let result = detect_resolution(&t, &mutations, &thresholds, now);
+        assert!(
+            result.is_some(),
+            "Resolution should be detected for fast progress"
+        );
+        let res = result.unwrap();
+        assert_eq!(
+            res.is_sufficient,
+            Some(true),
+            "Fast progress with distant horizon should be sufficient. velocity={}, required={}",
+            res.velocity,
+            res.required_velocity.unwrap_or(0.0)
+        );
+
+        // --- Scenario 2: Insufficient velocity ---
+        // Use a Year(2026) horizon but with now near end of year.
+        // Progress over 2 days is tiny while the remaining gap is large.
+        // With only ~5 days left and a big gap, required_velocity >> actual velocity.
+        let now2 = Utc.with_ymd_and_hms(2026, 12, 26, 12, 0, 0).unwrap();
+        let horizon2 = crate::Horizon::new_year(2026).unwrap();
+
+        let mut t2_tension =
+            Tension::new("write entire book from scratch", "brainstorming ideas").unwrap();
+        t2_tension.horizon = Some(horizon2.clone());
+
+        // Very slow progress (tiny gap closure) over 2 days.
+        // The gap "write entire book from scratch" vs "brainstorming ideas detailed outline" is huge.
+        // Required velocity to close it in ~5 days is much larger than actual rate.
+        let m0 = now2 - chrono::Duration::days(2);
+        let m1 = now2 - chrono::Duration::days(1);
+        let m2 = now2;
+
+        let mutations2 = vec![
+            Mutation::new(
+                t2_tension.id.clone(),
+                m0 - chrono::Duration::hours(1),
+                "created".to_string(),
+                None,
+                "write entire book from scratch|brainstorming ideas".to_string(),
+            ),
+            Mutation::new(
+                t2_tension.id.clone(),
+                m0,
+                "actual".to_string(),
+                Some("brainstorming ideas".to_string()),
+                "brainstorming ideas and outline".to_string(),
+            ),
+            Mutation::new(
+                t2_tension.id.clone(),
+                m1,
+                "actual".to_string(),
+                Some("brainstorming ideas and outline".to_string()),
+                "brainstorming ideas and rough outline".to_string(),
+            ),
+            Mutation::new(
+                t2_tension.id.clone(),
+                m2,
+                "actual".to_string(),
+                Some("brainstorming ideas and rough outline".to_string()),
+                "brainstorming ideas detailed outline".to_string(),
+            ),
+        ];
+
+        t2_tension.actual = "brainstorming ideas detailed outline".to_string();
+
+        let result2 = detect_resolution(&t2_tension, &mutations2, &thresholds, now2);
+        assert!(
+            result2.is_some(),
+            "Resolution should be detected even if slow"
+        );
+        let res2 = result2.unwrap();
+        assert_eq!(
+            res2.is_sufficient,
+            Some(false),
+            "Slow progress with near horizon should be insufficient. velocity={}, required={}",
+            res2.velocity,
+            res2.required_velocity.unwrap_or(0.0)
+        );
+    }
+
+    #[test]
+    fn test_detect_resolution_velocity_without_horizon_has_no_sufficiency() {
+        // When no horizon is present, required_velocity and is_sufficient should be None
+        use crate::mutation::Mutation;
+        use chrono::TimeZone;
+
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).unwrap();
+
+        let mut t = Tension::new("goal achieved", "starting point").unwrap();
+        // No horizon set
+
+        let t0 = now - chrono::Duration::days(1);
+        let t1 = now;
+
+        let mutations = vec![
+            Mutation::new(
+                t.id.clone(),
+                t0 - chrono::Duration::hours(1),
+                "created".to_string(),
+                None,
+                "goal achieved|starting point".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t0,
+                "actual".to_string(),
+                Some("starting point".to_string()),
+                "halfway to goal achieved".to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t1,
+                "actual".to_string(),
+                Some("halfway to goal achieved".to_string()),
+                "almost at goal achieved".to_string(),
+            ),
+        ];
+
+        t.actual = "almost at goal achieved".to_string();
+
+        let thresholds = ResolutionThresholds {
+            velocity_threshold: 0.0,
+            reversal_tolerance: 1,
+            recency_window_seconds: 3600 * 24 * 30,
+        };
+
+        let result = detect_resolution(&t, &mutations, &thresholds, now);
+        assert!(result.is_some());
+        let res = result.unwrap();
+        assert!(res.velocity > 0.0, "velocity should still be computed");
+        assert_eq!(
+            res.required_velocity, None,
+            "No horizon means no required_velocity"
+        );
+        assert_eq!(res.is_sufficient, None, "No horizon means no is_sufficient");
     }
 
     // ============================================================================
