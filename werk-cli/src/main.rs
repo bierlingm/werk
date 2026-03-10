@@ -770,7 +770,7 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
     let neglect_thresholds = NeglectThresholds::default();
 
     // 1. Structural Tension
-    let structural_tension = compute_structural_tension(tension);
+    let structural_tension = compute_structural_tension(tension, now);
 
     // Horizon dynamics
     let urgency = compute_urgency(tension, now);
@@ -2629,7 +2629,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
             end: h.range_end().to_rfc3339(),
         });
         let urgency = compute_urgency(&node.tension, now).map(|u| u.value);
-        let structural_tension = compute_structural_tension(&node.tension);
+        let structural_tension = compute_structural_tension(&node.tension, now);
         let pressure = structural_tension.as_ref().and_then(|st| st.pressure);
 
         TensionInfo {
@@ -2680,7 +2680,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         end: h.range_end().to_rfc3339(),
     });
     let urgency = compute_urgency(tension, now).map(|u| u.value);
-    let structural_tension_for_info = compute_structural_tension(tension);
+    let structural_tension_for_info = compute_structural_tension(tension, now);
     let pressure = structural_tension_for_info
         .as_ref()
         .and_then(|st| st.pressure);
@@ -2749,7 +2749,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         .collect();
 
     // 1. Structural Tension
-    let structural_tension = compute_structural_tension(tension);
+    let structural_tension = compute_structural_tension(tension, now);
 
     // 2. Structural Conflict
     let conflict = detect_structural_conflict(
@@ -3109,7 +3109,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
             end: h.range_end().to_rfc3339(),
         });
         let urgency = compute_urgency(&node.tension, now).map(|u| u.value);
-        let structural_tension = compute_structural_tension(&node.tension);
+        let structural_tension = compute_structural_tension(&node.tension, now);
         let pressure = structural_tension.as_ref().and_then(|st| st.pressure);
 
         TensionInfo {
@@ -3160,7 +3160,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         end: h.range_end().to_rfc3339(),
     });
     let urgency = compute_urgency(tension, now).map(|u| u.value);
-    let structural_tension_for_info = compute_structural_tension(tension);
+    let structural_tension_for_info = compute_structural_tension(tension, now);
     let pressure = structural_tension_for_info
         .as_ref()
         .and_then(|st| st.pressure);
@@ -3229,7 +3229,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         .collect();
 
     // 1. Structural Tension
-    let structural_tension = compute_structural_tension(tension);
+    let structural_tension = compute_structural_tension(tension, now);
 
     // 2. Structural Conflict
     let conflict = detect_structural_conflict(

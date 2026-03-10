@@ -5,12 +5,12 @@
 
 use chrono::Utc;
 use sd_core::{
-    classify_creative_cycle_phase, detect_oscillation, detect_resolution,
-    detect_structural_conflict, DynamicsEngine, DynamicsThresholds, Event, EventBus, Forest,
-    OscillationThresholds, ResolutionThresholds, Store, Tension, TensionStatus,
+    DynamicsEngine, DynamicsThresholds, Event, EventBus, Forest, OscillationThresholds,
+    ResolutionThresholds, Store, Tension, TensionStatus, classify_creative_cycle_phase,
+    detect_oscillation, detect_resolution, detect_structural_conflict,
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ============================================================================
 // VAL-CROSS-001: Full Tension Lifecycle
@@ -375,7 +375,7 @@ fn test_store_persistence_and_reload() {
         let all_mutations = store.all_mutations().unwrap();
 
         // Compute structural tension for first tension
-        let st = sd_core::compute_structural_tension(&tensions[0]);
+        let st = sd_core::compute_structural_tension(&tensions[0], Utc::now());
         assert!(st.is_some());
 
         // Conflict detection should work
@@ -524,7 +524,7 @@ fn test_single_tension_edge_cases() {
     assert!(neglect.is_none(), "Leaf tension cannot have neglect");
 
     // Structural tension works
-    let st = sd_core::compute_structural_tension(&t);
+    let st = sd_core::compute_structural_tension(&t, Utc::now());
     assert!(st.is_some());
 
     // Phase classification works
@@ -744,7 +744,7 @@ fn test_unicode_roundtrip_full_stack() {
     // Compute dynamics with Unicode data (should not panic)
     let _forest = Forest::from_tensions(engine.store().list_tensions().unwrap()).unwrap();
 
-    let st = sd_core::compute_structural_tension(&cjk_reloaded);
+    let st = sd_core::compute_structural_tension(&cjk_reloaded, Utc::now());
     assert!(st.is_some());
 
     let phase = classify_creative_cycle_phase(

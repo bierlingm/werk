@@ -622,11 +622,15 @@ impl Default for NeglectThresholds {
 /// # Arguments
 ///
 /// * `tension` - The tension to compute the structural tension for.
+/// * `now` - The current time, forwarded to [`compute_temporal_pressure`].
 ///
 /// # Returns
 ///
 /// `Some(StructuralTension)` if the tension has a gap, `None` if desired == actual.
-pub fn compute_structural_tension(tension: &Tension) -> Option<StructuralTension> {
+pub fn compute_structural_tension(
+    tension: &Tension,
+    now: DateTime<Utc>,
+) -> Option<StructuralTension> {
     if tension.desired == tension.actual {
         return None;
     }
@@ -636,7 +640,7 @@ pub fn compute_structural_tension(tension: &Tension) -> Option<StructuralTension
     let magnitude = compute_gap_magnitude(&tension.desired, &tension.actual);
 
     // Compute temporal pressure if horizon is present
-    let pressure = compute_temporal_pressure(tension, Utc::now());
+    let pressure = compute_temporal_pressure(tension, now);
 
     Some(StructuralTension {
         magnitude,
@@ -2049,7 +2053,10 @@ pub fn predict_structural_tendency(
     now: Option<DateTime<Utc>>,
 ) -> StructuralTendencyResult {
     // Compute structural tension
-    let tension_magnitude = compute_structural_tension(tension).map(|st| st.magnitude);
+    // Use the provided `now` if available, otherwise fall back to Utc::now()
+    let effective_now = now.unwrap_or_else(Utc::now);
+    let tension_magnitude =
+        compute_structural_tension(tension, effective_now).map(|st| st.magnitude);
 
     // No gap = stagnant
     if tension_magnitude.is_none() {
@@ -2411,7 +2418,7 @@ mod tests {
     #[test]
     fn test_structural_tension_returns_positive_when_different() {
         let t = Tension::new("write a novel", "have an outline").unwrap();
-        let result = compute_structural_tension(&t);
+        let result = compute_structural_tension(&t, Utc::now());
 
         assert!(result.is_some());
         let st = result.unwrap();
@@ -2422,7 +2429,7 @@ mod tests {
     #[test]
     fn test_structural_tension_returns_none_when_equal() {
         let t = Tension::new("goal", "goal").unwrap();
-        let result = compute_structural_tension(&t);
+        let result = compute_structural_tension(&t, Utc::now());
 
         assert!(result.is_none());
     }
@@ -2455,7 +2462,7 @@ mod tests {
     #[test]
     fn test_structural_tension_handles_unicode() {
         let t = Tension::new("写一本小说 🎵", "有一个大纲").unwrap();
-        let result = compute_structural_tension(&t);
+        let result = compute_structural_tension(&t, Utc::now());
 
         assert!(result.is_some());
         assert!(result.unwrap().magnitude > 0.0);
@@ -3484,7 +3491,7 @@ mod tests {
         let now = Utc::now();
 
         // Structural tension doesn't need mutations
-        let st = compute_structural_tension(&t);
+        let st = compute_structural_tension(&t, now);
         assert!(st.is_some());
 
         // Conflict with empty mutations
@@ -3521,7 +3528,7 @@ mod tests {
         let now = Utc::now();
 
         // Structural tension works
-        let st = compute_structural_tension(&t);
+        let st = compute_structural_tension(&t, now);
         assert!(st.is_some());
 
         // Conflict with single tension (no siblings)
@@ -5230,7 +5237,7 @@ mod tests {
         let now = Utc::now();
 
         // 1. Structural tension (doesn't need mutations)
-        let st = compute_structural_tension(&t);
+        let st = compute_structural_tension(&t, now);
         assert!(st.is_some());
 
         // 2. Conflict
@@ -5296,7 +5303,7 @@ mod tests {
         let now = Utc::now();
 
         // 1. Structural tension
-        let st = compute_structural_tension(&t);
+        let st = compute_structural_tension(&t, now);
         assert!(st.is_some());
 
         // 2. Conflict
@@ -5412,7 +5419,7 @@ mod tests {
         let start = Instant::now();
 
         // Structural tension (now includes temporal pressure computation)
-        let _st = compute_structural_tension(&t_updated);
+        let _st = compute_structural_tension(&t_updated, now);
 
         // Urgency (new)
         let _urgency = compute_urgency(&t_updated, now);
@@ -6001,7 +6008,7 @@ mod tests {
             horizon: Some(h),
         };
 
-        let result = compute_structural_tension(&t);
+        let result = compute_structural_tension(&t, Utc::now());
         assert!(result.is_some());
         let st = result.unwrap();
         assert!(
@@ -6015,12 +6022,82 @@ mod tests {
     fn test_structural_tension_pressure_none_without_horizon() {
         // VAL-HDYN-016 (partial): pressure = None when no horizon
         let t = Tension::new("goal state", "reality").unwrap();
-        let result = compute_structural_tension(&t);
+        let result = compute_structural_tension(&t, Utc::now());
         assert!(result.is_some());
         let st = result.unwrap();
         assert!(
             st.pressure.is_none(),
             "pressure should be None without horizon"
+        );
+    }
+
+    // ── VAL-DFX-001 / VAL-DFX-012: compute_structural_tension now parameter ──
+
+    #[test]
+    fn test_structural_tension_accepts_now_parameter() {
+        // VAL-DFX-001: compute_structural_tension signature includes `now: DateTime<Utc>`
+        // and no longer calls Utc::now() internally.
+        let t = Tension::new("goal state", "reality").unwrap();
+        let now = Utc::now();
+        let result = compute_structural_tension(&t, now);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_structural_tension_forwards_now_to_temporal_pressure() {
+        // VAL-DFX-012: The injected `now` parameter is forwarded to
+        // compute_temporal_pressure. Two calls with different `now` values
+        // on the same tension produce different pressure values.
+        use chrono::TimeZone;
+
+        let start = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let h = crate::Horizon::new_month(2026, 6).unwrap(); // ends ~2026-07-01
+
+        let t = Tension {
+            id: "test-now-fwd".to_string(),
+            desired: "goal state".to_string(),
+            actual: "current reality".to_string(),
+            parent_id: None,
+            created_at: start,
+            status: TensionStatus::Active,
+            horizon: Some(h),
+        };
+
+        // Call at two clearly separated points in time
+        let now_early = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+        let now_late = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+
+        let result_early = compute_structural_tension(&t, now_early).unwrap();
+        let result_late = compute_structural_tension(&t, now_late).unwrap();
+
+        // Both should have pressure (horizon is present)
+        assert!(
+            result_early.pressure.is_some(),
+            "early pressure should be Some"
+        );
+        assert!(
+            result_late.pressure.is_some(),
+            "late pressure should be Some"
+        );
+
+        // Magnitudes must be identical (same gap, no change)
+        assert_eq!(
+            result_early.magnitude, result_late.magnitude,
+            "magnitude should be the same for identical gap"
+        );
+
+        // Pressures must differ because urgency differs at different times
+        let p_early = result_early.pressure.unwrap();
+        let p_late = result_late.pressure.unwrap();
+        assert!(
+            (p_early - p_late).abs() > f64::EPSILON,
+            "pressure must differ for different now values: early={p_early}, late={p_late}"
+        );
+
+        // Later time = higher urgency = higher pressure
+        assert!(
+            p_late > p_early,
+            "later now should produce higher pressure: early={p_early}, late={p_late}"
         );
     }
 
