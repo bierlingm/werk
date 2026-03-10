@@ -21,8 +21,12 @@ use werk::output::Output;
 #[command(version, about, long_about = None)]
 struct Cli {
     /// Output in JSON format.
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "toon")]
     json: bool,
+
+    /// Output in TOON format (token-efficient, LLM-optimized).
+    #[arg(long, global = true, conflicts_with = "json")]
+    toon: bool,
 
     /// Disable colored output.
     #[arg(long, global = true)]
@@ -35,7 +39,7 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
-    let output = Output::new(args.json, args.no_color);
+    let output = Output::new_with_toon(args.json, args.toon, args.no_color);
 
     // Dispatch to subcommand handlers
     let result = match args.command {
@@ -71,8 +75,8 @@ fn main() {
     match result {
         Ok(()) => std::process::exit(0),
         Err(e) => {
-            if output.is_json() {
-                // Output structured JSON error when --json flag is set
+            if output.is_structured() {
+                // Output structured error when --json or --toon flag is set
                 let code = match e.error_code() {
                     ErrorCode::NOT_FOUND => "NOT_FOUND",
                     ErrorCode::INVALID_INPUT => "INVALID_INPUT",
@@ -131,10 +135,10 @@ fn cmd_init(output: &Output, global: bool) -> Result<(), WerkError> {
         created: !already_exists,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         let message = if already_exists {
             format!("Workspace already initialized at {}", werk_dir.display())
@@ -200,11 +204,11 @@ fn cmd_config(output: &Output, command: werk::commands::ConfigCommand) -> Result
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| "unknown".to_string());
 
-            if output.is_json() {
+            if output.is_structured() {
                 let result = ConfigSetResult { key, value, path };
-                let json = serde_json::to_string_pretty(&result)
-                    .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-                println!("{}", json);
+                output
+                    .print_structured(&result)
+                    .map_err(WerkError::IoError)?;
             } else {
                 output
                     .success(&format!(
@@ -238,15 +242,14 @@ fn cmd_config(output: &Output, command: werk::commands::ConfigCommand) -> Result
             // Get the value
             match config.get(&key) {
                 Some(value) => {
-                    if output.is_json() {
+                    if output.is_structured() {
                         let result = ConfigGetResult {
                             key,
                             value: value.clone(),
                         };
-                        let json = serde_json::to_string_pretty(&result).map_err(|e| {
-                            WerkError::IoError(format!("failed to serialize JSON: {}", e))
-                        })?;
-                        println!("{}", json);
+                        output
+                            .print_structured(&result)
+                            .map_err(WerkError::IoError)?;
                     } else {
                         println!(
                             "{} = {}",
@@ -348,10 +351,10 @@ fn cmd_add(
         horizon: tension.horizon.as_ref().map(|h| h.to_string()),
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
@@ -458,10 +461,10 @@ fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(),
                 old_horizon,
             };
 
-            if output.is_json() {
-                let json = serde_json::to_string_pretty(&result)
-                    .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-                println!("{}", json);
+            if output.is_structured() {
+                output
+                    .print_structured(&result)
+                    .map_err(WerkError::IoError)?;
             } else {
                 let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
                 match &horizon_parsed {
@@ -505,10 +508,10 @@ fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(),
                 days_remaining,
             };
 
-            if output.is_json() {
-                let json = serde_json::to_string_pretty(&result)
-                    .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-                println!("{}", json);
+            if output.is_structured() {
+                output
+                    .print_structured(&result)
+                    .map_err(WerkError::IoError)?;
             } else {
                 let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
                 println!("Tension {}", id_styled);
@@ -697,10 +700,10 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         children,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
@@ -1133,16 +1136,15 @@ fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result<(),
                 Some(v) => v,
                 None => {
                     // Editor returned no change - nothing to do
-                    if output.is_json() {
+                    if output.is_structured() {
                         let result = RealityResult {
                             id: tension.id.clone(),
                             actual: tension.actual.clone(),
                             old_actual: tension.actual.clone(),
                         };
-                        let json = serde_json::to_string_pretty(&result).map_err(|e| {
-                            WerkError::IoError(format!("failed to serialize JSON: {}", e))
-                        })?;
-                        println!("{}", json);
+                        output
+                            .print_structured(&result)
+                            .map_err(WerkError::IoError)?;
                     } else {
                         output
                             .info("No changes made (editor cancelled or content unchanged)")
@@ -1175,10 +1177,10 @@ fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result<(),
         old_actual,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
@@ -1231,16 +1233,15 @@ fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<(), 
                 Some(v) => v,
                 None => {
                     // Editor returned no change - nothing to do
-                    if output.is_json() {
+                    if output.is_structured() {
                         let result = DesireResult {
                             id: tension.id.clone(),
                             desired: tension.desired.clone(),
                             old_desired: tension.desired.clone(),
                         };
-                        let json = serde_json::to_string_pretty(&result).map_err(|e| {
-                            WerkError::IoError(format!("failed to serialize JSON: {}", e))
-                        })?;
-                        println!("{}", json);
+                        output
+                            .print_structured(&result)
+                            .map_err(WerkError::IoError)?;
                     } else {
                         output
                             .info("No changes made (editor cancelled or content unchanged)")
@@ -1273,10 +1274,10 @@ fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<(), 
         old_desired,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
@@ -1339,10 +1340,10 @@ fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
         status: "Resolved".to_string(),
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
@@ -1417,10 +1418,10 @@ fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), WerkEr
         reason: reason.clone(),
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension.id, werk::output::ColorStyle::Id);
@@ -1477,10 +1478,10 @@ fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
         deleted: true,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension_id, werk::output::ColorStyle::Id);
@@ -1563,10 +1564,10 @@ fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(), W
         old_parent_id,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         let id_styled = output.styled(&tension_id, werk::output::ColorStyle::Id);
@@ -1675,10 +1676,10 @@ fn cmd_note(output: &Output, arg1: Option<String>, arg2: Option<String>) -> Resu
         }
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         match &result.id {
@@ -1742,11 +1743,11 @@ fn cmd_notes(output: &Output) -> Result<(), WerkError> {
         })
         .collect();
 
-    if output.is_json() {
+    if output.is_structured() {
         let result = NotesResult { notes };
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
         if notes.is_empty() {
@@ -1859,7 +1860,7 @@ fn cmd_tree(
 
     // Handle empty forest
     if filtered_tensions.is_empty() {
-        if output.is_json() {
+        if output.is_structured() {
             let result = TreeJson {
                 tensions: vec![],
                 summary: TreeSummary {
@@ -1869,9 +1870,9 @@ fn cmd_tree(
                     released: 0,
                 },
             };
-            let json = serde_json::to_string_pretty(&result)
-                .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-            println!("{}", json);
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
             output
                 .info("No tensions found")
@@ -1948,7 +1949,7 @@ fn cmd_tree(
     }
 
     // If JSON output, build JSON structure
-    if output.is_json() {
+    if output.is_structured() {
         let json_tensions: Vec<TensionJson> = filtered_tensions
             .iter()
             .map(|t| {
@@ -1996,9 +1997,9 @@ fn cmd_tree(
             },
         };
 
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
         return Ok(());
     }
 
@@ -2186,7 +2187,7 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
-fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
+fn cmd_context(output: &Output, id: String) -> Result<(), WerkError> {
     use chrono::Utc;
     use sd_core::Forest;
     use serde::Serialize;
@@ -2283,10 +2284,10 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         mutations: mutation_infos,
     };
 
-    // Context always outputs JSON (designed for agent consumption)
-    let json = serde_json::to_string_pretty(&result)
-        .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-    println!("{}", json);
+    // Context always outputs structured format (designed for agent consumption)
+    output
+        .print_structured(&result)
+        .map_err(WerkError::IoError)?;
 
     Ok(())
 }
@@ -2529,14 +2530,14 @@ fn cmd_nuke(output: &Output, confirm: bool, global: bool) -> Result<(), WerkErro
 
     // If not confirmed, just show what would be deleted
     if !confirm {
-        if output.is_json() {
+        if output.is_structured() {
             let result = NukeResult {
                 path: werk_dir.to_string_lossy().to_string(),
                 deleted: false,
             };
-            let json = serde_json::to_string_pretty(&result)
-                .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-            println!("{}", json);
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
             output
                 .info(&format!("Would delete: {}", werk_dir.display()))
@@ -2561,10 +2562,10 @@ fn cmd_nuke(output: &Output, confirm: bool, global: bool) -> Result<(), WerkErro
         deleted: true,
     };
 
-    if output.is_json() {
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| WerkError::IoError(format!("failed to serialize JSON: {}", e)))?;
-        println!("{}", json);
+    if output.is_structured() {
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         output
             .success(&format!("Deleted workspace: {}", werk_dir.display()))
