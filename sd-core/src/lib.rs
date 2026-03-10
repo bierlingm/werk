@@ -75,7 +75,9 @@ pub use dynamics::{
     measure_assimilation_depth,
     predict_structural_tendency,
 };
-pub use engine::{DynamicsEngine, DynamicsThresholds, PreviousDynamics, PreviousState};
+pub use engine::{
+    ComputedDynamics, DynamicsEngine, DynamicsThresholds, PreviousDynamics, PreviousState,
+};
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};

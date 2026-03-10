@@ -7,7 +7,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::{
-    compute_structural_tension, compute_urgency, DynamicsThresholds, Forest, HorizonKind,
+    compute_structural_tension, compute_urgency, DynamicsEngine, DynamicsThresholds, HorizonKind,
     TensionStatus,
 };
 use serde::Serialize;
@@ -54,23 +54,27 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
+    // Create DynamicsEngine from store (all store access goes through engine.store())
+    let mut engine = DynamicsEngine::with_store(store);
+
     // Get all tensions for prefix resolution
-    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let all_tensions = engine
+        .store()
+        .list_tensions()
+        .map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
 
     // Get mutations for this tension
-    let mutations = store
+    let mutations = engine
+        .store()
         .get_mutations(&tension.id)
         .map_err(WerkError::StoreError)?;
 
-    // Get all mutations for conflict and orientation detection
-    let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
-
-    // Build forest for conflict/neglect detection and children finding
-    let forest = Forest::from_tensions(all_tensions.clone())
+    // Build forest for children finding
+    let forest = sd_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
     // Get children
@@ -86,16 +90,9 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
         })
         .collect();
 
-    // Compute dynamics via shared module
+    // Compute dynamics via DynamicsEngine (shared module)
     let now = Utc::now();
-    let dynamics_json = compute_all_dynamics(
-        tension,
-        &mutations,
-        &forest,
-        &all_tensions,
-        &all_mutations,
-        now,
-    );
+    let dynamics_json = compute_all_dynamics(&mut engine, &tension.id);
 
     // Compute urgency and pressure for top-level fields
     let urgency = compute_urgency(tension, now);

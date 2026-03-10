@@ -3,11 +3,7 @@
 use crate::error::WerkError;
 use crate::output::{ColorStyle, Output};
 use crate::workspace::Workspace;
-use chrono::Utc;
-use sd_core::{
-    classify_creative_cycle_phase, detect_structural_conflict, predict_structural_tendency,
-    ConflictThresholds, Forest, LifecycleThresholds, TensionStatus,
-};
+use sd_core::{DynamicsEngine, Forest, TensionStatus};
 use serde::Serialize;
 
 /// JSON output structure for a tension in tree.
@@ -60,9 +56,14 @@ pub fn cmd_tree(
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
+    // Create DynamicsEngine from store
+    let mut engine = DynamicsEngine::with_store(store);
+
     // Get all tensions
-    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-    let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
+    let tensions = engine
+        .store()
+        .list_tensions()
+        .map_err(WerkError::StoreError)?;
 
     // Build forest
     let forest = Forest::from_tensions(tensions.clone())
@@ -114,61 +115,30 @@ pub fn cmd_tree(
         return Ok(());
     }
 
-    // Compute dynamics for each tension
-    let now = Utc::now();
-    let thresholds = LifecycleThresholds::default();
-    let conflict_thresholds = ConflictThresholds::default();
-
-    // Get resolved tensions for momentum phase detection
-    let resolved_tensions: Vec<_> = tensions
-        .iter()
-        .filter(|t| t.status == TensionStatus::Resolved)
-        .cloned()
-        .collect();
-
-    // Build a map of tension ID to computed dynamics
+    // Compute dynamics for each tension using DynamicsEngine
     let mut dynamics_map: std::collections::HashMap<String, (String, String, bool)> =
         std::collections::HashMap::new();
 
     for tension in &filtered_tensions {
-        // Get mutations for this tension
-        let mutations: Vec<_> = all_mutations
-            .iter()
-            .filter(|m| m.tension_id() == tension.id)
-            .cloned()
-            .collect();
+        // Use DynamicsEngine to compute all dynamics (phase, conflict, tendency, etc.)
+        let computed = engine.compute_full_dynamics_for_tension(&tension.id);
 
-        // Classify phase
-        let phase_result = classify_creative_cycle_phase(
-            tension,
-            &mutations,
-            &resolved_tensions,
-            &thresholds,
-            now,
-        );
-        let phase_badge = match phase_result.phase {
-            sd_core::CreativeCyclePhase::Germination => "[G]",
-            sd_core::CreativeCyclePhase::Assimilation => "[A]",
-            sd_core::CreativeCyclePhase::Completion => "[C]",
-            sd_core::CreativeCyclePhase::Momentum => "[M]",
-        };
-
-        // Detect conflict with siblings
-        let has_conflict = detect_structural_conflict(
-            &forest,
-            &tension.id,
-            &all_mutations,
-            &conflict_thresholds,
-            now,
-        )
-        .is_some();
-
-        // Predict movement tendency
-        let tendency = predict_structural_tendency(tension, has_conflict, Some(now), None);
-        let movement_signal = match tendency.tendency {
-            sd_core::StructuralTendency::Advancing => "→",
-            sd_core::StructuralTendency::Oscillating => "↔",
-            sd_core::StructuralTendency::Stagnant => "○",
+        let (phase_badge, movement_signal, has_conflict) = match computed {
+            Some(cd) => {
+                let phase = match cd.phase.phase {
+                    sd_core::CreativeCyclePhase::Germination => "[G]",
+                    sd_core::CreativeCyclePhase::Assimilation => "[A]",
+                    sd_core::CreativeCyclePhase::Completion => "[C]",
+                    sd_core::CreativeCyclePhase::Momentum => "[M]",
+                };
+                let movement = match cd.tendency.tendency {
+                    sd_core::StructuralTendency::Advancing => "→",
+                    sd_core::StructuralTendency::Oscillating => "↔",
+                    sd_core::StructuralTendency::Stagnant => "○",
+                };
+                (phase, movement, cd.conflict.is_some())
+            }
+            None => ("[G]", "○", false),
         };
 
         dynamics_map.insert(

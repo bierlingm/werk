@@ -10,7 +10,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::{Forest, Mutation};
+use sd_core::{DynamicsEngine, Mutation};
 use serde::Serialize;
 use std::io::Write;
 use std::process::Stdio;
@@ -31,23 +31,27 @@ pub fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(),
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
+    // Create DynamicsEngine from store (all store access goes through engine.store())
+    let mut engine = DynamicsEngine::with_store(store);
+
     // Get all tensions for prefix resolution
-    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let all_tensions = engine
+        .store()
+        .list_tensions()
+        .map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
 
     // Get mutations for this tension
-    let mutations = store
+    let mutations = engine
+        .store()
         .get_mutations(&tension.id)
         .map_err(WerkError::StoreError)?;
 
-    // Get all mutations for conflict and orientation detection
-    let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
-
-    // Build forest for ancestors, siblings, children, and conflict/neglect detection
-    let forest = Forest::from_tensions(all_tensions.clone())
+    // Build forest for ancestors, siblings, children
+    let forest = sd_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
     // === Compute time reference ===
@@ -80,15 +84,8 @@ pub fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(),
         .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    // === Compute all dynamics via shared module ===
-    let dynamics_json = compute_all_dynamics(
-        tension,
-        &mutations,
-        &forest,
-        &all_tensions,
-        &all_mutations,
-        now,
-    );
+    // === Compute all dynamics via DynamicsEngine (shared module) ===
+    let dynamics_json = compute_all_dynamics(&mut engine, &tension.id);
 
     // === Mutations (chronological order - oldest first) ===
     let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
@@ -182,7 +179,8 @@ pub fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(),
     let exit_code = exit_status.code().unwrap_or(1);
 
     // Record session mutation
-    store
+    engine
+        .store()
         .record_mutation(&Mutation::new(
             tension.id.clone(),
             Utc::now(),

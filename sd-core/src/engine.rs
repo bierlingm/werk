@@ -14,12 +14,16 @@ use chrono::Utc;
 use std::collections::HashMap;
 
 use crate::dynamics::{
-    CompensatingStrategyThresholds, CompensatingStrategyType, ConflictPattern, ConflictThresholds,
-    CreativeCyclePhase, HorizonDriftType, LifecycleThresholds, NeglectThresholds, NeglectType,
-    Orientation, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
-    classify_creative_cycle_phase, classify_orientation, compute_urgency,
-    detect_compensating_strategy, detect_horizon_drift, detect_neglect, detect_oscillation,
-    detect_resolution, detect_structural_conflict,
+    AssimilationDepthResult, AssimilationDepthThresholds, CompensatingStrategy,
+    CompensatingStrategyThresholds, CompensatingStrategyType, Conflict, ConflictPattern,
+    ConflictThresholds, CreativeCyclePhase, CreativeCyclePhaseResult, HorizonDrift,
+    HorizonDriftType, LifecycleThresholds, Neglect, NeglectThresholds, NeglectType, Orientation,
+    OrientationResult, OrientationThresholds, Oscillation, OscillationThresholds, Resolution,
+    ResolutionThresholds, StructuralTendencyResult, StructuralTension, Urgency,
+    classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
+    compute_urgency, detect_compensating_strategy, detect_horizon_drift, detect_neglect,
+    detect_oscillation, detect_resolution, detect_structural_conflict, measure_assimilation_depth,
+    predict_structural_tendency,
 };
 use crate::events::{Event, EventBuilder, EventBus};
 use crate::horizon::Horizon;
@@ -79,6 +83,43 @@ pub struct DynamicsThresholds {
     /// Threshold for urgency transition events.
     /// When urgency crosses this threshold (up or down), an event is emitted.
     pub urgency_threshold: f64,
+}
+
+/// All computed dynamics results for a single tension.
+///
+/// This struct holds the full output of dynamics computation, including all
+/// 10 dynamics plus horizon drift and urgency. It is returned by
+/// [`DynamicsEngine::compute_full_dynamics_for_tension`] so that consumers
+/// can access the computed values directly without calling individual
+/// dynamics functions.
+#[derive(Debug, Clone)]
+pub struct ComputedDynamics {
+    /// Structural tension (gap magnitude and pressure).
+    pub structural_tension: Option<StructuralTension>,
+    /// Structural conflict between sibling tensions.
+    pub conflict: Option<Conflict>,
+    /// Oscillation detection result.
+    pub oscillation: Option<Oscillation>,
+    /// Resolution detection result.
+    pub resolution: Option<Resolution>,
+    /// Creative cycle phase classification.
+    pub phase: CreativeCyclePhaseResult,
+    /// Orientation classification (global, across all tensions).
+    pub orientation: Option<OrientationResult>,
+    /// Compensating strategy detection result.
+    pub compensating_strategy: Option<CompensatingStrategy>,
+    /// Structural tendency prediction.
+    pub tendency: StructuralTendencyResult,
+    /// Assimilation depth measurement.
+    pub assimilation: AssimilationDepthResult,
+    /// Neglect detection result.
+    pub neglect: Option<Neglect>,
+    /// Horizon drift analysis.
+    pub horizon_drift: HorizonDrift,
+    /// Urgency value (if horizon is present).
+    pub urgency: Option<Urgency>,
+    /// Transition events emitted during this computation.
+    pub events: Vec<Event>,
 }
 
 /// Engine that computes dynamics and emits transition events.
@@ -534,6 +575,303 @@ impl DynamicsEngine {
         }
 
         events
+    }
+
+    /// Compute all dynamics for a tension, emit transition events, and return full results.
+    ///
+    /// This method computes all 10 dynamics (structural tension, conflict, oscillation,
+    /// resolution, phase, orientation, compensating strategy, tendency, assimilation depth,
+    /// neglect) plus horizon drift and urgency. It also performs event emission and state
+    /// tracking just like [`compute_and_emit_for_tension`].
+    ///
+    /// Unlike `compute_and_emit_for_tension` which only returns transition events, this
+    /// method returns a [`ComputedDynamics`] struct containing all computed values.
+    pub fn compute_full_dynamics_for_tension(
+        &mut self,
+        tension_id: &str,
+    ) -> Option<ComputedDynamics> {
+        let now = Utc::now();
+
+        // Get the tension
+        let tension = self.store.get_tension(tension_id).unwrap()?;
+
+        // Get mutations for this tension
+        let mutations = self.store.get_mutations(tension_id).unwrap();
+
+        // Get all tensions and mutations
+        let tensions_list = self.store.list_tensions().unwrap();
+        let all_mutations = self.store.all_mutations().unwrap();
+
+        // Build forest
+        let forest = match Forest::from_tensions(tensions_list.clone()) {
+            Ok(f) => f,
+            Err(_) => return None,
+        };
+
+        // Get previous state for this tension
+        let prev = self
+            .previous_state
+            .tensions
+            .get(tension_id)
+            .cloned()
+            .unwrap_or_default();
+
+        let mut events = Vec::new();
+
+        // 1. Structural Tension
+        let structural_tension = compute_structural_tension(&tension, now);
+
+        // 2. Structural Conflict
+        let conflict = detect_structural_conflict(
+            &forest,
+            tension_id,
+            &all_mutations,
+            &self.thresholds.conflict,
+            now,
+        );
+
+        let has_conflict = conflict.is_some();
+        let conflict_pattern = conflict.as_ref().map(|c| c.pattern);
+
+        // Check for conflict transition
+        if has_conflict && !prev.had_conflict {
+            if let Some(c) = &conflict {
+                events.push(EventBuilder::conflict_detected(
+                    c.tension_ids.clone(),
+                    c.pattern,
+                ));
+            }
+        } else if !has_conflict
+            && prev.had_conflict
+            && let Some(pattern) = prev.conflict_pattern
+        {
+            events.push(EventBuilder::conflict_resolved(
+                vec![tension_id.to_owned()],
+                pattern,
+            ));
+        }
+
+        // 3. Oscillation
+        let oscillation = detect_oscillation(
+            tension_id,
+            &mutations,
+            &self.thresholds.oscillation,
+            now,
+            tension.horizon.as_ref(),
+        );
+        let has_oscillation = oscillation.is_some();
+
+        if has_oscillation
+            && !prev.had_oscillation
+            && let Some(o) = &oscillation
+        {
+            events.push(EventBuilder::oscillation_detected(
+                tension_id.to_owned(),
+                o.reversals,
+                o.magnitude,
+            ));
+        } else if !has_oscillation && prev.had_oscillation {
+            events.push(EventBuilder::oscillation_resolved(tension_id.to_owned()));
+        }
+
+        // 4. Resolution
+        let resolution = detect_resolution(&tension, &mutations, &self.thresholds.resolution, now);
+        let has_resolution = resolution.is_some();
+
+        if has_resolution
+            && !prev.had_resolution
+            && let Some(r) = &resolution
+        {
+            events.push(EventBuilder::resolution_achieved(
+                tension_id.to_owned(),
+                r.velocity,
+            ));
+        } else if !has_resolution && prev.had_resolution {
+            events.push(EventBuilder::resolution_lost(tension_id.to_owned()));
+        }
+
+        // 5. Creative Cycle Phase
+        let resolved_tensions: Vec<Tension> = tensions_list
+            .iter()
+            .filter(|t| t.status == crate::tension::TensionStatus::Resolved)
+            .cloned()
+            .collect();
+
+        let phase = classify_creative_cycle_phase(
+            &tension,
+            &mutations,
+            &resolved_tensions,
+            &self.thresholds.lifecycle,
+            now,
+        );
+
+        if prev.phase != Some(phase.phase)
+            && let Some(old_phase) = prev.phase
+        {
+            events.push(EventBuilder::lifecycle_transition(
+                tension_id.to_owned(),
+                old_phase,
+                phase.phase,
+            ));
+        }
+
+        // 6. Orientation (global, across all tensions)
+        let orientation = classify_orientation(
+            &tensions_list,
+            &all_mutations,
+            &self.thresholds.orientation,
+            now,
+        );
+
+        // 7. Compensating Strategy
+        let compensating_strategy = detect_compensating_strategy(
+            tension_id,
+            &mutations,
+            oscillation.as_ref(),
+            &self.thresholds.compensating_strategy,
+            now,
+            tension.horizon.as_ref(),
+        );
+        let has_compensating_strategy = compensating_strategy.is_some();
+        let comp_strategy_type = compensating_strategy.as_ref().map(|cs| cs.strategy_type);
+
+        if has_compensating_strategy
+            && !prev.had_compensating_strategy
+            && let Some(cs) = &compensating_strategy
+        {
+            events.push(EventBuilder::compensating_strategy_detected(
+                tension_id.to_owned(),
+                cs.strategy_type,
+                cs.persistence_seconds,
+            ));
+        }
+
+        // 8. Structural Tendency
+        let tendency = predict_structural_tendency(&tension, has_conflict, Some(now), None);
+
+        // 9. Assimilation Depth
+        let assimilation = measure_assimilation_depth(
+            tension_id,
+            &mutations,
+            &tension,
+            &AssimilationDepthThresholds::default(),
+            now,
+        );
+
+        // 10. Neglect
+        let neglect = detect_neglect(
+            &forest,
+            tension_id,
+            &all_mutations,
+            &self.thresholds.neglect,
+            now,
+        );
+        let neglect_type = neglect.as_ref().map(|n| n.neglect_type);
+
+        if neglect_type.is_some()
+            && prev.neglect_type.is_none()
+            && let Some(n) = &neglect
+        {
+            events.push(EventBuilder::neglect_detected(
+                vec![tension_id.to_owned()],
+                n.neglect_type,
+            ));
+        } else if neglect_type.is_none()
+            && prev.neglect_type.is_some()
+            && let Some(former_type) = prev.neglect_type
+        {
+            events.push(EventBuilder::neglect_resolved(
+                tension_id.to_owned(),
+                former_type,
+            ));
+        }
+
+        // Urgency
+        let urgency = compute_urgency(&tension, now);
+        let urgency_value = urgency.as_ref().map(|u| u.value);
+
+        let had_urgency_above = prev.had_urgency_above_threshold;
+        let now_urgency_above = urgency_value
+            .map(|v| v >= self.thresholds.urgency_threshold)
+            .unwrap_or(false);
+
+        if let Some(new_urgency) = urgency_value
+            && let Some(old_urgency) = prev.urgency
+        {
+            if now_urgency_above && !had_urgency_above {
+                events.push(EventBuilder::urgency_threshold_crossed(
+                    tension_id.to_owned(),
+                    old_urgency,
+                    new_urgency,
+                    self.thresholds.urgency_threshold,
+                    true,
+                ));
+            } else if !now_urgency_above && had_urgency_above {
+                events.push(EventBuilder::urgency_threshold_crossed(
+                    tension_id.to_owned(),
+                    old_urgency,
+                    new_urgency,
+                    self.thresholds.urgency_threshold,
+                    false,
+                ));
+            }
+        }
+
+        // Horizon Drift
+        let horizon_drift = detect_horizon_drift(tension_id, &mutations);
+        let drift_type = horizon_drift.drift_type;
+
+        if drift_type != HorizonDriftType::Stable && prev.horizon_drift_type != Some(drift_type) {
+            events.push(EventBuilder::horizon_drift_detected(
+                tension_id.to_owned(),
+                drift_type,
+                horizon_drift.change_count,
+            ));
+        }
+
+        // Update previous state
+        self.previous_state.tensions.insert(
+            tension_id.to_owned(),
+            PreviousDynamics {
+                phase: Some(phase.phase),
+                had_conflict: has_conflict,
+                conflict_pattern,
+                had_oscillation: has_oscillation,
+                had_resolution: has_resolution,
+                neglect_type,
+                orientation: orientation.as_ref().map(|o| o.orientation),
+                had_urgency_above_threshold: now_urgency_above,
+                horizon_drift_type: if horizon_drift.change_count > 0 {
+                    Some(drift_type)
+                } else {
+                    None
+                },
+                urgency: urgency_value,
+                had_compensating_strategy: has_compensating_strategy,
+                compensating_strategy_type: comp_strategy_type,
+            },
+        );
+
+        // Emit all events
+        for event in &events {
+            self.bus.emit(event);
+        }
+
+        Some(ComputedDynamics {
+            structural_tension,
+            conflict,
+            oscillation,
+            resolution,
+            phase,
+            orientation,
+            compensating_strategy,
+            tendency,
+            assimilation,
+            neglect,
+            horizon_drift,
+            urgency,
+            events,
+        })
     }
 
     /// Compute dynamics and emit transition events for all tensions.
