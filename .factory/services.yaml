@@ -1,12 +1,7 @@
 commands:
-  install: cargo fetch
   build: cargo build --workspace
-  test: cargo test --workspace -- --test-threads=5
-  test_sd_core: cargo test -p sd-core -- --test-threads=5
-  test_werk: cargo test -p werk -- --test-threads=5
-  clippy: cargo clippy --workspace -- -D warnings
-  clippy_sd_core: cargo clippy -p sd-core -- -D warnings
-  clippy_werk: cargo clippy -p werk -- -D warnings
-  fmt_check: cargo fmt --all --check
-  fmt: cargo fmt --all
-  run_werk: cargo run -p werk --
+  test: cargo test --workspace
+  test-sd-core: cargo test --package sd-core
+  test-cli: cargo test --package werk
+  lint: cargo clippy --workspace
+  typecheck: cargo check --workspace

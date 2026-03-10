@@ -116,6 +116,29 @@ Commit all changes with a descriptive message. Include all new and modified file
 }
 ```
 
+## Mission-Specific Guidance
+
+### Dynamics Functions Pattern
+All dynamics functions in dynamics.rs follow a consistent pattern:
+- Accept threshold structs as parameters (never hardcoded constants)
+- Use `effective_recency(absolute_recency, horizon, now)` for horizon-scaled time windows
+- Accept `now: DateTime<Utc>` to avoid internal `Utc::now()` calls
+- Return result structs with `#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]`
+
+### Gap Magnitude
+The `compute_gap_magnitude` function (line ~651 in dynamics.rs) is called from many places. When its algorithm changes, ALL tests that assert specific magnitude values will need their expected values updated. Search for `compute_gap_magnitude` and all test assertions that compare magnitude floats.
+
+### Event System Pattern
+New events follow the pattern in events.rs:
+1. Add variant to `Event` enum with serde `tag = "type", rename_all = "snake_case"`
+2. Add `EventBuilder::event_name()` static method returning `Event`
+3. Add match arms to `tension_id()` and `timestamp()` methods
+4. Add `test_event_name_serialization_roundtrip` test
+5. Wire transition detection in `engine.rs::compute_and_emit_for_tension()`
+
+### Engine Wiring
+`DynamicsEngine::compute_and_emit_for_tension()` (engine.rs) tracks previous state via `PreviousDynamics` and emits events on state transitions. Several TODO comments mark where new events should be emitted. The engine currently never calls `detect_compensating_strategy` — this must be added.
+
 ## When to Return to Orchestrator
 
 - Feature depends on a module or type that doesn't exist yet (precondition not met)

@@ -1,14 +1,8 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-cd "$(dirname "$0")/.."
+# Ensure Rust toolchain is available
+rustup show active-toolchain || rustup default stable
 
-# Ensure nightly toolchain with required components
-rustup install nightly --profile minimal 2>/dev/null || true
-rustup component add clippy rustfmt --toolchain nightly 2>/dev/null || true
-
-# Fetch dependencies
-cargo fetch 2>/dev/null || true
-
-# Verify workspace builds
-cargo check --workspace 2>/dev/null || true
+# Build workspace to verify everything compiles
+cargo build --workspace

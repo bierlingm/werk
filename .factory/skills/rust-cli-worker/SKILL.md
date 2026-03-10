@@ -159,6 +159,27 @@ Commit all changes with a descriptive message. Include all new and modified file
 }
 ```
 
+## Mission-Specific Guidance
+
+### Triple Copy-Paste Problem
+The current main.rs (3607 lines) has dynamics computation duplicated in 3 places: cmd_show (~line 564), cmd_context (~line 2477), and cmd_run (~line 2954). Each has its own copy of the full dynamics computation block calling detect_oscillation, detect_resolution, etc. The shared dynamics module (src/dynamics.rs) must replace all 3 copies with a single function.
+
+### Horizon Pass-Through Bugs
+In cmd_context and cmd_run, several dynamics functions receive `None` for the horizon parameter instead of `tension.horizon.as_ref()`. grep for `None::<&Horizon>` or explicit `None` passed to dynamics functions. All must be fixed to pass the actual horizon.
+
+### Output Module Pattern
+The Output struct in output.rs controls format selection. Currently supports human-readable (default) and --json. TOON is being added as --toon flag. The pattern: each command calls output methods that switch on format.
+
+### TOON Format
+TOON (Token-Oriented Object Notation) is a structured format optimized for LLM token efficiency. Use the `toon-format` crate (v0.4). The format uses key-value blocks with indentation. See the toon-format crate docs for serialization API.
+
+### Command Extraction Pattern
+When extracting commands to src/commands/*.rs:
+- Each file exports a `pub fn cmd_name(...)` function
+- Common imports (Store, Output, WerkError, etc.) go in a commands/mod.rs prelude
+- The dynamics computation function lives in src/dynamics.rs (imported by commands that need it)
+- main.rs becomes: clap parsing + match dispatch + error handling
+
 ## When to Return to Orchestrator
 
 - sd-core API doesn't have a method needed for this command (missing Store/Engine method)

@@ -9,20 +9,17 @@ Environment variables, external dependencies, and setup notes.
 
 ## Rust Toolchain
 
-- Edition: 2024 (for sd-core, required by fsqlite)
-- Channel: nightly (pinned via rust-toolchain.toml in workspace root)
-- Minimum: rustc 1.85.0-nightly
-- Current verified: rustc 1.92.0-nightly (f04e3dfc8 2025-10-19)
+- Edition: sd-core uses 2024, werk-cli uses 2021
+- Stable toolchain via `rust-toolchain.toml`
 
-## Key Dependencies
+## Dependencies
 
-- **fsqlite** 0.1.1 -- FrankenSQLite, pure Rust SQLite reimplementation. Connection::open(":memory:") for tests, Connection::open("path") for files. See `research/fsqlite_api_reference.md` for full API.
-- **ulid** 1.x -- ULID generation for tension IDs
-- **chrono** 0.4 with serde feature -- timestamps
-- **serde** 1.x with derive feature -- serialization
-- **serde_json** 1.x -- JSON serialization
+- sd-core: `strsim = "0.11"` for normalized Levenshtein distance (being added in this mission)
+- werk-cli: `toon-format = "0.4"` for TOON serialization (being added in this mission)
+- Storage: fsqlite (FrankenSQLite) in compatibility mode
 
-## Platform
+## Database
 
-- macOS (darwin 25.4.0, aarch64)
-- 10 CPU cores
+- SQLite at `.werk/sd.db` per project or `~/.werk/sd.db` global
+- Two tables: tensions (id, desired, actual, parent_id, created_at, status, horizon) and mutations (tension_id, timestamp, field, old_value, new_value)
+- No migrations needed for dynamics changes (dynamics are computed, not stored)
