@@ -1,0 +1,28 @@
+{
+  "featureId": "sdcore-scrutiny-fixes",
+  "reviewedAt": "2026-03-10T17:44:23Z",
+  "commitId": "0327688",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit correctly resolves the effective_recency scaling defect: horizon-aware scaling now preserves proportional differences between input thresholds, and added tests cover ratio/order invariants. It also adds a deprecated 3-arg convenience function for tendency prediction. However, the original public API break remains because `predict_structural_tendency` itself is still a mandatory 4-argument function, so prior 3-argument call sites to that symbol are still source-incompatible.",
+    "issues": [
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 2137,
+        "severity": "blocking",
+        "description": "Backward compatibility is not fully restored: `predict_structural_tendency` still requires 4 arguments, so existing external callers using the previous 3-argument `predict_structural_tendency(...)` signature still fail to compile. The added wrapper is a different symbol (`predict_structural_tendency_default`, line 2211), which does not preserve source compatibility for prior call sites and therefore does not fully resolve the prior blocking API-break review finding."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Shared guidance states 'no signature-breaking changes' but does not document a concrete Rust pattern for evolving public APIs with optional parameters while preserving call-site compatibility (e.g., keep old function name/signature and introduce a differently named extended variant).",
+      "evidence": "AGENTS.md mission boundary requires backward-compatible additions only; commit 0327688 adds `predict_structural_tendency_default` while leaving `predict_structural_tendency` as a 4-arg mandatory signature."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/sd-core-dynamics-overhaul/scrutiny/synthesis.json",
+  "summary": "FAIL: effective_recency blocking issue is fixed, and the previously flagged PreviousDynamics compensating-strategy tracking is already correct in current engine code, but the `predict_structural_tendency` public API break remains unresolved for existing 3-arg call sites."
+}
