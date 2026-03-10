@@ -1,0 +1,26 @@
+{
+  "featureId": "sdcore-resolution-velocity-fix",
+  "reviewedAt": "2026-03-10T17:20:00Z",
+  "commitId": "f98a4b2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The implementation in commit f98a4b2 satisfies VAL-DFX-002: detect_resolution now computes velocity as total gap reduction over elapsed seconds, keeping units consistent with required_velocity (remaining gap per second), and is_sufficient compares like-for-like units. Added tests directly cover unit consistency, boolean sufficiency behavior, and no-horizon behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "DateTime horizons effectively collapse recency windows to 1 second because horizon width is zero; this materially affects resolution/velocity tests but is not documented in shared library notes.",
+      "evidence": "sd-core/src/horizon.rs:359-362 documents DateTime width as 0; sd-core/src/dynamics.rs:826-835 computes effective_recency from horizon width with a minimum of 1 second; worker transcript for session 29165ed1-246e-4e88-a9fe-9bfc8be6172b shows repeated debugging around this behavior before tests stabilized."
+    },
+    {
+      "area": "skills",
+      "observation": "The rust-library-worker skill requires running cargo doc in manual verification, but this feature handoff marked followedProcedure=true without running that command, indicating a procedure/reporting mismatch.",
+      "evidence": ".factory/skills/rust-library-worker/SKILL.md (Step 6) requires `cargo doc -p sd-core --no-deps`; handoff file 2026-03-10T15-35-18-760Z__sdcore-resolution-velocity-fix__29165ed1-246e-4e88-a9fe-9bfc8be6172b.json lists commandsRun without cargo doc while skillFeedback.followedProcedure is true."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: f98a4b2 correctly fixes resolution velocity unit consistency and makes is_sufficient dimensionally valid, with targeted tests aligned to VAL-DFX-002 and no blocking defects found in scope."
+}

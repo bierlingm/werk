@@ -1,0 +1,34 @@
+{
+  "featureId": "sdcore-compensating-strategy-horizon-scaling",
+  "reviewedAt": "2026-03-10T17:21:48Z",
+  "commitId": "a7d64dfa075f43cf515045c7078a27974c082b80",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature wires horizon scaling for burst/stagnation thresholds, structural-change window, and momentum window, and adds new threshold fields with defaults. However, for tensions with a horizon, the new burst/stagnation threshold fields are effectively ignored because effective_recency replaces the provided threshold with a fixed 10% horizon-width window. This means the claimed configurability does not hold in the horizon-aware path this feature targets.",
+    "issues": [
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 831,
+        "severity": "blocking",
+        "description": "Configurable burst/stagnation thresholds are not actually configurable when horizon is present: detect_compensating_strategy passes thresholds.burst_threshold_seconds and thresholds.stagnation_threshold_seconds into effective_recency (lines 2051-2054), but effective_recency ignores absolute_recency for Some(horizon) and always returns ~10% of horizon width (lines 833-845). As a result, changing those threshold fields has no effect for horizon-based tensions."
+      },
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 7726,
+        "severity": "non_blocking",
+        "description": "VAL-DFX-004 test coverage is weak for the day-vs-year differential: the day-horizon result is computed into _cs_day but never asserted, while only cs_year.is_none() is checked (line 7754). This can miss regressions where both paths return None for unrelated reasons."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The behavior of effective_recency with horizons (ignoring absolute_recency and returning 10% of horizon width) is not clearly documented in shared state, and it caused significant implementation/test churn in this feature session.",
+      "evidence": ".factory/library/architecture.md documents horizon scaling generally but not this specific override behavior; worker transcript skeleton for session 7445e409-3e9e-4240-9508-2671ce2bf04c explicitly notes: 'effective_recency completely ignores absolute value when a horizon is present'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: horizon scaling and momentum scaling were implemented, but configurable burst/stagnation thresholds do not take effect for horizon-bearing tensions due to effective_recency semantics; this is a blocking mismatch against the feature’s configurability goal."
+}

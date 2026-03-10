@@ -1,0 +1,26 @@
+{
+  "featureId": "sdcore-gap-magnitude-hybrid",
+  "reviewedAt": "2026-03-10T17:19:50Z",
+  "commitId": "857548d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature implementation in commit 857548d matches the feature description and expectedBehavior: `strsim = \"0.11\"` was added, `compute_gap_magnitude` was replaced with a documented weighted hybrid (0.6 normalized Levenshtein distance + 0.4 Jaccard token distance), special cases are handled as required, and dedicated tests cover VAL-GAP-001 through VAL-GAP-012 including semantic ranking, case sensitivity, whitespace behavior, and Unicode scenarios. No blocking or non-blocking code defects were found in scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission guidance is inconsistent on required test scope: AGENTS.md says `cargo test --workspace` must pass after every feature, while the rust-library-worker skill and this feature handoff verification focus on `cargo test -p sd-core`.",
+      "evidence": "Mission AGENTS.md (Testing section) specifies `cargo test --workspace`; `.factory/skills/rust-library-worker/SKILL.md` step 5 uses `cargo test -p sd-core`; handoff verification commands for this feature list only package-scoped sd-core test/lint/fmt/doc commands."
+    },
+    {
+      "area": "skills",
+      "observation": "The skill's strict RED-first wording appears hard to apply for algorithm replacement work and was not followed literally in this run (implementation edit preceded new test additions), suggesting procedure text could better describe acceptable TDD adaptations for refactors/replacements.",
+      "evidence": "Transcript skeleton includes sequence where `compute_gap_magnitude` was replaced before new tests were added; handoff `skillFeedback.suggestedChanges` explicitly calls out RED/GREEN blending for this feature type."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS: Feature `sdcore-gap-magnitude-hybrid` is correctly implemented and satisfies its assigned validation assertions (VAL-GAP-001..012). No code issues were identified in the reviewed diff and artifacts."
+}

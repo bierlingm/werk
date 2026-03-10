@@ -1,0 +1,28 @@
+{
+  "featureId": "sdcore-orientation-conflict-neglect-fixes",
+  "reviewedAt": "2026-03-10T17:21:54Z",
+  "commitId": "1d03a81",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The implementation covers the assigned VAL-DFX-006/007/008/009/010/013 behaviors in dynamics logic, but it introduces a breaking public API change in sd-core by changing the signature of predict_structural_tendency. That violates the mission boundary requiring backward-compatible sd-core API additions only.",
+    "issues": [
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 2125,
+        "severity": "blocking",
+        "description": "predict_structural_tendency changed from a 3-argument public API to a 4-argument API (adding mandatory tendency_thresholds). Existing external callers will fail to compile, which is a signature-breaking change and violates AGENTS.md mission boundary: 'sd-core public API must remain backward compatible (additions only, no removals or signature-breaking changes)'."
+      },
+      {
+        "file": "sd-core/src/dynamics.rs",
+        "line": 8102,
+        "severity": "non_blocking",
+        "description": "test_val_dfx_006_classify_orientation_horizon_scaling ends with `assert!(result_day.is_some() || result_day.is_none())`, which is tautological and does not validate horizon-scaling behavior. This weakens regression protection for VAL-DFX-006 evidence."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. Core fixes for orientation/conflict/neglect are present and mapped to fulfills assertions, but the feature introduces a blocking backward-compatibility break in sd-core public API (predict_structural_tendency signature change)."
+}

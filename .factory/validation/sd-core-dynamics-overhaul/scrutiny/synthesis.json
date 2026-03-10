@@ -1,0 +1,95 @@
+{
+  "milestone": "sd-core-dynamics-overhaul",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cargo test --workspace --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cargo check --workspace --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cargo clippy --workspace --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 8,
+    "passed": 5,
+    "failed": 3,
+    "failedFeatures": [
+      "sdcore-compensating-strategy-horizon-scaling",
+      "sdcore-orientation-conflict-neglect-fixes",
+      "sdcore-new-event-types"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "sdcore-compensating-strategy-horizon-scaling",
+      "severity": "blocking",
+      "description": "In horizon-aware paths, configurable burst/stagnation thresholds are effectively ignored because `effective_recency` overrides absolute thresholds with ~10% horizon width, so changing threshold fields does not affect behavior for tensions with a horizon."
+    },
+    {
+      "featureId": "sdcore-orientation-conflict-neglect-fixes",
+      "severity": "blocking",
+      "description": "`predict_structural_tendency` was changed from a 3-argument public API to a mandatory 4-argument API, introducing a backward-incompatible sd-core signature change against mission boundary constraints."
+    },
+    {
+      "featureId": "sdcore-new-event-types",
+      "severity": "blocking",
+      "description": "`PreviousDynamics` compensating-strategy fields were added but in that feature commit were copied from prior state instead of being updated from current-cycle computation, so VAL-EVT-014 was not fully satisfied in-feature."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add an explicit conflict-resolution rule for when milestone feature requirements require API-signature changes that contradict the global backward-compatibility boundary.",
+      "evidence": "Review sdcore-orientation-conflict-neglect-fixes flagged a blocking API break while the feature spec itself required signature changes elsewhere in this milestone, creating contradictory direction.",
+      "isSystemic": true
+    },
+    {
+      "target": ".factory/skills/rust-library-worker/SKILL.md",
+      "suggestion": "Align validator scope guidance with mission-level validation policy (package-only vs workspace-wide) and require workers to state which policy they followed.",
+      "evidence": "Review sdcore-gap-magnitude-hybrid observed AGENTS.md requires `cargo test --workspace` while skill guidance and handoffs commonly validate with `cargo test -p sd-core` only.",
+      "isSystemic": true
+    },
+    {
+      "target": ".factory/skills/rust-library-worker/SKILL.md",
+      "suggestion": "Tighten procedural compliance reporting: if required steps (e.g., `cargo doc -p sd-core --no-deps`) were not run, `followedProcedure` must be false or include deviations.",
+      "evidence": "Multiple reviews (sdcore-structural-tension-now-param, sdcore-resolution-velocity-fix, sdcore-threshold-recalibration) observed handoffs marking followedProcedure=true while omitting required manual-verification commands.",
+      "isSystemic": true
+    },
+    {
+      "target": ".factory/skills/rust-library-worker/SKILL.md",
+      "suggestion": "Clarify acceptable TDD evidence for algorithm-replacement/refactor work so RED-first expectations are explicit but practical.",
+      "evidence": "Reviews sdcore-gap-magnitude-hybrid and sdcore-new-event-types both reported test-first guidance drift during refactor-heavy work despite followedProcedure=true reporting.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "DateTime horizon width and effective_recency 1-second minimum behavior should be documented in shared library state.",
+      "reason": "rejected for now (library doc update not applied in this scrutiny run; defer to orchestrator prioritization)"
+    },
+    {
+      "observation": "effective_recency ignores absolute thresholds when a horizon exists.",
+      "reason": "duplicate of blocking code-review finding already captured under blockingIssues"
+    },
+    {
+      "observation": "Cargo doc step missing from handoffs.",
+      "reason": "duplicate across multiple reviews; consolidated into one systemic guidance recommendation"
+    },
+    {
+      "observation": "Strict RED-first sequence not followed in every feature.",
+      "reason": "duplicate across multiple reviews; consolidated into one systemic guidance recommendation"
+    }
+  ],
+  "previousRound": null
+}
