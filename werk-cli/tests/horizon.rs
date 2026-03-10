@@ -4,7 +4,7 @@
 //! - VAL-HCLI-001 through VAL-HCLI-022
 //! - VAL-HCROSS-001 through VAL-HCROSS-006
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -16,15 +16,13 @@ use tempfile::TempDir;
 #[test]
 fn test_add_with_horizon_month() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("desired state")
         .arg("actual state")
@@ -37,8 +35,7 @@ fn test_add_with_horizon_month() {
         .stdout(predicate::str::contains("Horizon: 2026-05"));
 
     // Verify with --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("another")
@@ -60,15 +57,13 @@ fn test_add_with_horizon_month() {
 #[test]
 fn test_add_without_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -88,15 +83,13 @@ fn test_add_without_horizon() {
 #[test]
 fn test_add_with_horizon_year() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -118,15 +111,13 @@ fn test_add_with_horizon_year() {
 #[test]
 fn test_add_with_horizon_day() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -148,15 +139,13 @@ fn test_add_with_horizon_day() {
 #[test]
 fn test_add_with_invalid_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("desired")
         .arg("actual")
@@ -174,15 +163,13 @@ fn test_add_with_invalid_horizon() {
 #[test]
 fn test_add_with_invalid_month() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("desired")
         .arg("actual")
@@ -202,16 +189,14 @@ fn test_add_with_invalid_month() {
 #[test]
 fn test_horizon_set() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -227,8 +212,7 @@ fn test_horizon_set() {
     let id = json["id"].as_str().unwrap();
 
     // Set horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("horizon")
         .arg(id)
@@ -248,16 +232,14 @@ fn test_horizon_set() {
 #[test]
 fn test_horizon_clear() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -275,8 +257,7 @@ fn test_horizon_clear() {
     let id = json["id"].as_str().unwrap();
 
     // Clear horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("horizon")
         .arg(id)
@@ -296,16 +277,14 @@ fn test_horizon_clear() {
 #[test]
 fn test_horizon_display() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -323,8 +302,7 @@ fn test_horizon_display() {
     let id = json["id"].as_str().unwrap();
 
     // Display horizon
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("horizon")
         .arg(id)
         .current_dir(dir.path())
@@ -338,15 +316,13 @@ fn test_horizon_display() {
 #[test]
 fn test_horizon_nonexistent() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("horizon")
         .arg("BOGUS123")
         .arg("2026-05")
@@ -361,16 +337,14 @@ fn test_horizon_nonexistent() {
 #[test]
 fn test_horizon_on_resolved_rejected() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -386,8 +360,7 @@ fn test_horizon_on_resolved_rejected() {
     let id = json["id"].as_str().unwrap();
 
     // Resolve tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(id)
         .current_dir(dir.path())
@@ -395,8 +368,7 @@ fn test_horizon_on_resolved_rejected() {
         .success();
 
     // Try to set horizon
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("horizon")
         .arg(id)
         .arg("2026-05")
@@ -411,16 +383,14 @@ fn test_horizon_on_resolved_rejected() {
 #[test]
 fn test_horizon_on_released_rejected() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -436,8 +406,7 @@ fn test_horizon_on_released_rejected() {
     let id = json["id"].as_str().unwrap();
 
     // Release tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(id)
         .arg("--reason")
@@ -447,8 +416,7 @@ fn test_horizon_on_released_rejected() {
         .success();
 
     // Try to set horizon
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("horizon")
         .arg(id)
         .arg("2026-05")
@@ -463,16 +431,14 @@ fn test_horizon_on_released_rejected() {
 #[test]
 fn test_horizon_overwrite() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -490,8 +456,7 @@ fn test_horizon_overwrite() {
     let id = json["id"].as_str().unwrap();
 
     // Overwrite horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("horizon")
         .arg(id)
@@ -511,16 +476,14 @@ fn test_horizon_overwrite() {
 #[test]
 fn test_add_with_horizon_and_parent() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("parent")
@@ -536,8 +499,7 @@ fn test_add_with_horizon_and_parent() {
     let parent_id = json["id"].as_str().unwrap();
 
     // Create child with horizon and parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("child")
@@ -566,16 +528,14 @@ fn test_add_with_horizon_and_parent() {
 #[test]
 fn test_show_with_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired state")
@@ -593,8 +553,7 @@ fn test_show_with_horizon() {
     let id = json["id"].as_str().unwrap();
 
     // Show
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(id)
         .current_dir(dir.path())
@@ -608,16 +567,14 @@ fn test_show_with_horizon() {
 #[test]
 fn test_show_without_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension without horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -633,8 +590,7 @@ fn test_show_without_horizon() {
     let id = json["id"].as_str().unwrap();
 
     // Show - should not show Horizon line or show as None
-    let _output = Command::cargo_bin("werk")
-        .unwrap()
+    let _output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(id)
         .current_dir(dir.path())
@@ -648,16 +604,14 @@ fn test_show_without_horizon() {
 #[test]
 fn test_show_verbose_with_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -675,8 +629,7 @@ fn test_show_verbose_with_horizon() {
     let id = json["id"].as_str().unwrap();
 
     // Show verbose
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(id)
         .arg("--verbose")
@@ -695,16 +648,14 @@ fn test_show_verbose_with_horizon() {
 #[test]
 fn test_tree_sorts_by_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("parent")
@@ -720,8 +671,7 @@ fn test_tree_sorts_by_horizon() {
     let parent_id = json["id"].as_str().unwrap();
 
     // Create children with different horizons
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child august")
         .arg("actual")
@@ -733,8 +683,7 @@ fn test_tree_sorts_by_horizon() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child march")
         .arg("actual")
@@ -746,8 +695,7 @@ fn test_tree_sorts_by_horizon() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child no horizon")
         .arg("actual")
@@ -758,8 +706,7 @@ fn test_tree_sorts_by_horizon() {
         .success();
 
     // Tree should show march before august before no horizon
-    let assert = Command::cargo_bin("werk")
-        .unwrap()
+    let assert = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -779,16 +726,14 @@ fn test_tree_sorts_by_horizon() {
 #[test]
 fn test_tree_horizon_annotations() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("with horizon")
         .arg("actual")
@@ -799,8 +744,7 @@ fn test_tree_horizon_annotations() {
         .success();
 
     // Create tension without horizon
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("no horizon")
         .arg("actual")
@@ -809,8 +753,7 @@ fn test_tree_horizon_annotations() {
         .success();
 
     // Tree should show [2026-05] and [—] annotations
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -827,16 +770,14 @@ fn test_tree_horizon_annotations() {
 #[test]
 fn test_context_with_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -854,8 +795,7 @@ fn test_context_with_horizon() {
     let id = json["id"].as_str().unwrap();
 
     // Get context
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(id)
         .current_dir(dir.path())
@@ -879,16 +819,14 @@ fn test_context_with_horizon() {
 #[test]
 fn test_context_without_horizon() {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension without horizon
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired")
@@ -904,8 +842,7 @@ fn test_context_without_horizon() {
     let id = json["id"].as_str().unwrap();
 
     // Get context
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(id)
         .current_dir(dir.path())

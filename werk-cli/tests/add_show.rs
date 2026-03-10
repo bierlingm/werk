@@ -10,7 +10,7 @@
 //! - VAL-CRUD-007: Show reports not found for invalid ID
 //! - VAL-CRUD-025: Prefix too short rejected
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -24,16 +24,14 @@ fn test_add_creates_tension() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace first
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Add a tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a novel")
         .arg("have an outline")
@@ -67,15 +65,13 @@ fn test_add_creates_tension() {
 fn test_add_prints_id() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -102,8 +98,7 @@ fn test_add_prints_id() {
 fn test_add_with_parent() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -119,8 +114,7 @@ fn test_add_with_parent() {
     // Create child tension with --parent flag using prefix (first 6 chars of ULID)
     let prefix = &parent_id[..6];
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child goal")
         .arg("child reality")
@@ -141,15 +135,13 @@ fn test_add_with_parent() {
 fn test_add_rejects_empty_desired() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("")
         .arg("actual")
@@ -169,15 +161,13 @@ fn test_add_rejects_empty_desired() {
 fn test_add_rejects_empty_actual() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("desired")
         .arg("")
@@ -197,16 +187,14 @@ fn test_add_rejects_empty_actual() {
 fn test_add_handles_unicode() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Add tension with CJK characters and emoji
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("写小说 🎵")
         .arg("有大纲")
@@ -229,8 +217,7 @@ fn test_add_requires_workspace() {
     let home = TempDir::new().unwrap();
 
     // Set a custom HOME that has no .werk/
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -248,15 +235,13 @@ fn test_add_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal")
@@ -294,8 +279,7 @@ fn test_add_json_output() {
 fn test_show_by_full_id() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -306,8 +290,7 @@ fn test_show_by_full_id() {
     let tension = store.create_tension("show goal", "show reality").unwrap();
 
     // Show by full ID
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -342,8 +325,7 @@ fn test_show_by_full_id() {
 fn test_show_by_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -358,8 +340,7 @@ fn test_show_by_prefix() {
     // Show by 6-char prefix
     let prefix = &tension.id[..6];
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(dir.path())
@@ -378,8 +359,7 @@ fn test_show_by_prefix() {
 fn test_show_displays_mutation_count() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -392,8 +372,7 @@ fn test_show_displays_mutation_count() {
         .unwrap();
 
     // Show should display mutation count (at least 1 for creation)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -417,8 +396,7 @@ fn test_show_displays_mutation_count() {
 fn test_show_ambiguous_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -438,8 +416,7 @@ fn test_show_ambiguous_prefix() {
     let prefix = &tensions[0].id[..4];
 
     // Try with 4-char prefix - might be ambiguous
-    let result = Command::cargo_bin("werk")
-        .unwrap()
+    let result = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(dir.path())
@@ -463,15 +440,13 @@ fn test_show_ambiguous_prefix() {
 fn test_show_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .current_dir(dir.path())
@@ -485,8 +460,7 @@ fn test_show_not_found() {
 fn test_show_prefix_too_short() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -497,8 +471,7 @@ fn test_show_prefix_too_short() {
     let _tension = store.create_tension("short goal", "short reality").unwrap();
 
     // Try 3-char prefix (too short)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg("ABC")
         .current_dir(dir.path())
@@ -512,8 +485,7 @@ fn test_show_prefix_too_short() {
 fn test_show_requires_workspace() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg("SOMEID")
         .current_dir(dir.path())
@@ -528,8 +500,7 @@ fn test_show_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -538,8 +509,7 @@ fn test_show_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("json goal", "json reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
@@ -582,8 +552,7 @@ fn test_show_json_output() {
 fn test_show_displays_parent() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -599,8 +568,7 @@ fn test_show_displays_parent() {
         .unwrap();
 
     // Show child
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&child.id)
         .current_dir(dir.path())
@@ -624,8 +592,7 @@ fn test_show_displays_parent() {
 fn test_show_verbose_flag() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -637,8 +604,7 @@ fn test_show_verbose_flag() {
         .unwrap();
 
     // --verbose should be accepted (might not show extra info yet)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .arg("--verbose")

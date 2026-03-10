@@ -8,11 +8,12 @@
 //! - VAL-AGENT-005: Context handles leaf tension (no children)
 //! - VAL-AGENT-006: Context preserves unicode/special chars in JSON
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
 use tempfile::TempDir;
 
 /// Extract a ULID from werk output.
+#[allow(dead_code)]
 fn extract_ulid(output: &str) -> Option<String> {
     let chars: Vec<char> = output.chars().collect();
     for i in 0..chars.len().saturating_sub(25) {
@@ -36,8 +37,7 @@ fn extract_ulid(output: &str) -> Option<String> {
 fn test_context_outputs_valid_json() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -46,8 +46,7 @@ fn test_context_outputs_valid_json() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -91,8 +90,7 @@ fn test_context_outputs_valid_json() {
 fn test_context_tension_has_all_fields() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -104,8 +102,7 @@ fn test_context_tension_has_all_fields() {
         .unwrap();
     let id = tension.id.clone();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&id)
         .current_dir(dir.path())
@@ -141,8 +138,7 @@ fn test_context_tension_has_all_fields() {
 fn test_context_has_all_10_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -151,8 +147,7 @@ fn test_context_has_all_10_dynamics() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -195,8 +190,7 @@ fn test_context_has_all_10_dynamics() {
 fn test_context_mutations_chronological() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -210,8 +204,7 @@ fn test_context_mutations_chronological() {
     store.update_actual(&tension.id, "reality v3").unwrap();
     store.update_desired(&tension.id, "refined goal").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -254,8 +247,7 @@ fn test_context_mutations_chronological() {
 fn test_context_ancestors_root_first() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -275,8 +267,7 @@ fn test_context_ancestors_root_first() {
         .create_tension_with_parent("D goal", "D reality", Some(c.id.clone()))
         .unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&d.id)
         .current_dir(dir.path())
@@ -321,8 +312,7 @@ fn test_context_ancestors_root_first() {
 fn test_context_siblings_exclude_self() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -345,8 +335,7 @@ fn test_context_siblings_exclude_self() {
         .unwrap();
 
     // Context for C2 should have siblings [C1, C3] (not including C2)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&c2.id)
         .current_dir(dir.path())
@@ -393,8 +382,7 @@ fn test_context_siblings_exclude_self() {
 fn test_context_root_empty_ancestors() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -403,8 +391,7 @@ fn test_context_root_empty_ancestors() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let root = store.create_tension("root goal", "root reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&root.id)
         .current_dir(dir.path())
@@ -431,8 +418,7 @@ fn test_context_root_empty_ancestors() {
 fn test_context_root_siblings_are_other_roots() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -446,8 +432,7 @@ fn test_context_root_siblings_are_other_roots() {
     let r3 = store.create_tension("R3 goal", "R3 reality").unwrap();
 
     // Context for R2 should have R1 and R3 as siblings
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&r2.id)
         .current_dir(dir.path())
@@ -488,8 +473,7 @@ fn test_context_root_siblings_are_other_roots() {
 fn test_context_leaf_empty_children() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -505,8 +489,7 @@ fn test_context_leaf_empty_children() {
         .create_tension_with_parent("leaf goal", "leaf reality", Some(parent.id.clone()))
         .unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&leaf.id)
         .current_dir(dir.path())
@@ -537,8 +520,7 @@ fn test_context_leaf_empty_children() {
 fn test_context_preserves_unicode() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -547,8 +529,7 @@ fn test_context_preserves_unicode() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("写小说 🎵", "有大纲").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -579,8 +560,7 @@ fn test_context_preserves_unicode() {
 fn test_context_escapes_special_chars() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -593,8 +573,7 @@ fn test_context_escapes_special_chars() {
         .create_tension("goal with \"quotes\"", "reality with\nnewline")
         .unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -634,15 +613,13 @@ fn test_context_escapes_special_chars() {
 fn test_context_nonexistent_id_error() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg("NONEXISTENT123456789ABC")
         .current_dir(dir.path())
@@ -661,8 +638,7 @@ fn test_context_nonexistent_id_error() {
 fn test_context_ambiguous_prefix_error() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -678,8 +654,7 @@ fn test_context_ambiguous_prefix_error() {
     // Since ULIDs are unique, we need to create tensions and check if
     // their first characters overlap. In practice, this is unlikely,
     // so we test with a too-short prefix instead.
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg("AB") // Too short (less than 4 chars)
         .current_dir(dir.path())
@@ -698,8 +673,7 @@ fn test_context_ambiguous_prefix_error() {
 fn test_context_prefix_resolution() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -711,8 +685,7 @@ fn test_context_prefix_resolution() {
     // Use first 8 characters as prefix
     let prefix = &tension.id[..8];
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(prefix)
         .current_dir(dir.path())
@@ -742,8 +715,7 @@ fn test_context_prefix_resolution() {
 fn test_context_always_json() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -753,8 +725,7 @@ fn test_context_always_json() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Call without --json flag
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())

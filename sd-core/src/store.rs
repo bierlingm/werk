@@ -2365,7 +2365,6 @@ mod tests {
         store.update_status(&t.id, TensionStatus::Resolved).unwrap();
 
         // If we get here without panicking, the test passes
-        assert!(true);
     }
 
     // ── VAL-TENSION-013: Deletion with children (grandparent adoption) ──────

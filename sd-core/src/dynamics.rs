@@ -4649,7 +4649,7 @@ mod tests {
     fn test_creative_cycle_phase_debug_clone() {
         let phase = CreativeCyclePhase::Assimilation;
         let _ = format!("{:?}", phase);
-        let _ = phase.clone();
+        let _ = phase;
 
         let result = CreativeCyclePhaseResult {
             tension_id: "test".to_string(),
@@ -4670,7 +4670,7 @@ mod tests {
     fn test_orientation_debug_clone() {
         let orient = Orientation::Creative;
         let _ = format!("{:?}", orient);
-        let _ = orient.clone();
+        let _ = orient;
 
         let result = OrientationResult {
             orientation: Orientation::ProblemSolving,
@@ -4845,15 +4845,11 @@ mod tests {
         );
 
         // With lower threshold and future time, should detect
-        if result_low.is_some() {
-            let cs = result_low.unwrap();
+        if let Some(cs) = result_low {
             assert_eq!(
                 cs.strategy_type,
                 CompensatingStrategyType::ConflictManipulation
             );
-        } else {
-            // At minimum, verify function doesn't panic
-            assert!(result_low.is_none() || result_low.is_some());
         }
     }
 
@@ -5800,8 +5796,12 @@ mod tests {
         assert_eq!(phase.phase, CreativeCyclePhase::Germination);
 
         // 6. Orientation
-        let orient =
-            classify_orientation(&[t.clone()], &empty, &OrientationThresholds::default(), now);
+        let orient = classify_orientation(
+            std::slice::from_ref(&t),
+            &empty,
+            &OrientationThresholds::default(),
+            now,
+        );
         assert!(orient.is_none()); // Insufficient sample
 
         // 7. Compensating Strategy
@@ -5883,7 +5883,7 @@ mod tests {
 
         // 6. Orientation
         let orient = classify_orientation(
-            &[t.clone()],
+            std::slice::from_ref(&t),
             &mutations,
             &OrientationThresholds::default(),
             now,
@@ -6138,11 +6138,11 @@ mod tests {
 
         let tend = StructuralTendency::Advancing;
         let _ = format!("{:?}", tend);
-        let _ = tend.clone();
+        let _ = tend;
 
         let assim = AssimilationDepth::Deep;
         let _ = format!("{:?}", assim);
-        let _ = assim.clone();
+        let _ = assim;
 
         let neg = Neglect {
             tension_id: "test".to_string(),
@@ -6935,7 +6935,7 @@ mod tests {
             HorizonDriftType::Oscillating,
         ] {
             let _ = format!("{:?}", dt);
-            let dt2 = dt.clone();
+            let dt2 = dt;
             assert_eq!(dt, dt2);
         }
     }
@@ -8082,7 +8082,7 @@ mod tests {
         let result_no_horizon = classify_creative_cycle_phase(
             &t_no_horizon,
             &[],
-            &[resolved_t.clone()],
+            std::slice::from_ref(&resolved_t),
             &thresholds,
             now,
         );
@@ -8090,8 +8090,13 @@ mod tests {
         // With year horizon: momentum_window = effective_recency(3 days, year)
         // = 0.1 * 365 days ≈ 36.5 days
         // Resolved tension was 10 days ago → inside 36.5-day window → IS momentum
-        let result_with_horizon =
-            classify_creative_cycle_phase(&t, &[], &[resolved_t.clone()], &thresholds, now);
+        let result_with_horizon = classify_creative_cycle_phase(
+            &t,
+            &[],
+            std::slice::from_ref(&resolved_t),
+            &thresholds,
+            now,
+        );
 
         // The no-horizon tension should NOT be in Momentum (10 days > 3-day window)
         assert_ne!(
@@ -8387,12 +8392,12 @@ mod tests {
                 .unwrap();
         }
 
-        let forest = Forest::from_tensions(store.list_tensions().unwrap()).unwrap();
-        let all_mutations = store.all_mutations().unwrap();
+        let _forest = Forest::from_tensions(store.list_tensions().unwrap()).unwrap();
+        let _all_mutations = store.all_mutations().unwrap();
 
         // Use thresholds where base ratio alone would NOT trigger neglect,
         // but urgency amplification pushes it over
-        let thresholds = NeglectThresholds {
+        let _thresholds = NeglectThresholds {
             recency_seconds: 3600 * 24 * 7,
             activity_ratio_threshold: 8.0, // High bar
             min_active_mutations: 2,
@@ -8513,7 +8518,7 @@ mod tests {
     #[test]
     fn test_val_dfx_009_configurable_lifecycle_urgency_thresholds() {
         use crate::Horizon;
-        use chrono::{Duration, TimeZone};
+        use chrono::TimeZone;
 
         // Create a tension with a horizon where urgency is ~0.5
         // (between default 0.3 and 0.7)
@@ -8584,7 +8589,7 @@ mod tests {
     #[test]
     fn test_val_dfx_009_configurable_tendency_urgency_threshold() {
         use crate::Horizon;
-        use chrono::{Duration, TimeZone};
+        use chrono::TimeZone;
 
         // Create a tension with urgency ~0.75 (between 0.5 and 0.9)
         let created = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();

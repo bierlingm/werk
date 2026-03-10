@@ -9,7 +9,7 @@
 //! - VAL-JSON-006: --json error responses are structured JSON
 //! - VAL-JSON-007: --json on empty tree returns empty array
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -36,15 +36,13 @@ fn extract_ulid(output: &str) -> Option<String> {
 fn test_tree_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -52,8 +50,7 @@ fn test_tree_json_valid() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -78,15 +75,13 @@ fn test_tree_json_valid() {
 fn test_show_json_valid_with_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -100,8 +95,7 @@ fn test_show_json_valid_with_dynamics() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -130,15 +124,13 @@ fn test_show_json_valid_with_dynamics() {
 fn test_add_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired state")
@@ -162,15 +154,13 @@ fn test_add_json_valid() {
 fn test_reality_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal")
@@ -185,8 +175,7 @@ fn test_reality_json_valid() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("reality")
         .arg(&id)
@@ -208,15 +197,13 @@ fn test_reality_json_valid() {
 fn test_desire_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("initial goal")
@@ -231,8 +218,7 @@ fn test_desire_json_valid() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("desire")
         .arg(&id)
@@ -254,15 +240,13 @@ fn test_desire_json_valid() {
 fn test_resolve_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal")
@@ -277,8 +261,7 @@ fn test_resolve_json_valid() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("resolve")
         .arg(&id)
@@ -304,15 +287,13 @@ fn test_resolve_json_valid() {
 fn test_release_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal")
@@ -327,8 +308,7 @@ fn test_release_json_valid() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("release")
         .arg(&id)
@@ -357,15 +337,13 @@ fn test_release_json_valid() {
 fn test_rm_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal to delete")
@@ -380,8 +358,7 @@ fn test_rm_json_valid() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("rm")
         .arg(&id)
@@ -407,16 +384,14 @@ fn test_rm_json_valid() {
 fn test_move_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("parent goal")
@@ -432,8 +407,7 @@ fn test_move_json_valid() {
     let parent_id = extract_ulid(&stdout).expect("Should have extracted parent ID");
 
     // Create child
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("child goal")
@@ -449,8 +423,7 @@ fn test_move_json_valid() {
     let child_id = extract_ulid(&stdout).expect("Should have extracted child ID");
 
     // Move child under parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("move")
         .arg(&child_id)
@@ -476,15 +449,13 @@ fn test_move_json_valid() {
 fn test_note_json_valid() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal")
@@ -499,8 +470,7 @@ fn test_note_json_valid() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("note")
         .arg(&id)
@@ -526,16 +496,14 @@ fn test_note_json_valid() {
 fn test_tree_json_filter_open() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create active tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active goal")
         .arg("reality")
@@ -544,8 +512,7 @@ fn test_tree_json_filter_open() {
         .success();
 
     // Create and resolve another
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("resolved goal")
         .arg("reality")
@@ -559,8 +526,7 @@ fn test_tree_json_filter_open() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&id)
         .current_dir(dir.path())
@@ -568,8 +534,7 @@ fn test_tree_json_filter_open() {
         .success();
 
     // --open --json should only show Active
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .arg("--open")
@@ -596,16 +561,14 @@ fn test_tree_json_filter_open() {
 fn test_tree_json_filter_resolved() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create active tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active goal")
         .arg("reality")
@@ -614,8 +577,7 @@ fn test_tree_json_filter_resolved() {
         .success();
 
     // Create and resolve another
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("resolved goal")
         .arg("reality")
@@ -629,8 +591,7 @@ fn test_tree_json_filter_resolved() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&id)
         .current_dir(dir.path())
@@ -638,8 +599,7 @@ fn test_tree_json_filter_resolved() {
         .success();
 
     // --resolved --json should only show Resolved
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .arg("--resolved")
@@ -670,15 +630,13 @@ fn test_tree_json_filter_resolved() {
 fn test_show_json_dynamics_null_not_omitted() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("brand new goal")
@@ -693,8 +651,7 @@ fn test_show_json_dynamics_null_not_omitted() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -741,15 +698,13 @@ fn test_show_json_dynamics_null_not_omitted() {
 fn test_json_error_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg("NONEXISTENTID12345678")
@@ -788,15 +743,13 @@ fn test_json_error_not_found() {
 fn test_json_error_prefix_too_short() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg("abc")
@@ -821,15 +774,13 @@ fn test_json_error_prefix_too_short() {
 fn test_json_error_on_resolved_tension() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("goal")
@@ -845,8 +796,7 @@ fn test_json_error_on_resolved_tension() {
     let id = extract_ulid(&stdout).expect("Should have extracted ID");
 
     // Resolve it
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&id)
         .current_dir(dir.path())
@@ -854,8 +804,7 @@ fn test_json_error_on_resolved_tension() {
         .success();
 
     // Try to update reality on resolved tension (should fail)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("reality")
         .arg(&id)
@@ -884,15 +833,13 @@ fn test_json_error_on_resolved_tension() {
 fn test_tree_json_empty() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -922,16 +869,14 @@ fn test_tree_json_empty() {
 fn test_json_schema_consistency() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("consistent goal")
@@ -948,8 +893,7 @@ fn test_json_schema_consistency() {
     let id = add_json.get("id").unwrap().as_str().unwrap().to_string();
 
     // Get show JSON
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -964,8 +908,7 @@ fn test_json_schema_consistency() {
     let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
 
     // Get tree JSON
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())

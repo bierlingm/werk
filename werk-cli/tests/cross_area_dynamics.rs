@@ -12,7 +12,7 @@
 //! - VAL-CROSS-006: show --verbose displays compensating strategy, urgency threshold, horizon drift
 //! - VAL-CROSS-007: Canonical scenario with recalibrated defaults produces correct classifications
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::TempDir;
@@ -35,8 +35,7 @@ fn extract_ulid(output: &str) -> Option<String> {
 /// Helper: initialize a workspace and return the temp dir.
 fn init_workspace() -> TempDir {
     let dir = TempDir::new().unwrap();
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -46,8 +45,7 @@ fn init_workspace() -> TempDir {
 
 /// Helper: add a tension and return its ID.
 fn add_tension(dir: &TempDir, desired: &str, actual: &str) -> String {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg(desired)
         .arg(actual)
@@ -63,8 +61,7 @@ fn add_tension(dir: &TempDir, desired: &str, actual: &str) -> String {
 
 /// Helper: add a tension with horizon and return its ID.
 fn add_tension_with_horizon(dir: &TempDir, desired: &str, actual: &str, horizon: &str) -> String {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("--horizon")
         .arg(horizon)
@@ -82,8 +79,7 @@ fn add_tension_with_horizon(dir: &TempDir, desired: &str, actual: &str, horizon:
 
 /// Helper: get JSON output from show command.
 fn show_json(dir: &TempDir, id: &str) -> Value {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(id)
@@ -99,8 +95,7 @@ fn show_json(dir: &TempDir, id: &str) -> Value {
 
 /// Helper: get TOON output from show command.
 fn show_toon(dir: &TempDir, id: &str) -> String {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--toon")
         .arg("show")
         .arg(id)
@@ -115,8 +110,7 @@ fn show_toon(dir: &TempDir, id: &str) -> String {
 
 /// Helper: update reality for a tension.
 fn update_reality(dir: &TempDir, id: &str, new_reality: &str) {
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(id)
         .arg(new_reality)
@@ -368,8 +362,7 @@ fn test_new_events_reflected_in_cli_dynamics() {
     );
 
     // Postpone the horizon (this creates a horizon mutation that drift detects)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("horizon")
         .arg(&id)
         .arg("2026-09") // Push to September
@@ -624,8 +617,7 @@ fn test_existing_database_backward_compatible() {
     );
 
     // Add a child tension to test forest operations
-    let child_output = Command::cargo_bin("werk")
-        .unwrap()
+    let child_output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("--parent")
         .arg(&id)
@@ -641,8 +633,7 @@ fn test_existing_database_backward_compatible() {
     let child_id = extract_ulid(&child_stdout).unwrap();
 
     // Verify tree still works
-    let tree_output = Command::cargo_bin("werk")
-        .unwrap()
+    let tree_output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -660,8 +651,7 @@ fn test_existing_database_backward_compatible() {
     );
 
     // Verify context still works with existing data
-    let ctx_output = Command::cargo_bin("werk")
-        .unwrap()
+    let ctx_output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&id)
         .current_dir(dir.path())
@@ -676,7 +666,7 @@ fn test_existing_database_backward_compatible() {
         "Context dynamics should be computed from existing data"
     );
     assert!(
-        ctx_json["children"].as_array().unwrap().len() >= 1,
+        !ctx_json["children"].as_array().unwrap().is_empty(),
         "Context should show children"
     );
 
@@ -695,8 +685,7 @@ fn test_database_loads_without_migration() {
     let dir = TempDir::new().unwrap();
 
     // Init workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -711,8 +700,7 @@ fn test_database_loads_without_migration() {
     }
 
     // Now use CLI to read the data — this should work without migration
-    let tree_output = Command::cargo_bin("werk")
-        .unwrap()
+    let tree_output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -757,8 +745,7 @@ fn test_show_verbose_displays_compensating_strategy() {
     update_reality(&dir, &id, "trying again");
 
     // Run show --verbose
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .arg("--verbose")
@@ -776,8 +763,7 @@ fn test_show_verbose_displays_urgency_threshold() {
     let id = add_tension_with_horizon(&dir, "meet deadline", "haven't started yet", "2026-06");
 
     // Run show --verbose
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .arg("--verbose")
@@ -796,8 +782,7 @@ fn test_show_verbose_displays_horizon_drift() {
     let id = add_tension_with_horizon(&dir, "complete project", "just starting", "2026-08");
 
     // Run show --verbose
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .arg("--verbose")
@@ -820,8 +805,7 @@ fn test_show_verbose_displays_all_three_new_items() {
     update_reality(&dir, &id, "testing phase");
 
     // Run show --verbose — should display all three items
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .arg("--verbose")
@@ -959,8 +943,7 @@ fn test_canonical_scenario_json_context_consistency() {
     let show = show_json(&dir, &id);
 
     // Get context (always structured output)
-    let ctx_output = Command::cargo_bin("werk")
-        .unwrap()
+    let ctx_output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&id)
         .current_dir(dir.path())
@@ -1033,8 +1016,7 @@ fn test_context_run_include_horizon_drift() {
     update_reality(&dir, &id, "drafted abstract");
 
     // Get context output
-    let ctx_output = Command::cargo_bin("werk")
-        .unwrap()
+    let ctx_output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&id)
         .current_dir(dir.path())
@@ -1096,8 +1078,7 @@ fn test_toon_context_includes_new_fields() {
     update_reality(&dir, &id, "implemented authentication");
 
     // Get TOON context output
-    let ctx_output = Command::cargo_bin("werk")
-        .unwrap()
+    let ctx_output = cargo_bin_cmd!("werk")
         .arg("--toon")
         .arg("context")
         .arg(&id)

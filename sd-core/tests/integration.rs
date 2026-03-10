@@ -925,17 +925,16 @@ fn test_dynamics_events_integration() {
     );
 
     // If lifecycle transition was emitted, verify it
-    if !lifecycle_events.is_empty() {
-        if let Event::LifecycleTransition {
+    if !lifecycle_events.is_empty()
+        && let Event::LifecycleTransition {
             old_phase,
             new_phase,
             ..
         } = lifecycle_events[0]
-        {
-            assert_eq!(*old_phase, sd_core::CreativeCyclePhase::Germination);
-            // New phase should not be Germination
-            assert_ne!(*new_phase, sd_core::CreativeCyclePhase::Germination);
-        }
+    {
+        assert_eq!(*old_phase, sd_core::CreativeCyclePhase::Germination);
+        // New phase should not be Germination
+        assert_ne!(*new_phase, sd_core::CreativeCyclePhase::Germination);
     }
 }
 

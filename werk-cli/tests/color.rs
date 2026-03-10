@@ -7,8 +7,7 @@
 //!
 //! ANSI escape codes start with \x1b[ (ESC followed by [)
 
-use assert_cmd::Command;
-use predicates::prelude::*;
+use assert_cmd::cargo_bin_cmd;
 use tempfile::TempDir;
 
 /// Helper: Check if output contains ANSI escape codes
@@ -40,15 +39,13 @@ fn extract_ulid(output: &str) -> Option<String> {
 fn test_no_color_env_tree() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -56,8 +53,7 @@ fn test_no_color_env_tree() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .env("NO_COLOR", "1")
         .current_dir(dir.path())
@@ -80,15 +76,13 @@ fn test_no_color_env_tree() {
 fn test_no_color_env_show() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -102,8 +96,7 @@ fn test_no_color_env_show() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id[..8])
         .env("NO_COLOR", "1")
@@ -127,15 +120,13 @@ fn test_no_color_env_show() {
 fn test_no_color_env_add() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -160,8 +151,7 @@ fn test_no_color_env_add() {
 fn test_no_color_env_init() {
     let dir = TempDir::new().unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("init")
         .env("NO_COLOR", "1")
         .current_dir(dir.path())
@@ -188,15 +178,13 @@ fn test_no_color_env_init() {
 fn test_no_color_flag_tree() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -204,8 +192,7 @@ fn test_no_color_flag_tree() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("tree")
         .current_dir(dir.path())
@@ -228,15 +215,13 @@ fn test_no_color_flag_tree() {
 fn test_no_color_flag_show() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -250,8 +235,7 @@ fn test_no_color_flag_show() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("show")
         .arg(&id[..8])
@@ -275,15 +259,13 @@ fn test_no_color_flag_show() {
 fn test_no_color_flag_add() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("add")
         .arg("test goal")
@@ -308,8 +290,7 @@ fn test_no_color_flag_add() {
 fn test_no_color_flag_init() {
     let dir = TempDir::new().unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("init")
         .current_dir(dir.path())
@@ -332,15 +313,13 @@ fn test_no_color_flag_init() {
 fn test_no_color_flag_show_verbose() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -354,8 +333,7 @@ fn test_no_color_flag_show_verbose() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("show")
         .arg(&id[..8])
@@ -384,15 +362,13 @@ fn test_no_color_flag_show_verbose() {
 fn test_piped_output_tree() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -402,8 +378,7 @@ fn test_piped_output_tree() {
 
     // When stdout is piped (not a TTY), colors should be auto-disabled
     // assert_cmd pipes output by default, so this tests non-TTY behavior
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -425,15 +400,13 @@ fn test_piped_output_tree() {
 fn test_piped_output_show() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -448,8 +421,7 @@ fn test_piped_output_show() {
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
     // assert_cmd pipes output by default
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id[..8])
         .current_dir(dir.path())
@@ -472,16 +444,14 @@ fn test_piped_output_show() {
 fn test_piped_output_add() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // assert_cmd pipes output by default
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -506,8 +476,7 @@ fn test_piped_output_init() {
     let dir = TempDir::new().unwrap();
 
     // assert_cmd pipes output by default
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -533,15 +502,13 @@ fn test_piped_output_init() {
 fn test_tree_readable_without_colors() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a novel")
         .arg("have an outline")
@@ -549,8 +516,7 @@ fn test_tree_readable_without_colors() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("tree")
         .current_dir(dir.path())
@@ -590,15 +556,13 @@ fn test_tree_readable_without_colors() {
 fn test_show_readable_without_colors() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a novel")
         .arg("have an outline")
@@ -612,8 +576,7 @@ fn test_show_readable_without_colors() {
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("show")
         .arg(&id[..8])
@@ -674,15 +637,13 @@ fn test_show_readable_without_colors() {
 fn test_error_readable_without_colors() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("show")
         .arg("NONEXISTENT")
@@ -715,15 +676,13 @@ fn test_error_readable_without_colors() {
 fn test_json_no_ansi_codes() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
@@ -731,8 +690,7 @@ fn test_json_no_ansi_codes() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())

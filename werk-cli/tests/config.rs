@@ -5,7 +5,7 @@
 //! - VAL-CFG-002: Config with no workspace uses ~/.werk/config.toml
 //! - VAL-CFG-003: Malformed config.toml shows clear error (not panic)
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -19,16 +19,14 @@ fn test_config_set_and_get() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set a config value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -38,8 +36,7 @@ fn test_config_set_and_get() {
         .success();
 
     // Get the config value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -55,8 +52,7 @@ fn test_config_file_created_on_first_set() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -66,8 +62,7 @@ fn test_config_file_created_on_first_set() {
     assert!(!dir.path().join(".werk").join("config.toml").exists());
 
     // Set a config value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -86,16 +81,14 @@ fn test_config_set_overwrites() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set a config value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -105,8 +98,7 @@ fn test_config_set_overwrites() {
         .success();
 
     // Overwrite with new value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -116,8 +108,7 @@ fn test_config_set_overwrites() {
         .success();
 
     // Get should return new value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -134,16 +125,14 @@ fn test_config_get_missing_key() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Get a non-existent key
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("nonexistent.key")
@@ -159,16 +148,14 @@ fn test_config_nested_keys() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set nested values
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("display.theme")
@@ -177,8 +164,7 @@ fn test_config_nested_keys() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("display.colors")
@@ -188,8 +174,7 @@ fn test_config_nested_keys() {
         .success();
 
     // Both should be readable
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("display.theme")
@@ -198,8 +183,7 @@ fn test_config_nested_keys() {
         .success()
         .stdout(predicate::str::contains("dark"));
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("display.colors")
@@ -215,16 +199,14 @@ fn test_config_set_json_output() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set with --json
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("config")
         .arg("set")
@@ -243,16 +225,14 @@ fn test_config_get_json_output() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set a value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -262,8 +242,7 @@ fn test_config_get_json_output() {
         .success();
 
     // Get with --json
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("config")
         .arg("get")
@@ -281,16 +260,14 @@ fn test_config_get_missing_json_output() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Get missing key with --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("config")
         .arg("get")
@@ -343,8 +320,7 @@ fn test_config_uses_global_when_no_workspace() {
     // Do NOT init a workspace in dir - so it has no .werk/
 
     // Set config (should use global since no local workspace)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .env("HOME", fake_home.path())
         .arg("config")
         .arg("set")
@@ -358,8 +334,7 @@ fn test_config_uses_global_when_no_workspace() {
     assert!(fake_home.path().join(".werk").join("config.toml").exists());
 
     // Get should work
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .env("HOME", fake_home.path())
         .arg("config")
         .arg("get")
@@ -377,8 +352,7 @@ fn test_config_local_precedence() {
     let fake_home = TempDir::new().unwrap();
 
     // Set global config first
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .env("HOME", fake_home.path())
         .arg("config")
         .arg("set")
@@ -389,16 +363,14 @@ fn test_config_local_precedence() {
         .success();
 
     // Now init local workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set local config
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -408,8 +380,7 @@ fn test_config_local_precedence() {
         .success();
 
     // Get should return local value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -429,8 +400,7 @@ fn test_config_malformed_toml() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -441,8 +411,7 @@ fn test_config_malformed_toml() {
     std::fs::write(&config_path, "this is not valid toml [[[[").unwrap();
 
     // Attempt to get config should fail gracefully (no panic)
-    let result = Command::cargo_bin("werk")
-        .unwrap()
+    let result = cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -467,8 +436,7 @@ fn test_config_malformed_toml_on_set() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -479,8 +447,7 @@ fn test_config_malformed_toml_on_set() {
     std::fs::write(&config_path, "invalid = [unclosed").unwrap();
 
     // Attempt to set config should fail gracefully (no panic)
-    let result = Command::cargo_bin("werk")
-        .unwrap()
+    let result = cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -510,16 +477,14 @@ fn test_config_set_special_characters() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set value with special characters
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -529,8 +494,7 @@ fn test_config_set_special_characters() {
         .success();
 
     // Get should return exact value
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -546,16 +510,14 @@ fn test_config_empty_key_rejected() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Empty key should fail
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("")
@@ -571,16 +533,14 @@ fn test_config_top_level_key() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set a top-level key
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("simple_key")
@@ -590,8 +550,7 @@ fn test_config_top_level_key() {
         .success();
 
     // Get should work
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("simple_key")
@@ -607,16 +566,14 @@ fn test_config_deeply_nested_key() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set a deeply nested key
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("level1.level2.level3.value")
@@ -626,8 +583,7 @@ fn test_config_deeply_nested_key() {
         .success();
 
     // Get should work
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("level1.level2.level3.value")
@@ -643,16 +599,14 @@ fn test_config_exit_code_success() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set should succeed with exit 0
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -668,16 +622,14 @@ fn test_config_exit_code_user_error() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Get missing key should fail with exit 1
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("nonexistent.key")

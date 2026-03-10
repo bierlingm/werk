@@ -7,6 +7,7 @@
 //! - VAL-NUKE-004: --json output format
 //! - VAL-NUKE-005: Error when no .werk/ exists
 
+use assert_cmd::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -15,7 +16,7 @@ use tempfile::TempDir;
 /// Sets HOME to a temp dir so ~/.werk doesn't exist.
 fn cmd_without_global() -> Command {
     let dir = TempDir::new().unwrap();
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.env("HOME", dir.path());
     cmd
 }
@@ -176,8 +177,7 @@ fn test_nuke_global_flag() {
 
     // Try nuke --global without confirm (should not fail, just shows path)
     // This will fail if ~/.werk doesn't exist, which is expected behavior
-    let result = Command::cargo_bin("werk")
-        .unwrap()
+    let result = cargo_bin_cmd!("werk")
         .arg("nuke")
         .arg("--global")
         .current_dir(dir.path())

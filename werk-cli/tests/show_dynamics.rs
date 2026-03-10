@@ -7,8 +7,7 @@
 //! - VAL-DISP-012: Show displays children list
 //! - VAL-DISP-013: Dynamics on new tension without mutations
 
-use assert_cmd::Command;
-use predicates::prelude::*;
+use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -21,8 +20,7 @@ use tempfile::TempDir;
 fn test_show_displays_tension_magnitude() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -34,8 +32,7 @@ fn test_show_displays_tension_magnitude() {
         .create_tension("write a complete novel", "have an outline")
         .unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -63,8 +60,7 @@ fn test_show_displays_tension_magnitude() {
 fn test_show_displays_phase() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -73,8 +69,7 @@ fn test_show_displays_phase() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -102,8 +97,7 @@ fn test_show_displays_phase() {
 fn test_show_displays_conflict_when_present() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -124,8 +118,7 @@ fn test_show_displays_conflict_when_present() {
         store.update_actual(&child1.id, "active update").unwrap();
     }
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&child1.id)
         .current_dir(dir.path())
@@ -150,8 +143,7 @@ fn test_show_displays_conflict_when_present() {
 fn test_show_displays_movement() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -160,8 +152,7 @@ fn test_show_displays_movement() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -195,8 +186,7 @@ fn test_show_displays_movement() {
 fn test_show_verbose_displays_all_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -205,8 +195,7 @@ fn test_show_verbose_displays_all_dynamics() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .arg("--verbose")
@@ -257,8 +246,7 @@ fn test_show_verbose_displays_all_dynamics() {
 fn test_show_verbose_shows_none_for_absent_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -267,8 +255,7 @@ fn test_show_verbose_shows_none_for_absent_dynamics() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .arg("--verbose")
@@ -298,8 +285,7 @@ fn test_show_verbose_shows_none_for_absent_dynamics() {
 fn test_show_displays_mutation_history() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -319,8 +305,7 @@ fn test_show_displays_mutation_history() {
         .unwrap();
     store.update_desired(&tension.id, "refined goal").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .arg("--verbose")
@@ -346,8 +331,7 @@ fn test_show_displays_mutation_history() {
 fn test_show_limits_mutation_history() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -363,8 +347,7 @@ fn test_show_limits_mutation_history() {
             .unwrap();
     }
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .arg("--verbose")
@@ -394,8 +377,7 @@ fn test_show_limits_mutation_history() {
 fn test_show_displays_children_list() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -413,8 +395,7 @@ fn test_show_displays_children_list() {
         .create_tension_with_parent("child goal 2", "child reality 2", Some(parent.id.clone()))
         .unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&parent.id)
         .current_dir(dir.path())
@@ -439,8 +420,7 @@ fn test_show_displays_children_list() {
 fn test_show_no_children_for_leaf() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -449,8 +429,7 @@ fn test_show_no_children_for_leaf() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("leaf goal", "leaf reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -480,8 +459,7 @@ fn test_show_no_children_for_leaf() {
 fn test_show_new_tension_shows_germination() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -490,8 +468,7 @@ fn test_show_new_tension_shows_germination() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("new goal", "new reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -516,8 +493,7 @@ fn test_show_new_tension_shows_germination() {
 fn test_show_new_tension_no_panic() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -527,8 +503,7 @@ fn test_show_new_tension_no_panic() {
     let tension = store.create_tension("brand new", "reality").unwrap();
 
     // This should NOT panic
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
         .arg("--verbose")
@@ -553,8 +528,7 @@ fn test_show_new_tension_no_panic() {
 fn test_show_json_with_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -563,8 +537,7 @@ fn test_show_json_with_dynamics() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("json goal", "json reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
@@ -597,8 +570,7 @@ fn test_show_json_with_dynamics() {
 fn test_show_json_verbose_all_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -607,8 +579,7 @@ fn test_show_json_verbose_all_dynamics() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("verbose json", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
@@ -642,8 +613,7 @@ fn test_show_json_verbose_all_dynamics() {
 fn test_show_json_null_for_absent_dynamics() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -652,8 +622,7 @@ fn test_show_json_null_for_absent_dynamics() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("null test", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
@@ -697,8 +666,7 @@ fn test_show_json_null_for_absent_dynamics() {
 fn test_show_json_children() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -710,8 +678,7 @@ fn test_show_json_children() {
         .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
         .unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&parent.id)
@@ -736,8 +703,7 @@ fn test_show_json_children() {
 fn test_show_json_mutations() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -747,8 +713,7 @@ fn test_show_json_mutations() {
     let tension = store.create_tension("mutations test", "initial").unwrap();
     store.update_actual(&tension.id, "updated").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)

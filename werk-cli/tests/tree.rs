@@ -11,8 +11,7 @@
 //! - VAL-DISP-008: Tree handles empty forest
 //! - VAL-DISP-014: Tree renders deeply nested hierarchies
 
-use assert_cmd::Command;
-use predicates::prelude::*;
+use assert_cmd::cargo_bin_cmd;
 use tempfile::TempDir;
 
 /// Extract a ULID from werk output.
@@ -42,16 +41,14 @@ fn test_tree_empty_workspace() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Tree on empty workspace
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -73,15 +70,13 @@ fn test_tree_empty_workspace() {
 fn test_tree_single_root() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a novel")
         .arg("have an outline")
@@ -89,8 +84,7 @@ fn test_tree_single_root() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -121,15 +115,13 @@ fn test_tree_single_root() {
 fn test_tree_multiple_roots() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal 1")
         .arg("reality 1")
@@ -137,8 +129,7 @@ fn test_tree_multiple_roots() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal 2")
         .arg("reality 2")
@@ -146,8 +137,7 @@ fn test_tree_multiple_roots() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal 3")
         .arg("reality 3")
@@ -155,8 +145,7 @@ fn test_tree_multiple_roots() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -190,16 +179,14 @@ fn test_tree_multiple_roots() {
 fn test_tree_hierarchy() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("parent goal")
         .arg("parent reality")
@@ -215,8 +202,7 @@ fn test_tree_hierarchy() {
     let parent_id = extract_ulid(&stdout).expect("Should have extracted parent ID");
 
     // Create child with --parent - use longer prefix (12 chars) for uniqueness
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child goal")
         .arg("child reality")
@@ -226,8 +212,7 @@ fn test_tree_hierarchy() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -268,8 +253,7 @@ fn test_tree_hierarchy() {
 fn test_tree_deep_hierarchy() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -279,7 +263,7 @@ fn test_tree_deep_hierarchy() {
     let mut prev_id: Option<String> = None;
 
     for i in 0..12 {
-        let mut cmd = Command::cargo_bin("werk").unwrap();
+        let mut cmd = cargo_bin_cmd!("werk");
         cmd.arg("add")
             .arg(format!("level {} goal", i))
             .arg(format!("level {} reality", i))
@@ -297,8 +281,7 @@ fn test_tree_deep_hierarchy() {
         prev_id = extract_ulid(&stdout);
     }
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -329,16 +312,14 @@ fn test_tree_deep_hierarchy() {
 fn test_tree_open_filter() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tensions
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active goal")
         .arg("active reality")
@@ -346,8 +327,7 @@ fn test_tree_open_filter() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("to resolve")
         .arg("to resolve reality")
@@ -363,8 +343,7 @@ fn test_tree_open_filter() {
     let resolve_id = extract_ulid(&stdout).expect("Should have resolve ID");
 
     // Resolve one - use full ID
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&resolve_id)
         .current_dir(dir.path())
@@ -372,8 +351,7 @@ fn test_tree_open_filter() {
         .success();
 
     // --open should only show Active
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--open")
         .current_dir(dir.path())
@@ -401,16 +379,14 @@ fn test_tree_open_filter() {
 fn test_tree_all_filter() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create active tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active goal")
         .arg("active reality")
@@ -419,8 +395,7 @@ fn test_tree_all_filter() {
         .success();
 
     // Create and resolve
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("resolved goal")
         .arg("resolved reality")
@@ -434,8 +409,7 @@ fn test_tree_all_filter() {
     let stdout = String::from_utf8_lossy(&output);
     let resolve_id = extract_ulid(&stdout).expect("Should have resolve ID");
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&resolve_id) // Use full ID
         .current_dir(dir.path())
@@ -443,8 +417,7 @@ fn test_tree_all_filter() {
         .success();
 
     // --all should show both
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--all")
         .current_dir(dir.path())
@@ -472,16 +445,14 @@ fn test_tree_all_filter() {
 fn test_tree_resolved_filter() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create active
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active goal")
         .arg("active reality")
@@ -490,8 +461,7 @@ fn test_tree_resolved_filter() {
         .success();
 
     // Create and resolve
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("resolved goal")
         .arg("resolved reality")
@@ -505,8 +475,7 @@ fn test_tree_resolved_filter() {
     let stdout = String::from_utf8_lossy(&output);
     let resolve_id = extract_ulid(&stdout).expect("Should have resolve ID");
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&resolve_id) // Use full ID
         .current_dir(dir.path())
@@ -514,8 +483,7 @@ fn test_tree_resolved_filter() {
         .success();
 
     // --resolved should only show resolved
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--resolved")
         .current_dir(dir.path())
@@ -543,16 +511,14 @@ fn test_tree_resolved_filter() {
 fn test_tree_released_filter() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create active
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active goal")
         .arg("active reality")
@@ -561,8 +527,7 @@ fn test_tree_released_filter() {
         .success();
 
     // Create and release
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("released goal")
         .arg("released reality")
@@ -576,8 +541,7 @@ fn test_tree_released_filter() {
     let stdout = String::from_utf8_lossy(&output);
     let release_id = extract_ulid(&stdout).expect("Should have release ID");
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(&release_id) // Use full ID
         .arg("--reason")
@@ -587,8 +551,7 @@ fn test_tree_released_filter() {
         .success();
 
     // --released should only show released
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--released")
         .current_dir(dir.path())
@@ -620,15 +583,13 @@ fn test_tree_released_filter() {
 fn test_tree_json_output() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("json goal")
         .arg("json reality")
@@ -636,8 +597,7 @@ fn test_tree_json_output() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -674,15 +634,13 @@ fn test_tree_json_output() {
 fn test_tree_json_empty() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -719,16 +677,14 @@ fn test_tree_json_empty() {
 fn test_tree_summary_footer() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create multiple tensions
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal 1")
         .arg("reality 1")
@@ -736,8 +692,7 @@ fn test_tree_summary_footer() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal 2")
         .arg("reality 2")
@@ -745,8 +700,7 @@ fn test_tree_summary_footer() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -778,15 +732,13 @@ fn test_tree_summary_footer() {
 fn test_tree_lifecycle_germination() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("new tension")
         .arg("new reality")
@@ -794,8 +746,7 @@ fn test_tree_lifecycle_germination() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -823,15 +774,13 @@ fn test_tree_lifecycle_germination() {
 fn test_tree_movement_signals() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -839,8 +788,7 @@ fn test_tree_movement_signals() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -865,15 +813,13 @@ fn test_tree_movement_signals() {
 fn test_tree_no_color() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -881,8 +827,7 @@ fn test_tree_no_color() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--no-color")
         .current_dir(dir.path())

@@ -978,19 +978,18 @@ mod tests {
 
         // If a transition occurred, we should have the event
         // Phase might transition from Germination to Assimilation
-        if !lifecycle_events.is_empty() {
-            if let Event::LifecycleTransition {
+        if !lifecycle_events.is_empty()
+            && let Event::LifecycleTransition {
                 old_phase,
                 new_phase,
                 ..
             } = lifecycle_events[0]
-            {
-                assert_eq!(*old_phase, CreativeCyclePhase::Germination);
-                assert!(matches!(
-                    *new_phase,
-                    CreativeCyclePhase::Assimilation | CreativeCyclePhase::Completion
-                ));
-            }
+        {
+            assert_eq!(*old_phase, CreativeCyclePhase::Germination);
+            assert!(matches!(
+                *new_phase,
+                CreativeCyclePhase::Assimilation | CreativeCyclePhase::Completion
+            ));
         }
     }
 
@@ -1707,13 +1706,13 @@ mod tests {
             .collect();
 
         // If the type changed, we should get a new event
-        if !drift_events2.is_empty() {
-            if let Event::HorizonDriftDetected { drift_type, .. } = drift_events2[0] {
-                assert_ne!(
-                    *drift_type, first_drift_type,
-                    "New drift event should have a different type"
-                );
-            }
+        if !drift_events2.is_empty()
+            && let Event::HorizonDriftDetected { drift_type, .. } = drift_events2[0]
+        {
+            assert_ne!(
+                *drift_type, first_drift_type,
+                "New drift event should have a different type"
+            );
         }
         // If it didn't change, that's also acceptable (no duplicate emission)
     }
@@ -1765,21 +1764,20 @@ mod tests {
             .collect();
 
         // If compensating strategy was detected (depends on oscillation being present)
-        if !comp_events.is_empty() {
-            if let Event::CompensatingStrategyDetected {
+        if !comp_events.is_empty()
+            && let Event::CompensatingStrategyDetected {
                 strategy_type,
                 tension_id,
                 ..
             } = comp_events[0]
-            {
-                assert_eq!(tension_id, &t.id);
-                // Should be TolerableConflict since we have oscillation without structural change
-                assert_eq!(
-                    *strategy_type,
-                    CompensatingStrategyType::TolerableConflict,
-                    "Expected TolerableConflict strategy"
-                );
-            }
+        {
+            assert_eq!(tension_id, &t.id);
+            // Should be TolerableConflict since we have oscillation without structural change
+            assert_eq!(
+                *strategy_type,
+                CompensatingStrategyType::TolerableConflict,
+                "Expected TolerableConflict strategy"
+            );
         }
 
         // Verify that compensating strategy state is tracked in PreviousDynamics

@@ -8,7 +8,7 @@
 //! - VAL-CRUD-023: Note works on resolved/released tensions
 //! - VAL-CRUD-024: General note without tension ID, retrievable via `werk notes`
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -21,8 +21,7 @@ use tempfile::TempDir;
 fn test_tree_resolved_no_panic() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -36,8 +35,7 @@ fn test_tree_resolved_no_panic() {
         .unwrap();
 
     // --resolved should work without panic
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--resolved")
         .current_dir(dir.path())
@@ -50,8 +48,7 @@ fn test_tree_resolved_no_panic() {
 fn test_tree_released_no_panic() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -65,8 +62,7 @@ fn test_tree_released_no_panic() {
         .unwrap();
 
     // --released should work without panic
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--released")
         .current_dir(dir.path())
@@ -77,8 +73,7 @@ fn test_tree_released_no_panic() {
 /// Tree --help shows no short flags for resolved/released
 #[test]
 fn test_tree_help_no_duplicate_short() {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--help")
         .assert()
@@ -105,8 +100,7 @@ fn test_move_to_new_parent() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -121,8 +115,7 @@ fn test_move_to_new_parent() {
     let child_id = child.id.clone();
 
     // Move child under parent
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child_id)
         .arg("--parent")
@@ -142,8 +135,7 @@ fn test_move_to_new_parent() {
 fn test_move_with_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -159,8 +151,7 @@ fn test_move_with_prefix() {
     let child_prefix = &child.id[..10];
     let parent_prefix = &parent.id[..10];
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(child_prefix)
         .arg("--parent")
@@ -178,8 +169,7 @@ fn test_move_with_prefix() {
 fn test_move_to_root() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -193,8 +183,7 @@ fn test_move_to_root() {
         .unwrap();
 
     // Move child to root (no --parent)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child.id)
         .current_dir(dir.path())
@@ -211,8 +200,7 @@ fn test_move_to_root() {
 fn test_move_prevents_cycle() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -229,8 +217,7 @@ fn test_move_prevents_cycle() {
         .unwrap();
 
     // Try to move A under C (would create cycle)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&a.id)
         .arg("--parent")
@@ -254,8 +241,7 @@ fn test_move_prevents_cycle() {
 fn test_move_to_self_fails() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -264,8 +250,7 @@ fn test_move_to_self_fails() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&tension.id)
         .arg("--parent")
@@ -285,8 +270,7 @@ fn test_move_to_self_fails() {
 fn test_move_to_nonexistent_parent() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -295,8 +279,7 @@ fn test_move_to_nonexistent_parent() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child.id)
         .arg("--parent")
@@ -312,8 +295,7 @@ fn test_move_to_nonexistent_parent() {
 fn test_move_records_mutation() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -323,8 +305,7 @@ fn test_move_records_mutation() {
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child.id)
         .arg("--parent")
@@ -350,8 +331,7 @@ fn test_move_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -361,8 +341,7 @@ fn test_move_json_output() {
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("move")
         .arg(&child.id)
@@ -390,15 +369,13 @@ fn test_move_json_output() {
 fn test_move_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .current_dir(dir.path())
@@ -416,8 +393,7 @@ fn test_move_not_found() {
 fn test_note_on_tension() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -427,8 +403,7 @@ fn test_note_on_tension() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Use positional ID syntax: werk note <id> <text>
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(&tension.id)
         .arg("met with team to discuss approach")
@@ -452,8 +427,7 @@ fn test_note_on_tension() {
 fn test_note_with_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -464,8 +438,7 @@ fn test_note_with_prefix() {
     let prefix = &tension.id[..6];
 
     // Use positional prefix syntax: werk note <prefix> <text>
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(prefix)
         .arg("test note")
@@ -482,8 +455,7 @@ fn test_note_with_prefix() {
 fn test_note_on_resolved_tension() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -498,8 +470,7 @@ fn test_note_on_resolved_tension() {
         .unwrap();
 
     // Note should still work on resolved tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(&tension.id)
         .arg("post-resolution reflection")
@@ -516,8 +487,7 @@ fn test_note_on_resolved_tension() {
 fn test_note_on_released_tension() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -532,8 +502,7 @@ fn test_note_on_released_tension() {
         .unwrap();
 
     // Note should still work on released tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(&tension.id)
         .arg("why we abandoned this")
@@ -550,16 +519,14 @@ fn test_note_on_released_tension() {
 fn test_general_note_without_id() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Note without ID should create workspace-level note
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("general workspace observation")
         .current_dir(dir.path())
@@ -576,16 +543,14 @@ fn test_general_note_without_id() {
 fn test_note_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Try to add note to nonexistent tension using positional syntax
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .arg("some note")
@@ -602,8 +567,7 @@ fn test_note_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -612,8 +576,7 @@ fn test_note_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("note")
         .arg(&tension.id)
@@ -637,8 +600,7 @@ fn test_note_json_output() {
 fn test_note_unicode() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -647,8 +609,7 @@ fn test_note_unicode() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(&tension.id)
         .arg("Unicode: 写小说 🎵 compose 音楽")
@@ -671,15 +632,13 @@ fn test_general_note_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("note")
         .arg("workspace-level note")
@@ -706,8 +665,7 @@ fn test_move_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg("SOMEID")
         .env("HOME", home.path())
@@ -721,8 +679,7 @@ fn test_note_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("text")
         .env("HOME", home.path())
@@ -736,8 +693,7 @@ fn test_note_requires_workspace() {
 fn test_multiple_notes() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -747,8 +703,7 @@ fn test_multiple_notes() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Add first note
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(&tension.id)
         .arg("first note")
@@ -757,8 +712,7 @@ fn test_multiple_notes() {
         .success();
 
     // Add second note
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(&tension.id)
         .arg("second note")
@@ -776,8 +730,7 @@ fn test_multiple_notes() {
 fn test_move_preserves_children() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -791,8 +744,7 @@ fn test_move_preserves_children() {
         .unwrap();
 
     // Move child under parent
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child.id)
         .arg("--parent")
@@ -811,8 +763,7 @@ fn test_move_preserves_children() {
 fn test_move_between_parents() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -826,8 +777,7 @@ fn test_move_between_parents() {
         .unwrap();
 
     // Move from parent1 to parent2
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child.id)
         .arg("--parent")
@@ -849,16 +799,14 @@ fn test_move_between_parents() {
 fn test_notes_lists_workspace_notes() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Add a general workspace note
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("first workspace observation")
         .current_dir(dir.path())
@@ -866,8 +814,7 @@ fn test_notes_lists_workspace_notes() {
         .success();
 
     // Add another workspace note
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("second workspace observation")
         .current_dir(dir.path())
@@ -875,8 +822,7 @@ fn test_notes_lists_workspace_notes() {
         .success();
 
     // List notes
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("notes")
         .current_dir(dir.path())
         .assert()
@@ -892,16 +838,14 @@ fn test_notes_lists_workspace_notes() {
 fn test_notes_empty_workspace() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // List notes when there are none
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("notes")
         .current_dir(dir.path())
         .assert()
@@ -916,16 +860,14 @@ fn test_notes_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Add a workspace note
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("json test note")
         .current_dir(dir.path())
@@ -933,8 +875,7 @@ fn test_notes_json_output() {
         .success();
 
     // Get JSON output
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("notes")
         .current_dir(dir.path())
@@ -962,8 +903,7 @@ fn test_notes_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("notes")
         .env("HOME", home.path())
         .current_dir(dir.path())

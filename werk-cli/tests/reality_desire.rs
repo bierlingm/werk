@@ -7,7 +7,7 @@
 //! - VAL-CRUD-011: Desire updates desired field with mutation
 //! - VAL-CRUD-012: Desire opens $EDITOR when value omitted
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -21,8 +21,7 @@ fn test_reality_updates_actual() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -34,8 +33,7 @@ fn test_reality_updates_actual() {
     let tension_id = tension.id.clone();
 
     // Update actual via command
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension_id)
         .arg("updated reality")
@@ -67,8 +65,7 @@ fn test_reality_updates_actual() {
 fn test_reality_shows_old_and_new() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -77,8 +74,7 @@ fn test_reality_shows_old_and_new() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "old value").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("new value")
@@ -107,8 +103,7 @@ fn test_reality_shows_old_and_new() {
 fn test_reality_with_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -118,8 +113,7 @@ fn test_reality_with_prefix() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(prefix)
         .arg("updated")
@@ -136,8 +130,7 @@ fn test_reality_with_prefix() {
 fn test_reality_rejects_empty() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -146,8 +139,7 @@ fn test_reality_rejects_empty() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("")
@@ -162,8 +154,7 @@ fn test_reality_rejects_empty() {
 fn test_reality_opens_editor() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -174,8 +165,7 @@ fn test_reality_opens_editor() {
 
     // Use EDITOR=cat to verify the current value is passed to the editor
     // cat will just output the content, which should result in no change
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .env("EDITOR", "cat")
@@ -207,8 +197,7 @@ fn test_reality_opens_editor() {
 fn test_reality_fails_on_resolved() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -223,8 +212,7 @@ fn test_reality_fails_on_resolved() {
         .unwrap();
 
     // Try to update reality
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("new reality")
@@ -247,8 +235,7 @@ fn test_reality_fails_on_resolved() {
 fn test_reality_fails_on_released() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -263,8 +250,7 @@ fn test_reality_fails_on_released() {
         .unwrap();
 
     // Try to update reality
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("new reality")
@@ -284,8 +270,7 @@ fn test_reality_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg("SOMEID")
         .arg("value")
@@ -300,15 +285,13 @@ fn test_reality_requires_workspace() {
 fn test_reality_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .arg("value")
@@ -325,8 +308,7 @@ fn test_reality_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -335,8 +317,7 @@ fn test_reality_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("reality")
         .arg(&tension.id)
@@ -368,8 +349,7 @@ fn test_reality_json_output() {
 fn test_desire_updates_desired() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -379,8 +359,7 @@ fn test_desire_updates_desired() {
     let tension = store.create_tension("initial goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension_id)
         .arg("refined goal")
@@ -404,8 +383,7 @@ fn test_desire_updates_desired() {
 fn test_desire_shows_old_and_new() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -414,8 +392,7 @@ fn test_desire_shows_old_and_new() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("old goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension.id)
         .arg("new goal")
@@ -436,8 +413,7 @@ fn test_desire_shows_old_and_new() {
 fn test_desire_with_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -447,8 +423,7 @@ fn test_desire_with_prefix() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(prefix)
         .arg("updated goal")
@@ -465,8 +440,7 @@ fn test_desire_with_prefix() {
 fn test_desire_rejects_empty() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -475,8 +449,7 @@ fn test_desire_rejects_empty() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension.id)
         .arg("")
@@ -491,8 +464,7 @@ fn test_desire_rejects_empty() {
 fn test_desire_opens_editor() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -502,8 +474,7 @@ fn test_desire_opens_editor() {
     let tension = store.create_tension("initial goal", "reality").unwrap();
 
     // Use EDITOR=cat to verify the current value is passed to the editor
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension.id)
         .env("EDITOR", "cat")
@@ -533,8 +504,7 @@ fn test_desire_opens_editor() {
 fn test_desire_fails_on_resolved() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -547,8 +517,7 @@ fn test_desire_fails_on_resolved() {
         .update_status(&tension.id, sd_core::TensionStatus::Resolved)
         .unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension.id)
         .arg("new goal")
@@ -567,8 +536,7 @@ fn test_desire_fails_on_resolved() {
 fn test_desire_fails_on_released() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -581,8 +549,7 @@ fn test_desire_fails_on_released() {
         .update_status(&tension.id, sd_core::TensionStatus::Released)
         .unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension.id)
         .arg("new goal")
@@ -597,8 +564,7 @@ fn test_desire_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg("SOMEID")
         .arg("value")
@@ -613,15 +579,13 @@ fn test_desire_requires_workspace() {
 fn test_desire_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .arg("value")
@@ -638,8 +602,7 @@ fn test_desire_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -648,8 +611,7 @@ fn test_desire_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("desire")
         .arg(&tension.id)
@@ -685,8 +647,7 @@ fn test_desire_json_output() {
 fn test_editor_modifies_content() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -710,8 +671,7 @@ fn test_editor_modifies_content() {
         std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .env("EDITOR", &script_path)
@@ -732,8 +692,7 @@ fn test_editor_modifies_content() {
 fn test_reality_records_mutation() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -743,8 +702,7 @@ fn test_reality_records_mutation() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Update reality
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("new reality")
@@ -772,8 +730,7 @@ fn test_reality_records_mutation() {
 fn test_desire_records_mutation() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -783,8 +740,7 @@ fn test_desire_records_mutation() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Update desire
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(&tension.id)
         .arg("new goal")
@@ -807,8 +763,7 @@ fn test_desire_records_mutation() {
 fn test_multiple_reality_updates() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -818,8 +773,7 @@ fn test_multiple_reality_updates() {
     let tension = store.create_tension("goal", "v1").unwrap();
 
     // Multiple updates
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("v2")
@@ -827,8 +781,7 @@ fn test_multiple_reality_updates() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&tension.id)
         .arg("v3")

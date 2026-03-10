@@ -5,7 +5,7 @@
 //! - VAL-INIT-002: `werk init --global` creates ~/.werk/sd.db
 //! - VAL-INIT-003: Init is idempotent (re-running preserves data)
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -14,8 +14,7 @@ use tempfile::TempDir;
 fn test_init_creates_workspace() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -34,8 +33,7 @@ fn test_init_creates_workspace() {
 fn test_init_creates_correct_schema() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -66,8 +64,7 @@ fn test_init_global_flag() {
     let dir = TempDir::new().unwrap();
 
     // --global should NOT create local .werk/
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .arg("--global")
         .current_dir(dir.path())
@@ -86,8 +83,7 @@ fn test_init_idempotent_preserves_data() {
     let dir = TempDir::new().unwrap();
 
     // First init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -99,8 +95,7 @@ fn test_init_idempotent_preserves_data() {
     let tension = store.create_tension("test goal", "test reality").unwrap();
 
     // Re-run init - should say "already initialized" but still succeed
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -123,8 +118,7 @@ fn test_init_reinit_reports_existing() {
     let dir = TempDir::new().unwrap();
 
     // First init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -132,8 +126,7 @@ fn test_init_reinit_reports_existing() {
         .stdout(predicate::str::contains("Workspace initialized"));
 
     // Re-init - should still succeed (idempotent)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -145,8 +138,7 @@ fn test_init_reinit_reports_existing() {
 fn test_init_json_output() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("init")
         .current_dir(dir.path())
@@ -161,8 +153,7 @@ fn test_init_json_output() {
 fn test_init_global_json_output() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("init")
         .arg("--global")
@@ -188,8 +179,7 @@ fn test_init_permission_denied() {
     std::fs::set_permissions(&readonly_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
 
     // Attempt init inside read-only directory
-    let result = Command::cargo_bin("werk")
-        .unwrap()
+    let result = cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(&readonly_dir)
         .assert()
@@ -213,8 +203,7 @@ fn test_init_permission_denied() {
 fn test_init_exit_code_success() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -226,8 +215,7 @@ fn test_init_exit_code_success() {
 fn test_init_no_color_flag() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--no-color")
         .arg("init")
         .current_dir(dir.path())
@@ -241,8 +229,7 @@ fn test_init_no_color_flag() {
 fn test_init_no_color_env() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .env("NO_COLOR", "1")
         .current_dir(dir.path())
@@ -256,8 +243,7 @@ fn test_init_no_color_env() {
 fn test_init_reports_correct_path() {
     let dir = TempDir::new().unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -282,8 +268,7 @@ fn test_init_json_includes_path() {
 
     let dir = TempDir::new().unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("init")
         .current_dir(dir.path())

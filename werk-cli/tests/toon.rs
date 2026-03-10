@@ -8,14 +8,13 @@
 //! - VAL-TOON-005: toon-format crate dependency present
 //! - VAL-TOON-006: TOON handles None/missing optional fields gracefully
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
 use tempfile::TempDir;
 
 /// Helper: initialize a workspace in a temp directory.
 fn init_workspace(dir: &TempDir) {
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -24,8 +23,7 @@ fn init_workspace(dir: &TempDir) {
 
 /// Helper: add a tension and return its ID (via --json for reliable parsing).
 fn add_tension(dir: &TempDir, desired: &str, actual: &str) -> String {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg(desired)
@@ -44,8 +42,7 @@ fn add_tension(dir: &TempDir, desired: &str, actual: &str) -> String {
 
 /// Helper: add a tension with a horizon and return its ID.
 fn add_tension_with_horizon(dir: &TempDir, desired: &str, actual: &str, horizon: &str) -> String {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg(desired)
@@ -66,8 +63,7 @@ fn add_tension_with_horizon(dir: &TempDir, desired: &str, actual: &str, horizon:
 
 /// Helper: add a child tension and return its ID.
 fn add_child_tension(dir: &TempDir, desired: &str, actual: &str, parent: &str) -> String {
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg(desired)
@@ -88,7 +84,7 @@ fn add_child_tension(dir: &TempDir, desired: &str, actual: &str, parent: &str) -
 
 /// Helper: get the TOON output for a command as a decoded serde_json::Value.
 fn run_toon(dir: &TempDir, args: &[&str]) -> (String, Value) {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--toon");
     for arg in args {
         cmd.arg(arg);
@@ -109,7 +105,7 @@ fn run_toon(dir: &TempDir, args: &[&str]) -> (String, Value) {
 
 /// Helper: get the JSON output for a command as a serde_json::Value.
 fn run_json(dir: &TempDir, args: &[&str]) -> Value {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--json");
     for arg in args {
         cmd.arg(arg);
@@ -205,7 +201,7 @@ fn test_toon_add_produces_valid_output() {
     let dir = TempDir::new().unwrap();
     init_workspace(&dir);
 
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     let output = cmd
         .arg("--toon")
         .arg("add")
@@ -293,8 +289,7 @@ fn test_toon_add_roundtrips_to_json() {
     init_workspace(&dir);
 
     // Run add with --json
-    let json_output = Command::cargo_bin("werk")
-        .unwrap()
+    let json_output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("desired roundtrip")
@@ -309,8 +304,7 @@ fn test_toon_add_roundtrips_to_json() {
     let json_val: Value = serde_json::from_str(&String::from_utf8_lossy(&json_output)).unwrap();
 
     // Run add with --toon (creates a second tension, but same schema)
-    let toon_output = Command::cargo_bin("werk")
-        .unwrap()
+    let toon_output = cargo_bin_cmd!("werk")
         .arg("--toon")
         .arg("add")
         .arg("desired roundtrip 2")
@@ -504,8 +498,7 @@ fn test_toon_notes_produces_valid_output() {
     init_workspace(&dir);
 
     // Add a workspace note first
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg("workspace note for testing")
         .current_dir(dir.path())
@@ -558,8 +551,7 @@ fn test_toon_and_json_mutually_exclusive() {
     init_workspace(&dir);
 
     // --json and --toon together should fail (clap conflict)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("--toon")
         .arg("tree")
@@ -737,8 +729,7 @@ fn test_toon_error_not_found() {
     let dir = TempDir::new().unwrap();
     init_workspace(&dir);
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--toon")
         .arg("show")
         .arg("NONEXISTENTID12345678")
@@ -773,8 +764,7 @@ fn test_toon_show_with_mutations_roundtrips() {
     let id = add_tension_with_horizon(&dir, "evolving goal", "starting reality", "2027-06");
 
     // Add some mutations
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&id)
         .arg("updated reality v1")
@@ -782,8 +772,7 @@ fn test_toon_show_with_mutations_roundtrips() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&id)
         .arg("updated reality v2")

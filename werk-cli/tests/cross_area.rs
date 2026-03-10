@@ -8,7 +8,7 @@
 //! - VAL-CROSS-006: Config affects agent behavior (set -> run uses it -> -- overrides)
 //! - VAL-CROSS-008: Multiple roots handled correctly
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -28,6 +28,7 @@ fn extract_ulid(output: &str) -> Option<String> {
 }
 
 /// Extract multiple ULIDs from werk output.
+#[allow(dead_code)]
 fn extract_ulids(output: &str) -> Vec<String> {
     let mut ulids = Vec::new();
     let chars: Vec<char> = output.chars().collect();
@@ -53,16 +54,14 @@ fn test_full_lifecycle_dynamics_evolution() {
     let dir = TempDir::new().unwrap();
 
     // Step 1: Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Step 2: Add tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a complete novel")
         .arg("have an outline")
@@ -77,8 +76,7 @@ fn test_full_lifecycle_dynamics_evolution() {
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
     // Step 3: Show initial dynamics (should be Germination)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .current_dir(dir.path())
@@ -97,19 +95,17 @@ fn test_full_lifecycle_dynamics_evolution() {
 
     // Step 4: Multiple reality updates to build history
     for i in 1..=5 {
-        Command::cargo_bin("werk")
-            .unwrap()
+        cargo_bin_cmd!("werk")
             .arg("reality")
             .arg(&id)
-            .arg(&format!("progress update {}", i))
+            .arg(format!("progress update {}", i))
             .current_dir(dir.path())
             .assert()
             .success();
     }
 
     // Step 5: Show dynamics after updates
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .current_dir(dir.path())
@@ -136,8 +132,7 @@ fn test_full_lifecycle_dynamics_evolution() {
     );
 
     // Step 6: Resolve the tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&id)
         .current_dir(dir.path())
@@ -145,8 +140,7 @@ fn test_full_lifecycle_dynamics_evolution() {
         .success();
 
     // Step 7: Show resolved tension - dynamics should reflect completion
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id)
         .current_dir(dir.path())
@@ -170,16 +164,14 @@ fn test_lifecycle_json_dynamics_tracking() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Add
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("complete goal")
@@ -196,8 +188,7 @@ fn test_lifecycle_json_dynamics_tracking() {
     let id = add_json["id"].as_str().unwrap().to_string();
 
     // Check initial dynamics via JSON
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -224,20 +215,18 @@ fn test_lifecycle_json_dynamics_tracking() {
 
     // Update reality multiple times
     for i in 1..=4 {
-        Command::cargo_bin("werk")
-            .unwrap()
+        cargo_bin_cmd!("werk")
             .arg("--json")
             .arg("reality")
             .arg(&id)
-            .arg(&format!("update {}", i))
+            .arg(format!("update {}", i))
             .current_dir(dir.path())
             .assert()
             .success();
     }
 
     // Check dynamics after updates
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -260,8 +249,7 @@ fn test_lifecycle_json_dynamics_tracking() {
     );
 
     // Resolve
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("resolve")
         .arg(&id)
@@ -270,8 +258,7 @@ fn test_lifecycle_json_dynamics_tracking() {
         .success();
 
     // Verify resolved state
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -302,16 +289,14 @@ fn test_tree_shows_hierarchy() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create grandparent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("grandparent goal")
         .arg("gp reality")
@@ -326,8 +311,7 @@ fn test_tree_shows_hierarchy() {
         extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have grandparent ID");
 
     // Create parent
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("parent goal")
         .arg("p reality")
@@ -343,8 +327,7 @@ fn test_tree_shows_hierarchy() {
     let p_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have parent ID");
 
     // Create child
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child goal")
         .arg("c reality")
@@ -355,8 +338,7 @@ fn test_tree_shows_hierarchy() {
         .success();
 
     // Tree should show hierarchy
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -401,16 +383,14 @@ fn test_tree_reflects_move() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create two root tensions
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root A")
         .arg("reality A")
@@ -423,8 +403,7 @@ fn test_tree_reflects_move() {
 
     let root_a_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have root A ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root B")
         .arg("reality B")
@@ -438,8 +417,7 @@ fn test_tree_reflects_move() {
     let root_b_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have root B ID");
 
     // Create a child under root A
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child node")
         .arg("child reality")
@@ -455,8 +433,7 @@ fn test_tree_reflects_move() {
     let child_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have child ID");
 
     // Initial tree - child under root A
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -465,12 +442,11 @@ fn test_tree_reflects_move() {
         .stdout
         .clone();
 
-    let stdout = String::from_utf8_lossy(&output);
+    let _stdout = String::from_utf8_lossy(&output);
     // Verify initial structure (child should be under root A)
 
     // Move child to root B
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(&child_id[..12])
         .arg("--parent")
@@ -480,8 +456,7 @@ fn test_tree_reflects_move() {
         .success();
 
     // Tree should reflect move
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -510,8 +485,7 @@ fn test_tree_reflects_move() {
     );
 
     // Verify the move via JSON to check parent_id
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&child_id)
@@ -539,16 +513,14 @@ fn test_tree_shows_reparenting_after_rm() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create A -> B -> C hierarchy
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("grandparent A")
         .arg("A reality")
@@ -561,8 +533,7 @@ fn test_tree_shows_reparenting_after_rm() {
 
     let a_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have A ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("parent B")
         .arg("B reality")
@@ -577,8 +548,7 @@ fn test_tree_shows_reparenting_after_rm() {
 
     let b_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have B ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child C")
         .arg("C reality")
@@ -594,8 +564,7 @@ fn test_tree_shows_reparenting_after_rm() {
     let c_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have C ID");
 
     // Verify initial structure
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -614,8 +583,7 @@ fn test_tree_shows_reparenting_after_rm() {
     );
 
     // Remove middle node (B)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(&b_id)
         .current_dir(dir.path())
@@ -623,8 +591,7 @@ fn test_tree_shows_reparenting_after_rm() {
         .success();
 
     // Tree should show reparenting: C should now be under A
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -653,8 +620,7 @@ fn test_tree_shows_reparenting_after_rm() {
     );
 
     // Verify C's parent is now A via JSON
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&c_id)
@@ -687,16 +653,14 @@ fn test_json_schema_identical_tree_show() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("test goal")
@@ -713,8 +677,7 @@ fn test_json_schema_identical_tree_show() {
     let id = add_json["id"].as_str().unwrap().to_string();
 
     // Get show --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -729,8 +692,7 @@ fn test_json_schema_identical_tree_show() {
     let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
 
     // Get tree --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -790,16 +752,14 @@ fn test_json_dynamics_consistency() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension with some updates
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("dynamics test")
@@ -816,8 +776,7 @@ fn test_json_dynamics_consistency() {
     let id = add_json["id"].as_str().unwrap().to_string();
 
     // Add some updates
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&id)
         .arg("update 1")
@@ -825,8 +784,7 @@ fn test_json_dynamics_consistency() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(&id)
         .arg("update 2")
@@ -835,8 +793,7 @@ fn test_json_dynamics_consistency() {
         .success();
 
     // Get show --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&id)
@@ -851,8 +808,7 @@ fn test_json_dynamics_consistency() {
     let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
 
     // Get tree --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -950,16 +906,14 @@ fn test_multiple_roots_in_tree() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create three unparented tensions
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root 1 goal")
         .arg("root 1 reality")
@@ -967,8 +921,7 @@ fn test_multiple_roots_in_tree() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root 2 goal")
         .arg("root 2 reality")
@@ -976,8 +929,7 @@ fn test_multiple_roots_in_tree() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root 3 goal")
         .arg("root 3 reality")
@@ -986,8 +938,7 @@ fn test_multiple_roots_in_tree() {
         .success();
 
     // Tree should show all three roots
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -1021,16 +972,14 @@ fn test_multiple_roots_json() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create three unparented tensions
-    let output1 = Command::cargo_bin("werk")
-        .unwrap()
+    let output1 = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("root 1")
@@ -1042,8 +991,7 @@ fn test_multiple_roots_json() {
         .stdout
         .clone();
 
-    let output2 = Command::cargo_bin("werk")
-        .unwrap()
+    let output2 = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("root 2")
@@ -1055,8 +1003,7 @@ fn test_multiple_roots_json() {
         .stdout
         .clone();
 
-    let output3 = Command::cargo_bin("werk")
-        .unwrap()
+    let output3 = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("root 3")
@@ -1073,8 +1020,7 @@ fn test_multiple_roots_json() {
     let id3 = extract_ulid(&String::from_utf8_lossy(&output3)).expect("Should have ID 3");
 
     // Tree --json should show all three as roots (parent_id = null)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -1115,16 +1061,14 @@ fn test_multiple_roots_with_children() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create two root tensions, each with a child
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root A")
         .arg("reality A")
@@ -1137,8 +1081,7 @@ fn test_multiple_roots_with_children() {
 
     let root_a = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have root A ID");
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("root B")
         .arg("reality B")
@@ -1152,8 +1095,7 @@ fn test_multiple_roots_with_children() {
     let root_b = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have root B ID");
 
     // Add children
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child of A")
         .arg("child reality")
@@ -1163,8 +1105,7 @@ fn test_multiple_roots_with_children() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("child of B")
         .arg("child reality")
@@ -1175,8 +1116,7 @@ fn test_multiple_roots_with_children() {
         .success();
 
     // Tree should show both hierarchies
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -1206,16 +1146,14 @@ fn test_siblings_in_tree_json() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create three root tensions (siblings at root level)
-    let output1 = Command::cargo_bin("werk")
-        .unwrap()
+    let output1 = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("sibling 1")
@@ -1227,8 +1165,7 @@ fn test_siblings_in_tree_json() {
         .stdout
         .clone();
 
-    let output2 = Command::cargo_bin("werk")
-        .unwrap()
+    let output2 = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("sibling 2")
@@ -1240,8 +1177,7 @@ fn test_siblings_in_tree_json() {
         .stdout
         .clone();
 
-    let output3 = Command::cargo_bin("werk")
-        .unwrap()
+    let output3 = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("sibling 3")
@@ -1258,8 +1194,7 @@ fn test_siblings_in_tree_json() {
     let id3 = extract_ulid(&String::from_utf8_lossy(&output3)).expect("Should have ID 3");
 
     // Get tree JSON
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("tree")
         .current_dir(dir.path())
@@ -1302,16 +1237,14 @@ fn test_prefix_consistency_show_resolve() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tension
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("prefix test")
         .arg("reality")
@@ -1327,8 +1260,7 @@ fn test_prefix_consistency_show_resolve() {
     let prefix = &id[..8]; // Use 8-char prefix
 
     // Show with prefix should work
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(dir.path())
@@ -1346,8 +1278,7 @@ fn test_prefix_consistency_show_resolve() {
     );
 
     // Resolve with same prefix should work
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(prefix)
         .current_dir(dir.path())
@@ -1355,8 +1286,7 @@ fn test_prefix_consistency_show_resolve() {
         .success();
 
     // Verify resolved
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(dir.path())
@@ -1380,16 +1310,14 @@ fn test_tree_filter_resolved_cross_area() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Create tensions
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("active tension")
         .arg("reality")
@@ -1397,8 +1325,7 @@ fn test_tree_filter_resolved_cross_area() {
         .assert()
         .success();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("to resolve")
         .arg("reality")
@@ -1412,8 +1339,7 @@ fn test_tree_filter_resolved_cross_area() {
     let id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have ID");
 
     // Resolve one
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&id)
         .current_dir(dir.path())
@@ -1421,8 +1347,7 @@ fn test_tree_filter_resolved_cross_area() {
         .success();
 
     // Tree default (open) should show only active
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--open")
         .current_dir(dir.path())
@@ -1445,8 +1370,7 @@ fn test_tree_filter_resolved_cross_area() {
     );
 
     // Tree --resolved should show only resolved
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("tree")
         .arg("--resolved")
         .current_dir(dir.path())
@@ -1480,8 +1404,7 @@ fn test_agent_workflow_full_flow() {
     let dir = TempDir::new().unwrap();
 
     // Step 1: Init workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1502,8 +1425,7 @@ fn test_agent_workflow_full_flow() {
     }
 
     // Step 4: Get context and verify dynamics are computed from history
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&id)
         .current_dir(dir.path())
@@ -1547,8 +1469,7 @@ fn test_agent_workflow_full_flow() {
     );
 
     // Step 5: Run agent with context and verify env vars
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&id)
         .arg("--")
@@ -1569,8 +1490,7 @@ fn test_agent_workflow_full_flow() {
     );
 
     // Step 6: Verify stdin receives context JSON
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&id)
         .arg("--")
@@ -1599,8 +1519,7 @@ fn test_context_dynamics_computed_from_history() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1618,8 +1537,7 @@ fn test_context_dynamics_computed_from_history() {
     }
 
     // Get context
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&id)
         .current_dir(dir.path())
@@ -1656,8 +1574,7 @@ fn test_run_passes_context_via_stdin() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1673,8 +1590,7 @@ fn test_run_passes_context_via_stdin() {
         .unwrap();
 
     // Run and capture stdin
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&child.id)
         .arg("--")
@@ -1740,16 +1656,14 @@ fn test_config_default_used_by_run() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set agent.command in config
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -1763,8 +1677,7 @@ fn test_config_default_used_by_run() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run without -- (should use config default)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -1788,16 +1701,14 @@ fn test_config_override_with_double_dash() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set agent.command in config
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -1811,8 +1722,7 @@ fn test_config_override_with_double_dash() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run WITH -- override
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -1843,16 +1753,14 @@ fn test_config_persists_across_commands() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set agent.command
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -1862,8 +1770,7 @@ fn test_config_persists_across_commands() {
         .success();
 
     // Verify with config get
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -1885,8 +1792,7 @@ fn test_config_persists_across_commands() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("test", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -1915,8 +1821,7 @@ fn test_context_show_json_dynamics_schema_match() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1928,8 +1833,7 @@ fn test_context_show_json_dynamics_schema_match() {
     store.update_actual(&tension.id, "updated reality").unwrap();
 
     // Get show --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
@@ -1944,8 +1848,7 @@ fn test_context_show_json_dynamics_schema_match() {
     let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
 
     // Get context
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -2037,8 +1940,7 @@ fn test_context_show_mutations_match() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -2051,8 +1953,7 @@ fn test_context_show_mutations_match() {
     store.update_desired(&tension.id, "refined goal").unwrap();
 
     // Get show --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
@@ -2067,8 +1968,7 @@ fn test_context_show_mutations_match() {
     let show_json: Value = serde_json::from_str(&stdout).expect("Show should be valid JSON");
 
     // Get context
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -2147,8 +2047,7 @@ fn test_agent_session_recorded_in_context() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -2159,8 +2058,7 @@ fn test_agent_session_recorded_in_context() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run agent
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -2171,8 +2069,7 @@ fn test_agent_session_recorded_in_context() {
         .success();
 
     // Get context - should have agent_session mutation
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())

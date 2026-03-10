@@ -8,7 +8,7 @@
 //! - VAL-CROSS-009: ID prefix matching works across all commands
 //! - VAL-CROSS-010: First-use experience is coherent
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -22,8 +22,7 @@ fn test_discovery_add_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize workspace in parent
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -34,8 +33,7 @@ fn test_discovery_add_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     // Add tension from subdirectory
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("subdir goal")
         .arg("subdir reality")
@@ -56,8 +54,7 @@ fn test_discovery_show_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension in parent
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -74,8 +71,7 @@ fn test_discovery_show_from_subdirectory() {
 
     // Show from subdirectory should find the tension
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(&subdir)
@@ -90,8 +86,7 @@ fn test_discovery_reality_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -107,8 +102,7 @@ fn test_discovery_reality_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(prefix)
         .arg("updated reality")
@@ -131,8 +125,7 @@ fn test_discovery_desire_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -146,8 +139,7 @@ fn test_discovery_desire_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(prefix)
         .arg("refined desire")
@@ -170,8 +162,7 @@ fn test_discovery_resolve_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -187,8 +178,7 @@ fn test_discovery_resolve_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(prefix)
         .current_dir(&subdir)
@@ -210,8 +200,7 @@ fn test_discovery_release_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -227,8 +216,7 @@ fn test_discovery_release_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(prefix)
         .arg("--reason")
@@ -252,8 +240,7 @@ fn test_discovery_rm_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -267,8 +254,7 @@ fn test_discovery_rm_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(prefix)
         .current_dir(&subdir)
@@ -289,8 +275,7 @@ fn test_discovery_move_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tensions
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -307,8 +292,7 @@ fn test_discovery_move_from_subdirectory() {
     // Use 12-char prefix to avoid ambiguity
     let child_prefix = &child_tension.id[..12];
     let parent_prefix = &parent_tension.id[..12];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(child_prefix)
         .arg("--parent")
@@ -332,8 +316,7 @@ fn test_discovery_note_from_subdirectory() {
     let parent_dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(parent_dir.path())
         .assert()
@@ -347,8 +330,7 @@ fn test_discovery_note_from_subdirectory() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     let prefix = &tension.id[..8];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(prefix)
         .arg("note added from subdirectory")
@@ -380,8 +362,7 @@ fn test_global_fallback_add() {
     let _store = sd_core::Store::init(home_dir.path()).unwrap();
 
     // Add from work_dir (no local .werk/) should use global
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("global goal")
         .arg("global reality")
@@ -411,8 +392,7 @@ fn test_global_fallback_show() {
 
     // Show from work_dir should find it
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .env("HOME", home_dir.path())
@@ -438,8 +418,7 @@ fn test_global_fallback_reality() {
 
     // Update reality from work_dir
     let prefix = &tension.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(prefix)
         .arg("updated")
@@ -468,8 +447,7 @@ fn test_global_fallback_config() {
     std::fs::create_dir_all(&global_werk).unwrap();
 
     // Set config from work_dir (should use global)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("test.key")
@@ -490,8 +468,7 @@ fn test_no_workspace_error() {
     let home_dir = TempDir::new().unwrap();
 
     // No .werk/ anywhere - add should fail gracefully
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("goal")
         .arg("reality")
@@ -512,8 +489,7 @@ fn test_workspace_consistency_across_commands() {
     let project_root = TempDir::new().unwrap();
 
     // Initialize at root
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(project_root.path())
         .assert()
@@ -528,8 +504,7 @@ fn test_workspace_consistency_across_commands() {
     std::fs::create_dir_all(&subdir).unwrap();
 
     // Add from subdirectory
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("consistent goal")
         .arg("consistent reality")
@@ -548,8 +523,7 @@ fn test_workspace_consistency_across_commands() {
     let prefix = &tension_id[..6];
 
     // Show from subdirectory
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(&subdir)
@@ -558,8 +532,7 @@ fn test_workspace_consistency_across_commands() {
         .stdout(predicate::str::contains("consistent goal"));
 
     // Reality from subdirectory
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(prefix)
         .arg("updated reality")
@@ -568,8 +541,7 @@ fn test_workspace_consistency_across_commands() {
         .success();
 
     // Verify from root
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(project_root.path())
@@ -578,8 +550,7 @@ fn test_workspace_consistency_across_commands() {
         .stdout(predicate::str::contains("updated reality"));
 
     // Resolve from subdirectory
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(prefix)
         .current_dir(&subdir)
@@ -587,8 +558,7 @@ fn test_workspace_consistency_across_commands() {
         .success();
 
     // Verify resolved from root
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(project_root.path())
@@ -612,16 +582,14 @@ fn test_local_precedence_over_global() {
         .unwrap();
 
     // Initialize local workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(project_dir.path())
         .assert()
         .success();
 
     // Add tension from project dir
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("local tension")
         .arg("reality")
@@ -654,8 +622,7 @@ fn test_local_precedence_over_global() {
 fn test_error_recovery_resolve_twice() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -668,8 +635,7 @@ fn test_error_recovery_resolve_twice() {
     let prefix = &tension.id[..6];
 
     // First resolve succeeds
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(prefix)
         .current_dir(dir.path())
@@ -682,8 +648,7 @@ fn test_error_recovery_resolve_twice() {
     let mutations_first = store_after_first.get_mutations(&tension.id).unwrap().len();
 
     // Second resolve fails (already resolved)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(prefix)
         .current_dir(dir.path())
@@ -706,8 +671,7 @@ fn test_error_recovery_resolve_twice() {
 fn test_error_recovery_release_no_reason() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -727,8 +691,7 @@ fn test_error_recovery_release_no_reason() {
         .unwrap();
 
     // Release without reason fails
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(prefix)
         .current_dir(dir.path())
@@ -749,8 +712,7 @@ fn test_error_recovery_release_no_reason() {
 fn test_error_recovery_rm_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -767,8 +729,7 @@ fn test_error_recovery_rm_not_found() {
         .len();
 
     // Rm nonexistent fails
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .current_dir(dir.path())
@@ -796,8 +757,7 @@ fn test_error_recovery_rm_not_found() {
 fn test_error_recovery_move_cycle() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -828,8 +788,7 @@ fn test_error_recovery_move_cycle() {
     // Try to move A under C (would create cycle) - should fail
     let a_prefix = &a.id[..6];
     let c_prefix = &c.id[..6];
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(a_prefix)
         .arg("--parent")
@@ -859,8 +818,7 @@ fn test_error_recovery_move_cycle() {
 fn test_error_recovery_reality_on_resolved() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -885,8 +843,7 @@ fn test_error_recovery_reality_on_resolved() {
         .unwrap();
 
     // Try to update reality - should fail
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(prefix)
         .arg("new reality")
@@ -913,8 +870,7 @@ fn test_prefix_consistency_across_commands() {
     let dir = TempDir::new().unwrap();
 
     // Initialize and create tension
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -929,8 +885,7 @@ fn test_prefix_consistency_across_commands() {
     let prefix = &tension.id[..6];
 
     // Show with prefix
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(dir.path())
@@ -943,8 +898,7 @@ fn test_prefix_consistency_across_commands() {
     assert!(stdout.contains("prefix consistency test"));
 
     // Reality with prefix
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("reality")
         .arg(prefix)
         .arg("updated reality")
@@ -953,8 +907,7 @@ fn test_prefix_consistency_across_commands() {
         .success();
 
     // Desire with prefix
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("desire")
         .arg(prefix)
         .arg("updated desire")
@@ -963,8 +916,7 @@ fn test_prefix_consistency_across_commands() {
         .success();
 
     // Note with prefix
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("note")
         .arg(prefix)
         .arg("test note")
@@ -997,8 +949,7 @@ fn test_prefix_move_and_release() {
     let dir = TempDir::new().unwrap();
 
     // Initialize
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1013,8 +964,7 @@ fn test_prefix_move_and_release() {
     let parent_prefix = &parent.id[..12];
 
     // Move child under parent using prefixes
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("move")
         .arg(child_prefix)
         .arg("--parent")
@@ -1032,8 +982,7 @@ fn test_prefix_move_and_release() {
     assert_eq!(moved.parent_id, Some(parent.id.clone()));
 
     // Release parent with prefix
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(parent_prefix)
         .arg("--reason")
@@ -1057,8 +1006,7 @@ fn test_prefix_resolve_and_rm() {
     let dir = TempDir::new().unwrap();
 
     // Initialize
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1073,8 +1021,7 @@ fn test_prefix_resolve_and_rm() {
     let t2_prefix = &t2.id[..12];
 
     // Resolve t1 with prefix
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(t1_prefix)
         .current_dir(dir.path())
@@ -1082,8 +1029,7 @@ fn test_prefix_resolve_and_rm() {
         .success();
 
     // Rm t2 with prefix
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(t2_prefix)
         .current_dir(dir.path())
@@ -1116,8 +1062,7 @@ fn test_first_use_experience() {
     let dir = TempDir::new().unwrap();
 
     // Step 1: Init
-    let init_output = Command::cargo_bin("werk")
-        .unwrap()
+    let init_output = cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1135,8 +1080,7 @@ fn test_first_use_experience() {
     );
 
     // Step 2: Add
-    let add_output = Command::cargo_bin("werk")
-        .unwrap()
+    let add_output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("my first goal")
         .arg("current reality")
@@ -1163,8 +1107,7 @@ fn test_first_use_experience() {
     let tension_id = &tensions[0].id;
     let prefix = &tension_id[..6];
 
-    let show_output = Command::cargo_bin("werk")
-        .unwrap()
+    let show_output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(prefix)
         .current_dir(dir.path())
@@ -1201,8 +1144,7 @@ fn test_first_use_json_experience() {
     let dir = TempDir::new().unwrap();
 
     // Init with --json
-    let init_output = Command::cargo_bin("werk")
-        .unwrap()
+    let init_output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("init")
         .current_dir(dir.path())
@@ -1217,8 +1159,7 @@ fn test_first_use_json_experience() {
     assert!(init_json.get("path").is_some());
 
     // Add with --json
-    let add_output = Command::cargo_bin("werk")
-        .unwrap()
+    let add_output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
         .arg("json goal")
@@ -1241,8 +1182,7 @@ fn test_first_use_json_experience() {
     let id = add_json.get("id").unwrap().as_str().unwrap();
     let prefix = &id[..6];
 
-    let show_output = Command::cargo_bin("werk")
-        .unwrap()
+    let show_output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
         .arg(prefix)
@@ -1265,16 +1205,14 @@ fn test_first_use_config() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Config set
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -1284,8 +1222,7 @@ fn test_first_use_config() {
         .success();
 
     // Config get
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("get")
         .arg("agent.command")
@@ -1305,8 +1242,7 @@ fn test_deep_nesting_discovery() {
     let root = TempDir::new().unwrap();
 
     // Initialize at root
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(root.path())
         .assert()
@@ -1320,8 +1256,7 @@ fn test_deep_nesting_discovery() {
     std::fs::create_dir_all(&deep_path).unwrap();
 
     // Add from deepest level
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("deep goal")
         .arg("deep reality")
@@ -1342,8 +1277,7 @@ fn test_multiple_tensions_prefix_handling() {
     let dir = TempDir::new().unwrap();
 
     // Initialize
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -1364,8 +1298,7 @@ fn test_multiple_tensions_prefix_handling() {
     // Use 12-char prefixes which should be unique
     for tension in &tensions {
         let prefix = &tension.id[..12];
-        Command::cargo_bin("werk")
-            .unwrap()
+        cargo_bin_cmd!("werk")
             .arg("show")
             .arg(prefix)
             .current_dir(dir.path())

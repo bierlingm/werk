@@ -8,7 +8,7 @@
 //! - VAL-CRUD-017: Release reparents children like resolve
 //! - VAL-CRUD-018: Rm deletes tension and reparents children to grandparent
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -22,8 +22,7 @@ fn test_resolve_active_tension() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -35,8 +34,7 @@ fn test_resolve_active_tension() {
     let tension_id = tension.id.clone();
 
     // Resolve via command
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&tension_id)
         .current_dir(dir.path())
@@ -54,8 +52,7 @@ fn test_resolve_active_tension() {
 fn test_resolve_with_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -65,8 +62,7 @@ fn test_resolve_with_prefix() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(prefix)
         .current_dir(dir.path())
@@ -82,8 +78,7 @@ fn test_resolve_with_prefix() {
 fn test_resolve_reparents_children() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -102,8 +97,7 @@ fn test_resolve_reparents_children() {
         .unwrap();
 
     // Resolve parent
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&parent.id)
         .current_dir(dir.path())
@@ -122,8 +116,7 @@ fn test_resolve_reparents_children() {
 fn test_resolve_non_active_fails() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -138,8 +131,7 @@ fn test_resolve_non_active_fails() {
         .unwrap();
 
     // Try to resolve again
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -157,8 +149,7 @@ fn test_resolve_non_active_fails() {
 fn test_resolve_records_mutation() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -167,8 +158,7 @@ fn test_resolve_records_mutation() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -190,8 +180,7 @@ fn test_resolve_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -200,8 +189,7 @@ fn test_resolve_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("resolve")
         .arg(&tension.id)
@@ -231,8 +219,7 @@ fn test_resolve_json_output() {
 fn test_release_with_reason() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -242,8 +229,7 @@ fn test_release_with_reason() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(&tension_id)
         .arg("--reason")
@@ -262,8 +248,7 @@ fn test_release_with_reason() {
 fn test_release_without_reason_fails() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -273,8 +258,7 @@ fn test_release_without_reason_fails() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Release without --reason should fail (clap required flag)
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -288,8 +272,7 @@ fn test_release_without_reason_fails() {
 fn test_release_reparents_children() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -301,8 +284,7 @@ fn test_release_reparents_children() {
         .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
         .unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(&parent.id)
         .arg("--reason")
@@ -321,8 +303,7 @@ fn test_release_reparents_children() {
 fn test_release_on_resolved_fails() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -337,8 +318,7 @@ fn test_release_on_resolved_fails() {
         .unwrap();
 
     // Try to release
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(&tension.id)
         .arg("--reason")
@@ -355,8 +335,7 @@ fn test_release_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -365,8 +344,7 @@ fn test_release_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("release")
         .arg(&tension.id)
@@ -395,8 +373,7 @@ fn test_release_json_output() {
 fn test_rm_deletes_tension() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -406,8 +383,7 @@ fn test_rm_deletes_tension() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(&tension_id)
         .current_dir(dir.path())
@@ -425,8 +401,7 @@ fn test_rm_deletes_tension() {
 fn test_rm_reparents_to_grandparent() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -444,8 +419,7 @@ fn test_rm_reparents_to_grandparent() {
         .unwrap();
 
     // Delete B
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(&parent.id)
         .current_dir(dir.path())
@@ -465,8 +439,7 @@ fn test_rm_reparents_to_grandparent() {
 fn test_rm_root_makes_children_roots() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -481,8 +454,7 @@ fn test_rm_root_makes_children_roots() {
         .create_tension_with_parent("child2", "c2", Some(parent.id.clone()))
         .unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(&parent.id)
         .current_dir(dir.path())
@@ -501,15 +473,13 @@ fn test_rm_root_makes_children_roots() {
 fn test_rm_not_found() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .current_dir(dir.path())
@@ -523,8 +493,7 @@ fn test_rm_not_found() {
 fn test_rm_with_prefix() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -534,8 +503,7 @@ fn test_rm_with_prefix() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg(prefix)
         .current_dir(dir.path())
@@ -552,8 +520,7 @@ fn test_rm_json_output() {
 
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -562,8 +529,7 @@ fn test_rm_json_output() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("rm")
         .arg(&tension.id)
@@ -590,8 +556,7 @@ fn test_resolve_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg("SOMEID")
         .env("HOME", home.path())
@@ -605,8 +570,7 @@ fn test_release_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg("SOMEID")
         .arg("--reason")
@@ -622,8 +586,7 @@ fn test_rm_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("rm")
         .arg("SOMEID")
         .env("HOME", home.path())
@@ -638,8 +601,7 @@ fn test_full_lifecycle_resolve() {
     let dir = TempDir::new().unwrap();
 
     // Init
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -650,8 +612,7 @@ fn test_full_lifecycle_resolve() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve via CLI using the actual tension ID
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("resolve")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -668,8 +629,7 @@ fn test_full_lifecycle_resolve() {
 fn test_release_reason_recorded() {
     let dir = TempDir::new().unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -678,8 +638,7 @@ fn test_release_reason_recorded() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("release")
         .arg(&tension.id)
         .arg("--reason")

@@ -13,8 +13,7 @@
 //! - VAL-AGENT-016: Run handles missing/invalid command gracefully
 //! - VAL-AGENT-017: Ctrl+C during run terminates subprocess
 
-use assert_cmd::Command;
-use predicates::prelude::*;
+use assert_cmd::cargo_bin_cmd;
 use tempfile::TempDir;
 
 // =============================================================================
@@ -27,8 +26,7 @@ fn test_run_sets_werk_tension_id() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -40,8 +38,7 @@ fn test_run_sets_werk_tension_id() {
     let expected_id = tension.id.clone();
 
     // Run with printenv to check WERK_TENSION_ID
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&expected_id)
         .arg("--")
@@ -73,8 +70,7 @@ fn test_run_sets_werk_context() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -85,8 +81,7 @@ fn test_run_sets_werk_context() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with printenv to check WERK_CONTEXT
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -135,8 +130,7 @@ fn test_run_sets_werk_workspace() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -147,8 +141,7 @@ fn test_run_sets_werk_workspace() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with printenv to check WERK_WORKSPACE
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -190,8 +183,7 @@ fn test_run_pipes_context_to_stdin() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -202,8 +194,7 @@ fn test_run_pipes_context_to_stdin() {
     let tension = store.create_tension("test goal", "test reality").unwrap();
 
     // Run with cat to read stdin
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -269,16 +260,14 @@ fn test_run_uses_config_default() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set agent.command in config
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -292,8 +281,7 @@ fn test_run_uses_config_default() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run without -- (should use config default)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -317,8 +305,7 @@ fn test_run_config_with_args() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -326,8 +313,7 @@ fn test_run_config_with_args() {
 
     // Set agent.command with simple arguments (echo with args)
     // Note: Complex commands with quotes require shell wrapping
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -341,8 +327,7 @@ fn test_run_config_with_args() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run without -- (should use config default)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -371,16 +356,14 @@ fn test_run_override_config() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set agent.command in config
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -394,8 +377,7 @@ fn test_run_override_config() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run WITH -- override (should ignore config)
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -430,8 +412,7 @@ fn test_run_records_session_mutation() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -442,8 +423,7 @@ fn test_run_records_session_mutation() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with a simple command
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -483,8 +463,7 @@ fn test_run_multiple_sessions() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -495,8 +474,7 @@ fn test_run_multiple_sessions() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run twice
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -506,8 +484,7 @@ fn test_run_multiple_sessions() {
         .assert()
         .success();
 
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -540,8 +517,7 @@ fn test_run_exit_code_success() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -552,8 +528,7 @@ fn test_run_exit_code_success() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with exit 0
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -571,8 +546,7 @@ fn test_run_exit_code_propagation() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -583,8 +557,7 @@ fn test_run_exit_code_propagation() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with exit 42
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -602,8 +575,7 @@ fn test_run_exit_code_1() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -614,8 +586,7 @@ fn test_run_exit_code_1() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with exit 1
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -637,8 +608,7 @@ fn test_run_no_config_no_override_error() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -649,8 +619,7 @@ fn test_run_no_config_no_override_error() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run without config and without --
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -680,8 +649,7 @@ fn test_run_missing_command_error() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -692,8 +660,7 @@ fn test_run_missing_command_error() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with nonexistent command
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -725,8 +692,7 @@ fn test_run_empty_command_error() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -738,8 +704,7 @@ fn test_run_empty_command_error() {
 
     // Run with just -- (no command after)
     // This tests clap's handling of trailing_var_arg with no args
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -762,16 +727,14 @@ fn test_run_nonexistent_tension_error() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Run with nonexistent tension ID
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg("NONEXISTENT123456789ABC")
         .arg("--")
@@ -797,8 +760,7 @@ fn test_run_prefix_resolution() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -812,8 +774,7 @@ fn test_run_prefix_resolution() {
     let prefix = &tension.id[..8];
 
     // Run with prefix
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(prefix)
         .arg("--")
@@ -841,16 +802,14 @@ fn test_run_json_output() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
         .success();
 
     // Set agent.command in config
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")
         .arg("agent.command")
@@ -864,8 +823,7 @@ fn test_run_json_output() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run with --json
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("run")
         .arg(&tension.id)
@@ -881,7 +839,7 @@ fn test_run_json_output() {
     // Should have JSON output mixed with command output
     // This is tricky - the --json flag affects error messages
     // For now we just verify the run succeeds
-    assert!(stdout.contains("test") || stdout.len() > 0);
+    assert!(stdout.contains("test") || !stdout.is_empty());
 }
 
 /// Run error with --json produces JSON error.
@@ -890,8 +848,7 @@ fn test_run_error_json() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -902,8 +859,7 @@ fn test_run_error_json() {
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Run without config and without -- with --json flag
-    let output = Command::cargo_bin("werk")
-        .unwrap()
+    let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("run")
         .arg(&tension.id)
@@ -936,8 +892,7 @@ fn test_werk_context_matches_context_command() {
     let dir = TempDir::new().unwrap();
 
     // Initialize workspace
-    Command::cargo_bin("werk")
-        .unwrap()
+    cargo_bin_cmd!("werk")
         .arg("init")
         .current_dir(dir.path())
         .assert()
@@ -949,8 +904,7 @@ fn test_werk_context_matches_context_command() {
     store.update_actual(&tension.id, "updated reality").unwrap();
 
     // Get context from context command
-    let context_output = Command::cargo_bin("werk")
-        .unwrap()
+    let context_output = cargo_bin_cmd!("werk")
         .arg("context")
         .arg(&tension.id)
         .current_dir(dir.path())
@@ -964,8 +918,7 @@ fn test_werk_context_matches_context_command() {
         serde_json::from_str(&String::from_utf8_lossy(&context_output)).unwrap();
 
     // Get WERK_CONTEXT from run
-    let env_output = Command::cargo_bin("werk")
-        .unwrap()
+    let env_output = cargo_bin_cmd!("werk")
         .arg("run")
         .arg(&tension.id)
         .arg("--")
@@ -979,7 +932,7 @@ fn test_werk_context_matches_context_command() {
         .clone();
 
     let env_json: serde_json::Value =
-        serde_json::from_str(&String::from_utf8_lossy(&env_output).trim()).unwrap();
+        serde_json::from_str(String::from_utf8_lossy(&env_output).trim()).unwrap();
 
     // Both should have the same tension ID
     assert_eq!(

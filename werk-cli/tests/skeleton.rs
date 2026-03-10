@@ -6,12 +6,12 @@
 //! - `werk --version` prints version
 //! - All subcommands are listed in help
 
-use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 
 #[test]
 fn test_werk_no_args_shows_help() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.assert().failure().stderr(predicate::str::contains(
         "Operative instrument for structural dynamics",
     ));
@@ -19,7 +19,7 @@ fn test_werk_no_args_shows_help() {
 
 #[test]
 fn test_werk_help_shows_global_flags() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -29,7 +29,7 @@ fn test_werk_help_shows_global_flags() {
 
 #[test]
 fn test_werk_version() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--version");
     cmd.assert()
         .success()
@@ -38,7 +38,7 @@ fn test_werk_version() {
 
 #[test]
 fn test_werk_help_lists_all_subcommands() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -63,7 +63,7 @@ fn test_werk_help_lists_all_subcommands() {
 
 #[test]
 fn test_werk_init_is_implemented() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("init");
     cmd.assert().success().stdout(
         predicate::str::contains("Workspace initialized")
@@ -73,7 +73,7 @@ fn test_werk_init_is_implemented() {
 
 #[test]
 fn test_werk_json_flag() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--json").arg("init");
     cmd.assert()
         .success()
@@ -82,7 +82,7 @@ fn test_werk_json_flag() {
 
 #[test]
 fn test_werk_no_color_flag() {
-    let mut cmd = Command::cargo_bin("werk").unwrap();
+    let mut cmd = cargo_bin_cmd!("werk");
     cmd.arg("--no-color").arg("init");
     cmd.assert()
         .success()
