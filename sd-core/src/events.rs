@@ -40,7 +40,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-use crate::dynamics::{ConflictPattern, CreativeCyclePhase, NeglectType, Orientation};
+use crate::dynamics::{
+    CompensatingStrategyType, ConflictPattern, CreativeCyclePhase, HorizonDriftType, NeglectType,
+    Orientation,
+};
 
 #[cfg(test)]
 use crate::tension::TensionStatus;
@@ -228,6 +231,72 @@ pub enum Event {
         /// When change occurred.
         timestamp: DateTime<Utc>,
     },
+
+    /// Urgency crossed a configured threshold (up or down).
+    UrgencyThresholdCrossed {
+        /// ULID of the tension.
+        tension_id: String,
+        /// Previous urgency value.
+        old_urgency: f64,
+        /// New urgency value.
+        new_urgency: f64,
+        /// The threshold that was crossed.
+        threshold: f64,
+        /// Whether the crossing was upward (true) or downward (false).
+        crossed_above: bool,
+        /// When the crossing was detected.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Horizon drift pattern detected or changed.
+    HorizonDriftDetected {
+        /// ULID of the tension.
+        tension_id: String,
+        /// The type of drift detected.
+        drift_type: HorizonDriftType,
+        /// Number of horizon changes.
+        change_count: usize,
+        /// When detected.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Compensating strategy pattern detected.
+    CompensatingStrategyDetected {
+        /// ULID of the tension.
+        tension_id: String,
+        /// The type of compensating strategy.
+        strategy_type: CompensatingStrategyType,
+        /// How long the pattern has persisted (in seconds).
+        persistence_seconds: i64,
+        /// When detected.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Oscillation pattern resolved (was detected, now gone).
+    OscillationResolved {
+        /// ULID of the tension.
+        tension_id: String,
+        /// When resolved.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Neglect pattern resolved (was detected, now gone).
+    NeglectResolved {
+        /// ULID of the tension.
+        tension_id: String,
+        /// The former neglect type that was resolved.
+        former_neglect_type: NeglectType,
+        /// When resolved.
+        timestamp: DateTime<Utc>,
+    },
+
+    /// Resolution progress lost (was detected, now gone).
+    ResolutionLost {
+        /// ULID of the tension.
+        tension_id: String,
+        /// When the loss was detected.
+        timestamp: DateTime<Utc>,
+    },
 }
 
 impl Event {
@@ -249,6 +318,12 @@ impl Event {
             Event::StructureChanged { tension_id, .. } => Some(tension_id),
             Event::OrientationShift { .. } => None,
             Event::HorizonChanged { tension_id, .. } => Some(tension_id),
+            Event::UrgencyThresholdCrossed { tension_id, .. } => Some(tension_id),
+            Event::HorizonDriftDetected { tension_id, .. } => Some(tension_id),
+            Event::CompensatingStrategyDetected { tension_id, .. } => Some(tension_id),
+            Event::OscillationResolved { tension_id, .. } => Some(tension_id),
+            Event::NeglectResolved { tension_id, .. } => Some(tension_id),
+            Event::ResolutionLost { tension_id, .. } => Some(tension_id),
         }
     }
 
@@ -270,6 +345,12 @@ impl Event {
             Event::StructureChanged { timestamp, .. } => *timestamp,
             Event::OrientationShift { timestamp, .. } => *timestamp,
             Event::HorizonChanged { timestamp, .. } => *timestamp,
+            Event::UrgencyThresholdCrossed { timestamp, .. } => *timestamp,
+            Event::HorizonDriftDetected { timestamp, .. } => *timestamp,
+            Event::CompensatingStrategyDetected { timestamp, .. } => *timestamp,
+            Event::OscillationResolved { timestamp, .. } => *timestamp,
+            Event::NeglectResolved { timestamp, .. } => *timestamp,
+            Event::ResolutionLost { timestamp, .. } => *timestamp,
         }
     }
 }
@@ -594,6 +675,77 @@ impl EventBuilder {
             timestamp: Utc::now(),
         }
     }
+
+    /// Build an UrgencyThresholdCrossed event.
+    pub fn urgency_threshold_crossed(
+        tension_id: String,
+        old_urgency: f64,
+        new_urgency: f64,
+        threshold: f64,
+        crossed_above: bool,
+    ) -> Event {
+        Event::UrgencyThresholdCrossed {
+            tension_id,
+            old_urgency,
+            new_urgency,
+            threshold,
+            crossed_above,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build a HorizonDriftDetected event.
+    pub fn horizon_drift_detected(
+        tension_id: String,
+        drift_type: HorizonDriftType,
+        change_count: usize,
+    ) -> Event {
+        Event::HorizonDriftDetected {
+            tension_id,
+            drift_type,
+            change_count,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build a CompensatingStrategyDetected event.
+    pub fn compensating_strategy_detected(
+        tension_id: String,
+        strategy_type: CompensatingStrategyType,
+        persistence_seconds: i64,
+    ) -> Event {
+        Event::CompensatingStrategyDetected {
+            tension_id,
+            strategy_type,
+            persistence_seconds,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build an OscillationResolved event.
+    pub fn oscillation_resolved(tension_id: String) -> Event {
+        Event::OscillationResolved {
+            tension_id,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build a NeglectResolved event.
+    pub fn neglect_resolved(tension_id: String, former_neglect_type: NeglectType) -> Event {
+        Event::NeglectResolved {
+            tension_id,
+            former_neglect_type,
+            timestamp: Utc::now(),
+        }
+    }
+
+    /// Build a ResolutionLost event.
+    pub fn resolution_lost(tension_id: String) -> Event {
+        Event::ResolutionLost {
+            tension_id,
+            timestamp: Utc::now(),
+        }
+    }
 }
 
 // ============================================================================
@@ -667,6 +819,20 @@ mod tests {
                 Orientation::ProblemSolving,
                 Orientation::Creative,
             ),
+            EventBuilder::urgency_threshold_crossed("01ABC".to_owned(), 0.4, 0.6, 0.5, true),
+            EventBuilder::horizon_drift_detected(
+                "01ABC".to_owned(),
+                HorizonDriftType::Postponement,
+                2,
+            ),
+            EventBuilder::compensating_strategy_detected(
+                "01ABC".to_owned(),
+                CompensatingStrategyType::TolerableConflict,
+                86400,
+            ),
+            EventBuilder::oscillation_resolved("01ABC".to_owned()),
+            EventBuilder::neglect_resolved("01ABC".to_owned(), NeglectType::ParentNeglectsChildren),
+            EventBuilder::resolution_lost("01ABC".to_owned()),
         ];
 
         for event in events {
@@ -1143,7 +1309,7 @@ mod tests {
 
     #[test]
     fn test_event_all_types_defined() {
-        // Ensure all 13 event types are defined and serializable
+        // Ensure all 22 event types are defined and serializable
         let events: Vec<Event> = vec![
             Event::TensionCreated {
                 tension_id: "01A".to_owned(),
@@ -1172,6 +1338,12 @@ mod tests {
                 timestamp: Utc::now(),
             },
             Event::TensionReleased {
+                tension_id: "01A".to_owned(),
+                desired: "d".to_owned(),
+                actual: "a".to_owned(),
+                timestamp: Utc::now(),
+            },
+            Event::TensionDeleted {
                 tension_id: "01A".to_owned(),
                 desired: "d".to_owned(),
                 actual: "a".to_owned(),
@@ -1221,6 +1393,45 @@ mod tests {
                 new_orientation: Orientation::Creative,
                 timestamp: Utc::now(),
             },
+            Event::HorizonChanged {
+                tension_id: "01A".to_owned(),
+                old_horizon: Some("2026-05".to_owned()),
+                new_horizon: Some("2026-08".to_owned()),
+                timestamp: Utc::now(),
+            },
+            Event::UrgencyThresholdCrossed {
+                tension_id: "01A".to_owned(),
+                old_urgency: 0.4,
+                new_urgency: 0.6,
+                threshold: 0.5,
+                crossed_above: true,
+                timestamp: Utc::now(),
+            },
+            Event::HorizonDriftDetected {
+                tension_id: "01A".to_owned(),
+                drift_type: HorizonDriftType::Postponement,
+                change_count: 2,
+                timestamp: Utc::now(),
+            },
+            Event::CompensatingStrategyDetected {
+                tension_id: "01A".to_owned(),
+                strategy_type: CompensatingStrategyType::TolerableConflict,
+                persistence_seconds: 86400,
+                timestamp: Utc::now(),
+            },
+            Event::OscillationResolved {
+                tension_id: "01A".to_owned(),
+                timestamp: Utc::now(),
+            },
+            Event::NeglectResolved {
+                tension_id: "01A".to_owned(),
+                former_neglect_type: NeglectType::ParentNeglectsChildren,
+                timestamp: Utc::now(),
+            },
+            Event::ResolutionLost {
+                tension_id: "01A".to_owned(),
+                timestamp: Utc::now(),
+            },
         ];
 
         // All should serialize and deserialize
@@ -1229,7 +1440,7 @@ mod tests {
             let _: Event = serde_json::from_str(&json).unwrap();
         }
 
-        assert_eq!(events.len(), 13);
+        assert_eq!(events.len(), 21);
     }
 
     // ── VAL-EVENT-001: State change events fire correctly ──────────
@@ -1629,5 +1840,341 @@ mod tests {
             }
             _ => panic!("wrong event type"),
         }
+    }
+
+    // ── New Event Type Tests (VAL-EVT-011, VAL-EVT-012, VAL-EVT-013) ─────
+
+    // --- UrgencyThresholdCrossed ---
+
+    #[test]
+    fn test_urgency_threshold_crossed_serde_roundtrip() {
+        let event = Event::UrgencyThresholdCrossed {
+            tension_id: "01ABC".to_owned(),
+            old_urgency: 0.4,
+            new_urgency: 0.6,
+            threshold: 0.5,
+            crossed_above: true,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+        assert!(json.contains("\"type\":\"urgency_threshold_crossed\""));
+    }
+
+    #[test]
+    fn test_urgency_threshold_crossed_downward_serde_roundtrip() {
+        let event = Event::UrgencyThresholdCrossed {
+            tension_id: "01DEF".to_owned(),
+            old_urgency: 0.8,
+            new_urgency: 0.3,
+            threshold: 0.5,
+            crossed_above: false,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+    }
+
+    #[test]
+    fn test_event_builder_urgency_threshold_crossed() {
+        let event =
+            EventBuilder::urgency_threshold_crossed("01ABC".to_owned(), 0.4, 0.6, 0.5, true);
+        match event {
+            Event::UrgencyThresholdCrossed {
+                tension_id,
+                old_urgency,
+                new_urgency,
+                threshold,
+                crossed_above,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert!((old_urgency - 0.4).abs() < f64::EPSILON);
+                assert!((new_urgency - 0.6).abs() < f64::EPSILON);
+                assert!((threshold - 0.5).abs() < f64::EPSILON);
+                assert!(crossed_above);
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_urgency_threshold_crossed_tension_id_and_timestamp() {
+        let event =
+            EventBuilder::urgency_threshold_crossed("01XYZ".to_owned(), 0.3, 0.7, 0.5, true);
+        assert_eq!(event.tension_id(), Some("01XYZ"));
+        assert!(event.timestamp() <= Utc::now());
+    }
+
+    // --- HorizonDriftDetected ---
+
+    #[test]
+    fn test_horizon_drift_detected_serde_roundtrip() {
+        let event = Event::HorizonDriftDetected {
+            tension_id: "01ABC".to_owned(),
+            drift_type: HorizonDriftType::Postponement,
+            change_count: 2,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+        assert!(json.contains("\"type\":\"horizon_drift_detected\""));
+    }
+
+    #[test]
+    fn test_horizon_drift_detected_all_drift_types_roundtrip() {
+        for drift_type in [
+            HorizonDriftType::Stable,
+            HorizonDriftType::Tightening,
+            HorizonDriftType::Postponement,
+            HorizonDriftType::RepeatedPostponement,
+            HorizonDriftType::Loosening,
+            HorizonDriftType::Oscillating,
+        ] {
+            let event = Event::HorizonDriftDetected {
+                tension_id: "01A".to_owned(),
+                drift_type,
+                change_count: 3,
+                timestamp: Utc::now(),
+            };
+            let json = serde_json::to_string(&event).unwrap();
+            let deserialized: Event = serde_json::from_str(&json).unwrap();
+            assert_eq!(event, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_event_builder_horizon_drift_detected() {
+        let event = EventBuilder::horizon_drift_detected(
+            "01ABC".to_owned(),
+            HorizonDriftType::RepeatedPostponement,
+            5,
+        );
+        match event {
+            Event::HorizonDriftDetected {
+                tension_id,
+                drift_type,
+                change_count,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert_eq!(drift_type, HorizonDriftType::RepeatedPostponement);
+                assert_eq!(change_count, 5);
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_horizon_drift_detected_tension_id_and_timestamp() {
+        let event = EventBuilder::horizon_drift_detected(
+            "01XYZ".to_owned(),
+            HorizonDriftType::Tightening,
+            1,
+        );
+        assert_eq!(event.tension_id(), Some("01XYZ"));
+        assert!(event.timestamp() <= Utc::now());
+    }
+
+    // --- CompensatingStrategyDetected ---
+
+    #[test]
+    fn test_compensating_strategy_detected_serde_roundtrip() {
+        let event = Event::CompensatingStrategyDetected {
+            tension_id: "01ABC".to_owned(),
+            strategy_type: CompensatingStrategyType::TolerableConflict,
+            persistence_seconds: 86400,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+        assert!(json.contains("\"type\":\"compensating_strategy_detected\""));
+    }
+
+    #[test]
+    fn test_compensating_strategy_detected_all_types_roundtrip() {
+        for strategy_type in [
+            CompensatingStrategyType::TolerableConflict,
+            CompensatingStrategyType::ConflictManipulation,
+            CompensatingStrategyType::WillpowerManipulation,
+        ] {
+            let event = Event::CompensatingStrategyDetected {
+                tension_id: "01A".to_owned(),
+                strategy_type,
+                persistence_seconds: 3600,
+                timestamp: Utc::now(),
+            };
+            let json = serde_json::to_string(&event).unwrap();
+            let deserialized: Event = serde_json::from_str(&json).unwrap();
+            assert_eq!(event, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_event_builder_compensating_strategy_detected() {
+        let event = EventBuilder::compensating_strategy_detected(
+            "01ABC".to_owned(),
+            CompensatingStrategyType::WillpowerManipulation,
+            7200,
+        );
+        match event {
+            Event::CompensatingStrategyDetected {
+                tension_id,
+                strategy_type,
+                persistence_seconds,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert_eq!(
+                    strategy_type,
+                    CompensatingStrategyType::WillpowerManipulation
+                );
+                assert_eq!(persistence_seconds, 7200);
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_compensating_strategy_detected_tension_id_and_timestamp() {
+        let event = EventBuilder::compensating_strategy_detected(
+            "01XYZ".to_owned(),
+            CompensatingStrategyType::ConflictManipulation,
+            3600,
+        );
+        assert_eq!(event.tension_id(), Some("01XYZ"));
+        assert!(event.timestamp() <= Utc::now());
+    }
+
+    // --- OscillationResolved ---
+
+    #[test]
+    fn test_oscillation_resolved_serde_roundtrip() {
+        let event = Event::OscillationResolved {
+            tension_id: "01ABC".to_owned(),
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+        assert!(json.contains("\"type\":\"oscillation_resolved\""));
+    }
+
+    #[test]
+    fn test_event_builder_oscillation_resolved() {
+        let event = EventBuilder::oscillation_resolved("01ABC".to_owned());
+        match event {
+            Event::OscillationResolved {
+                tension_id,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_oscillation_resolved_tension_id_and_timestamp() {
+        let event = EventBuilder::oscillation_resolved("01XYZ".to_owned());
+        assert_eq!(event.tension_id(), Some("01XYZ"));
+        assert!(event.timestamp() <= Utc::now());
+    }
+
+    // --- NeglectResolved ---
+
+    #[test]
+    fn test_neglect_resolved_serde_roundtrip() {
+        let event = Event::NeglectResolved {
+            tension_id: "01ABC".to_owned(),
+            former_neglect_type: NeglectType::ParentNeglectsChildren,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+        assert!(json.contains("\"type\":\"neglect_resolved\""));
+    }
+
+    #[test]
+    fn test_neglect_resolved_children_neglected_roundtrip() {
+        let event = Event::NeglectResolved {
+            tension_id: "01DEF".to_owned(),
+            former_neglect_type: NeglectType::ChildrenNeglected,
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+    }
+
+    #[test]
+    fn test_event_builder_neglect_resolved() {
+        let event =
+            EventBuilder::neglect_resolved("01ABC".to_owned(), NeglectType::ParentNeglectsChildren);
+        match event {
+            Event::NeglectResolved {
+                tension_id,
+                former_neglect_type,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert_eq!(former_neglect_type, NeglectType::ParentNeglectsChildren);
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_neglect_resolved_tension_id_and_timestamp() {
+        let event =
+            EventBuilder::neglect_resolved("01XYZ".to_owned(), NeglectType::ChildrenNeglected);
+        assert_eq!(event.tension_id(), Some("01XYZ"));
+        assert!(event.timestamp() <= Utc::now());
+    }
+
+    // --- ResolutionLost ---
+
+    #[test]
+    fn test_resolution_lost_serde_roundtrip() {
+        let event = Event::ResolutionLost {
+            tension_id: "01ABC".to_owned(),
+            timestamp: Utc::now(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+        assert!(json.contains("\"type\":\"resolution_lost\""));
+    }
+
+    #[test]
+    fn test_event_builder_resolution_lost() {
+        let event = EventBuilder::resolution_lost("01ABC".to_owned());
+        match event {
+            Event::ResolutionLost {
+                tension_id,
+                timestamp,
+            } => {
+                assert_eq!(tension_id, "01ABC");
+                assert!(timestamp <= Utc::now());
+            }
+            _ => panic!("wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_resolution_lost_tension_id_and_timestamp() {
+        let event = EventBuilder::resolution_lost("01XYZ".to_owned());
+        assert_eq!(event.tension_id(), Some("01XYZ"));
+        assert!(event.timestamp() <= Utc::now());
     }
 }

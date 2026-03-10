@@ -14,9 +14,9 @@ use chrono::Utc;
 use std::collections::HashMap;
 
 use crate::dynamics::{
-    CompensatingStrategyThresholds, ConflictPattern, ConflictThresholds, CreativeCyclePhase,
-    HorizonDriftType, LifecycleThresholds, NeglectThresholds, NeglectType, Orientation,
-    OrientationThresholds, OscillationThresholds, ResolutionThresholds,
+    CompensatingStrategyThresholds, CompensatingStrategyType, ConflictPattern, ConflictThresholds,
+    CreativeCyclePhase, HorizonDriftType, LifecycleThresholds, NeglectThresholds, NeglectType,
+    Orientation, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
     classify_creative_cycle_phase, classify_orientation, compute_urgency, detect_horizon_drift,
     detect_neglect, detect_oscillation, detect_resolution, detect_structural_conflict,
 };
@@ -50,6 +50,10 @@ pub struct PreviousDynamics {
     pub horizon_drift_type: Option<HorizonDriftType>,
     /// Previous urgency value (if any).
     pub urgency: Option<f64>,
+    /// Whether a compensating strategy was detected on previous computation.
+    pub had_compensating_strategy: bool,
+    /// The type of compensating strategy detected (if any).
+    pub compensating_strategy_type: Option<CompensatingStrategyType>,
 }
 
 /// Previous dynamics state for all tensions.
@@ -459,6 +463,8 @@ impl DynamicsEngine {
                     None
                 },
                 urgency: urgency_value,
+                had_compensating_strategy: prev.had_compensating_strategy,
+                compensating_strategy_type: prev.compensating_strategy_type,
             },
         );
 
