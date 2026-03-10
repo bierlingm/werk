@@ -1,8 +1,25 @@
 //! CLI commands for werk-cli.
 //!
-//! Each subcommand is defined with clap derive macros.
+//! Each subcommand is defined with clap derive macros and implemented
+//! in its own module file.
 
+pub mod add;
 pub mod config;
+pub mod context;
+pub mod desire;
+pub mod horizon;
+pub mod init;
+pub mod move_cmd;
+pub mod note;
+pub mod notes;
+pub mod nuke;
+pub mod reality;
+pub mod release;
+pub mod resolve;
+pub mod rm;
+pub mod run;
+pub mod show;
+pub mod tree;
 
 use clap::Subcommand;
 
