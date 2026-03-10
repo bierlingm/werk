@@ -1,0 +1,121 @@
+{
+  "groupId": "gap",
+  "assertionsTested": [
+    "VAL-GAP-001",
+    "VAL-GAP-002",
+    "VAL-GAP-003",
+    "VAL-GAP-004",
+    "VAL-GAP-005",
+    "VAL-GAP-006",
+    "VAL-GAP-007",
+    "VAL-GAP-008",
+    "VAL-GAP-009",
+    "VAL-GAP-010",
+    "VAL-GAP-011",
+    "VAL-GAP-012"
+  ],
+  "assertionResults": [
+    {
+      "id": "VAL-GAP-001",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_identical_returns_zero ... ok"
+    },
+    {
+      "id": "VAL-GAP-002",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_completely_different_returns_high ... ok"
+    },
+    {
+      "id": "VAL-GAP-003",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: test_gap_magnitude_empty_vs_nonempty_returns_one ... ok; test_gap_magnitude_both_empty_returns_zero ... ok"
+    },
+    {
+      "id": "VAL-GAP-004",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_unicode_correctness ... ok"
+    },
+    {
+      "id": "VAL-GAP-005",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_range_always_zero_to_one ... ok"
+    },
+    {
+      "id": "VAL-GAP-006",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_levenshtein_component_correctness ... ok"
+    },
+    {
+      "id": "VAL-GAP-007",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_token_overlap_component ... ok"
+    },
+    {
+      "id": "VAL-GAP-008",
+      "status": "pass",
+      "evidence": "cargo test -p sd-core gap_magnitude -- --nocapture: dynamics::tests::test_gap_magnitude_semantic_ranking ... ok"
+    },
+    {
+      "id": "VAL-GAP-009",
+      "status": "pass",
+      "evidence": "rg -n ... sd-core/Cargo.toml shows strsim = \"0.11\" at line 17; cargo build -p sd-core finished successfully"
+    },
+    {
+      "id": "VAL-GAP-010",
+      "status": "pass",
+      "evidence": "rg -n ... dynamics.rs shows '# Case sensitivity' docs and VAL-GAP-010 test marker; cargo test output: test_gap_magnitude_case_sensitivity ... ok"
+    },
+    {
+      "id": "VAL-GAP-011",
+      "status": "pass",
+      "evidence": "rg -n ... dynamics.rs shows '# Whitespace handling' docs and VAL-GAP-011 test marker; cargo test output: test_gap_magnitude_whitespace_handling ... ok"
+    },
+    {
+      "id": "VAL-GAP-012",
+      "status": "pass",
+      "evidence": "rg -n ... dynamics.rs shows LEVENSHTEIN_WEIGHT/JACCARD_WEIGHT constants and hybrid formula docs; cargo test output: test_gap_magnitude_hybrid_weight_formula ... ok"
+    }
+  ],
+  "commandsRun": [
+    {
+      "command": "mkdir -p /tmp/werk-utv-gap",
+      "exitCode": 0,
+      "observation": "Created validator-isolated temp directory for this flow."
+    },
+    {
+      "command": "TMPDIR=/tmp/werk-utv-gap cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core gap_magnitude -- --list",
+      "exitCode": 0,
+      "observation": "Listed 13 matching gap_magnitude tests, including all VAL-GAP-001..012 coverage tests."
+    },
+    {
+      "command": "TMPDIR=/tmp/werk-utv-gap cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core gap_magnitude -- --nocapture",
+      "exitCode": 0,
+      "observation": "Executed 13 gap_magnitude tests; all passed (13 passed, 0 failed)."
+    },
+    {
+      "command": "TMPDIR=/tmp/werk-utv-gap cargo build --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core",
+      "exitCode": 0,
+      "observation": "sd-core built successfully for dependency/compilation verification."
+    },
+    {
+      "command": "rg -n \"VAL-GAP-0(0[1-9]|1[0-2])|LEVENSHTEIN_WEIGHT|JACCARD_WEIGHT|# Case sensitivity|# Whitespace handling|strsim\" /Users/moritzbierling/werk/desk/werk/sd-core/src/dynamics.rs /Users/moritzbierling/werk/desk/werk/sd-core/Cargo.toml",
+      "exitCode": 0,
+      "observation": "Confirmed strsim dependency, weight constants, formula docs, case/whitespace docs, and VAL-GAP test markers in source."
+    }
+  ],
+  "toolsUsed": [
+    "Read",
+    "Grep",
+    "Execute",
+    "ApplyPatch"
+  ],
+  "frictions": [
+    {
+      "description": "cargo test emitted pre-existing compile warnings in sd-core test code (unused imports/variables), but tests still executed successfully.",
+      "resolved": true,
+      "resolution": "No action taken per mission guidance (validation-only; no source edits)."
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated VAL-GAP-001 through VAL-GAP-012 via targeted sd-core gap tests, build verification, and source grep checks. Result: 12 passed, 0 failed, 0 blocked."
+}

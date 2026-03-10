@@ -38,3 +38,12 @@ cargo run -p werk -- show <id> --toon
 - ID prefix matching requires 4+ characters
 - `$EDITOR` integration in note commands requires terminal
 - Color output respects NO_COLOR env var
+
+## Flow Validator Guidance: CLI
+
+- Surface: local Rust CLI (`werk`) and Rust test binaries (`cargo test`), with no external network dependencies.
+- Isolation: each flow validator must use only its assigned temp namespace/path and must not reuse another validator's workspace.
+- Shared state boundaries: do not modify repository source files, Cargo manifests, or mission files; only write the assigned flow report JSON file.
+- Credentials: not applicable for this milestone; do not add synthetic auth setup.
+- Allowed verification: `cargo test` (with filters), `cargo build`, repository searches (`rg`/`grep`), and manual `cargo run -p werk -- ...` checks when needed.
+- Evidence quality: include exact commands, relevant output excerpts, and a per-assertion pass/fail/blocked result.
