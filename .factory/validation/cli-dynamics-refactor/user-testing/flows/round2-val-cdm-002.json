@@ -1,0 +1,34 @@
+{
+  "flowId": "round2-val-cdm-002",
+  "surface": "cli",
+  "assertions": [
+    {
+      "id": "VAL-CDM-002",
+      "status": "pass",
+      "evidence": "1) DynamicsEngine usage confirmed with `rg -n \"DynamicsEngine\" /Users/moritzbierling/werk/desk/werk/werk-cli/src` (exit 0), including matches such as `werk-cli/src/commands/context.rs:12:use sd_core::DynamicsEngine;` and `werk-cli/src/dynamics.rs:200:pub fn compute_all_dynamics(engine: &mut DynamicsEngine, tension_id: &str) -> DynamicsJson {`. 2) Direct raw dynamics function calls were checked with `rg -n \"\\b(detect_oscillation|detect_resolution|detect_neglect|detect_structural_conflict|classify_creative_cycle_phase|detect_compensating_strategy|measure_assimilation_depth)\\b\" /Users/moritzbierling/werk/desk/werk/werk-cli/src` and returned no matches (exit 1, expected for absence). 3) Validator run `mkdir -p \"/tmp/utv-cli-dynamics-refactor-cdm002\" && TMPDIR=\"/tmp/utv-cli-dynamics-refactor-cdm002\" cargo test -p werk --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\"` completed successfully (exit 0); output shows all test suites passing, e.g. `test result: ok. 29 passed; 0 failed; ...` and final doc-tests `0 failed`."
+    }
+  ],
+  "commands": [
+    {
+      "command": "rg -n \"DynamicsEngine\" \"/Users/moritzbierling/werk/desk/werk/werk-cli/src\"",
+      "exitCode": 0,
+      "observation": "Found DynamicsEngine usage in CLI source across commands and shared dynamics module (context.rs, show.rs, run.rs, tree.rs, dynamics.rs)."
+    },
+    {
+      "command": "rg -n \"\\b(detect_oscillation|detect_resolution|detect_neglect|detect_structural_conflict|classify_creative_cycle_phase|detect_compensating_strategy|measure_assimilation_depth)\\b\" \"/Users/moritzbierling/werk/desk/werk/werk-cli/src\"",
+      "exitCode": 1,
+      "observation": "No matches found in werk-cli/src, indicating direct raw dynamics function references are absent from CLI source."
+    },
+    {
+      "command": "mkdir -p \"/tmp/utv-cli-dynamics-refactor-cdm002\" && TMPDIR=\"/tmp/utv-cli-dynamics-refactor-cdm002\" cargo test -p werk --manifest-path \"/Users/moritzbierling/werk/desk/werk/Cargo.toml\"",
+      "exitCode": 0,
+      "observation": "Test run completed successfully; all listed test binaries reported 0 failures. Deprecation warnings from assert_cmd::Command::cargo_bin were present but non-fatal."
+    }
+  ],
+  "toolsUsed": [
+    "shell",
+    "grep"
+  ],
+  "frictions": [],
+  "blockers": []
+}
