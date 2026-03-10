@@ -38,6 +38,8 @@ cargo run -p werk -- show <id> --toon
 - ID prefix matching requires 4+ characters
 - `$EDITOR` integration in note commands requires terminal
 - Color output respects NO_COLOR env var
+- For scripted flows that need a returned tension id, prefer `werk --json add ...` and parse `.id` instead of human-readable stdout
+- Under concurrent validators, Cargo may briefly wait on package/artifact file locks; rerun once if a timing-sensitive performance test fails transiently
 
 ## Flow Validator Guidance: CLI
 

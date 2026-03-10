@@ -1,0 +1,187 @@
+{
+  "groupId": "group-c",
+  "testedAt": "2026-03-10T19:47:33Z",
+  "credentials": {
+    "account": "not_applicable",
+    "namespace": "utv_cli_group_c_355460a6"
+  },
+  "toolsUsed": [
+    "cargo test",
+    "cargo build",
+    "rg/grep",
+    "file inspection"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-REF-003",
+      "title": "All functionality preserved",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run full CLI package tests with namespaced temp dir",
+          "expected": "All werk CLI tests pass",
+          "observed": "`cargo test -p werk` completed successfully with all test binaries reporting 0 failures (including integration suites and `tests/toon.rs`)."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "TMPDIR=/tmp/utv_cli_group_c_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk"
+        ],
+        "outputExcerpts": [
+          "test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.95s (tests/toon.rs)",
+          "Doc-tests werk ... test result: ok. 0 passed; 0 failed",
+          "All listed integration test files (add_show, color, config, context, cross_area, cross_area_dynamics, discovery, horizon, init, json, lifecycle, move_note, nuke, reality_desire, run, show_dynamics, skeleton, toon, tree) completed with 0 failures."
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REF-004",
+      "title": "Module structure compiles",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Build entire workspace",
+          "expected": "Workspace compiles cleanly",
+          "observed": "`cargo build --workspace` finished successfully with no emitted warnings in build output."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "TMPDIR=/tmp/utv_cli_group_c_355460a6 cargo build --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml --workspace"
+        ],
+        "outputExcerpts": [
+          "Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.14s"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-REF-005",
+      "title": "Dynamics computation in shared module",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect CLI source module layout",
+          "expected": "Dedicated shared dynamics module exists",
+          "observed": "`werk-cli/src/dynamics.rs` exists and contains `pub fn compute_all_dynamics(...)`."
+        },
+        {
+          "action": "Inspect call sites for shared dynamics computation",
+          "expected": "show/context/run import and call shared function without duplication in main.rs",
+          "observed": "`commands/show.rs`, `commands/context.rs`, and `commands/run.rs` import `compute_all_dynamics`; definition found in `dynamics.rs`; no definition in `main.rs`."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "LS /Users/moritzbierling/werk/desk/werk/werk-cli/src",
+          "rg -n \"compute_all_dynamics|detect_oscillation|DynamicsEngine\" /Users/moritzbierling/werk/desk/werk/werk-cli/src"
+        ],
+        "outputExcerpts": [
+          "werk-cli/src contains dynamics.rs and main.rs",
+          "dynamics.rs:203: pub fn compute_all_dynamics(",
+          "commands/show.rs: use crate::dynamics::{compute_all_dynamics, ...}",
+          "commands/context.rs and commands/run.rs call compute_all_dynamics"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOON-001",
+      "title": "--toon flag produces valid TOON output",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TOON integration tests",
+          "expected": "TOON output decodes successfully via toon-format",
+          "observed": "`tests/toon.rs` passed, including `test_toon_show_produces_valid_output` and other parse/decode checks using `toon_format::decode_default`."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "TMPDIR=/tmp/utv_cli_group_c_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test toon"
+        ],
+        "outputExcerpts": [
+          "test test_toon_show_produces_valid_output ... ok",
+          "test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOON-002",
+      "title": "TOON output roundtrips to equivalent data",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TOON roundtrip integration tests",
+          "expected": "TOON-decoded values align with JSON field structures",
+          "observed": "Roundtrip tests passed (`test_toon_show_roundtrips_to_json`, `test_toon_tree_roundtrips_to_json`, `test_toon_add_roundtrips_to_json`, `test_toon_context_roundtrips_to_json`, `test_toon_show_with_mutations_roundtrips`)."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "TMPDIR=/tmp/utv_cli_group_c_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test toon"
+        ],
+        "outputExcerpts": [
+          "test test_toon_show_roundtrips_to_json ... ok",
+          "test test_toon_tree_roundtrips_to_json ... ok",
+          "test test_toon_add_roundtrips_to_json ... ok",
+          "test test_toon_context_roundtrips_to_json ... ok",
+          "test test_toon_show_with_mutations_roundtrips ... ok"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOON-003",
+      "title": "TOON works for all output commands",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TOON command-coverage integration tests",
+          "expected": "All specified commands accept --toon and produce valid output",
+          "observed": "Tests for show/tree/context/add/horizon/reality/desire/resolve/release/rm/move/note/notes/nuke under `tests/toon.rs` all passed."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "TMPDIR=/tmp/utv_cli_group_c_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test toon"
+        ],
+        "outputExcerpts": [
+          "test test_toon_show_produces_valid_output ... ok",
+          "test test_toon_tree_produces_valid_output ... ok",
+          "test test_toon_context_produces_valid_output ... ok",
+          "test test_toon_add_produces_valid_output ... ok",
+          "test test_toon_horizon_display_produces_valid_output ... ok",
+          "test test_toon_horizon_set_produces_valid_output ... ok",
+          "test test_toon_reality_produces_valid_output ... ok",
+          "test test_toon_desire_produces_valid_output ... ok",
+          "test test_toon_resolve_produces_valid_output ... ok",
+          "test test_toon_release_produces_valid_output ... ok",
+          "test test_toon_rm_produces_valid_output ... ok",
+          "test test_toon_move_produces_valid_output ... ok",
+          "test test_toon_note_produces_valid_output ... ok",
+          "test test_toon_notes_produces_valid_output ... ok",
+          "test test_toon_nuke_dry_run_produces_valid_output ... ok"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "`cargo test` emits pre-existing deprecation warnings from `assert_cmd::Command::cargo_bin` usage in test files.",
+      "resolved": true,
+      "resolution": "Continued because warnings are non-blocking and all assigned assertions still executed and passed.",
+      "affectedAssertions": [
+        "VAL-REF-003",
+        "VAL-TOON-001",
+        "VAL-TOON-002",
+        "VAL-TOON-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assigned assertions (VAL-REF-003/004/005 and VAL-TOON-001/002/003): all passed."
+}

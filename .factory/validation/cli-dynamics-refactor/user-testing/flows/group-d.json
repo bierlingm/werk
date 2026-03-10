@@ -1,0 +1,243 @@
+{
+  "groupId": "group-d",
+  "testedAt": "2026-03-10T19:49:41Z",
+  "credentials": {
+    "account": "not applicable",
+    "namespace": "utv_cli_group_d_355460a6"
+  },
+  "toolsUsed": [
+    "cargo test",
+    "cargo build",
+    "rg/grep",
+    "file inspection"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-TOON-004",
+      "title": "--json flag still works",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cargo test -p werk --test toon test_json_still_works_with_toon_present -- --exact`",
+          "expected": "JSON behavior remains valid with TOON support present",
+          "observed": "`test_json_still_works_with_toon_present ... ok` (1 passed, 0 failed)"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test toon test_json_still_works_with_toon_present -- --exact",
+            "outputExcerpt": "running 1 test\ntest test_json_still_works_with_toon_present ... ok\ntest result: ok. 1 passed; 0 failed"
+          }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOON-005",
+      "title": "toon-format crate dependency",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect werk-cli/Cargo.toml for `toon-format` dependency",
+          "expected": "Dependency exists",
+          "observed": "`toon-format = \"0.4\"` found at line 16"
+        },
+        {
+          "action": "Run `cargo build -p werk`",
+          "expected": "Build succeeds with dependency resolved",
+          "observed": "Build completed successfully (`Finished dev profile ...`)"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "rg -n \"toon-format\" /Users/moritzbierling/werk/desk/werk/werk-cli/Cargo.toml",
+            "outputExcerpt": "16:toon-format = \"0.4\""
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo build --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk",
+            "outputExcerpt": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s"
+          }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TOON-006",
+      "title": "TOON handles None/missing optional fields",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cargo test -p werk --test toon test_toon_minimal_tension_no_horizon_no_mutations -- --exact`",
+          "expected": "Minimal tension with optional None fields yields valid parseable TOON output",
+          "observed": "`test_toon_minimal_tension_no_horizon_no_mutations ... ok` (1 passed, 0 failed)"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test toon test_toon_minimal_tension_no_horizon_no_mutations -- --exact",
+            "outputExcerpt": "running 1 test\ntest test_toon_minimal_tension_no_horizon_no_mutations ... ok\ntest result: ok. 1 passed; 0 failed"
+          }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Gap magnitude flows through dynamics correctly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cross_area_dynamics::test_gap_magnitude_flows_through_dynamics`",
+          "expected": "Gap magnitude and assimilation depth flow through CLI dynamics",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run `cross_area_dynamics::test_gap_magnitude_flows_to_temporal_pressure`",
+          "expected": "Temporal pressure reflects gap magnitude with horizon",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run `cross_area_dynamics::test_gap_magnitude_flows_to_resolution_detection`",
+          "expected": "Resolution path remains consistent with updated gap metric",
+          "observed": "Test passed"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_gap_magnitude_flows_through_dynamics -- --exact",
+            "outputExcerpt": "test test_gap_magnitude_flows_through_dynamics ... ok"
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_gap_magnitude_flows_to_temporal_pressure -- --exact",
+            "outputExcerpt": "test test_gap_magnitude_flows_to_temporal_pressure ... ok"
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_gap_magnitude_flows_to_resolution_detection -- --exact",
+            "outputExcerpt": "test test_gap_magnitude_flows_to_resolution_detection ... ok"
+          }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "New events visible through DynamicsEngine in CLI",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cross_area_dynamics::test_new_events_reflected_in_cli_dynamics`",
+          "expected": "Event-driven state changes (horizon drift transition) visible in CLI dynamics output",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run `cross_area_dynamics::test_compensating_strategy_visible_in_dynamics`",
+          "expected": "Compensating strategy/event-related dynamics fields remain visible through CLI",
+          "observed": "Test passed"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_new_events_reflected_in_cli_dynamics -- --exact",
+            "outputExcerpt": "test test_new_events_reflected_in_cli_dynamics ... ok"
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_compensating_strategy_visible_in_dynamics -- --exact",
+            "outputExcerpt": "test test_compensating_strategy_visible_in_dynamics ... ok"
+          }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "TOON output includes all new dynamics fields",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cross_area_dynamics::test_toon_includes_all_new_dynamics_fields`",
+          "expected": "TOON includes horizon_drift, staleness_ratio, and required dynamics fields",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run `cross_area_dynamics::test_toon_and_json_same_fields`",
+          "expected": "TOON and JSON field sets are consistent for shared output data",
+          "observed": "Test passed"
+        },
+        {
+          "action": "Run `cross_area_dynamics::test_toon_includes_resolution_velocity_fields`",
+          "expected": "TOON includes resolution velocity sufficiency fields when applicable",
+          "observed": "Test passed"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_toon_includes_all_new_dynamics_fields -- --exact",
+            "outputExcerpt": "test test_toon_includes_all_new_dynamics_fields ... ok"
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_toon_and_json_same_fields -- --exact",
+            "outputExcerpt": "test test_toon_and_json_same_fields ... ok"
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p werk --test cross_area_dynamics test_toon_includes_resolution_velocity_fields -- --exact",
+            "outputExcerpt": "test test_toon_includes_resolution_velocity_fields ... ok"
+          }
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "Full workspace test passes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cargo test --workspace`",
+          "expected": "All workspace tests pass",
+          "observed": "First run had one transient performance failure in `sd-core` (`test_10k_mutation_history_performance` at 609ms > 500ms)"
+        },
+        {
+          "action": "Rerun failing performance test in isolation",
+          "expected": "Confirm whether failure is reproducible",
+          "observed": "Isolated rerun passed (`348.647083ms`)"
+        },
+        {
+          "action": "Rerun `cargo test --workspace`",
+          "expected": "Stable full-suite pass",
+          "observed": "Full workspace suite passed with 0 failures"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml --workspace",
+            "outputExcerpt": "Final rerun completed with package test suites passing; no failures reported"
+          },
+          {
+            "command": "TMPDIR=/tmp/utv_cli_group_d_355460a6 cargo test --manifest-path /Users/moritzbierling/werk/desk/werk/Cargo.toml -p sd-core dynamics::tests::test_10k_mutation_history_performance -- --exact --nocapture",
+            "outputExcerpt": "10k mutations dynamics computation: 348.647083ms\ntest dynamics::tests::test_10k_mutation_history_performance ... ok"
+          }
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "`cargo test --workspace` initially failed due a performance-threshold test run at 609ms (>500ms), but the same test passed on immediate isolated rerun and the subsequent full-suite rerun.",
+      "resolved": true,
+      "resolution": "Reran the targeted performance test (`sd-core` 10k mutation performance), then reran full workspace tests; all passed.",
+      "affectedAssertions": [
+        "VAL-CROSS-004"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assertions: 7 passed, 0 failed, 0 blocked. Targeted TOON/CROSS checks passed, toon-format dependency/build validated, and final full workspace test run passed."
+}
