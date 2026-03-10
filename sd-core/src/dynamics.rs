@@ -645,37 +645,110 @@ pub fn compute_structural_tension(tension: &Tension) -> Option<StructuralTension
     })
 }
 
-/// Compute the magnitude of the gap between desired and actual.
+/// Weight for the Levenshtein (edit-distance) component in the hybrid gap metric.
 ///
-/// Uses a simple heuristic: the normalized Levenshtein-like distance.
+/// The hybrid metric combines character-level edit distance (Levenshtein) with
+/// token-level overlap (Jaccard). A weight of 0.6 emphasizes character-level
+/// precision while still rewarding shared vocabulary via the 0.4 Jaccard component.
+const LEVENSHTEIN_WEIGHT: f64 = 0.6;
+
+/// Weight for the Jaccard (token-overlap) component in the hybrid gap metric.
+///
+/// Complements [`LEVENSHTEIN_WEIGHT`]; the two must sum to 1.0.
+const JACCARD_WEIGHT: f64 = 0.4;
+
+/// Compute the magnitude of the gap between desired and actual states.
+///
+/// Returns a value in \[0.0, 1.0\] where 0.0 means identical and 1.0 means
+/// maximally different.
+///
+/// # Algorithm
+///
+/// Uses a hybrid metric combining two components:
+///
+/// 1. **Normalized Levenshtein distance** (weight: [`LEVENSHTEIN_WEIGHT`] = 0.6) —
+///    measures character-level edit distance via [`strsim::normalized_levenshtein`],
+///    inverted from similarity to distance (1.0 − similarity).
+///
+/// 2. **Jaccard token distance** (weight: [`JACCARD_WEIGHT`] = 0.4) —
+///    splits both strings on whitespace, computes the Jaccard similarity of the
+///    resulting token sets (|intersection| / |union|), and inverts to distance
+///    (1.0 − similarity).
+///
+/// The final value is `LEVENSHTEIN_WEIGHT * lev_dist + JACCARD_WEIGHT * jaccard_dist`.
+///
+/// # Special cases
+///
+/// | desired | actual | result |
+/// |---------|--------|--------|
+/// | `""` | `""` | `0.0` |
+/// | any non-empty | `""` | `1.0` |
+/// | `""` | any non-empty | `1.0` |
+/// | identical | identical | `0.0` |
+///
+/// # Case sensitivity
+///
+/// The metric is **case-sensitive**: `"Ship V1"` vs `"ship v1"` produces a
+/// non-zero magnitude because both the Levenshtein and Jaccard components
+/// treat uppercase and lowercase letters as distinct characters/tokens.
+///
+/// # Whitespace handling
+///
+/// Leading/trailing whitespace is preserved (not trimmed) for the Levenshtein
+/// component. For the Jaccard component, strings are split on whitespace via
+/// [`str::split_whitespace`], which collapses runs of whitespace and ignores
+/// leading/trailing whitespace. Therefore extra internal whitespace may reduce
+/// the Jaccard distance (shared tokens still match) while increasing the
+/// Levenshtein distance (extra characters).
+///
+/// # Unicode
+///
+/// Handled correctly via Rust's native `char`-based string operations and
+/// `strsim`'s Unicode-aware Levenshtein implementation.
 fn compute_gap_magnitude(desired: &str, actual: &str) -> f64 {
+    // Fast path: identical strings (including both empty)
     if desired == actual {
         return 0.0;
     }
 
-    // Simple metric: ratio of different characters, normalized by length
-    // This is a placeholder; could be improved with proper edit distance
-    let max_len = desired.len().max(actual.len()).max(1);
-    let min_len = desired.len().min(actual.len());
-
-    // Penalize length differences
-    let length_ratio = (max_len - min_len) as f64 / max_len as f64;
-
-    // Compare character by character up to the shorter length
-    let mut different_chars = 0;
-    for (d, a) in desired.chars().zip(actual.chars()) {
-        if d != a {
-            different_chars += 1;
-        }
+    // Special case: one empty, one non-empty → maximally different
+    if desired.is_empty() || actual.is_empty() {
+        return 1.0;
     }
 
-    // Add remaining characters as differences
-    different_chars += max_len - min_len;
+    // Component 1: Normalized Levenshtein distance
+    // strsim::normalized_levenshtein returns similarity in [0.0, 1.0] (1.0 = identical)
+    let lev_similarity = strsim::normalized_levenshtein(desired, actual);
+    let lev_distance = 1.0 - lev_similarity;
 
-    let char_ratio = different_chars as f64 / max_len as f64;
+    // Component 2: Jaccard token distance
+    let jaccard_distance = jaccard_token_distance(desired, actual);
 
-    // Combined metric: average of length and character ratios
-    (length_ratio + char_ratio) / 2.0
+    // Combine with documented weights
+    LEVENSHTEIN_WEIGHT * lev_distance + JACCARD_WEIGHT * jaccard_distance
+}
+
+/// Compute 1.0 − Jaccard similarity of whitespace-delimited token sets.
+///
+/// Returns 0.0 when both token sets are identical, 1.0 when disjoint.
+/// If both strings yield no tokens (e.g. both are whitespace-only),
+/// returns 0.0 (treated as identical empty sets).
+fn jaccard_token_distance(a: &str, b: &str) -> f64 {
+    use std::collections::HashSet;
+
+    let tokens_a: HashSet<&str> = a.split_whitespace().collect();
+    let tokens_b: HashSet<&str> = b.split_whitespace().collect();
+
+    let union_size = tokens_a.union(&tokens_b).count();
+
+    if union_size == 0 {
+        return 0.0;
+    }
+
+    let intersection_size = tokens_a.intersection(&tokens_b).count();
+    let jaccard_similarity = intersection_size as f64 / union_size as f64;
+
+    1.0 - jaccard_similarity
 }
 
 // ============================================================================
@@ -2390,13 +2463,220 @@ mod tests {
 
     #[test]
     fn test_structural_tension_handles_empty_strings_gracefully() {
-        // Empty strings are rejected by Tension::new, but compute_gap_magnitude
-        // should still handle edge cases
+        // VAL-GAP-003: Empty string handling
+        // Both empty → 0.0
         let magnitude = compute_gap_magnitude("", "");
         assert_eq!(magnitude, 0.0);
 
+        // Non-empty vs empty → 1.0
         let magnitude = compute_gap_magnitude("a", "");
-        assert!(magnitude > 0.0);
+        assert_eq!(magnitude, 1.0);
+
+        // Empty vs non-empty → 1.0
+        let magnitude = compute_gap_magnitude("", "some text");
+        assert_eq!(magnitude, 1.0);
+    }
+
+    // ============================================================================
+    // Hybrid Gap Magnitude Tests (VAL-GAP-001 through VAL-GAP-012)
+    // ============================================================================
+
+    #[test]
+    fn test_gap_magnitude_identical_returns_zero() {
+        // VAL-GAP-001: Identical strings return 0.0
+        assert_eq!(compute_gap_magnitude("same", "same"), 0.0);
+        assert_eq!(compute_gap_magnitude("write a novel", "write a novel"), 0.0);
+        assert_eq!(compute_gap_magnitude("a", "a"), 0.0);
+    }
+
+    #[test]
+    fn test_gap_magnitude_completely_different_returns_high() {
+        // VAL-GAP-002: Completely different strings return high magnitude
+        let mag = compute_gap_magnitude("abc", "xyz");
+        assert!(mag > 0.8, "expected > 0.8, got {mag}");
+        assert!(mag <= 1.0);
+    }
+
+    #[test]
+    fn test_gap_magnitude_empty_vs_nonempty_returns_one() {
+        // VAL-GAP-003: One empty, one non-empty returns 1.0
+        assert_eq!(compute_gap_magnitude("text", ""), 1.0);
+        assert_eq!(compute_gap_magnitude("", "text"), 1.0);
+    }
+
+    #[test]
+    fn test_gap_magnitude_both_empty_returns_zero() {
+        // VAL-GAP-003: Both empty returns 0.0
+        assert_eq!(compute_gap_magnitude("", ""), 0.0);
+    }
+
+    #[test]
+    fn test_gap_magnitude_unicode_correctness() {
+        // VAL-GAP-004: Unicode handled by character count, not byte length
+        // CJK characters: each is 3 bytes in UTF-8 but 1 char
+        let mag = compute_gap_magnitude("写小说", "写小说");
+        assert_eq!(mag, 0.0);
+
+        let mag = compute_gap_magnitude("写小说", "读诗歌");
+        assert!(mag > 0.0);
+        assert!(mag <= 1.0);
+
+        // Emoji strings
+        let mag = compute_gap_magnitude("🎵🎶🎵", "🎵🎶🎵");
+        assert_eq!(mag, 0.0);
+
+        let mag = compute_gap_magnitude("🎵🎶", "🚀🌍");
+        assert!(
+            mag > 0.5,
+            "expected > 0.5 for completely different emoji, got {mag}"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_range_always_zero_to_one() {
+        // VAL-GAP-005: Result always in [0.0, 1.0]
+        let pairs = vec![
+            ("a", "b"),
+            ("hello world", "goodbye universe"),
+            ("short", "this is a much longer string with many words"),
+            ("写小说", "write a novel"),
+            ("x", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"),
+            ("revenue: $1M", "revenue: $2M"),
+            ("revenue: $1M", "wrote a poem about sunflowers in spring"),
+        ];
+
+        for (d, a) in pairs {
+            let mag = compute_gap_magnitude(d, a);
+            assert!(
+                (0.0..=1.0).contains(&mag),
+                "out of range for ({d:?}, {a:?}): {mag}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_gap_magnitude_levenshtein_component_correctness() {
+        // VAL-GAP-006: Edit-distance component handles insertions, deletions, substitutions
+        // "abc" vs "bca" (rearrangement) should be closer than "abc" vs "xyz" (total replacement)
+        let rearranged = compute_gap_magnitude("abc", "bca");
+        let replaced = compute_gap_magnitude("abc", "xyz");
+        assert!(
+            rearranged < replaced,
+            "rearrangement ({rearranged}) should be less than replacement ({replaced})"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_token_overlap_component() {
+        // VAL-GAP-007: Jaccard token overlap for word-level similarity
+        // "write a novel" vs "have written a novel" share tokens {a, novel}
+        let similar_tokens = compute_gap_magnitude("write a novel", "have written a novel");
+        // "write a novel" vs "repair a car" share only {a}
+        let dissimilar_tokens = compute_gap_magnitude("write a novel", "repair a car");
+        assert!(
+            similar_tokens < dissimilar_tokens,
+            "similar tokens ({similar_tokens}) should be less than dissimilar ({dissimilar_tokens})"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_semantic_ranking() {
+        // VAL-GAP-008: Meaningful semantic ranking
+        // Small numerical change should have lower magnitude than complete topic change
+        let small_change = compute_gap_magnitude("revenue: $1M", "revenue: $2M");
+        let topic_change = compute_gap_magnitude("revenue: $1M", "wrote a poem");
+        assert!(
+            small_change < topic_change,
+            "small numeric change ({small_change}) should be less than topic change ({topic_change})"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_case_sensitivity() {
+        // VAL-GAP-010: Case sensitivity documented and tested
+        // The metric IS case-sensitive
+        let case_diff = compute_gap_magnitude("Ship V1", "ship v1");
+        assert!(
+            case_diff > 0.0,
+            "case differences should produce non-zero magnitude"
+        );
+        // Case-only differences are moderate: Levenshtein sees character changes,
+        // and Jaccard treats differently-cased tokens as distinct.
+        assert!(
+            case_diff < 0.7,
+            "case-only differences should be moderate, got {case_diff}"
+        );
+
+        // Verify it's less than a bigger change
+        let bigger_diff = compute_gap_magnitude("Ship V1", "Train Z9");
+        assert!(
+            case_diff < bigger_diff,
+            "case diff ({case_diff}) should be less than word diff ({bigger_diff})"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_whitespace_handling() {
+        // VAL-GAP-011: Whitespace handling documented and tested
+        // Extra whitespace: Levenshtein sees more chars, Jaccard ignores it
+        let normal = compute_gap_magnitude("write a novel", "write a novel");
+        assert_eq!(normal, 0.0);
+
+        let extra_ws = compute_gap_magnitude("write a novel", "write  a  novel");
+        assert!(
+            extra_ws > 0.0,
+            "extra whitespace should produce non-zero magnitude (Levenshtein sees it)"
+        );
+        // But should be small since tokens are the same
+        assert!(
+            extra_ws < 0.3,
+            "extra whitespace magnitude should be small ({extra_ws}) since tokens match"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_hybrid_weight_formula() {
+        // VAL-GAP-012: Verify the hybrid formula is correctly applied
+        // Compute components independently and verify combined result
+        let desired = "write a novel";
+        let actual = "have an outline";
+
+        let lev_sim = strsim::normalized_levenshtein(desired, actual);
+        let lev_dist = 1.0 - lev_sim;
+
+        // Manual Jaccard computation
+        let tokens_d: std::collections::HashSet<&str> = desired.split_whitespace().collect();
+        let tokens_a: std::collections::HashSet<&str> = actual.split_whitespace().collect();
+        let union = tokens_d.union(&tokens_a).count();
+        let intersection = tokens_d.intersection(&tokens_a).count();
+        let jaccard_dist = 1.0 - (intersection as f64 / union as f64);
+
+        let expected = LEVENSHTEIN_WEIGHT * lev_dist + JACCARD_WEIGHT * jaccard_dist;
+        let actual_mag = compute_gap_magnitude(desired, actual);
+
+        assert!(
+            (actual_mag - expected).abs() < 1e-10,
+            "hybrid formula mismatch: got {actual_mag}, expected {expected}"
+        );
+    }
+
+    #[test]
+    fn test_gap_magnitude_symmetry() {
+        // Gap magnitude should be symmetric: f(a,b) == f(b,a)
+        let pairs = vec![
+            ("write a novel", "have an outline"),
+            ("abc", "xyz"),
+            ("hello", "world"),
+        ];
+
+        for (a, b) in pairs {
+            let mag_ab = compute_gap_magnitude(a, b);
+            let mag_ba = compute_gap_magnitude(b, a);
+            assert!(
+                (mag_ab - mag_ba).abs() < 1e-10,
+                "not symmetric for ({a:?}, {b:?}): {mag_ab} vs {mag_ba}"
+            );
+        }
     }
 
     // ============================================================================
@@ -3081,11 +3361,17 @@ mod tests {
     #[test]
     fn test_resolution_velocity_threshold() {
         let store = Store::new_in_memory().unwrap();
-        let t = store.create_tension("goal", "a").unwrap();
+        // Use strings that show clear convergence with the hybrid metric:
+        // "write a novel" → "started writing" → "writing a novel draft"
+        let t = store
+            .create_tension("write a novel", "nothing started")
+            .unwrap();
 
-        // Some progress
-        store.update_actual(&t.id, "ab").unwrap();
-        store.update_actual(&t.id, "abc").unwrap();
+        // Clear progress toward the goal
+        store
+            .update_actual(&t.id, "started writing a draft")
+            .unwrap();
+        store.update_actual(&t.id, "writing a novel draft").unwrap();
 
         let mutations = store.get_mutations(&t.id).unwrap();
         let t_updated = store.get_tension(&t.id).unwrap().unwrap();
@@ -3114,12 +3400,19 @@ mod tests {
     #[test]
     fn test_resolution_reversal_tolerance() {
         let store = Store::new_in_memory().unwrap();
-        let t = store.create_tension("goal", "a").unwrap();
+        // Use strings that show convergence with occasional reversal
+        let t = store
+            .create_tension("write a novel", "nothing started")
+            .unwrap();
 
-        // Progress with one reversal
-        store.update_actual(&t.id, "ab").unwrap();
-        store.update_actual(&t.id, "a").unwrap(); // Reversal
-        store.update_actual(&t.id, "abc").unwrap();
+        // Progress, then reversal, then more progress
+        store
+            .update_actual(&t.id, "started writing a draft")
+            .unwrap();
+        store
+            .update_actual(&t.id, "lost the draft entirely")
+            .unwrap(); // Reversal
+        store.update_actual(&t.id, "writing a novel draft").unwrap();
 
         let mutations = store.get_mutations(&t.id).unwrap();
         let t_updated = store.get_tension(&t.id).unwrap().unwrap();

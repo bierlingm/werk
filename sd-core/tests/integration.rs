@@ -5,12 +5,12 @@
 
 use chrono::Utc;
 use sd_core::{
-    DynamicsEngine, DynamicsThresholds, Event, EventBus, Forest, OscillationThresholds,
-    ResolutionThresholds, Store, Tension, TensionStatus, classify_creative_cycle_phase,
-    detect_oscillation, detect_resolution, detect_structural_conflict,
+    classify_creative_cycle_phase, detect_oscillation, detect_resolution,
+    detect_structural_conflict, DynamicsEngine, DynamicsThresholds, Event, EventBus, Forest,
+    OscillationThresholds, ResolutionThresholds, Store, Tension, TensionStatus,
 };
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 // ============================================================================
 // VAL-CROSS-001: Full Tension Lifecycle
@@ -293,14 +293,18 @@ fn test_oscillation_detection_and_stabilization() {
 fn test_oscillation_resolution_mutually_exclusive() {
     let store = Store::new_in_memory().unwrap();
 
-    // Create tension
-    let t = store.create_tension("goal", "a").unwrap();
+    // Create tension with clearly different strings to show oscillation
+    let t = store
+        .create_tension("write a novel", "nothing started")
+        .unwrap();
 
-    // Create oscillation pattern
-    store.update_actual(&t.id, "ab").unwrap();
-    store.update_actual(&t.id, "a").unwrap();
-    store.update_actual(&t.id, "abc").unwrap();
-    store.update_actual(&t.id, "a").unwrap();
+    // Create oscillation pattern: advance, regress, advance, regress
+    store.update_actual(&t.id, "writing a novel draft").unwrap();
+    store.update_actual(&t.id, "nothing started").unwrap();
+    store
+        .update_actual(&t.id, "completed a novel chapter")
+        .unwrap();
+    store.update_actual(&t.id, "nothing started").unwrap();
 
     let mutations = store.get_mutations(&t.id).unwrap();
     let t_updated = store.get_tension(&t.id).unwrap().unwrap();
