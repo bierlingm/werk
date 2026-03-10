@@ -563,16 +563,9 @@ fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(),
 
 fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError> {
     use chrono::Utc;
-    use sd_core::{
-        classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        compute_urgency, detect_compensating_strategy, detect_horizon_drift, detect_neglect,
-        detect_oscillation, detect_resolution, detect_structural_conflict,
-        measure_assimilation_depth, predict_structural_tendency, AssimilationDepthThresholds,
-        CompensatingStrategyThresholds, ConflictThresholds, CreativeCyclePhase, Forest,
-        LifecycleThresholds, NeglectThresholds, OrientationThresholds, OscillationThresholds,
-        ResolutionThresholds, TensionStatus,
-    };
+    use sd_core::{compute_structural_tension, compute_urgency, Forest, TensionStatus};
     use serde::Serialize;
+    use werk::dynamics::{compute_all_dynamics, HorizonRangeJson};
     use werk::workspace::Workspace;
 
     /// JSON output structure for show command.
@@ -588,110 +581,15 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         horizon_range: Option<HorizonRangeJson>,
         urgency: Option<f64>,
         pressure: Option<f64>,
-        dynamics: DynamicsJson,
-        mutations: Vec<MutationInfo>,
+        staleness_ratio: Option<f64>,
+        dynamics: werk::dynamics::DynamicsJson,
+        mutations: Vec<ShowMutationInfo>,
         children: Vec<ChildInfo>,
     }
 
+    /// Mutation information for show display (no tension_id field).
     #[derive(Serialize)]
-    struct HorizonRangeJson {
-        start: String,
-        end: String,
-    }
-
-    /// All 10 dynamics in JSON format.
-    #[derive(Serialize)]
-    struct DynamicsJson {
-        structural_tension: Option<StructuralTensionJson>,
-        structural_conflict: Option<ConflictJson>,
-        oscillation: Option<OscillationJson>,
-        resolution: Option<ResolutionJson>,
-        phase: PhaseJson,
-        orientation: Option<OrientationJson>,
-        compensating_strategy: Option<CompensatingStrategyJson>,
-        structural_tendency: TendencyJson,
-        assimilation_depth: Option<AssimilationDepthJson>,
-        neglect: Option<NeglectJson>,
-    }
-
-    #[derive(Serialize)]
-    struct StructuralTensionJson {
-        magnitude: f64,
-        has_gap: bool,
-    }
-
-    #[derive(Serialize)]
-    struct ConflictJson {
-        pattern: String,
-        tension_ids: Vec<String>,
-    }
-
-    #[derive(Serialize)]
-    struct OscillationJson {
-        reversals: usize,
-        magnitude: f64,
-        window_start: String,
-        window_end: String,
-    }
-
-    #[derive(Serialize)]
-    struct ResolutionJson {
-        velocity: f64,
-        trend: String,
-        window_start: String,
-        window_end: String,
-    }
-
-    #[derive(Serialize)]
-    struct PhaseJson {
-        phase: String,
-        evidence: PhaseEvidenceJson,
-    }
-
-    #[derive(Serialize)]
-    struct PhaseEvidenceJson {
-        mutation_count: usize,
-        gap_closing: bool,
-        convergence_ratio: f64,
-        age_seconds: i64,
-    }
-
-    #[derive(Serialize)]
-    struct OrientationJson {
-        orientation: String,
-        creative_ratio: f64,
-        problem_solving_ratio: f64,
-        reactive_ratio: f64,
-    }
-
-    #[derive(Serialize)]
-    struct CompensatingStrategyJson {
-        strategy_type: String,
-        persistence_seconds: i64,
-    }
-
-    #[derive(Serialize)]
-    struct TendencyJson {
-        tendency: String,
-        has_conflict: bool,
-    }
-
-    #[derive(Serialize)]
-    struct AssimilationDepthJson {
-        depth: String,
-        mutation_frequency: f64,
-        frequency_trend: f64,
-    }
-
-    #[derive(Serialize)]
-    struct NeglectJson {
-        neglect_type: String,
-        activity_ratio: f64,
-    }
-
-    /// Mutation information for display.
-    #[derive(Serialize)]
-    struct MutationInfo {
+    struct ShowMutationInfo {
         timestamp: String,
         field: String,
         old_value: Option<String>,
@@ -743,221 +641,41 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         })
         .collect();
 
-    // Get siblings for conflict detection (used implicitly by detect_structural_conflict)
-    let _siblings: Vec<_> = forest
-        .siblings(&tension.id)
-        .unwrap_or_default()
-        .iter()
-        .map(|s| s.id().to_string())
-        .collect();
-
-    // Get resolved tensions for momentum phase detection
-    let resolved_tensions: Vec<_> = all_tensions
-        .iter()
-        .filter(|t| t.status == TensionStatus::Resolved)
-        .cloned()
-        .collect();
-
-    // Compute dynamics
+    // Compute dynamics via shared module
     let now = Utc::now();
-    let lifecycle_thresholds = LifecycleThresholds::default();
-    let conflict_thresholds = ConflictThresholds::default();
-    let oscillation_thresholds = OscillationThresholds::default();
-    let resolution_thresholds = ResolutionThresholds::default();
-    let orientation_thresholds = OrientationThresholds::default();
-    let compensating_thresholds = CompensatingStrategyThresholds::default();
-    let assimilation_thresholds = AssimilationDepthThresholds::default();
-    let neglect_thresholds = NeglectThresholds::default();
+    let dynamics_json = compute_all_dynamics(
+        tension,
+        &mutations,
+        &forest,
+        &all_tensions,
+        &all_mutations,
+        now,
+    );
 
-    // 1. Structural Tension
+    // Compute urgency and pressure for top-level fields
+    let urgency = compute_urgency(tension, now);
     let structural_tension = compute_structural_tension(tension, now);
 
-    // Horizon dynamics
-    let urgency = compute_urgency(tension, now);
-    let horizon_drift = detect_horizon_drift(&tension.id, &mutations);
-
-    // 2. Structural Conflict
-    let conflict = detect_structural_conflict(
-        &forest,
-        &tension.id,
-        &all_mutations,
-        &conflict_thresholds,
-        now,
-    );
-
-    // 3. Oscillation
-    let oscillation = detect_oscillation(
-        &tension.id,
-        &mutations,
-        &oscillation_thresholds,
-        now,
-        tension.horizon.as_ref(),
-    );
-
-    // 4. Resolution
-    let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
-
-    // 5. Creative Cycle Phase
-    let phase_result = classify_creative_cycle_phase(
-        tension,
-        &mutations,
-        &resolved_tensions,
-        &lifecycle_thresholds,
-        now,
-    );
-
-    // 6. Orientation (requires multiple tensions)
-    let orientation =
-        classify_orientation(&all_tensions, &all_mutations, &orientation_thresholds, now);
-
-    // 7. Compensating Strategy
-    let compensating_strategy = detect_compensating_strategy(
-        &tension.id,
-        &mutations,
-        oscillation.as_ref(),
-        &compensating_thresholds,
-        now,
-        tension.horizon.as_ref(),
-    );
-
-    // 8. Structural Tendency
-    let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, Some(now), None);
-
-    // 9. Assimilation Depth
-    let assimilation = measure_assimilation_depth(
-        &tension.id,
-        &mutations,
-        tension,
-        &assimilation_thresholds,
-        now,
-    );
-
-    // 10. Neglect
-    let neglect = detect_neglect(
-        &forest,
-        &tension.id,
-        &all_mutations,
-        &neglect_thresholds,
-        now,
-    );
+    // Staleness ratio
+    let last_mutation_time = mutations.last().map(|m| m.timestamp());
+    let staleness_ratio = match (&tension.horizon, last_mutation_time) {
+        (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
+        _ => None,
+    };
 
     // Build mutation info (last 10, chronological order - oldest first)
-    let mutation_infos: Vec<MutationInfo> = mutations
+    let mutation_infos: Vec<ShowMutationInfo> = mutations
         .iter()
         .rev()
         .take(10)
         .rev()
-        .map(|m| MutationInfo {
+        .map(|m| ShowMutationInfo {
             timestamp: m.timestamp().to_rfc3339(),
             field: m.field().to_owned(),
             old_value: m.old_value().map(|s| s.to_owned()),
             new_value: m.new_value().to_owned(),
         })
         .collect();
-
-    // Build dynamics JSON
-    let dynamics_json = DynamicsJson {
-        structural_tension: structural_tension.as_ref().map(|st| StructuralTensionJson {
-            magnitude: st.magnitude,
-            has_gap: st.has_gap,
-        }),
-        structural_conflict: conflict.as_ref().map(|c| ConflictJson {
-            pattern: match c.pattern {
-                sd_core::ConflictPattern::AsymmetricActivity => "AsymmetricActivity".to_string(),
-                sd_core::ConflictPattern::CompetingTensions => "CompetingTensions".to_string(),
-            },
-            tension_ids: c.tension_ids.clone(),
-        }),
-        oscillation: oscillation.as_ref().map(|o| OscillationJson {
-            reversals: o.reversals,
-            magnitude: o.magnitude,
-            window_start: o.window_start.to_rfc3339(),
-            window_end: o.window_end.to_rfc3339(),
-        }),
-        resolution: resolution.as_ref().map(|r| ResolutionJson {
-            velocity: r.velocity,
-            trend: match r.trend {
-                sd_core::ResolutionTrend::Accelerating => "Accelerating".to_string(),
-                sd_core::ResolutionTrend::Steady => "Steady".to_string(),
-                sd_core::ResolutionTrend::Decelerating => "Decelerating".to_string(),
-            },
-            window_start: r.window_start.to_rfc3339(),
-            window_end: r.window_end.to_rfc3339(),
-        }),
-        phase: PhaseJson {
-            phase: match phase_result.phase {
-                CreativeCyclePhase::Germination => "Germination".to_string(),
-                CreativeCyclePhase::Assimilation => "Assimilation".to_string(),
-                CreativeCyclePhase::Completion => "Completion".to_string(),
-                CreativeCyclePhase::Momentum => "Momentum".to_string(),
-            },
-            evidence: PhaseEvidenceJson {
-                mutation_count: phase_result.evidence.mutation_count,
-                gap_closing: phase_result.evidence.gap_closing,
-                convergence_ratio: phase_result.evidence.convergence_ratio,
-                age_seconds: phase_result.evidence.age_seconds,
-            },
-        },
-        orientation: orientation.as_ref().map(|o| OrientationJson {
-            orientation: match o.orientation {
-                sd_core::Orientation::Creative => "Creative".to_string(),
-                sd_core::Orientation::ProblemSolving => "ProblemSolving".to_string(),
-                sd_core::Orientation::ReactiveResponsive => "ReactiveResponsive".to_string(),
-            },
-            creative_ratio: o.evidence.creative_ratio,
-            problem_solving_ratio: o.evidence.problem_solving_ratio,
-            reactive_ratio: o.evidence.reactive_ratio,
-        }),
-        compensating_strategy: compensating_strategy
-            .as_ref()
-            .map(|cs| CompensatingStrategyJson {
-                strategy_type: match cs.strategy_type {
-                    sd_core::CompensatingStrategyType::TolerableConflict => {
-                        "TolerableConflict".to_string()
-                    }
-                    sd_core::CompensatingStrategyType::ConflictManipulation => {
-                        "ConflictManipulation".to_string()
-                    }
-                    sd_core::CompensatingStrategyType::WillpowerManipulation => {
-                        "WillpowerManipulation".to_string()
-                    }
-                },
-                persistence_seconds: cs.persistence_seconds,
-            }),
-        structural_tendency: TendencyJson {
-            tendency: match tendency_result.tendency {
-                sd_core::StructuralTendency::Advancing => "Advancing".to_string(),
-                sd_core::StructuralTendency::Oscillating => "Oscillating".to_string(),
-                sd_core::StructuralTendency::Stagnant => "Stagnant".to_string(),
-            },
-            has_conflict: tendency_result.has_conflict,
-        },
-        assimilation_depth: if assimilation.depth == sd_core::AssimilationDepth::None
-            && assimilation.evidence.total_mutations == 0
-        {
-            None
-        } else {
-            Some(AssimilationDepthJson {
-                depth: match assimilation.depth {
-                    sd_core::AssimilationDepth::Shallow => "Shallow".to_string(),
-                    sd_core::AssimilationDepth::Deep => "Deep".to_string(),
-                    sd_core::AssimilationDepth::None => "None".to_string(),
-                },
-                mutation_frequency: assimilation.mutation_frequency,
-                frequency_trend: assimilation.frequency_trend,
-            })
-        },
-        neglect: neglect.as_ref().map(|n| NeglectJson {
-            neglect_type: match n.neglect_type {
-                sd_core::NeglectType::ParentNeglectsChildren => {
-                    "ParentNeglectsChildren".to_string()
-                }
-                sd_core::NeglectType::ChildrenNeglected => "ChildrenNeglected".to_string(),
-            },
-            activity_ratio: n.activity_ratio,
-        }),
-    };
 
     let result = ShowResult {
         id: tension.id.clone(),
@@ -973,6 +691,7 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         }),
         urgency: urgency.as_ref().map(|u| u.value),
         pressure: structural_tension.as_ref().and_then(|st| st.pressure),
+        staleness_ratio,
         dynamics: dynamics_json,
         mutations: mutation_infos,
         children,
@@ -1126,10 +845,10 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
         }
 
         // Movement/Tendency
-        let movement_symbol = match tendency_result.tendency {
-            sd_core::StructuralTendency::Advancing => "→",
-            sd_core::StructuralTendency::Oscillating => "↔",
-            sd_core::StructuralTendency::Stagnant => "○",
+        let movement_symbol = match result.dynamics.structural_tendency.tendency.as_str() {
+            "Advancing" => "→",
+            "Oscillating" => "↔",
+            _ => "○",
         };
         println!(
             "  Movement:   {} {}",
@@ -1183,16 +902,9 @@ fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError>
                 // Horizon drift
                 println!(
                     "  HorizonDrift: {} ({} changes, net shift {}s)",
-                    match horizon_drift.drift_type {
-                        sd_core::HorizonDriftType::Stable => "Stable",
-                        sd_core::HorizonDriftType::Tightening => "Tightening",
-                        sd_core::HorizonDriftType::Postponement => "Postponement",
-                        sd_core::HorizonDriftType::RepeatedPostponement => "RepeatedPostponement",
-                        sd_core::HorizonDriftType::Loosening => "Loosening",
-                        sd_core::HorizonDriftType::Oscillating => "Oscillating",
-                    },
-                    horizon_drift.change_count,
-                    horizon_drift.net_shift_seconds
+                    result.dynamics.horizon_drift.drift_type,
+                    result.dynamics.horizon_drift.change_count,
+                    result.dynamics.horizon_drift.net_shift_seconds
                 );
 
                 println!();
@@ -2218,7 +1930,7 @@ fn cmd_tree(
         .is_some();
 
         // Predict movement tendency
-        let tendency = predict_structural_tendency(tension, has_conflict, None, None);
+        let tendency = predict_structural_tendency(tension, has_conflict, Some(now), None);
         let movement_signal = match tendency.tendency {
             sd_core::StructuralTendency::Advancing => "→",
             sd_core::StructuralTendency::Oscillating => "↔",
@@ -2476,16 +2188,12 @@ fn truncate(s: &str, max_len: usize) -> String {
 
 fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     use chrono::Utc;
-    use sd_core::{
-        classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        compute_urgency, detect_compensating_strategy, detect_neglect, detect_oscillation,
-        detect_resolution, detect_structural_conflict, measure_assimilation_depth,
-        predict_structural_tendency, AssimilationDepthThresholds, CompensatingStrategyThresholds,
-        ConflictThresholds, CreativeCyclePhase, Forest, Horizon, LifecycleThresholds,
-        NeglectThresholds, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
-        TensionStatus,
-    };
+    use sd_core::Forest;
     use serde::Serialize;
+    use werk::dynamics::{
+        compute_all_dynamics, mutation_to_info, node_to_tension_info, tension_to_info,
+        ContextDynamicsJson, MutationInfo, TensionInfo,
+    };
     use werk::workspace::Workspace;
 
     /// Context output structure - always JSON, designed for agent consumption.
@@ -2495,156 +2203,8 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         ancestors: Vec<TensionInfo>,
         siblings: Vec<TensionInfo>,
         children: Vec<TensionInfo>,
-        dynamics: DynamicsJson,
+        dynamics: ContextDynamicsJson,
         mutations: Vec<MutationInfo>,
-    }
-
-    /// Tension information for context output.
-    #[derive(Serialize)]
-    struct TensionInfo {
-        id: String,
-        desired: String,
-        actual: String,
-        status: String,
-        created_at: String,
-        parent_id: Option<String>,
-        horizon: Option<String>,
-        horizon_range: Option<HorizonRangeJson>,
-        urgency: Option<f64>,
-        pressure: Option<f64>,
-        staleness_ratio: Option<f64>,
-    }
-
-    #[derive(Serialize)]
-    struct HorizonRangeJson {
-        start: String,
-        end: String,
-    }
-
-    /// All 10 dynamics in JSON format.
-    #[derive(Serialize)]
-    struct DynamicsJson {
-        structural_tension: Option<StructuralTensionJson>,
-        structural_conflict: Option<ConflictJson>,
-        oscillation: Option<OscillationJson>,
-        resolution: Option<ResolutionJson>,
-        creative_cycle_phase: PhaseJson,
-        orientation: Option<OrientationJson>,
-        compensating_strategy: Option<CompensatingStrategyJson>,
-        structural_tendency: TendencyJson,
-        assimilation_depth: Option<AssimilationDepthJson>,
-        neglect: Option<NeglectJson>,
-    }
-
-    #[derive(Serialize)]
-    struct StructuralTensionJson {
-        magnitude: f64,
-        has_gap: bool,
-    }
-
-    #[derive(Serialize)]
-    struct ConflictJson {
-        pattern: String,
-        tension_ids: Vec<String>,
-    }
-
-    #[derive(Serialize)]
-    struct OscillationJson {
-        reversals: usize,
-        magnitude: f64,
-        window_start: String,
-        window_end: String,
-    }
-
-    #[derive(Serialize)]
-    struct ResolutionJson {
-        velocity: f64,
-        trend: String,
-        window_start: String,
-        window_end: String,
-    }
-
-    #[derive(Serialize)]
-    struct PhaseJson {
-        phase: String,
-        evidence: PhaseEvidenceJson,
-    }
-
-    #[derive(Serialize)]
-    struct PhaseEvidenceJson {
-        mutation_count: usize,
-        gap_closing: bool,
-        convergence_ratio: f64,
-        age_seconds: i64,
-    }
-
-    #[derive(Serialize)]
-    struct OrientationJson {
-        orientation: String,
-        creative_ratio: f64,
-        problem_solving_ratio: f64,
-        reactive_ratio: f64,
-    }
-
-    #[derive(Serialize)]
-    struct CompensatingStrategyJson {
-        strategy_type: String,
-        persistence_seconds: i64,
-    }
-
-    #[derive(Serialize)]
-    struct TendencyJson {
-        tendency: String,
-        has_conflict: bool,
-    }
-
-    #[derive(Serialize)]
-    struct AssimilationDepthJson {
-        depth: String,
-        mutation_frequency: f64,
-        frequency_trend: f64,
-    }
-
-    #[derive(Serialize)]
-    struct NeglectJson {
-        neglect_type: String,
-        activity_ratio: f64,
-    }
-
-    /// Mutation information for context output.
-    #[derive(Serialize)]
-    struct MutationInfo {
-        tension_id: String,
-        timestamp: String,
-        field: String,
-        old_value: Option<String>,
-        new_value: String,
-    }
-
-    // Helper function to convert a tension Node to TensionInfo with horizon data
-    fn node_to_info(node: &sd_core::Node, now: chrono::DateTime<chrono::Utc>) -> TensionInfo {
-        let horizon = node.tension.horizon.as_ref().map(|h| h.to_string());
-        let horizon_range = node.tension.horizon.as_ref().map(|h| HorizonRangeJson {
-            start: h.range_start().to_rfc3339(),
-            end: h.range_end().to_rfc3339(),
-        });
-        let urgency = compute_urgency(&node.tension, now).map(|u| u.value);
-        let structural_tension = compute_structural_tension(&node.tension, now);
-        let pressure = structural_tension.as_ref().and_then(|st| st.pressure);
-
-        TensionInfo {
-            id: node.id().to_string(),
-            desired: node.tension.desired.clone(),
-            actual: node.tension.actual.clone(),
-            status: node.tension.status.to_string(),
-            created_at: node.tension.created_at.to_rfc3339(),
-            parent_id: node.tension.parent_id.clone(),
-            horizon,
-            horizon_range,
-            urgency,
-            pressure,
-            staleness_ratio: None, // Would need mutations to compute for siblings
-        }
     }
 
     // Discover workspace
@@ -2670,49 +2230,18 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
     let forest = Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // === Compute time reference (needed for horizon dynamics) ===
+    // === Compute time reference ===
     let now = Utc::now();
 
-    // === Compute horizon dynamics for the main tension ===
-    let horizon = tension.horizon.as_ref().map(|h| h.to_string());
-    let horizon_range = tension.horizon.as_ref().map(|h| HorizonRangeJson {
-        start: h.range_start().to_rfc3339(),
-        end: h.range_end().to_rfc3339(),
-    });
-    let urgency = compute_urgency(tension, now).map(|u| u.value);
-    let structural_tension_for_info = compute_structural_tension(tension, now);
-    let pressure = structural_tension_for_info
-        .as_ref()
-        .and_then(|st| st.pressure);
-
-    // Staleness ratio: need last mutation timestamp
-    let last_mutation_time = mutations.last().map(|m| m.timestamp());
-    let staleness_ratio = match (&tension.horizon, last_mutation_time) {
-        (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
-        _ => None,
-    };
-
-    // === Tension Info ===
-    let tension_info = TensionInfo {
-        id: tension.id.clone(),
-        desired: tension.desired.clone(),
-        actual: tension.actual.clone(),
-        status: tension.status.to_string(),
-        created_at: tension.created_at.to_rfc3339(),
-        parent_id: tension.parent_id.clone(),
-        horizon,
-        horizon_range,
-        urgency,
-        pressure,
-        staleness_ratio,
-    };
+    // === Tension Info (with staleness_ratio) ===
+    let tension_info = tension_to_info(tension, &mutations, now);
 
     // === Ancestors (root-first) ===
     let ancestors: Vec<TensionInfo> = forest
         .ancestors(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(|node| node_to_info(node, now))
+        .map(|node| node_to_tension_info(node, now))
         .collect();
 
     // === Siblings (excluding self) ===
@@ -2720,7 +2249,7 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         .siblings(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(|node| node_to_info(node, now))
+        .map(|node| node_to_tension_info(node, now))
         .collect();
 
     // === Children ===
@@ -2728,218 +2257,29 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
         .children(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(|node| node_to_info(node, now))
+        .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    // === Compute Dynamics Thresholds ===
-    let lifecycle_thresholds = LifecycleThresholds::default();
-    let conflict_thresholds = ConflictThresholds::default();
-    let oscillation_thresholds = OscillationThresholds::default();
-    let resolution_thresholds = ResolutionThresholds::default();
-    let orientation_thresholds = OrientationThresholds::default();
-    let compensating_thresholds = CompensatingStrategyThresholds::default();
-    let assimilation_thresholds = AssimilationDepthThresholds::default();
-    let neglect_thresholds = NeglectThresholds::default();
-
-    // Get resolved tensions for momentum phase detection
-    let resolved_tensions: Vec<_> = all_tensions
-        .iter()
-        .filter(|t| t.status == TensionStatus::Resolved)
-        .cloned()
-        .collect();
-
-    // 1. Structural Tension
-    let structural_tension = compute_structural_tension(tension, now);
-
-    // 2. Structural Conflict
-    let conflict = detect_structural_conflict(
-        &forest,
-        &tension.id,
-        &all_mutations,
-        &conflict_thresholds,
-        now,
-    );
-
-    // 3. Oscillation
-    let oscillation = detect_oscillation(
-        &tension.id,
-        &mutations,
-        &oscillation_thresholds,
-        now,
-        None::<&Horizon>,
-    );
-
-    // 4. Resolution
-    let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
-
-    // 5. Creative Cycle Phase
-    let phase_result = classify_creative_cycle_phase(
+    // === Compute all dynamics via shared module ===
+    let dynamics_json = compute_all_dynamics(
         tension,
         &mutations,
-        &resolved_tensions,
-        &lifecycle_thresholds,
-        now,
-    );
-
-    // 6. Orientation (requires multiple tensions)
-    let orientation =
-        classify_orientation(&all_tensions, &all_mutations, &orientation_thresholds, now);
-
-    // 7. Compensating Strategy
-    let compensating_strategy = detect_compensating_strategy(
-        &tension.id,
-        &mutations,
-        oscillation.as_ref(),
-        &compensating_thresholds,
-        now,
-        None::<&Horizon>,
-    );
-
-    // 8. Structural Tendency
-    let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, None, None);
-
-    // 9. Assimilation Depth
-    let assimilation = measure_assimilation_depth(
-        &tension.id,
-        &mutations,
-        tension,
-        &assimilation_thresholds,
-        now,
-    );
-
-    // 10. Neglect
-    let neglect = detect_neglect(
         &forest,
-        &tension.id,
+        &all_tensions,
         &all_mutations,
-        &neglect_thresholds,
         now,
     );
-
-    // Build dynamics JSON
-    let dynamics_json = DynamicsJson {
-        structural_tension: structural_tension.as_ref().map(|st| StructuralTensionJson {
-            magnitude: st.magnitude,
-            has_gap: st.has_gap,
-        }),
-        structural_conflict: conflict.as_ref().map(|c| ConflictJson {
-            pattern: match c.pattern {
-                sd_core::ConflictPattern::AsymmetricActivity => "AsymmetricActivity".to_string(),
-                sd_core::ConflictPattern::CompetingTensions => "CompetingTensions".to_string(),
-            },
-            tension_ids: c.tension_ids.clone(),
-        }),
-        oscillation: oscillation.as_ref().map(|o| OscillationJson {
-            reversals: o.reversals,
-            magnitude: o.magnitude,
-            window_start: o.window_start.to_rfc3339(),
-            window_end: o.window_end.to_rfc3339(),
-        }),
-        resolution: resolution.as_ref().map(|r| ResolutionJson {
-            velocity: r.velocity,
-            trend: match r.trend {
-                sd_core::ResolutionTrend::Accelerating => "Accelerating".to_string(),
-                sd_core::ResolutionTrend::Steady => "Steady".to_string(),
-                sd_core::ResolutionTrend::Decelerating => "Decelerating".to_string(),
-            },
-            window_start: r.window_start.to_rfc3339(),
-            window_end: r.window_end.to_rfc3339(),
-        }),
-        creative_cycle_phase: PhaseJson {
-            phase: match phase_result.phase {
-                CreativeCyclePhase::Germination => "Germination".to_string(),
-                CreativeCyclePhase::Assimilation => "Assimilation".to_string(),
-                CreativeCyclePhase::Completion => "Completion".to_string(),
-                CreativeCyclePhase::Momentum => "Momentum".to_string(),
-            },
-            evidence: PhaseEvidenceJson {
-                mutation_count: phase_result.evidence.mutation_count,
-                gap_closing: phase_result.evidence.gap_closing,
-                convergence_ratio: phase_result.evidence.convergence_ratio,
-                age_seconds: phase_result.evidence.age_seconds,
-            },
-        },
-        orientation: orientation.as_ref().map(|o| OrientationJson {
-            orientation: match o.orientation {
-                sd_core::Orientation::Creative => "Creative".to_string(),
-                sd_core::Orientation::ProblemSolving => "ProblemSolving".to_string(),
-                sd_core::Orientation::ReactiveResponsive => "ReactiveResponsive".to_string(),
-            },
-            creative_ratio: o.evidence.creative_ratio,
-            problem_solving_ratio: o.evidence.problem_solving_ratio,
-            reactive_ratio: o.evidence.reactive_ratio,
-        }),
-        compensating_strategy: compensating_strategy
-            .as_ref()
-            .map(|cs| CompensatingStrategyJson {
-                strategy_type: match cs.strategy_type {
-                    sd_core::CompensatingStrategyType::TolerableConflict => {
-                        "TolerableConflict".to_string()
-                    }
-                    sd_core::CompensatingStrategyType::ConflictManipulation => {
-                        "ConflictManipulation".to_string()
-                    }
-                    sd_core::CompensatingStrategyType::WillpowerManipulation => {
-                        "WillpowerManipulation".to_string()
-                    }
-                },
-                persistence_seconds: cs.persistence_seconds,
-            }),
-        structural_tendency: TendencyJson {
-            tendency: match tendency_result.tendency {
-                sd_core::StructuralTendency::Advancing => "Advancing".to_string(),
-                sd_core::StructuralTendency::Oscillating => "Oscillating".to_string(),
-                sd_core::StructuralTendency::Stagnant => "Stagnant".to_string(),
-            },
-            has_conflict: tendency_result.has_conflict,
-        },
-        assimilation_depth: if assimilation.depth == sd_core::AssimilationDepth::None
-            && assimilation.evidence.total_mutations == 0
-        {
-            None
-        } else {
-            Some(AssimilationDepthJson {
-                depth: match assimilation.depth {
-                    sd_core::AssimilationDepth::Shallow => "Shallow".to_string(),
-                    sd_core::AssimilationDepth::Deep => "Deep".to_string(),
-                    sd_core::AssimilationDepth::None => "None".to_string(),
-                },
-                mutation_frequency: assimilation.mutation_frequency,
-                frequency_trend: assimilation.frequency_trend,
-            })
-        },
-        neglect: neglect.as_ref().map(|n| NeglectJson {
-            neglect_type: match n.neglect_type {
-                sd_core::NeglectType::ParentNeglectsChildren => {
-                    "ParentNeglectsChildren".to_string()
-                }
-                sd_core::NeglectType::ChildrenNeglected => "ChildrenNeglected".to_string(),
-            },
-            activity_ratio: n.activity_ratio,
-        }),
-    };
 
     // === Mutations (chronological order - oldest first) ===
-    // Store returns mutations in chronological order (oldest first)
-    let mutation_infos: Vec<MutationInfo> = mutations
-        .iter()
-        .map(|m| MutationInfo {
-            tension_id: m.tension_id().to_owned(),
-            timestamp: m.timestamp().to_rfc3339(),
-            field: m.field().to_owned(),
-            old_value: m.old_value().map(|s| s.to_owned()),
-            new_value: m.new_value().to_owned(),
-        })
-        .collect();
+    let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
-    // Build final result
+    // Build final result (using ContextDynamicsJson for creative_cycle_phase field name)
     let result = ContextResult {
         tension: tension_info,
         ancestors,
         siblings,
         children,
-        dynamics: dynamics_json,
+        dynamics: dynamics_json.into(),
         mutations: mutation_infos,
     };
 
@@ -2953,19 +2293,15 @@ fn cmd_context(_output: &Output, id: String) -> Result<(), WerkError> {
 
 fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), WerkError> {
     use chrono::Utc;
-    use sd_core::{
-        classify_creative_cycle_phase, classify_orientation, compute_structural_tension,
-        compute_urgency, detect_compensating_strategy, detect_neglect, detect_oscillation,
-        detect_resolution, detect_structural_conflict, measure_assimilation_depth,
-        predict_structural_tendency, AssimilationDepthThresholds, CompensatingStrategyThresholds,
-        ConflictThresholds, CreativeCyclePhase, Forest, Horizon, LifecycleThresholds, Mutation,
-        NeglectThresholds, OrientationThresholds, OscillationThresholds, ResolutionThresholds,
-        TensionStatus,
-    };
+    use sd_core::{Forest, Mutation};
     use serde::Serialize;
     use std::io::Write;
     use std::process::Stdio;
     use werk::commands::config::Config;
+    use werk::dynamics::{
+        compute_all_dynamics, mutation_to_info, node_to_tension_info, tension_to_info,
+        ContextDynamicsJson, MutationInfo, TensionInfo,
+    };
     use werk::workspace::Workspace;
 
     /// Context output structure - always JSON, designed for agent consumption.
@@ -2975,156 +2311,8 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         ancestors: Vec<TensionInfo>,
         siblings: Vec<TensionInfo>,
         children: Vec<TensionInfo>,
-        dynamics: DynamicsJson,
+        dynamics: ContextDynamicsJson,
         mutations: Vec<MutationInfo>,
-    }
-
-    /// Tension information for context output.
-    #[derive(Serialize)]
-    struct TensionInfo {
-        id: String,
-        desired: String,
-        actual: String,
-        status: String,
-        created_at: String,
-        parent_id: Option<String>,
-        horizon: Option<String>,
-        horizon_range: Option<HorizonRangeJson>,
-        urgency: Option<f64>,
-        pressure: Option<f64>,
-        staleness_ratio: Option<f64>,
-    }
-
-    #[derive(Serialize)]
-    struct HorizonRangeJson {
-        start: String,
-        end: String,
-    }
-
-    /// All 10 dynamics in JSON format.
-    #[derive(Serialize)]
-    struct DynamicsJson {
-        structural_tension: Option<StructuralTensionJson>,
-        structural_conflict: Option<ConflictJson>,
-        oscillation: Option<OscillationJson>,
-        resolution: Option<ResolutionJson>,
-        creative_cycle_phase: PhaseJson,
-        orientation: Option<OrientationJson>,
-        compensating_strategy: Option<CompensatingStrategyJson>,
-        structural_tendency: TendencyJson,
-        assimilation_depth: Option<AssimilationDepthJson>,
-        neglect: Option<NeglectJson>,
-    }
-
-    #[derive(Serialize)]
-    struct StructuralTensionJson {
-        magnitude: f64,
-        has_gap: bool,
-    }
-
-    #[derive(Serialize)]
-    struct ConflictJson {
-        pattern: String,
-        tension_ids: Vec<String>,
-    }
-
-    #[derive(Serialize)]
-    struct OscillationJson {
-        reversals: usize,
-        magnitude: f64,
-        window_start: String,
-        window_end: String,
-    }
-
-    #[derive(Serialize)]
-    struct ResolutionJson {
-        velocity: f64,
-        trend: String,
-        window_start: String,
-        window_end: String,
-    }
-
-    #[derive(Serialize)]
-    struct PhaseJson {
-        phase: String,
-        evidence: PhaseEvidenceJson,
-    }
-
-    #[derive(Serialize)]
-    struct PhaseEvidenceJson {
-        mutation_count: usize,
-        gap_closing: bool,
-        convergence_ratio: f64,
-        age_seconds: i64,
-    }
-
-    #[derive(Serialize)]
-    struct OrientationJson {
-        orientation: String,
-        creative_ratio: f64,
-        problem_solving_ratio: f64,
-        reactive_ratio: f64,
-    }
-
-    #[derive(Serialize)]
-    struct CompensatingStrategyJson {
-        strategy_type: String,
-        persistence_seconds: i64,
-    }
-
-    #[derive(Serialize)]
-    struct TendencyJson {
-        tendency: String,
-        has_conflict: bool,
-    }
-
-    #[derive(Serialize)]
-    struct AssimilationDepthJson {
-        depth: String,
-        mutation_frequency: f64,
-        frequency_trend: f64,
-    }
-
-    #[derive(Serialize)]
-    struct NeglectJson {
-        neglect_type: String,
-        activity_ratio: f64,
-    }
-
-    /// Mutation information for context output.
-    #[derive(Serialize)]
-    struct MutationInfo {
-        tension_id: String,
-        timestamp: String,
-        field: String,
-        old_value: Option<String>,
-        new_value: String,
-    }
-
-    // Helper function to convert a tension Node to TensionInfo with horizon data
-    fn node_to_info(node: &sd_core::Node, now: chrono::DateTime<chrono::Utc>) -> TensionInfo {
-        let horizon = node.tension.horizon.as_ref().map(|h| h.to_string());
-        let horizon_range = node.tension.horizon.as_ref().map(|h| HorizonRangeJson {
-            start: h.range_start().to_rfc3339(),
-            end: h.range_end().to_rfc3339(),
-        });
-        let urgency = compute_urgency(&node.tension, now).map(|u| u.value);
-        let structural_tension = compute_structural_tension(&node.tension, now);
-        let pressure = structural_tension.as_ref().and_then(|st| st.pressure);
-
-        TensionInfo {
-            id: node.id().to_string(),
-            desired: node.tension.desired.clone(),
-            actual: node.tension.actual.clone(),
-            status: node.tension.status.to_string(),
-            created_at: node.tension.created_at.to_rfc3339(),
-            parent_id: node.tension.parent_id.clone(),
-            horizon,
-            horizon_range,
-            urgency,
-            pressure,
-            staleness_ratio: None, // Would need mutations to compute for siblings
-        }
     }
 
     // Discover workspace
@@ -3150,49 +2338,18 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
     let forest = Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // === Compute time reference (needed for horizon dynamics) ===
+    // === Compute time reference ===
     let now = Utc::now();
 
-    // === Compute horizon dynamics for the main tension ===
-    let horizon = tension.horizon.as_ref().map(|h| h.to_string());
-    let horizon_range = tension.horizon.as_ref().map(|h| HorizonRangeJson {
-        start: h.range_start().to_rfc3339(),
-        end: h.range_end().to_rfc3339(),
-    });
-    let urgency = compute_urgency(tension, now).map(|u| u.value);
-    let structural_tension_for_info = compute_structural_tension(tension, now);
-    let pressure = structural_tension_for_info
-        .as_ref()
-        .and_then(|st| st.pressure);
-
-    // Staleness ratio: need last mutation timestamp
-    let last_mutation_time = mutations.last().map(|m| m.timestamp());
-    let staleness_ratio = match (&tension.horizon, last_mutation_time) {
-        (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
-        _ => None,
-    };
-
-    // === Tension Info ===
-    let tension_info = TensionInfo {
-        id: tension.id.clone(),
-        desired: tension.desired.clone(),
-        actual: tension.actual.clone(),
-        status: tension.status.to_string(),
-        created_at: tension.created_at.to_rfc3339(),
-        parent_id: tension.parent_id.clone(),
-        horizon,
-        horizon_range,
-        urgency,
-        pressure,
-        staleness_ratio,
-    };
+    // === Tension Info (with staleness_ratio) ===
+    let tension_info = tension_to_info(tension, &mutations, now);
 
     // === Ancestors (root-first) ===
     let ancestors: Vec<TensionInfo> = forest
         .ancestors(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(|node| node_to_info(node, now))
+        .map(|node| node_to_tension_info(node, now))
         .collect();
 
     // === Siblings (excluding self) ===
@@ -3200,7 +2357,7 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         .siblings(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(|node| node_to_info(node, now))
+        .map(|node| node_to_tension_info(node, now))
         .collect();
 
     // === Children ===
@@ -3208,217 +2365,29 @@ fn cmd_run(_output: &Output, id: String, command: Vec<String>) -> Result<(), Wer
         .children(&tension.id)
         .unwrap_or_default()
         .into_iter()
-        .map(|node| node_to_info(node, now))
+        .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    // === Compute Dynamics Thresholds ===
-    let lifecycle_thresholds = LifecycleThresholds::default();
-    let conflict_thresholds = ConflictThresholds::default();
-    let oscillation_thresholds = OscillationThresholds::default();
-    let resolution_thresholds = ResolutionThresholds::default();
-    let orientation_thresholds = OrientationThresholds::default();
-    let compensating_thresholds = CompensatingStrategyThresholds::default();
-    let assimilation_thresholds = AssimilationDepthThresholds::default();
-    let neglect_thresholds = NeglectThresholds::default();
-
-    // Get resolved tensions for momentum phase detection
-    let resolved_tensions: Vec<_> = all_tensions
-        .iter()
-        .filter(|t| t.status == TensionStatus::Resolved)
-        .cloned()
-        .collect();
-
-    // 1. Structural Tension
-    let structural_tension = compute_structural_tension(tension, now);
-
-    // 2. Structural Conflict
-    let conflict = detect_structural_conflict(
-        &forest,
-        &tension.id,
-        &all_mutations,
-        &conflict_thresholds,
-        now,
-    );
-
-    // 3. Oscillation
-    let oscillation = detect_oscillation(
-        &tension.id,
-        &mutations,
-        &oscillation_thresholds,
-        now,
-        None::<&Horizon>,
-    );
-
-    // 4. Resolution
-    let resolution = detect_resolution(tension, &mutations, &resolution_thresholds, now);
-
-    // 5. Creative Cycle Phase
-    let phase_result = classify_creative_cycle_phase(
+    // === Compute all dynamics via shared module ===
+    let dynamics_json = compute_all_dynamics(
         tension,
         &mutations,
-        &resolved_tensions,
-        &lifecycle_thresholds,
-        now,
-    );
-
-    // 6. Orientation (requires multiple tensions)
-    let orientation =
-        classify_orientation(&all_tensions, &all_mutations, &orientation_thresholds, now);
-
-    // 7. Compensating Strategy
-    let compensating_strategy = detect_compensating_strategy(
-        &tension.id,
-        &mutations,
-        oscillation.as_ref(),
-        &compensating_thresholds,
-        now,
-        None::<&Horizon>,
-    );
-
-    // 8. Structural Tendency
-    let has_conflict = conflict.is_some();
-    let tendency_result = predict_structural_tendency(tension, has_conflict, None, None);
-
-    // 9. Assimilation Depth
-    let assimilation = measure_assimilation_depth(
-        &tension.id,
-        &mutations,
-        tension,
-        &assimilation_thresholds,
-        now,
-    );
-
-    // 10. Neglect
-    let neglect = detect_neglect(
         &forest,
-        &tension.id,
+        &all_tensions,
         &all_mutations,
-        &neglect_thresholds,
         now,
     );
-
-    // Build dynamics JSON
-    let dynamics_json = DynamicsJson {
-        structural_tension: structural_tension.as_ref().map(|st| StructuralTensionJson {
-            magnitude: st.magnitude,
-            has_gap: st.has_gap,
-        }),
-        structural_conflict: conflict.as_ref().map(|c| ConflictJson {
-            pattern: match c.pattern {
-                sd_core::ConflictPattern::AsymmetricActivity => "AsymmetricActivity".to_string(),
-                sd_core::ConflictPattern::CompetingTensions => "CompetingTensions".to_string(),
-            },
-            tension_ids: c.tension_ids.clone(),
-        }),
-        oscillation: oscillation.as_ref().map(|o| OscillationJson {
-            reversals: o.reversals,
-            magnitude: o.magnitude,
-            window_start: o.window_start.to_rfc3339(),
-            window_end: o.window_end.to_rfc3339(),
-        }),
-        resolution: resolution.as_ref().map(|r| ResolutionJson {
-            velocity: r.velocity,
-            trend: match r.trend {
-                sd_core::ResolutionTrend::Accelerating => "Accelerating".to_string(),
-                sd_core::ResolutionTrend::Steady => "Steady".to_string(),
-                sd_core::ResolutionTrend::Decelerating => "Decelerating".to_string(),
-            },
-            window_start: r.window_start.to_rfc3339(),
-            window_end: r.window_end.to_rfc3339(),
-        }),
-        creative_cycle_phase: PhaseJson {
-            phase: match phase_result.phase {
-                CreativeCyclePhase::Germination => "Germination".to_string(),
-                CreativeCyclePhase::Assimilation => "Assimilation".to_string(),
-                CreativeCyclePhase::Completion => "Completion".to_string(),
-                CreativeCyclePhase::Momentum => "Momentum".to_string(),
-            },
-            evidence: PhaseEvidenceJson {
-                mutation_count: phase_result.evidence.mutation_count,
-                gap_closing: phase_result.evidence.gap_closing,
-                convergence_ratio: phase_result.evidence.convergence_ratio,
-                age_seconds: phase_result.evidence.age_seconds,
-            },
-        },
-        orientation: orientation.as_ref().map(|o| OrientationJson {
-            orientation: match o.orientation {
-                sd_core::Orientation::Creative => "Creative".to_string(),
-                sd_core::Orientation::ProblemSolving => "ProblemSolving".to_string(),
-                sd_core::Orientation::ReactiveResponsive => "ReactiveResponsive".to_string(),
-            },
-            creative_ratio: o.evidence.creative_ratio,
-            problem_solving_ratio: o.evidence.problem_solving_ratio,
-            reactive_ratio: o.evidence.reactive_ratio,
-        }),
-        compensating_strategy: compensating_strategy
-            .as_ref()
-            .map(|cs| CompensatingStrategyJson {
-                strategy_type: match cs.strategy_type {
-                    sd_core::CompensatingStrategyType::TolerableConflict => {
-                        "TolerableConflict".to_string()
-                    }
-                    sd_core::CompensatingStrategyType::ConflictManipulation => {
-                        "ConflictManipulation".to_string()
-                    }
-                    sd_core::CompensatingStrategyType::WillpowerManipulation => {
-                        "WillpowerManipulation".to_string()
-                    }
-                },
-                persistence_seconds: cs.persistence_seconds,
-            }),
-        structural_tendency: TendencyJson {
-            tendency: match tendency_result.tendency {
-                sd_core::StructuralTendency::Advancing => "Advancing".to_string(),
-                sd_core::StructuralTendency::Oscillating => "Oscillating".to_string(),
-                sd_core::StructuralTendency::Stagnant => "Stagnant".to_string(),
-            },
-            has_conflict: tendency_result.has_conflict,
-        },
-        assimilation_depth: if assimilation.depth == sd_core::AssimilationDepth::None
-            && assimilation.evidence.total_mutations == 0
-        {
-            None
-        } else {
-            Some(AssimilationDepthJson {
-                depth: match assimilation.depth {
-                    sd_core::AssimilationDepth::Shallow => "Shallow".to_string(),
-                    sd_core::AssimilationDepth::Deep => "Deep".to_string(),
-                    sd_core::AssimilationDepth::None => "None".to_string(),
-                },
-                mutation_frequency: assimilation.mutation_frequency,
-                frequency_trend: assimilation.frequency_trend,
-            })
-        },
-        neglect: neglect.as_ref().map(|n| NeglectJson {
-            neglect_type: match n.neglect_type {
-                sd_core::NeglectType::ParentNeglectsChildren => {
-                    "ParentNeglectsChildren".to_string()
-                }
-                sd_core::NeglectType::ChildrenNeglected => "ChildrenNeglected".to_string(),
-            },
-            activity_ratio: n.activity_ratio,
-        }),
-    };
 
     // === Mutations (chronological order - oldest first) ===
-    let mutation_infos: Vec<MutationInfo> = mutations
-        .iter()
-        .map(|m| MutationInfo {
-            tension_id: m.tension_id().to_owned(),
-            timestamp: m.timestamp().to_rfc3339(),
-            field: m.field().to_owned(),
-            old_value: m.old_value().map(|s| s.to_owned()),
-            new_value: m.new_value().to_owned(),
-        })
-        .collect();
+    let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
-    // Build context result
+    // Build context result (using ContextDynamicsJson for creative_cycle_phase field name)
     let context = ContextResult {
         tension: tension_info,
         ancestors,
         siblings,
         children,
-        dynamics: dynamics_json,
+        dynamics: dynamics_json.into(),
         mutations: mutation_infos,
     };
 
