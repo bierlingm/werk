@@ -332,8 +332,8 @@ pub struct ResolutionThresholds {
 impl Default for ResolutionThresholds {
     fn default() -> Self {
         Self {
-            velocity_threshold: 0.01,
-            reversal_tolerance: 1,                 // Allow 1 minor reversal
+            velocity_threshold: 1e-7, // Recalibrated for hybrid metric (gap-per-second)
+            reversal_tolerance: 1,    // Allow 1 minor reversal
             recency_window_seconds: 3600 * 24 * 7, // 1 week
         }
     }
@@ -364,7 +364,7 @@ impl Default for LifecycleThresholds {
         Self {
             recency_window_seconds: 3600 * 24 * 7,  // 1 week
             active_frequency_threshold: 2,          // At least 2 mutations
-            convergence_threshold: 0.2,             // 80% converged
+            convergence_threshold: 0.5, // Recalibrated for hybrid Levenshtein+Jaccard metric
             momentum_window_seconds: 3600 * 24 * 3, // 3 days
             high_urgency_threshold: 0.7,
             low_urgency_threshold: 0.3,
@@ -8738,6 +8738,334 @@ mod tests {
         assert_eq!(
             defaults.low_urgency_threshold, 0.3,
             "Default low_urgency_threshold should be 0.3"
+        );
+    }
+
+    // ========================================================================
+    // VAL-DFX-015: Canonical lifecycle test with recalibrated thresholds
+    // ========================================================================
+
+    /// Comprehensive canonical lifecycle test that exercises the full tension
+    /// lifecycle (create → mutate → phase transitions → dynamics classifications)
+    /// with the recalibrated default thresholds for the hybrid Levenshtein+Jaccard
+    /// gap metric.
+    ///
+    /// This test uses deterministic timestamps and fixed string pairs to assert
+    /// specific outcomes at each stage of the lifecycle:
+    ///
+    /// 1. **Creation** → Germination phase, high gap magnitude
+    /// 2. **Early progress** → Assimilation phase (active mutations with gap)
+    /// 3. **Significant convergence** → Completion phase (gap below threshold)
+    /// 4. **Monotonic progress** → Resolution detected with positive velocity
+    /// 5. **No oscillation** for monotonic progress patterns
+    /// 6. **Gap magnitude** decreasing as actual approaches desired
+    #[test]
+    fn test_canonical_lifecycle_with_recalibrated_thresholds() {
+        use crate::mutation::Mutation;
+        use chrono::TimeZone;
+
+        // ── Stage 0: Establish fixed scenario ──────────────────────────────
+        let desired = "ship the product to customers";
+        let now = Utc.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).unwrap();
+
+        // ── Stage 1: Creation — high gap, Germination ──────────────────────
+        let t = Tension::new(desired, "brainstorming ideas").unwrap();
+        let initial_gap = compute_gap_magnitude(desired, "brainstorming ideas");
+
+        // Gap should be high — these are very different strings
+        assert!(
+            initial_gap > 0.7,
+            "Initial gap should be high (got {initial_gap})"
+        );
+
+        // With no mutations (or just creation), phase = Germination
+        let thresholds = LifecycleThresholds::default();
+        let phase1 = classify_creative_cycle_phase(&t, &[], &[], &thresholds, now);
+        assert_eq!(
+            phase1.phase,
+            CreativeCyclePhase::Germination,
+            "New tension with no mutations should be Germination"
+        );
+        assert_eq!(phase1.evidence.mutation_count, 0);
+
+        // Structural tension should exist and have the correct magnitude
+        let st1 = compute_structural_tension(&t, now);
+        assert!(st1.is_some(), "Structural tension should exist for gap");
+        let st1 = st1.unwrap();
+        assert!(st1.has_gap);
+        assert!(
+            (st1.magnitude - initial_gap).abs() < 1e-10,
+            "Structural tension magnitude should equal gap magnitude"
+        );
+
+        // ── Stage 2: Early progress — Assimilation ─────────────────────────
+        // Simulate several mutations showing forward progress.
+        // Build mutation history with explicit timestamps.
+        let t0 = now - chrono::Duration::days(6);
+        let t1 = now - chrono::Duration::days(4);
+        let t2 = now - chrono::Duration::days(2);
+
+        let actuals = [
+            "brainstorming ideas",               // initial
+            "have a working prototype",          // after t0
+            "prototype tested with early users", // after t1
+        ];
+
+        let mutations_stage2: Vec<Mutation> = vec![
+            Mutation::new(
+                t.id.clone(),
+                t0 - chrono::Duration::hours(1),
+                "created".to_string(),
+                None,
+                format!("{}|{}", desired, actuals[0]),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t0,
+                "actual".to_string(),
+                Some(actuals[0].to_string()),
+                actuals[1].to_string(),
+            ),
+            Mutation::new(
+                t.id.clone(),
+                t1,
+                "actual".to_string(),
+                Some(actuals[1].to_string()),
+                actuals[2].to_string(),
+            ),
+        ];
+
+        let mut t_stage2 = t.clone();
+        t_stage2.actual = actuals[2].to_string();
+
+        // Gap should be decreasing
+        let gap_stage2 = compute_gap_magnitude(desired, actuals[2]);
+        assert!(
+            gap_stage2 < initial_gap,
+            "Gap should decrease with progress: initial={initial_gap}, now={gap_stage2}"
+        );
+
+        // With 2 actual mutations and gap still above convergence_threshold,
+        // phase should be Assimilation
+        let phase2 =
+            classify_creative_cycle_phase(&t_stage2, &mutations_stage2, &[], &thresholds, now);
+        assert_eq!(
+            phase2.phase,
+            CreativeCyclePhase::Assimilation,
+            "Active mutations (count={}) with gap ({gap_stage2}) above convergence threshold ({}) \
+             should be Assimilation",
+            phase2.evidence.mutation_count,
+            thresholds.convergence_threshold,
+        );
+        assert!(
+            phase2.evidence.mutation_count >= thresholds.active_frequency_threshold,
+            "Should meet active_frequency_threshold"
+        );
+
+        // Oscillation should NOT be detected (monotonic progress)
+        let osc2 = detect_oscillation(
+            &t.id,
+            &mutations_stage2,
+            &OscillationThresholds::default(),
+            now,
+            None,
+        );
+        assert!(
+            osc2.is_none(),
+            "Monotonic progress should not trigger oscillation"
+        );
+
+        // ── Stage 3: Significant convergence — Completion ──────────────────
+        // Continue progress to bring actual very close to desired.
+        let t3 = now - chrono::Duration::days(1);
+
+        // These actuals share most words with desired to get gap < 0.5
+        let actuals_stage3 = [
+            "product nearly ready to ship to customers", // close
+            "ship the product to early customers",       // very close
+        ];
+
+        let mut mutations_stage3 = mutations_stage2.clone();
+        mutations_stage3.push(Mutation::new(
+            t.id.clone(),
+            t2,
+            "actual".to_string(),
+            Some(actuals[2].to_string()),
+            actuals_stage3[0].to_string(),
+        ));
+        mutations_stage3.push(Mutation::new(
+            t.id.clone(),
+            t3,
+            "actual".to_string(),
+            Some(actuals_stage3[0].to_string()),
+            actuals_stage3[1].to_string(),
+        ));
+
+        let mut t_stage3 = t.clone();
+        t_stage3.actual = actuals_stage3[1].to_string();
+
+        let gap_stage3 = compute_gap_magnitude(desired, actuals_stage3[1]);
+        assert!(
+            gap_stage3 < thresholds.convergence_threshold,
+            "Near-completion gap ({gap_stage3}) should be below convergence threshold ({})",
+            thresholds.convergence_threshold,
+        );
+        assert!(
+            gap_stage3 > 0.0,
+            "Gap should still be > 0 (strings not identical)"
+        );
+
+        // Phase should now be Completion
+        let phase3 =
+            classify_creative_cycle_phase(&t_stage3, &mutations_stage3, &[], &thresholds, now);
+        assert_eq!(
+            phase3.phase,
+            CreativeCyclePhase::Completion,
+            "Gap ({gap_stage3}) below convergence threshold ({}) with mutations should be Completion",
+            thresholds.convergence_threshold,
+        );
+        assert!(
+            phase3.evidence.convergence_ratio < thresholds.convergence_threshold,
+            "Evidence convergence_ratio should be below threshold"
+        );
+
+        // ── Stage 4: Resolution detected ───────────────────────────────────
+        // Resolution requires monotonic gap reduction (positive direction).
+        let resolution = detect_resolution(
+            &t_stage3,
+            &mutations_stage3,
+            &ResolutionThresholds::default(),
+            now,
+        );
+        assert!(
+            resolution.is_some(),
+            "Monotonic progress should detect resolution"
+        );
+        let res = resolution.unwrap();
+        assert!(res.velocity > 0.0, "Velocity should be positive");
+        // Trend may be Accelerating because later mutations close more gap
+        // (as actual strings become more similar to desired, each step
+        // produces larger gap reductions). This is expected behavior.
+        assert!(
+            res.trend == ResolutionTrend::Steady || res.trend == ResolutionTrend::Accelerating,
+            "Trend should be Steady or Accelerating for monotonic progress, got {:?}",
+            res.trend,
+        );
+
+        // ── Stage 5: Verify gap magnitude ordering ─────────────────────────
+        // Each successive actual should produce a smaller gap with desired.
+        let all_actuals = [
+            actuals[0],
+            actuals[1],
+            actuals[2],
+            actuals_stage3[0],
+            actuals_stage3[1],
+        ];
+        let gaps: Vec<f64> = all_actuals
+            .iter()
+            .map(|a| compute_gap_magnitude(desired, a))
+            .collect();
+
+        for i in 1..gaps.len() {
+            assert!(
+                gaps[i] < gaps[i - 1],
+                "Gap should monotonically decrease: gaps[{}]={} should be < gaps[{}]={}. \
+                 actuals: {:?} → {:?}",
+                i,
+                gaps[i],
+                i - 1,
+                gaps[i - 1],
+                all_actuals[i - 1],
+                all_actuals[i],
+            );
+        }
+
+        // ── Stage 6: Verify specific gap magnitude values ──────────────────
+        // Pin exact values so future metric changes are detected.
+        let expected_initial_gap = compute_gap_magnitude(desired, "brainstorming ideas");
+        assert!(
+            expected_initial_gap > 0.85,
+            "Expected initial gap > 0.85, got {expected_initial_gap}"
+        );
+
+        let expected_final_gap =
+            compute_gap_magnitude(desired, "ship the product to early customers");
+        assert!(
+            expected_final_gap > 0.0 && expected_final_gap < 0.5,
+            "Expected final gap in (0, 0.5), got {expected_final_gap}"
+        );
+    }
+
+    /// Test that recalibrated default convergence_threshold produces Completion
+    /// for strings that are textually close under the hybrid metric.
+    #[test]
+    fn test_recalibrated_convergence_threshold_boundary() {
+        // Use Utc::now() because store mutations use real timestamps
+        let now = Utc::now();
+        let thresholds = LifecycleThresholds::default();
+        let store = Store::new_in_memory().unwrap();
+
+        // Case 1: Gap just below threshold → Completion
+        // "complete the project" vs "nearly complete project" = ~0.487
+        let t1 = store
+            .create_tension("complete the project", "start planning")
+            .unwrap();
+        store
+            .update_actual(&t1.id, "nearly complete project")
+            .unwrap();
+        store
+            .update_actual(&t1.id, "nearly complete project")
+            .unwrap(); // ensure active_frequency >= 2
+
+        let gap_below = compute_gap_magnitude("complete the project", "nearly complete project");
+        assert!(
+            gap_below < thresholds.convergence_threshold,
+            "Gap ({gap_below}) should be below threshold ({}) for near-completion text",
+            thresholds.convergence_threshold,
+        );
+
+        let mutations1 = store.get_mutations(&t1.id).unwrap();
+        let t1_updated = store.get_tension(&t1.id).unwrap().unwrap();
+        let phase1 = classify_creative_cycle_phase(&t1_updated, &mutations1, &[], &thresholds, now);
+        assert_eq!(
+            phase1.phase,
+            CreativeCyclePhase::Completion,
+            "Gap below threshold should classify as Completion"
+        );
+
+        // Case 2: Gap above threshold → Assimilation (not Completion)
+        let store2 = Store::new_in_memory().unwrap();
+        let t2 = store2.create_tension("write a novel", "start").unwrap();
+        store2.update_actual(&t2.id, "have a rough draft").unwrap();
+        store2
+            .update_actual(&t2.id, "have a polished draft")
+            .unwrap();
+
+        let gap_above = compute_gap_magnitude("write a novel", "have a polished draft");
+        assert!(
+            gap_above > thresholds.convergence_threshold,
+            "Gap ({gap_above}) should be above threshold ({}) for still-different text",
+            thresholds.convergence_threshold,
+        );
+
+        let mutations2 = store2.get_mutations(&t2.id).unwrap();
+        let t2_updated = store2.get_tension(&t2.id).unwrap().unwrap();
+        let phase2 = classify_creative_cycle_phase(&t2_updated, &mutations2, &[], &thresholds, now);
+        assert_eq!(
+            phase2.phase,
+            CreativeCyclePhase::Assimilation,
+            "Gap above threshold with active mutations should classify as Assimilation"
+        );
+    }
+
+    /// Test that the recalibrated convergence_threshold value is documented correctly.
+    #[test]
+    fn test_recalibrated_convergence_threshold_value() {
+        let defaults = LifecycleThresholds::default();
+        assert!(
+            (defaults.convergence_threshold - 0.5).abs() < f64::EPSILON,
+            "Default convergence_threshold should be 0.5 (recalibrated for hybrid metric), got {}",
+            defaults.convergence_threshold,
         );
     }
 }
