@@ -3229,13 +3229,13 @@ impl WerkApp {
                     let overlay_height = 3u16;
                     let y = area.height.saturating_sub(overlay_height);
                     let overlay_area = Rect::new(0, y, area.width, overlay_height);
+                    let w = area.width as usize;
 
-                    let separator = "\u{2500}"
-                        .repeat(area.width as usize);
+                    let separator = "\u{2500}".repeat(w);
 
                     let (before_cursor, after_cursor) =
                         overlay.buffer.split_at(overlay.cursor.min(overlay.buffer.len()));
-                    let input_display = format!(
+                    let input_raw = format!(
                         "  > {}{}",
                         before_cursor,
                         if after_cursor.is_empty() {
@@ -3247,18 +3247,20 @@ impl WerkApp {
                         },
                     );
 
+                    let prompt_raw = format!("  {}", overlay.prompt);
+
                     let lines = vec![
                         Line::from_spans([Span::styled(
-                            &separator,
-                            Style::new().fg(CLR_DIM_GRAY),
+                            separator,
+                            Style::new().fg(CLR_DIM_GRAY).bg(CLR_BG_DARK),
                         )]),
                         Line::from_spans([Span::styled(
-                            format!("  {}", overlay.prompt),
-                            Style::new().fg(CLR_CYAN).bold(),
+                            format!("{:<width$}", prompt_raw, width = w),
+                            Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK),
                         )]),
                         Line::from_spans([Span::styled(
-                            input_display,
-                            Style::new().fg(CLR_WHITE),
+                            format!("{:<width$}", input_raw, width = w),
+                            Style::new().fg(CLR_WHITE).bg(CLR_BG_DARK),
                         )]),
                     ];
 
@@ -3273,18 +3275,19 @@ impl WerkApp {
                     let overlay_height = 2u16;
                     let y = area.height.saturating_sub(overlay_height);
                     let overlay_area = Rect::new(0, y, area.width, overlay_height);
+                    let w = area.width as usize;
 
-                    let separator = "\u{2500}"
-                        .repeat(area.width as usize);
+                    let separator = "\u{2500}".repeat(w);
+                    let prompt_raw = format!("  {}", overlay.prompt);
 
                     let lines = vec![
                         Line::from_spans([Span::styled(
-                            &separator,
-                            Style::new().fg(CLR_DIM_GRAY),
+                            separator,
+                            Style::new().fg(CLR_DIM_GRAY).bg(CLR_BG_DARK),
                         )]),
                         Line::from_spans([Span::styled(
-                            format!("  {}", overlay.prompt),
-                            Style::new().fg(CLR_YELLOW).bold(),
+                            format!("{:<width$}", prompt_raw, width = w),
+                            Style::new().fg(CLR_YELLOW).bold().bg(CLR_BG_DARK),
                         )]),
                     ];
 
@@ -3300,17 +3303,19 @@ impl WerkApp {
                 let overlay_height = (visible_count as u16) + 2; // +2 for separator + prompt
                 let y = area.height.saturating_sub(overlay_height);
                 let overlay_area = Rect::new(0, y, area.width, overlay_height);
+                let w = area.width as usize;
 
-                let separator = "\u{2500}".repeat(area.width as usize);
+                let separator = "\u{2500}".repeat(w);
                 let mut lines = vec![Line::from_spans([Span::styled(
-                    &separator,
-                    Style::new().fg(CLR_DIM_GRAY),
+                    separator,
+                    Style::new().fg(CLR_DIM_GRAY).bg(CLR_BG_DARK),
                 )])];
 
                 if let Some(overlay) = &self.input_overlay {
+                    let prompt_raw = format!("  {}", overlay.prompt);
                     lines.push(Line::from_spans([Span::styled(
-                        format!("  {}", overlay.prompt),
-                        Style::new().fg(CLR_CYAN).bold(),
+                        format!("{:<width$}", prompt_raw, width = w),
+                        Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK),
                     )]));
                 }
 
@@ -3331,12 +3336,13 @@ impl WerkApp {
                     let is_selected = i == state.selected;
                     let marker = if is_selected { ">" } else { " " };
                     let style = if is_selected {
-                        Style::new().fg(CLR_WHITE).bold()
+                        Style::new().fg(CLR_WHITE).bold().bg(CLR_BG_DARK)
                     } else {
-                        Style::new().fg(CLR_LIGHT_GRAY)
+                        Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK)
                     };
+                    let row_raw = format!("  {} {}", marker, truncate(label, w.saturating_sub(6)));
                     lines.push(Line::from_spans([Span::styled(
-                        format!("  {} {}", marker, truncate(label, area.width.saturating_sub(6) as usize)),
+                        format!("{:<width$}", row_raw, width = w),
                         style,
                     )]));
                 }
