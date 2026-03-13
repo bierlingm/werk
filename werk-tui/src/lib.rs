@@ -19,7 +19,7 @@ use sd_core::{
     compute_urgency, ComputedDynamics, CreativeCyclePhase, DynamicsEngine, Forest,
     Horizon, Mutation, StructuralTendency, Tension, TensionStatus,
 };
-use werk_shared::{relative_time, truncate, Workspace};
+use werk_shared::{relative_time, truncate, AgentMutation, Config, StructuredResponse, Workspace};
 
 // ============================================================================
 // Data types
@@ -166,6 +166,7 @@ pub enum InputContext {
     SetHorizon(String),
     AddTensionDesired { parent_id: Option<String> },
     AddTensionActual { desired: String, parent_id: Option<String> },
+    AgentPrompt(String), // tension_id
 }
 
 /// Confirmation actions.
@@ -183,11 +184,12 @@ pub struct MovePickerState {
 }
 
 /// The view currently displayed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum View {
     Dashboard,
     Detail,
     TreeView,
+    Agent(String), // tension ID
 }
 
 /// A single item in the tree view.
@@ -295,6 +297,14 @@ pub enum Msg {
     Tick,
     DynamicsEvent(String, ToastSeverity),
 
+    // Phase 5: Agent integration
+    StartAgent,
+    AgentResponseReceived(std::result::Result<String, String>),
+    AgentToggleMutation(usize),
+    AgentApplySelected,
+    AgentScrollUp,
+    AgentScrollDown,
+
     // Raw key event for mode-based routing
     RawKey(KeyCode, bool), // (code, shift)
 }
@@ -355,6 +365,15 @@ pub struct WerkApp {
     // Phase 4: Toasts and dynamics tracking
     toasts: Vec<Toast>,
     previous_urgencies: HashMap<String, f64>,
+
+    // Phase 5: Agent integration
+    agent_output: Vec<String>,
+    agent_scroll: u16,
+    agent_mutations: Vec<AgentMutation>,
+    agent_mutation_selected: Vec<bool>,
+    agent_mutation_cursor: usize,
+    agent_running: bool,
+    agent_response_text: Option<String>,
 }
 
 impl WerkApp {
@@ -403,6 +422,14 @@ impl WerkApp {
 
             toasts: Vec::new(),
             previous_urgencies: HashMap::new(),
+
+            agent_output: Vec::new(),
+            agent_scroll: 0,
+            agent_mutations: Vec::new(),
+            agent_mutation_selected: Vec::new(),
+            agent_mutation_cursor: 0,
+            agent_running: false,
+            agent_response_text: None,
         }
     }
 
@@ -589,7 +616,7 @@ impl WerkApp {
 
     /// Get the currently selected tension ID based on active view.
     fn selected_tension_id(&self) -> Option<String> {
-        match self.active_view {
+        match &self.active_view {
             View::Dashboard => {
                 let visible = self.visible_tensions();
                 visible.get(self.selected).map(|r| r.id.clone())
@@ -599,6 +626,7 @@ impl WerkApp {
                 .tree_items
                 .get(self.tree_selected)
                 .map(|i| i.tension_id.clone()),
+            View::Agent(id) => Some(id.clone()),
         }
     }
 
@@ -854,12 +882,12 @@ impl WerkApp {
     }
 
     /// Handle text input submission.
-    fn handle_submit(&mut self) {
+    fn handle_submit(&mut self) -> Cmd<Msg> {
         let buffer = match &self.input_overlay {
             Some(o) => o.buffer.clone(),
             None => {
                 self.cancel_input();
-                return;
+                return Cmd::None;
             }
         };
 
@@ -872,18 +900,20 @@ impl WerkApp {
             InputMode::Confirm(action) => {
                 // Confirm should be handled by ConfirmYes, not Enter
                 self.input_mode = InputMode::Confirm(action);
+                Cmd::None
             }
             InputMode::MovePicker(_) => {
                 // MovePicker should be handled by PickerSelect
+                Cmd::None
             }
-            InputMode::Normal => {}
+            InputMode::Normal => Cmd::None,
         }
     }
 
-    fn dispatch_text_submit(&mut self, ctx: InputContext, buffer: String) {
+    fn dispatch_text_submit(&mut self, ctx: InputContext, buffer: String) -> Cmd<Msg> {
         if buffer.trim().is_empty() {
             self.status_toast = Some("Input cannot be empty".to_string());
-            return;
+            return Cmd::None;
         }
 
         match ctx {
@@ -939,7 +969,7 @@ impl WerkApp {
                                 "Invalid horizon: {}. Use: 2026, 2026-03, 2026-03-15",
                                 e
                             ));
-                            return;
+                            return Cmd::None;
                         }
                     }
                 };
@@ -982,7 +1012,21 @@ impl WerkApp {
                     }
                 }
             }
+            InputContext::AgentPrompt(tension_id) => {
+                let prompt = buffer.trim().to_owned();
+                self.agent_running = true;
+                self.agent_output = vec!["Running agent...".to_string()];
+                self.agent_scroll = 0;
+                self.agent_mutations = Vec::new();
+                self.agent_mutation_selected = Vec::new();
+                self.agent_mutation_cursor = 0;
+                self.agent_response_text = None;
+
+                // Build context and spawn agent on background thread
+                return self.spawn_agent_task(tension_id, prompt);
+            }
         }
+        Cmd::None
     }
 
     fn handle_confirm(&mut self, yes: bool) {
@@ -1127,8 +1171,235 @@ impl WerkApp {
         candidates
     }
 
+    // ── Phase 5: Agent integration ────────────────────────────────
+
+    /// Spawn the agent subprocess on a background thread via Cmd::task().
+    fn spawn_agent_task(&self, tension_id: String, prompt: String) -> Cmd<Msg> {
+        // Build context JSON from the store (we need to do this on the main thread
+        // since Store uses Rc and can't be sent between threads)
+        let context_json = self.build_agent_context(&tension_id);
+        let full_prompt = self.build_agent_prompt(&tension_id, &prompt, &context_json);
+
+        // Resolve agent command from config
+        let agent_cmd = match self.resolve_agent_cmd() {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                return Cmd::Msg(Msg::AgentResponseReceived(Err(e)));
+            }
+        };
+
+        // Run agent on background thread
+        Cmd::task_named("agent", move || {
+            let result = execute_agent_capture(&agent_cmd, &full_prompt);
+            Msg::AgentResponseReceived(result)
+        })
+    }
+
+    /// Resolve the agent command from config.
+    fn resolve_agent_cmd(&self) -> std::result::Result<String, String> {
+        let workspace = Workspace::discover().map_err(|e| format!("workspace error: {}", e))?;
+        let config =
+            Config::load(&workspace).map_err(|e| format!("config error: {}", e))?;
+        match config.get("agent.command") {
+            Some(cmd) => Ok(cmd.clone()),
+            None => Err(
+                "No agent command configured. Use `werk config set agent.command <cmd>`"
+                    .to_string(),
+            ),
+        }
+    }
+
+    /// Build a JSON context string for the agent.
+    fn build_agent_context(&self, tension_id: &str) -> String {
+        let tension = match self.engine.store().get_tension(tension_id) {
+            Ok(Some(t)) => t,
+            _ => return "{}".to_string(),
+        };
+
+        let mut ctx = serde_json::Map::new();
+        ctx.insert("id".to_string(), serde_json::Value::String(tension.id.clone()));
+        ctx.insert(
+            "desired".to_string(),
+            serde_json::Value::String(tension.desired.clone()),
+        );
+        ctx.insert(
+            "actual".to_string(),
+            serde_json::Value::String(tension.actual.clone()),
+        );
+        ctx.insert(
+            "status".to_string(),
+            serde_json::Value::String(tension.status.to_string()),
+        );
+        if let Some(h) = &tension.horizon {
+            ctx.insert("horizon".to_string(), serde_json::Value::String(h.to_string()));
+        }
+        if let Some(pid) = &tension.parent_id {
+            ctx.insert("parent_id".to_string(), serde_json::Value::String(pid.clone()));
+        }
+        ctx.insert(
+            "created_at".to_string(),
+            serde_json::Value::String(tension.created_at.to_rfc3339()),
+        );
+
+        serde_json::Value::Object(ctx).to_string()
+    }
+
+    /// Build the full prompt with context for the agent.
+    fn build_agent_prompt(&self, tension_id: &str, user_prompt: &str, context_json: &str) -> String {
+        format!(
+            "You are helping manage a structural tension.\n\n\
+             Context:\n{}\n\n\
+             User message: {}\n\n\
+             IMPORTANT: Respond in YAML format with two sections:\n\
+             1. 'mutations' array: suggested changes to the tension forest\n\
+             2. 'response' string: your advice in prose\n\n\
+             Supported mutation actions:\n\
+             - update_actual: {{tension_id, new_value, reasoning}}\n\
+             - create_child: {{parent_id, desired, actual, reasoning}}\n\
+             - add_note: {{tension_id, text}}\n\
+             - update_status: {{tension_id, new_status, reasoning}}\n\
+             - update_desired: {{tension_id, new_value, reasoning}}\n\n\
+             Only suggest mutations you're confident about. \
+             If nothing should change, return empty mutations: [].\n\n\
+             Wrap your YAML in --- markers. Example:\n\
+             ---\n\
+             mutations:\n\
+               - action: update_actual\n\
+                 tension_id: {tid}\n\
+                 new_value: \"Updated state\"\n\
+                 reasoning: \"Progress made\"\n\
+             response: |\n\
+               Your advice here.\n\
+             ---\n\n\
+             If you cannot produce YAML, respond in plain text.",
+            context_json, user_prompt, tid = tension_id
+        )
+    }
+
+    /// Apply selected agent mutations to the store.
+    fn apply_agent_mutations(&mut self) -> usize {
+        let mut applied = 0;
+        let mutations: Vec<AgentMutation> = self
+            .agent_mutations
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.agent_mutation_selected.get(*i).copied().unwrap_or(false))
+            .map(|(_, m)| m.clone())
+            .collect();
+
+        for mutation in &mutations {
+            match self.apply_single_agent_mutation(mutation) {
+                Ok(()) => applied += 1,
+                Err(e) => {
+                    self.push_toast(format!("Error: {}", e), ToastSeverity::Alert);
+                }
+            }
+        }
+
+        applied
+    }
+
+    /// Apply a single agent mutation.
+    fn apply_single_agent_mutation(
+        &mut self,
+        mutation: &AgentMutation,
+    ) -> std::result::Result<(), String> {
+        match mutation {
+            AgentMutation::UpdateActual {
+                tension_id,
+                new_value,
+                ..
+            } => {
+                self.engine
+                    .store()
+                    .update_actual(tension_id, new_value)
+                    .map_err(|e| e.to_string())?;
+            }
+            AgentMutation::CreateChild {
+                parent_id,
+                desired,
+                actual,
+                ..
+            } => {
+                self.engine
+                    .store()
+                    .create_tension_with_parent(desired, actual, Some(parent_id.clone()))
+                    .map_err(|e| e.to_string())?;
+            }
+            AgentMutation::AddNote {
+                tension_id, text, ..
+            } => {
+                self.engine
+                    .store()
+                    .record_mutation(&Mutation::new(
+                        tension_id.clone(),
+                        Utc::now(),
+                        "note".to_owned(),
+                        None,
+                        text.clone(),
+                    ))
+                    .map_err(|e| e.to_string())?;
+            }
+            AgentMutation::UpdateStatus {
+                tension_id,
+                new_status,
+                ..
+            } => {
+                let status = match new_status.to_lowercase().as_str() {
+                    "resolved" => TensionStatus::Resolved,
+                    "released" => TensionStatus::Released,
+                    "active" => TensionStatus::Active,
+                    other => {
+                        return Err(format!(
+                            "unknown status: '{}' (expected Active, Resolved, or Released)",
+                            other
+                        ));
+                    }
+                };
+                self.engine
+                    .store()
+                    .update_status(tension_id, status)
+                    .map_err(|e| e.to_string())?;
+            }
+            AgentMutation::UpdateDesired {
+                tension_id,
+                new_value,
+                ..
+            } => {
+                self.engine
+                    .store()
+                    .update_desired(tension_id, new_value)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+
     /// Map a normal-mode key to a message.
     fn normal_key_to_msg(&self, code: KeyCode, shift: bool) -> Msg {
+        // Agent view has its own keybindings
+        if matches!(self.active_view, View::Agent(_)) {
+            return match code {
+                KeyCode::Char('j') | KeyCode::Down => Msg::MoveDown,
+                KeyCode::Char('k') | KeyCode::Up => Msg::MoveUp,
+                KeyCode::Enter => Msg::AgentToggleMutation(self.agent_mutation_cursor),
+                KeyCode::Char('a') => Msg::AgentApplySelected,
+                KeyCode::Char('1') => Msg::AgentToggleMutation(0),
+                KeyCode::Char('2') => Msg::AgentToggleMutation(1),
+                KeyCode::Char('3') => Msg::AgentToggleMutation(2),
+                KeyCode::Char('4') => Msg::AgentToggleMutation(3),
+                KeyCode::Char('5') => Msg::AgentToggleMutation(4),
+                KeyCode::Char('6') => Msg::AgentToggleMutation(5),
+                KeyCode::Char('7') => Msg::AgentToggleMutation(6),
+                KeyCode::Char('8') => Msg::AgentToggleMutation(7),
+                KeyCode::Char('9') => Msg::AgentToggleMutation(8),
+                KeyCode::Escape => Msg::Back,
+                KeyCode::Char('q') => Msg::Quit,
+                KeyCode::Char('?') => Msg::ToggleHelp,
+                _ => Msg::Noop,
+            };
+        }
+
         match code {
             KeyCode::Char('j') | KeyCode::Down => Msg::MoveDown,
             KeyCode::Char('k') | KeyCode::Up => Msg::MoveUp,
@@ -1150,6 +1421,7 @@ impl WerkApp {
             KeyCode::Char('R') => Msg::ToggleResolved,
             KeyCode::Char('X') if shift => Msg::StartRelease,
             KeyCode::Char('m') => Msg::StartMove,
+            KeyCode::Char('g') if self.active_view == View::Detail => Msg::StartAgent,
             KeyCode::Delete | KeyCode::Backspace
                 if self.active_view == View::Detail =>
             {
@@ -1177,7 +1449,7 @@ impl Model for WerkApp {
             match &self.input_mode {
                 InputMode::TextInput(_) => {
                     match code {
-                        KeyCode::Enter => self.handle_submit(),
+                        KeyCode::Enter => return self.handle_submit(),
                         KeyCode::Escape => self.cancel_input(),
                         other => self.handle_text_input_key(other),
                     }
@@ -1207,7 +1479,7 @@ impl Model for WerkApp {
 
         match msg {
             Msg::MoveDown => {
-                match self.active_view {
+                match &self.active_view {
                     View::Dashboard => {
                         let visible = self.visible_tensions().len();
                         if visible > 0 && self.selected < visible - 1 {
@@ -1223,11 +1495,19 @@ impl Model for WerkApp {
                     View::Detail => {
                         self.detail_scroll = self.detail_scroll.saturating_add(1);
                     }
+                    View::Agent(_) => {
+                        // Navigate mutation list
+                        if !self.agent_mutations.is_empty()
+                            && self.agent_mutation_cursor < self.agent_mutations.len() - 1
+                        {
+                            self.agent_mutation_cursor += 1;
+                        }
+                    }
                 }
                 Cmd::None
             }
             Msg::MoveUp => {
-                match self.active_view {
+                match &self.active_view {
                     View::Dashboard => {
                         if self.selected > 0 {
                             self.selected -= 1;
@@ -1240,6 +1520,11 @@ impl Model for WerkApp {
                     }
                     View::Detail => {
                         self.detail_scroll = self.detail_scroll.saturating_sub(1);
+                    }
+                    View::Agent(_) => {
+                        if self.agent_mutation_cursor > 0 {
+                            self.agent_mutation_cursor -= 1;
+                        }
                     }
                 }
                 Cmd::None
@@ -1269,7 +1554,7 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::OpenDetail => {
-                match self.active_view {
+                match &self.active_view {
                     View::Dashboard => {
                         let visible = self.visible_tensions();
                         if let Some(row) = visible.get(self.selected) {
@@ -1285,12 +1570,17 @@ impl Model for WerkApp {
                             self.active_view = View::Detail;
                         }
                     }
-                    View::Detail => {}
+                    View::Detail | View::Agent(_) => {}
                 }
                 Cmd::None
             }
             Msg::Back => {
-                match self.active_view {
+                match &self.active_view {
+                    View::Agent(tid) => {
+                        let id = tid.clone();
+                        self.load_detail(&id);
+                        self.active_view = View::Detail;
+                    }
                     View::Detail | View::TreeView => {
                         self.active_view = View::Dashboard;
                     }
@@ -1491,6 +1781,120 @@ impl Model for WerkApp {
             | Msg::PickerSelect
             | Msg::PickerCancel => Cmd::None,
 
+            // Phase 5: Agent integration
+            Msg::StartAgent => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        // Switch to agent view
+                        self.active_view = View::Agent(id.clone());
+                        self.agent_output = Vec::new();
+                        self.agent_scroll = 0;
+                        self.agent_mutations = Vec::new();
+                        self.agent_mutation_selected = Vec::new();
+                        self.agent_mutation_cursor = 0;
+                        self.agent_running = false;
+                        self.agent_response_text = None;
+
+                        // Show prompt for agent input
+                        let prompt = format!(
+                            "Enter prompt for agent ({}):",
+                            truncate(&t.desired, 30)
+                        );
+                        self.enter_text_input(
+                            InputContext::AgentPrompt(id),
+                            prompt,
+                            String::new(),
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::AgentResponseReceived(result) => {
+                self.agent_running = false;
+                match result {
+                    Ok(response_text) => {
+                        // Store output lines
+                        self.agent_output = response_text.lines().map(|l| l.to_string()).collect();
+                        self.agent_scroll = 0;
+
+                        // Try to parse structured YAML response
+                        if let Some(structured) = StructuredResponse::from_response(&response_text) {
+                            self.agent_response_text = Some(structured.response.clone());
+                            self.agent_mutations = structured.mutations;
+                            // Select all mutations by default
+                            self.agent_mutation_selected =
+                                vec![true; self.agent_mutations.len()];
+                            self.agent_mutation_cursor = 0;
+
+                            if self.agent_mutations.is_empty() {
+                                self.push_toast(
+                                    "Agent responded (no mutations suggested)".to_string(),
+                                    ToastSeverity::Info,
+                                );
+                            } else {
+                                self.push_toast(
+                                    format!(
+                                        "Agent suggested {} change(s)",
+                                        self.agent_mutations.len()
+                                    ),
+                                    ToastSeverity::Info,
+                                );
+                            }
+                        } else {
+                            self.agent_response_text = Some(response_text);
+                            self.push_toast(
+                                "Agent responded (plain text)".to_string(),
+                                ToastSeverity::Info,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        self.agent_output = vec![format!("Error: {}", e)];
+                        self.push_toast(
+                            format!("Agent error: {}", truncate(&e, 40)),
+                            ToastSeverity::Alert,
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::AgentToggleMutation(idx) => {
+                if idx < self.agent_mutation_selected.len() {
+                    self.agent_mutation_selected[idx] = !self.agent_mutation_selected[idx];
+                }
+                Cmd::None
+            }
+            Msg::AgentApplySelected => {
+                if self.agent_mutations.is_empty() {
+                    return Cmd::None;
+                }
+                let count = self.apply_agent_mutations();
+                if count > 0 {
+                    self.push_toast(
+                        format!("Applied {} agent change(s)", count),
+                        ToastSeverity::Info,
+                    );
+                    self.reload_data();
+                    // Return to detail view
+                    if let View::Agent(ref tid) = self.active_view {
+                        let id = tid.clone();
+                        self.load_detail(&id);
+                        self.active_view = View::Detail;
+                    }
+                } else {
+                    self.push_toast("No mutations selected".to_string(), ToastSeverity::Warning);
+                }
+                Cmd::None
+            }
+            Msg::AgentScrollUp => {
+                self.agent_scroll = self.agent_scroll.saturating_sub(1);
+                Cmd::None
+            }
+            Msg::AgentScrollDown => {
+                self.agent_scroll = self.agent_scroll.saturating_add(1);
+                Cmd::None
+            }
+
             // Phase 4: Tick and dynamics event handling
             Msg::Tick => {
                 // Recompute urgency for all tensions (time-dependent)
@@ -1515,7 +1919,7 @@ impl Model for WerkApp {
     fn view(&self, frame: &mut Frame<'_>) {
         let area = Rect::new(0, 0, frame.width(), frame.height());
 
-        match self.active_view {
+        match &self.active_view {
             View::Dashboard => {
                 let layout = Flex::vertical().constraints([
                     Constraint::Fixed(1),
@@ -1551,6 +1955,22 @@ impl Model for WerkApp {
                 self.render_tree_title(&rects[0], frame);
                 self.render_tree_body(&rects[1], frame);
                 self.render_tree_hints(&rects[2], frame);
+            }
+            View::Agent(tension_id) => {
+                let layout = Flex::vertical().constraints([
+                    Constraint::Fixed(1),    // title
+                    Constraint::Fill,        // agent output
+                    Constraint::Fixed(1),    // separator
+                    Constraint::Fixed(3),    // pinned context
+                    Constraint::Fixed(1),    // key hints
+                ]);
+                let rects = layout.split(area);
+
+                self.render_agent_title(tension_id, &rects[0], frame);
+                self.render_agent_body(&rects[1], frame);
+                self.render_agent_separator(&rects[2], frame);
+                self.render_agent_context(tension_id, &rects[3], frame);
+                self.render_agent_hints(&rects[4], frame);
             }
         }
 
@@ -1924,11 +2344,175 @@ impl WerkApp {
     fn render_detail_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
         let verbose_label = if self.verbose { "v-" } else { "v+" };
         let hints = format!(
-            " Esc back  j/k  {}  r/d edit  n note  h horizon  a add  R resolve  X release  Del delete  m move  q/?",
+            " Esc back  j/k  {}  r/d edit  n note  h horizon  a add  R resolve  X release  Del delete  m move  g agent  q/?",
             verbose_label,
         );
         let style = Style::new().fg(CLR_MID_GRAY);
         let paragraph = Paragraph::new(Text::from_spans([Span::styled(&hints, style)]));
+        paragraph.render(*area, frame);
+    }
+
+    // ── Agent rendering ──────────────────────────────────────────
+
+    fn render_agent_title(&self, tension_id: &str, area: &Rect, frame: &mut Frame<'_>) {
+        let desired = self
+            .engine
+            .store()
+            .get_tension(tension_id)
+            .ok()
+            .flatten()
+            .map(|t| truncate(&t.desired, area.width.saturating_sub(16) as usize).to_string())
+            .unwrap_or_else(|| tension_id.chars().take(8).collect());
+
+        let running = if self.agent_running { "  [running...]" } else { "" };
+        let title = format!(" Agent: {}{}", desired, running);
+        let style = Style::new().fg(CLR_CYAN).bold();
+        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&title, style)]));
+        paragraph.render(*area, frame);
+    }
+
+    fn render_agent_body(&self, area: &Rect, frame: &mut Frame<'_>) {
+        let mut lines: Vec<Line> = Vec::new();
+
+        if self.agent_running {
+            lines.push(Line::from_spans([Span::styled(
+                "  Running agent...",
+                Style::new().fg(CLR_YELLOW),
+            )]));
+        } else if let Some(response_text) = &self.agent_response_text {
+            // Show response text
+            lines.push(Line::from(""));
+            lines.push(Line::from_spans([Span::styled(
+                "  Response:",
+                Style::new().fg(CLR_MID_GRAY),
+            )]));
+            for line in response_text.lines() {
+                lines.push(Line::from_spans([Span::styled(
+                    format!("  {}", line),
+                    Style::new().fg(CLR_LIGHT_GRAY),
+                )]));
+            }
+        } else if !self.agent_output.is_empty() {
+            // Show raw output (error or plain text)
+            for line in &self.agent_output {
+                lines.push(Line::from_spans([Span::styled(
+                    format!("  {}", line),
+                    Style::new().fg(CLR_LIGHT_GRAY),
+                )]));
+            }
+        } else {
+            lines.push(Line::from_spans([Span::styled(
+                "  No agent output yet. Press Esc to go back.",
+                Style::new().fg(CLR_DIM_GRAY),
+            )]));
+        }
+
+        // Show suggested mutations if any
+        if !self.agent_mutations.is_empty() {
+            lines.push(Line::from(""));
+            let sep = format!(
+                "  {} Suggested Changes {}",
+                "\u{2500}".repeat(2),
+                "\u{2500}".repeat(area.width.saturating_sub(24) as usize)
+            );
+            lines.push(Line::from_spans([Span::styled(
+                &sep,
+                Style::new().fg(CLR_DIM_GRAY),
+            )]));
+
+            for (i, mutation) in self.agent_mutations.iter().enumerate() {
+                let is_selected = self
+                    .agent_mutation_selected
+                    .get(i)
+                    .copied()
+                    .unwrap_or(false);
+                let is_cursor = i == self.agent_mutation_cursor;
+                let check = if is_selected { "x" } else { " " };
+                let cursor_marker = if is_cursor { ">" } else { " " };
+
+                let summary = mutation.summary();
+                let reasoning = mutation
+                    .reasoning()
+                    .map(|r| format!(" ({})", truncate(r, 30)))
+                    .unwrap_or_default();
+
+                let style = if is_cursor {
+                    Style::new().fg(CLR_WHITE).bold()
+                } else if is_selected {
+                    Style::new().fg(CLR_GREEN)
+                } else {
+                    Style::new().fg(CLR_MID_GRAY)
+                };
+
+                lines.push(Line::from_spans([Span::styled(
+                    format!("  {} {}. [{}] {}{}", cursor_marker, i + 1, check, summary, reasoning),
+                    style,
+                )]));
+            }
+        }
+
+        let text = Text::from_lines(lines);
+        let paragraph = Paragraph::new(text).scroll((self.agent_scroll, 0));
+        paragraph.render(*area, frame);
+    }
+
+    fn render_agent_separator(&self, area: &Rect, frame: &mut Frame<'_>) {
+        let sep = "\u{2500}".repeat(area.width as usize);
+        let style = Style::new().fg(CLR_DIM_GRAY);
+        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&sep, style)]));
+        paragraph.render(*area, frame);
+    }
+
+    fn render_agent_context(&self, tension_id: &str, area: &Rect, frame: &mut Frame<'_>) {
+        let mut lines: Vec<Line> = Vec::new();
+
+        if let Ok(Some(tension)) = self.engine.store().get_tension(tension_id) {
+            let now = Utc::now();
+            lines.push(Line::from_spans([
+                Span::styled("  Desired  ", Style::new().fg(CLR_MID_GRAY)),
+                Span::styled(
+                    truncate(&tension.desired, area.width.saturating_sub(14) as usize),
+                    Style::new().fg(CLR_LIGHT_GRAY),
+                ),
+            ]));
+            lines.push(Line::from_spans([
+                Span::styled("  Actual   ", Style::new().fg(CLR_MID_GRAY)),
+                Span::styled(
+                    truncate(&tension.actual, area.width.saturating_sub(14) as usize),
+                    Style::new().fg(CLR_LIGHT_GRAY),
+                ),
+            ]));
+
+            let urgency_str = compute_urgency(&tension, now)
+                .map(|u| format!("{:.0}%", u.value * 100.0))
+                .unwrap_or_else(|| "--".to_string());
+
+            lines.push(Line::from_spans([
+                Span::styled("  Status   ", Style::new().fg(CLR_MID_GRAY)),
+                Span::styled(tension.status.to_string(), Style::new().fg(CLR_LIGHT_GRAY)),
+                Span::styled("       Urgency  ", Style::new().fg(CLR_MID_GRAY)),
+                Span::styled(urgency_str, Style::new().fg(CLR_LIGHT_GRAY)),
+            ]));
+        } else {
+            lines.push(Line::from_spans([Span::styled(
+                "  Tension not found",
+                Style::new().fg(CLR_DIM_GRAY),
+            )]));
+        }
+
+        let text = Text::from_lines(lines);
+        let paragraph = Paragraph::new(text);
+        paragraph.render(*area, frame);
+    }
+
+    fn render_agent_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
+        let hints = if self.agent_mutations.is_empty() {
+            " Esc back  q quit  ? help"
+        } else {
+            " j/k nav  Enter toggle  1-9 toggle  a apply selected  Esc back  q quit"
+        };
+        let style = Style::new().fg(CLR_MID_GRAY);
+        let paragraph = Paragraph::new(Text::from_spans([Span::styled(hints, style)]));
         paragraph.render(*area, frame);
     }
 
@@ -2058,6 +2642,12 @@ impl WerkApp {
             Line::from("  X           Release tension"),
             Line::from("  Del         Delete tension (detail view)"),
             Line::from("  m           Move/reparent tension"),
+            Line::from("  g           Agent (detail view)"),
+            Line::from(""),
+            Line::from("  Agent View"),
+            Line::from("  j/k         Navigate mutations"),
+            Line::from("  Enter/1-9   Toggle mutation selection"),
+            Line::from("  a           Apply selected mutations"),
             Line::from(""),
             Line::from("  q / Ctrl+C  Quit          ?  Toggle this help"),
         ];
@@ -2560,6 +3150,76 @@ fn build_tension_row_from_computed(
         neglected,
         horizon_display,
         tier,
+    }
+}
+
+// ============================================================================
+// Agent helpers
+// ============================================================================
+
+/// Execute agent command and capture its stdout.
+///
+/// This runs on a background thread via Cmd::task().
+fn execute_agent_capture(agent_cmd: &str, prompt: &str) -> std::result::Result<String, String> {
+    let (program, args) = resolve_agent_command(agent_cmd)?;
+
+    let mut child = std::process::Command::new(&program)
+        .args(&args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!("agent command not found: {}", program)
+            } else {
+                format!("failed to spawn agent: {}", e)
+            }
+        })?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        use std::io::Write;
+        let _ = stdin.write_all(prompt.as_bytes());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("failed to read agent output: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "agent command failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Resolve an agent command string into (program, args).
+fn resolve_agent_command(cmd: &str) -> std::result::Result<(String, Vec<String>), String> {
+    let cmd = cmd.trim();
+    if cmd.is_empty() {
+        return Err("agent command is empty".to_string());
+    }
+
+    if cmd.starts_with('/') {
+        if !std::path::Path::new(cmd).exists() {
+            return Err(format!("agent command not found at path: {}", cmd));
+        }
+        Ok((cmd.to_string(), vec![]))
+    } else if cmd.contains(' ') {
+        Ok((
+            "sh".to_string(),
+            vec!["-c".to_string(), cmd.to_string()],
+        ))
+    } else {
+        match which::which(cmd) {
+            Ok(path) => Ok((path.to_string_lossy().to_string(), vec![])),
+            Err(_) => Err(format!("agent command not found: {}", cmd)),
+        }
     }
 }
 

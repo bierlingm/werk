@@ -1,152 +1,9 @@
 //! Structured agent response parsing and mutation application.
 //!
-//! Agents in one-shot mode can return structured YAML with mutation suggestions
-//! that the user can review and apply in bulk.
+//! This module re-exports types from werk-shared for backward compatibility.
+//! The actual implementation now lives in werk-shared::agent_response.
 
-use serde::{Deserialize, Serialize};
-use werk_shared::truncate;
-
-/// A structured response from an agent, containing prose advice and
-/// optional mutation suggestions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StructuredResponse {
-    /// Suggested mutations to the tension forest.
-    #[serde(default)]
-    pub mutations: Vec<Mutation>,
-    /// Human-readable advice/response text.
-    #[serde(default)]
-    pub response: String,
-}
-
-/// A single suggested mutation to the tension forest.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
-pub enum Mutation {
-    /// Update the actual state of a tension.
-    UpdateActual {
-        tension_id: String,
-        new_value: String,
-        #[serde(default)]
-        reasoning: String,
-    },
-    /// Create a child tension under a parent.
-    CreateChild {
-        parent_id: String,
-        desired: String,
-        actual: String,
-        #[serde(default)]
-        reasoning: String,
-    },
-    /// Add a note to a tension.
-    AddNote {
-        tension_id: String,
-        text: String,
-    },
-    /// Update the status of a tension.
-    UpdateStatus {
-        tension_id: String,
-        new_status: String,
-        #[serde(default)]
-        reasoning: String,
-    },
-    /// Update the desired state of a tension.
-    UpdateDesired {
-        tension_id: String,
-        new_value: String,
-        #[serde(default)]
-        reasoning: String,
-    },
-}
-
-impl Mutation {
-    /// Return a human-readable summary of this mutation.
-    pub fn summary(&self) -> String {
-        match self {
-            Mutation::UpdateActual { new_value, .. } => {
-                format!("Update actual: \"{}\"", truncate(new_value, 60))
-            }
-            Mutation::CreateChild { desired, .. } => {
-                format!("Create child: \"{}\"", truncate(desired, 60))
-            }
-            Mutation::AddNote { text, .. } => {
-                format!("Add note: \"{}\"", truncate(text, 60))
-            }
-            Mutation::UpdateStatus { new_status, .. } => {
-                format!("Set status: {}", new_status)
-            }
-            Mutation::UpdateDesired { new_value, .. } => {
-                format!("Update desired: \"{}\"", truncate(new_value, 60))
-            }
-        }
-    }
-
-    /// Return the reasoning for this mutation, if any.
-    pub fn reasoning(&self) -> Option<&str> {
-        match self {
-            Mutation::UpdateActual { reasoning, .. }
-            | Mutation::CreateChild { reasoning, .. }
-            | Mutation::UpdateStatus { reasoning, .. }
-            | Mutation::UpdateDesired { reasoning, .. } => {
-                if reasoning.is_empty() {
-                    None
-                } else {
-                    Some(reasoning)
-                }
-            }
-            Mutation::AddNote { .. } => None,
-        }
-    }
-}
-
-impl StructuredResponse {
-    /// Try to parse a structured response from YAML text.
-    ///
-    /// The agent response must contain YAML between `---` markers with
-    /// both `mutations` and `response` keys. Returns None if the text
-    /// doesn't contain valid structured YAML.
-    pub fn from_response(text: &str) -> Option<Self> {
-        // Only try to parse YAML from between --- markers
-        let yaml_text = extract_yaml_block(text)?;
-
-        // Must contain both expected keys to be considered structured
-        if !yaml_text.contains("mutations") || !yaml_text.contains("response") {
-            return None;
-        }
-
-        // Try parsing as StructuredResponse
-        let parsed: Self = serde_yaml::from_str(yaml_text).ok()?;
-
-        // Require non-empty response text
-        if parsed.response.trim().is_empty() {
-            return None;
-        }
-
-        Some(parsed)
-    }
-}
-
-/// Extract YAML content between `---` markers.
-fn extract_yaml_block(text: &str) -> Option<&str> {
-    let trimmed = text.trim();
-
-    // Look for content between --- markers
-    if let Some(start) = trimmed.find("---") {
-        let after_start = &trimmed[start + 3..];
-        if let Some(end) = after_start.find("---") {
-            let yaml = after_start[..end].trim();
-            if !yaml.is_empty() {
-                return Some(yaml);
-            }
-        }
-        // If no closing ---, treat the rest as YAML
-        let yaml = after_start.trim();
-        if !yaml.is_empty() {
-            return Some(yaml);
-        }
-    }
-
-    None
-}
+pub use werk_shared::agent_response::{AgentMutation as Mutation, StructuredResponse};
 
 #[cfg(test)]
 mod tests {
@@ -343,22 +200,8 @@ response: "Refined the goal."
     }
 
     #[test]
-    fn test_extract_yaml_block_between_markers() {
-        let text = "Preamble\n---\nmutations: []\nresponse: hi\n---\nPostamble";
-        let yaml = extract_yaml_block(text).unwrap();
-        assert!(yaml.starts_with("mutations"));
-    }
-
-    #[test]
-    fn test_extract_yaml_block_single_marker() {
-        let text = "Preamble\n---\nmutations: []\nresponse: hi";
-        let yaml = extract_yaml_block(text).unwrap();
-        assert!(yaml.starts_with("mutations"));
-    }
-
-    #[test]
     fn test_extract_yaml_block_no_markers() {
         let text = "Just plain text";
-        assert!(extract_yaml_block(text).is_none());
+        assert!(StructuredResponse::from_response(text).is_none());
     }
 }
