@@ -186,10 +186,70 @@ pub struct MovePickerState {
 /// The view currently displayed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum View {
+    Welcome,
     Dashboard,
     Detail,
     TreeView,
     Agent(String), // tension ID
+}
+
+/// A command palette action.
+#[derive(Debug, Clone)]
+pub struct PaletteAction {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub msg: Option<Msg>,
+}
+
+/// State for the command palette overlay.
+pub struct CommandPaletteState {
+    pub query: String,
+    pub cursor: usize,
+    pub selected: usize,
+    pub actions: Vec<PaletteAction>,
+}
+
+impl CommandPaletteState {
+    fn new() -> Self {
+        Self {
+            query: String::new(),
+            cursor: 0,
+            selected: 0,
+            actions: all_palette_actions(),
+        }
+    }
+
+    fn filtered_actions(&self) -> Vec<&PaletteAction> {
+        if self.query.is_empty() {
+            return self.actions.iter().collect();
+        }
+        let q = self.query.to_lowercase();
+        self.actions
+            .iter()
+            .filter(|a| {
+                a.name.to_lowercase().contains(&q) || a.description.to_lowercase().contains(&q)
+            })
+            .collect()
+    }
+}
+
+fn all_palette_actions() -> Vec<PaletteAction> {
+    vec![
+        PaletteAction { name: "add", description: "Create a new tension", msg: Some(Msg::StartAddTension) },
+        PaletteAction { name: "reality", description: "Update current state", msg: Some(Msg::StartUpdateReality) },
+        PaletteAction { name: "desire", description: "Update desired state", msg: Some(Msg::StartUpdateDesire) },
+        PaletteAction { name: "resolve", description: "Mark as resolved", msg: Some(Msg::StartResolve) },
+        PaletteAction { name: "release", description: "Release (let go)", msg: Some(Msg::StartRelease) },
+        PaletteAction { name: "delete", description: "Delete tension", msg: Some(Msg::StartDelete) },
+        PaletteAction { name: "move", description: "Reparent tension", msg: Some(Msg::StartMove) },
+        PaletteAction { name: "note", description: "Add a note", msg: Some(Msg::StartAddNote) },
+        PaletteAction { name: "horizon", description: "Set horizon", msg: Some(Msg::StartSetHorizon) },
+        PaletteAction { name: "tree", description: "Switch to tree view", msg: Some(Msg::SwitchTree) },
+        PaletteAction { name: "dashboard", description: "Switch to dashboard", msg: Some(Msg::SwitchDashboard) },
+        PaletteAction { name: "agent", description: "Open agent view", msg: Some(Msg::StartAgent) },
+        PaletteAction { name: "help", description: "Show help", msg: Some(Msg::ToggleHelp) },
+        PaletteAction { name: "quit", description: "Exit werk", msg: Some(Msg::Quit) },
+    ]
 }
 
 /// A single item in the tree view.
@@ -305,6 +365,14 @@ pub enum Msg {
     AgentScrollUp,
     AgentScrollDown,
 
+    // Phase 6: Welcome screen
+    WelcomeSelect,    // j/k changes selection
+    WelcomeConfirm,   // Enter to confirm
+
+    // Phase 6: Command palette & search
+    OpenCommandPalette,
+    OpenSearch,
+
     // Raw key event for mode-based routing
     RawKey(KeyCode, bool), // (code, shift)
 }
@@ -374,6 +442,18 @@ pub struct WerkApp {
     agent_mutation_cursor: usize,
     agent_running: bool,
     agent_response_text: Option<String>,
+
+    // Phase 6: Welcome screen
+    welcome_selected: usize, // 0 = local, 1 = global
+
+    // Phase 6: Command palette
+    command_palette: Option<CommandPaletteState>,
+
+    // Phase 6: Search
+    search_query: Option<String>,
+    search_buffer: String,
+    search_cursor: usize,
+    search_active: bool,
 }
 
 impl WerkApp {
@@ -430,10 +510,26 @@ impl WerkApp {
             agent_mutation_cursor: 0,
             agent_running: false,
             agent_response_text: None,
+
+            welcome_selected: 0,
+            command_palette: None,
+            search_query: None,
+            search_buffer: String::new(),
+            search_cursor: 0,
+            search_active: false,
         }
     }
 
-    /// Visible tensions based on current filter.
+    /// Create a WerkApp in welcome mode (no workspace found).
+    pub fn new_welcome() -> Self {
+        let engine = DynamicsEngine::new_in_memory()
+            .expect("failed to create in-memory engine");
+        let mut app = Self::new(engine, Vec::new());
+        app.active_view = View::Welcome;
+        app
+    }
+
+    /// Visible tensions based on current filter and search query.
     fn visible_tensions(&self) -> Vec<&TensionRow> {
         self.tensions
             .iter()
@@ -448,6 +544,15 @@ impl WerkApp {
                 Filter::All => true,
                 Filter::Resolved => t.status == "Resolved",
                 Filter::Released => t.status == "Released",
+            })
+            .filter(|t| {
+                if let Some(ref q) = self.search_query {
+                    let q_lower = q.to_lowercase();
+                    t.desired.to_lowercase().contains(&q_lower)
+                        || t.actual.to_lowercase().contains(&q_lower)
+                } else {
+                    true
+                }
             })
             .collect()
     }
@@ -612,6 +717,39 @@ impl WerkApp {
 }
 
 impl WerkApp {
+    // ── Phase 6: Welcome screen ──────────────────────────────────
+
+    fn handle_welcome_confirm(&mut self) -> Cmd<Msg> {
+        let global = self.welcome_selected == 1;
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        match Workspace::init(&cwd, global) {
+            Ok(workspace) => {
+                match workspace.open_store() {
+                    Ok(store) => {
+                        self.engine = DynamicsEngine::with_store(store);
+                        self.tensions = Vec::new();
+                        self.active_view = View::Dashboard;
+                        self.push_toast(
+                            if global {
+                                "Global workspace created at ~/.werk/".to_string()
+                            } else {
+                                "Workspace created at .werk/".to_string()
+                            },
+                            ToastSeverity::Info,
+                        );
+                    }
+                    Err(e) => {
+                        self.push_toast(format!("Error opening store: {}", e), ToastSeverity::Alert);
+                    }
+                }
+            }
+            Err(e) => {
+                self.push_toast(format!("Error creating workspace: {}", e), ToastSeverity::Alert);
+            }
+        }
+        Cmd::None
+    }
+
     // ── Phase 3: helpers ────────────────────────────────────────
 
     /// Get the currently selected tension ID based on active view.
@@ -627,6 +765,7 @@ impl WerkApp {
                 .get(self.tree_selected)
                 .map(|i| i.tension_id.clone()),
             View::Agent(id) => Some(id.clone()),
+            View::Welcome => None,
         }
     }
 
@@ -1427,6 +1566,9 @@ impl WerkApp {
             {
                 Msg::StartDelete
             }
+            // Phase 6: Command palette and search
+            KeyCode::Char(':') => Msg::OpenCommandPalette,
+            KeyCode::Char('/') => Msg::OpenSearch,
             _ => Msg::Noop,
         }
     }
@@ -1446,6 +1588,139 @@ impl Model for WerkApp {
 
         // Route RawKey based on input mode
         if let Msg::RawKey(code, shift) = msg {
+            // Welcome screen routing
+            if self.active_view == View::Welcome {
+                match code {
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        self.welcome_selected = 1;
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        self.welcome_selected = 0;
+                    }
+                    KeyCode::Enter => {
+                        return self.handle_welcome_confirm();
+                    }
+                    KeyCode::Char('q') => return Cmd::Quit,
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
+            // Command palette routing
+            if self.command_palette.is_some() {
+                match code {
+                    KeyCode::Escape => {
+                        self.command_palette = None;
+                    }
+                    KeyCode::Down => {
+                        if let Some(ref mut palette) = self.command_palette {
+                            let count = palette.filtered_actions().len();
+                            if count > 0 && palette.selected < count - 1 {
+                                palette.selected += 1;
+                            }
+                        }
+                    }
+                    KeyCode::Up => {
+                        if let Some(ref mut palette) = self.command_palette {
+                            if palette.selected > 0 {
+                                palette.selected -= 1;
+                            }
+                        }
+                    }
+                    KeyCode::Enter => {
+                        if let Some(palette) = self.command_palette.take() {
+                            let filtered = palette.filtered_actions();
+                            if let Some(action) = filtered.get(palette.selected) {
+                                if let Some(ref msg) = action.msg {
+                                    let msg = msg.clone();
+                                    return self.update(msg);
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        if let Some(ref mut palette) = self.command_palette {
+                            if palette.cursor > 0 {
+                                let prev = palette.query[..palette.cursor]
+                                    .char_indices()
+                                    .next_back()
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(0);
+                                palette.query.drain(prev..palette.cursor);
+                                palette.cursor = prev;
+                                palette.selected = 0;
+                            }
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        if let Some(ref mut palette) = self.command_palette {
+                            palette.query.insert(palette.cursor, c);
+                            palette.cursor += c.len_utf8();
+                            palette.selected = 0;
+                        }
+                    }
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
+            // Search mode routing
+            if self.search_active {
+                match code {
+                    KeyCode::Escape => {
+                        self.search_active = false;
+                        self.search_query = None;
+                        self.search_buffer.clear();
+                        self.search_cursor = 0;
+                        // Reclamp selection
+                        let visible = self.visible_tensions().len();
+                        if visible > 0 && self.selected >= visible {
+                            self.selected = visible - 1;
+                        }
+                    }
+                    KeyCode::Enter => {
+                        self.search_active = false;
+                        // Open detail on first match
+                        let first_id = {
+                            let visible = self.visible_tensions();
+                            visible.first().map(|r| r.id.clone())
+                        };
+                        if let Some(id) = first_id {
+                            self.selected = 0;
+                            self.load_detail(&id);
+                            self.active_view = View::Detail;
+                        }
+                        self.search_query = None;
+                        self.search_buffer.clear();
+                        self.search_cursor = 0;
+                    }
+                    KeyCode::Backspace
+                        if self.search_cursor > 0 => {
+                            let prev = self.search_buffer[..self.search_cursor]
+                                .char_indices()
+                                .next_back()
+                                .map(|(i, _)| i)
+                                .unwrap_or(0);
+                            self.search_buffer.drain(prev..self.search_cursor);
+                            self.search_cursor = prev;
+                            self.search_query = if self.search_buffer.is_empty() {
+                                None
+                            } else {
+                                Some(self.search_buffer.clone())
+                            };
+                            self.selected = 0;
+                    }
+                    KeyCode::Char(c) => {
+                        self.search_buffer.insert(self.search_cursor, c);
+                        self.search_cursor += c.len_utf8();
+                        self.search_query = Some(self.search_buffer.clone());
+                        self.selected = 0;
+                    }
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
             match &self.input_mode {
                 InputMode::TextInput(_) => {
                     match code {
@@ -1503,6 +1778,7 @@ impl Model for WerkApp {
                             self.agent_mutation_cursor += 1;
                         }
                     }
+                    View::Welcome => {}
                 }
                 Cmd::None
             }
@@ -1526,6 +1802,7 @@ impl Model for WerkApp {
                             self.agent_mutation_cursor -= 1;
                         }
                     }
+                    View::Welcome => {}
                 }
                 Cmd::None
             }
@@ -1570,7 +1847,7 @@ impl Model for WerkApp {
                             self.active_view = View::Detail;
                         }
                     }
-                    View::Detail | View::Agent(_) => {}
+                    View::Detail | View::Agent(_) | View::Welcome => {}
                 }
                 Cmd::None
             }
@@ -1584,7 +1861,7 @@ impl Model for WerkApp {
                     View::Detail | View::TreeView => {
                         self.active_view = View::Dashboard;
                     }
-                    View::Dashboard => {}
+                    View::Dashboard | View::Welcome => {}
                 }
                 Cmd::None
             }
@@ -1906,6 +2183,22 @@ impl Model for WerkApp {
                 Cmd::None
             }
 
+            // Phase 6: Welcome screen (handled in RawKey routing, these are for exhaustiveness)
+            Msg::WelcomeSelect | Msg::WelcomeConfirm => Cmd::None,
+
+            // Phase 6: Command palette and search
+            Msg::OpenCommandPalette => {
+                self.command_palette = Some(CommandPaletteState::new());
+                Cmd::None
+            }
+            Msg::OpenSearch => {
+                self.search_active = true;
+                self.search_buffer.clear();
+                self.search_cursor = 0;
+                self.search_query = None;
+                Cmd::None
+            }
+
             Msg::RawKey(_, _) => Cmd::None, // already handled above
             Msg::Quit => Cmd::Quit,
             Msg::Noop => Cmd::None,
@@ -1918,43 +2211,75 @@ impl Model for WerkApp {
 
     fn view(&self, frame: &mut Frame<'_>) {
         let area = Rect::new(0, 0, frame.width(), frame.height());
+        let hide_hints = area.height < 10;
 
         match &self.active_view {
+            View::Welcome => {
+                self.render_welcome_screen(area, frame);
+                return; // No overlays on welcome
+            }
             View::Dashboard => {
-                let layout = Flex::vertical().constraints([
-                    Constraint::Fixed(1),
-                    Constraint::Fill,
-                    Constraint::Fixed(1),
-                ]);
-                let rects = layout.split(area);
-
-                self.render_title_bar(&rects[0], frame);
-                self.render_tension_list(&rects[1], frame);
-                self.render_dashboard_hints(&rects[2], frame);
+                if hide_hints {
+                    let layout = Flex::vertical().constraints([
+                        Constraint::Fixed(1),
+                        Constraint::Fill,
+                    ]);
+                    let rects = layout.split(area);
+                    self.render_title_bar(&rects[0], frame);
+                    self.render_tension_list(&rects[1], frame);
+                } else {
+                    let layout = Flex::vertical().constraints([
+                        Constraint::Fixed(1),
+                        Constraint::Fill,
+                        Constraint::Fixed(1),
+                    ]);
+                    let rects = layout.split(area);
+                    self.render_title_bar(&rects[0], frame);
+                    self.render_tension_list(&rects[1], frame);
+                    self.render_dashboard_hints(&rects[2], frame);
+                }
             }
             View::Detail => {
-                let layout = Flex::vertical().constraints([
-                    Constraint::Fixed(1),
-                    Constraint::Fill,
-                    Constraint::Fixed(1),
-                ]);
-                let rects = layout.split(area);
-
-                self.render_detail_title(&rects[0], frame);
-                self.render_detail_body(&rects[1], frame);
-                self.render_detail_hints(&rects[2], frame);
+                if hide_hints {
+                    let layout = Flex::vertical().constraints([
+                        Constraint::Fixed(1),
+                        Constraint::Fill,
+                    ]);
+                    let rects = layout.split(area);
+                    self.render_detail_title(&rects[0], frame);
+                    self.render_detail_body_responsive(&rects[1], frame);
+                } else {
+                    let layout = Flex::vertical().constraints([
+                        Constraint::Fixed(1),
+                        Constraint::Fill,
+                        Constraint::Fixed(1),
+                    ]);
+                    let rects = layout.split(area);
+                    self.render_detail_title(&rects[0], frame);
+                    self.render_detail_body_responsive(&rects[1], frame);
+                    self.render_detail_hints(&rects[2], frame);
+                }
             }
             View::TreeView => {
-                let layout = Flex::vertical().constraints([
-                    Constraint::Fixed(1),
-                    Constraint::Fill,
-                    Constraint::Fixed(1),
-                ]);
-                let rects = layout.split(area);
-
-                self.render_tree_title(&rects[0], frame);
-                self.render_tree_body(&rects[1], frame);
-                self.render_tree_hints(&rects[2], frame);
+                if hide_hints {
+                    let layout = Flex::vertical().constraints([
+                        Constraint::Fixed(1),
+                        Constraint::Fill,
+                    ]);
+                    let rects = layout.split(area);
+                    self.render_tree_title(&rects[0], frame);
+                    self.render_tree_body(&rects[1], frame);
+                } else {
+                    let layout = Flex::vertical().constraints([
+                        Constraint::Fixed(1),
+                        Constraint::Fill,
+                        Constraint::Fixed(1),
+                    ]);
+                    let rects = layout.split(area);
+                    self.render_tree_title(&rects[0], frame);
+                    self.render_tree_body(&rects[1], frame);
+                    self.render_tree_hints(&rects[2], frame);
+                }
             }
             View::Agent(tension_id) => {
                 let layout = Flex::vertical().constraints([
@@ -1970,12 +2295,24 @@ impl Model for WerkApp {
                 self.render_agent_body(&rects[1], frame);
                 self.render_agent_separator(&rects[2], frame);
                 self.render_agent_context(tension_id, &rects[3], frame);
-                self.render_agent_hints(&rects[4], frame);
+                if !hide_hints {
+                    self.render_agent_hints(&rects[4], frame);
+                }
             }
         }
 
         if self.show_help {
             self.render_help_overlay(area, frame);
+        }
+
+        // Render command palette overlay
+        if self.command_palette.is_some() {
+            self.render_command_palette(area, frame);
+        }
+
+        // Render search overlay
+        if self.search_active {
+            self.render_search_overlay(area, frame);
         }
 
         // Render input overlay on top of everything
@@ -2004,6 +2341,139 @@ const CLR_CYAN: PackedRgba = PackedRgba::rgb(80, 200, 220);
 const CLR_BG_DARK: PackedRgba = PackedRgba::rgb(30, 30, 30);
 
 impl WerkApp {
+    // ── Welcome screen rendering ─────────────────────────────────
+
+    fn render_welcome_screen(&self, area: Rect, frame: &mut Frame<'_>) {
+        let mut lines: Vec<Line> = vec![
+            Line::from(""),
+            Line::from(""),
+            Line::from_spans([Span::styled(
+                "  Welcome to werk",
+                Style::new().fg(CLR_CYAN).bold(),
+            )]),
+            Line::from(""),
+            Line::from_spans([Span::styled(
+                "  werk is a structural dynamics tool for managing creative tensions.",
+                Style::new().fg(CLR_LIGHT_GRAY),
+            )]),
+            Line::from_spans([Span::styled(
+                "  No workspace was found. Where would you like to create one?",
+                Style::new().fg(CLR_LIGHT_GRAY),
+            )]),
+            Line::from(""),
+        ];
+
+        let options = [
+            ("Create workspace here (.werk/)", "Local to this directory"),
+            ("Create globally (~/.werk/)", "Shared across all directories"),
+        ];
+
+        for (i, (label, desc)) in options.iter().enumerate() {
+            let is_selected = i == self.welcome_selected;
+            let marker = if is_selected { ">" } else { " " };
+            let style = if is_selected {
+                Style::new().fg(CLR_WHITE).bold()
+            } else {
+                Style::new().fg(CLR_LIGHT_GRAY)
+            };
+            let desc_style = if is_selected {
+                Style::new().fg(CLR_MID_GRAY)
+            } else {
+                Style::new().fg(CLR_DIM_GRAY)
+            };
+            lines.push(Line::from_spans([
+                Span::styled(format!("  {} ", marker), style),
+                Span::styled(*label, style),
+                Span::styled(format!("  {}", desc), desc_style),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from_spans([Span::styled(
+            "  j/k to select, Enter to confirm, q to quit",
+            Style::new().fg(CLR_DIM_GRAY),
+        )]));
+
+        let text = Text::from_lines(lines);
+        let paragraph = Paragraph::new(text);
+        paragraph.render(area, frame);
+    }
+
+    // ── Command palette rendering ─────────────────────────────────
+
+    fn render_command_palette(&self, area: Rect, frame: &mut Frame<'_>) {
+        let palette = match &self.command_palette {
+            Some(p) => p,
+            None => return,
+        };
+
+        let filtered = palette.filtered_actions();
+        let visible_count = filtered.len().min(14);
+        let overlay_height = (visible_count as u16) + 3; // separator + prompt + input
+        let overlay_width = 50u16.min(area.width.saturating_sub(4));
+        let x = (area.width.saturating_sub(overlay_width)) / 2;
+        let y = 2u16.min(area.height.saturating_sub(overlay_height));
+        let overlay_area = Rect::new(x, y, overlay_width, overlay_height);
+
+        let separator = "\u{2500}".repeat(overlay_width as usize);
+        let mut lines = vec![
+            Line::from_spans([Span::styled(
+                &separator,
+                Style::new().fg(CLR_DIM_GRAY),
+            )]),
+            Line::from_spans([Span::styled(
+                format!("  : {}\u{2588}", palette.query),
+                Style::new().fg(CLR_CYAN).bold(),
+            )]),
+        ];
+
+        for (i, action) in filtered.iter().enumerate().take(visible_count) {
+            let is_selected = i == palette.selected;
+            let marker = if is_selected { ">" } else { " " };
+            let style = if is_selected {
+                Style::new().fg(CLR_WHITE).bold()
+            } else {
+                Style::new().fg(CLR_LIGHT_GRAY)
+            };
+            let desc_style = if is_selected {
+                Style::new().fg(CLR_MID_GRAY)
+            } else {
+                Style::new().fg(CLR_DIM_GRAY)
+            };
+            lines.push(Line::from_spans([
+                Span::styled(format!("  {} ", marker), style),
+                Span::styled(
+                    format!("{:<12}", action.name),
+                    style,
+                ),
+                Span::styled(action.description, desc_style),
+            ]));
+        }
+
+        // Add a separator at the bottom
+        lines.push(Line::from_spans([Span::styled(
+            &separator,
+            Style::new().fg(CLR_DIM_GRAY),
+        )]));
+
+        let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
+        let paragraph = Paragraph::new(Text::from_lines(lines)).style(bg_style);
+        paragraph.render(overlay_area, frame);
+    }
+
+    // ── Search overlay rendering ───────────────────────────────────
+
+    fn render_search_overlay(&self, area: Rect, frame: &mut Frame<'_>) {
+        let overlay_area = Rect::new(0, 0, area.width, 1);
+        let search_display = format!(
+            " / {}\u{2588}",
+            self.search_buffer,
+        );
+        let style = Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK);
+        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&search_display, style)]));
+        paragraph.render(overlay_area, frame);
+    }
+
     // ── Dashboard rendering ──────────────────────────────────────
 
     fn render_title_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
@@ -2029,7 +2499,17 @@ impl WerkApp {
     fn render_tension_list(&self, area: &Rect, frame: &mut Frame<'_>) {
         let visible = self.visible_tensions();
         if visible.is_empty() {
-            let msg = Paragraph::new("  No tensions found. Use `werk add` to create one.");
+            let message = if self.search_query.is_some() {
+                "  No matching tensions. Press Esc to clear search, f to change filter."
+            } else if self.tensions.is_empty() {
+                "  No tensions yet. Press `a` to create your first."
+            } else {
+                "  No matching tensions. Press `f` to change filter."
+            };
+            let msg = Paragraph::new(Text::from_spans([Span::styled(
+                message,
+                Style::new().fg(CLR_MID_GRAY),
+            )]));
             msg.render(*area, frame);
             return;
         }
@@ -2114,7 +2594,7 @@ impl WerkApp {
         paragraph.render(*area, frame);
     }
 
-    fn render_detail_body(&self, area: &Rect, frame: &mut Frame<'_>) {
+    fn render_detail_body_inner(&self, area: &Rect, frame: &mut Frame<'_>, suppress_verbose: bool) {
         let mut lines: Vec<Line> = Vec::new();
 
         if let Some(tension) = &self.detail_tension {
@@ -2212,7 +2692,7 @@ impl WerkApp {
                 }
 
                 // Verbose dynamics
-                if self.verbose {
+                if self.verbose && !suppress_verbose {
                     lines.push(Line::from(""));
                     lines.push(Line::from_spans([Span::styled(
                         "  \u{2500}\u{2500} Verbose Dynamics \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
@@ -2263,23 +2743,18 @@ impl WerkApp {
                 )]));
             }
 
-            // History section
-            lines.push(Line::from(""));
-            let history_header = format!(
-                "  \u{2500}\u{2500} History ({}) \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-                self.detail_mutations.len()
-            );
-            lines.push(Line::from_spans([Span::styled(
-                &history_header,
-                Style::new().fg(CLR_DIM_GRAY),
-            )]));
-
-            if self.detail_mutations.is_empty() {
+            // History section (only show if there are mutations)
+            if !self.detail_mutations.is_empty() {
+                lines.push(Line::from(""));
+                let history_header = format!(
+                    "  \u{2500}\u{2500} History ({}) \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
+                    self.detail_mutations.len()
+                );
                 lines.push(Line::from_spans([Span::styled(
-                    "  No mutations recorded",
+                    &history_header,
                     Style::new().fg(CLR_DIM_GRAY),
                 )]));
-            } else {
+
                 for m in &self.detail_mutations {
                     let value_display = match &m.old_value {
                         Some(old) => format!(
@@ -2339,6 +2814,12 @@ impl WerkApp {
         let text = Text::from_lines(lines);
         let paragraph = Paragraph::new(text).scroll((self.detail_scroll, 0));
         paragraph.render(*area, frame);
+    }
+
+    /// Responsive detail body: hides verbose dynamics if terminal height < 20.
+    fn render_detail_body_responsive(&self, area: &Rect, frame: &mut Frame<'_>) {
+        let suppress_verbose = area.height < 20;
+        self.render_detail_body_inner(area, frame, suppress_verbose);
     }
 
     fn render_detail_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
@@ -2531,7 +3012,10 @@ impl WerkApp {
 
     fn render_tree_body(&self, area: &Rect, frame: &mut Frame<'_>) {
         if self.tree_items.is_empty() {
-            let msg = Paragraph::new("  No tensions found.");
+            let msg = Paragraph::new(Text::from_spans([Span::styled(
+                "  No tensions yet. Press `a` to create your first.",
+                Style::new().fg(CLR_MID_GRAY),
+            )]));
             msg.render(*area, frame);
             return;
         }
@@ -2613,48 +3097,114 @@ impl WerkApp {
     // ── Help overlay ─────────────────────────────────────────────
 
     fn render_help_overlay(&self, area: Rect, frame: &mut Frame<'_>) {
-        let help_width = 60u16.min(area.width.saturating_sub(4));
-        let help_height = 24u16.min(area.height.saturating_sub(4));
+        let help_lines = self.context_help_lines();
+        let line_count = help_lines.len() as u16;
+        let help_width = 62u16.min(area.width.saturating_sub(4));
+        let help_height = (line_count + 2).min(area.height.saturating_sub(4));
         let x = (area.width.saturating_sub(help_width)) / 2;
         let y = (area.height.saturating_sub(help_height)) / 2;
         let help_area = Rect::new(x, y, help_width, help_height);
 
-        let help_lines = vec![
+        let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
+        let paragraph = Paragraph::new(Text::from_lines(help_lines)).style(bg_style);
+        paragraph.render(help_area, frame);
+    }
+
+    fn context_help_lines(&self) -> Vec<Line> {
+        let mut lines = vec![
             Line::from_spans([Span::styled(
                 " werk \u{2014} structural dynamics TUI",
                 Style::new().bold(),
             )]),
             Line::from(""),
-            Line::from("  Navigation"),
-            Line::from("  j/k         Move up/down"),
-            Line::from("  Enter       Open detail view"),
-            Line::from("  Esc         Go back"),
-            Line::from("  1           Dashboard     2/t  Tree view"),
-            Line::from("  f           Cycle filter   v   Toggle verbose"),
-            Line::from(""),
-            Line::from("  Editing"),
-            Line::from("  r           Update reality (actual state)"),
-            Line::from("  d           Update desire"),
-            Line::from("  n           Add note"),
-            Line::from("  h           Set horizon"),
-            Line::from("  a           Add new tension"),
-            Line::from("  R           Resolve tension"),
-            Line::from("  X           Release tension"),
-            Line::from("  Del         Delete tension (detail view)"),
-            Line::from("  m           Move/reparent tension"),
-            Line::from("  g           Agent (detail view)"),
-            Line::from(""),
-            Line::from("  Agent View"),
-            Line::from("  j/k         Navigate mutations"),
-            Line::from("  Enter/1-9   Toggle mutation selection"),
-            Line::from("  a           Apply selected mutations"),
-            Line::from(""),
-            Line::from("  q / Ctrl+C  Quit          ?  Toggle this help"),
         ];
 
-        let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
-        let paragraph = Paragraph::new(Text::from_lines(help_lines)).style(bg_style);
-        paragraph.render(help_area, frame);
+        // Check if we are in input mode first
+        if !matches!(self.input_mode, InputMode::Normal) {
+            lines.push(Line::from_spans([Span::styled("  Input Mode", Style::new().fg(CLR_CYAN).bold())]));
+            lines.push(Line::from("  Enter       Submit input"));
+            lines.push(Line::from("  Esc         Cancel"));
+            lines.push(Line::from("  Left/Right  Move cursor"));
+            lines.push(Line::from("  Home/End    Jump to start/end"));
+            lines.push(Line::from("  Backspace   Delete before cursor"));
+            lines.push(Line::from(""));
+            lines.push(Line::from("  q / Ctrl+C  Quit          ?  Toggle this help"));
+            return lines;
+        }
+
+        match &self.active_view {
+            View::Welcome => {
+                lines.push(Line::from("  j/k         Select option"));
+                lines.push(Line::from("  Enter       Confirm selection"));
+                lines.push(Line::from("  q           Quit"));
+            }
+            View::Dashboard => {
+                lines.push(Line::from_spans([Span::styled("  Dashboard", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  j/k         Move up/down"));
+                lines.push(Line::from("  Enter       Open detail view"));
+                lines.push(Line::from("  Esc         (no-op at top level)"));
+                lines.push(Line::from("  1           Dashboard     2/t  Tree view"));
+                lines.push(Line::from("  f           Cycle filter   v   Toggle verbose"));
+                lines.push(Line::from("  /           Search tensions"));
+                lines.push(Line::from("  :           Command palette"));
+                lines.push(Line::from(""));
+                lines.push(Line::from_spans([Span::styled("  Editing", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  a           Add new tension"));
+                lines.push(Line::from("  r           Update reality (actual state)"));
+                lines.push(Line::from("  d           Update desire"));
+                lines.push(Line::from("  n           Add note"));
+                lines.push(Line::from("  h           Set horizon"));
+                lines.push(Line::from("  R           Resolve tension"));
+                lines.push(Line::from("  X           Release tension"));
+                lines.push(Line::from("  m           Move/reparent tension"));
+            }
+            View::Detail => {
+                lines.push(Line::from_spans([Span::styled("  Detail View", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  j/k         Scroll up/down"));
+                lines.push(Line::from("  Esc         Back to dashboard"));
+                lines.push(Line::from("  v           Toggle verbose dynamics"));
+                lines.push(Line::from("  /           Search tensions"));
+                lines.push(Line::from("  :           Command palette"));
+                lines.push(Line::from(""));
+                lines.push(Line::from_spans([Span::styled("  Editing", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  r           Update reality"));
+                lines.push(Line::from("  d           Update desire"));
+                lines.push(Line::from("  n           Add note"));
+                lines.push(Line::from("  h           Set horizon"));
+                lines.push(Line::from("  a           Add sub-tension"));
+                lines.push(Line::from("  R           Resolve"));
+                lines.push(Line::from("  X           Release"));
+                lines.push(Line::from("  Del         Delete tension"));
+                lines.push(Line::from("  m           Move/reparent"));
+                lines.push(Line::from("  g           Open agent"));
+            }
+            View::TreeView => {
+                lines.push(Line::from_spans([Span::styled("  Tree View", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  j/k         Navigate tree"));
+                lines.push(Line::from("  Enter       Open detail view"));
+                lines.push(Line::from("  Esc/1       Back to dashboard"));
+                lines.push(Line::from("  f           Cycle filter"));
+                lines.push(Line::from("  /           Search tensions"));
+                lines.push(Line::from("  :           Command palette"));
+                lines.push(Line::from(""));
+                lines.push(Line::from_spans([Span::styled("  Editing", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  a           Add tension"));
+                lines.push(Line::from("  r/d/n/h     Edit selected tension"));
+                lines.push(Line::from("  R/X/m       Resolve/Release/Move"));
+            }
+            View::Agent(_) => {
+                lines.push(Line::from_spans([Span::styled("  Agent View", Style::new().fg(CLR_CYAN).bold())]));
+                lines.push(Line::from("  j/k         Navigate mutations"));
+                lines.push(Line::from("  Enter       Toggle mutation selection"));
+                lines.push(Line::from("  1-9         Toggle mutation by number"));
+                lines.push(Line::from("  a           Apply selected mutations"));
+                lines.push(Line::from("  Esc         Back to detail view"));
+            }
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from("  q / Ctrl+C  Quit          ?  Toggle this help"));
+        lines
     }
 
     // ── Input overlay rendering ──────────────────────────────────
@@ -2847,30 +3397,6 @@ fn format_tension_line(row: &TensionRow, selected: bool, width: usize) -> Line {
     let marker = if selected { ">" } else { " " };
     let phase_str = format!("[{}]", row.phase);
 
-    // Urgency bar (6 chars wide)
-    let urgency_bar = match row.urgency {
-        Some(u) => {
-            let filled = ((u * 6.0).round() as usize).min(6);
-            let empty = 6 - filled;
-            format!(
-                "{}{}",
-                "\u{2588}".repeat(filled),
-                "\u{2591}".repeat(empty),
-            )
-        }
-        None => "------".to_string(),
-    };
-
-    let urgency_pct = match row.urgency {
-        Some(u) => format!("{:>3.0}%", (u * 100.0).min(999.0)),
-        None => "  --".to_string(),
-    };
-
-    // Truncate desired to fit
-    let fixed_width = 4 + 4 + 2 + 12 + 2 + 7 + 2 + 5;
-    let desired_width = width.saturating_sub(fixed_width).max(10);
-    let desired_trunc = truncate(&row.desired, desired_width);
-
     let (line_style, desired_style) = if selected {
         (
             Style::new().fg(CLR_WHITE).bold(),
@@ -2896,6 +3422,62 @@ fn format_tension_line(row: &TensionRow, selected: bool, width: usize) -> Line {
             ),
         }
     };
+
+    // Very narrow: only phase + truncated desired
+    if width < 40 {
+        let desired_width = width.saturating_sub(8).max(5);
+        let desired_trunc = truncate(&row.desired, desired_width);
+        return Line::from_spans([
+            Span::styled(format!("{} ", marker), line_style),
+            Span::styled(format!("{} ", phase_str), line_style),
+            Span::styled(desired_trunc.to_string(), desired_style),
+        ]);
+    }
+
+    // Narrow: hide urgency bar column
+    if width < 60 {
+        let urgency_pct = match row.urgency {
+            Some(u) => format!("{:>3.0}%", (u * 100.0).min(999.0)),
+            None => "  --".to_string(),
+        };
+        let fixed_width = 4 + 4 + 2 + 12 + 2 + 5;
+        let desired_width = width.saturating_sub(fixed_width).max(10);
+        let desired_trunc = truncate(&row.desired, desired_width);
+        return Line::from_spans([
+            Span::styled(format!("{} ", marker), line_style),
+            Span::styled(format!("{} ", phase_str), line_style),
+            Span::styled(format!("{} ", row.movement), line_style),
+            Span::styled(
+                format!("{:<width$} ", desired_trunc, width = desired_width),
+                desired_style,
+            ),
+            Span::styled(format!("{:>11} ", row.horizon_display), line_style),
+            Span::styled(urgency_pct, line_style),
+        ]);
+    }
+
+    // Full width: show everything
+    let urgency_bar = match row.urgency {
+        Some(u) => {
+            let filled = ((u * 6.0).round() as usize).min(6);
+            let empty = 6 - filled;
+            format!(
+                "{}{}",
+                "\u{2588}".repeat(filled),
+                "\u{2591}".repeat(empty),
+            )
+        }
+        None => "------".to_string(),
+    };
+
+    let urgency_pct = match row.urgency {
+        Some(u) => format!("{:>3.0}%", (u * 100.0).min(999.0)),
+        None => "  --".to_string(),
+    };
+
+    let fixed_width = 4 + 4 + 2 + 12 + 2 + 7 + 2 + 5;
+    let desired_width = width.saturating_sub(fixed_width).max(10);
+    let desired_trunc = truncate(&row.desired, desired_width);
 
     Line::from_spans([
         Span::styled(format!("{} ", marker), line_style),
@@ -3263,13 +3845,16 @@ pub fn load_tensions() -> Result<(DynamicsEngine, Vec<TensionRow>), String> {
 
 /// Launch the TUI dashboard.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let (engine, tensions) = load_tensions().unwrap_or_else(|_| {
-        // Create an in-memory engine as fallback
-        let engine = DynamicsEngine::new_in_memory()
-            .expect("failed to create in-memory engine");
-        (engine, Vec::new())
-    });
-    let app = WerkApp::new(engine, tensions);
-    App::fullscreen(app).run()?;
+    match load_tensions() {
+        Ok((engine, tensions)) => {
+            let app = WerkApp::new(engine, tensions);
+            App::fullscreen(app).run()?;
+        }
+        Err(_) => {
+            // No workspace found -- show welcome screen for auto-init
+            let app = WerkApp::new_welcome();
+            App::fullscreen(app).run()?;
+        }
+    }
     Ok(())
 }
