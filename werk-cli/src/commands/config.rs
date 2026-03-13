@@ -307,8 +307,47 @@ fn parse_toml_value(value: &str) -> toml::Value {
     toml::Value::String(value.to_string())
 }
 
+/// Config metadata for interactive menu.
+struct ConfigMeta {
+    key: &'static str,
+    description: &'static str,
+    category: &'static str,
+    default: &'static str,
+}
+
+/// Known configuration keys with descriptions and categories.
+const CONFIG_SCHEMA: &[ConfigMeta] = &[
+    ConfigMeta {
+        key: "agent.command",
+        description: "Command to run the agent (path, name, or command with flags)",
+        category: "Agent",
+        default: "claude",
+    },
+    ConfigMeta {
+        key: "agent.timeout",
+        description: "Timeout in seconds for agent commands",
+        category: "Agent",
+        default: "300",
+    },
+    ConfigMeta {
+        key: "display.theme",
+        description: "Color theme for terminal output",
+        category: "Display",
+        default: "auto",
+    },
+    ConfigMeta {
+        key: "display.verbose",
+        description: "Show detailed dynamics output by default",
+        category: "Display",
+        default: "false",
+    },
+];
+
 /// Config command handler.
-pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand) -> Result<()> {
+pub fn cmd_config(
+    output: &crate::output::Output,
+    command: Option<&super::ConfigCommand>,
+) -> Result<()> {
     use crate::output::ColorStyle;
     use crate::workspace::Workspace;
     use serde::Serialize;
@@ -328,8 +367,14 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
         value: String,
     }
 
+    // If no subcommand, launch interactive menu
+    let command = match command {
+        Some(cmd) => cmd,
+        None => return interactive_config_menu(output),
+    };
+
     match command {
-        super::ConfigCommand::Set { key, value } => {
+        super::ConfigCommand::Set { ref key, ref value } => {
             // Validate key is not empty
             if key.is_empty() {
                 return Err(WerkError::InvalidInput(
@@ -348,7 +393,7 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
             };
 
             // Set the value
-            config.set(&key, value.clone());
+            config.set(key, value.clone());
 
             // Save
             config.save()?;
@@ -360,7 +405,7 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
                 .unwrap_or_else(|| "unknown".to_string());
 
             if output.is_structured() {
-                let result = ConfigSetResult { key, value, path };
+                let result = ConfigSetResult { key: key.clone(), value: value.clone(), path };
                 output
                     .print_structured(&result)
                     .map_err(WerkError::IoError)?;
@@ -369,14 +414,14 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
                     .success(&format!(
                         "Set {} = {}",
                         key,
-                        output.styled(&value, ColorStyle::Highlight)
+                        output.styled(value, ColorStyle::Highlight)
                     ))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
 
             Ok(())
         }
-        super::ConfigCommand::Get { key } => {
+        super::ConfigCommand::Get { ref key } => {
             // Validate key is not empty
             if key.is_empty() {
                 return Err(WerkError::InvalidInput(
@@ -395,11 +440,11 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
             };
 
             // Get the value
-            match config.get(&key) {
+            match config.get(key) {
                 Some(value) => {
                     if output.is_structured() {
                         let result = ConfigGetResult {
-                            key,
+                            key: key.clone(),
                             value: value.clone(),
                         };
                         output
@@ -408,7 +453,7 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
                     } else {
                         println!(
                             "{} = {}",
-                            output.styled(&key, ColorStyle::Info),
+                            output.styled(key, ColorStyle::Info),
                             output.styled(value, ColorStyle::Highlight)
                         );
                     }
@@ -421,6 +466,110 @@ pub fn cmd_config(output: &crate::output::Output, command: super::ConfigCommand)
             }
         }
     }
+}
+
+/// Interactive configuration menu.
+///
+/// Shows all known config keys grouped by category. User can browse,
+/// view descriptions, and edit values.
+fn interactive_config_menu(output: &crate::output::Output) -> Result<()> {
+    use crate::output::ColorStyle;
+    use crate::workspace::Workspace;
+    use std::io::IsTerminal;
+
+    if !std::io::stdin().is_terminal() {
+        return Err(WerkError::InvalidInput(
+            "interactive config requires a terminal. Use 'werk config get/set' instead.".to_string(),
+        ));
+    }
+
+    // Load config
+    let workspace_result = Workspace::discover();
+    let mut config = match workspace_result {
+        Ok(ref ws) => Config::load(ws)?,
+        Err(_) => Config::load_global()?,
+    };
+
+    loop {
+        // Build menu items with current values
+        let items: Vec<String> = CONFIG_SCHEMA
+            .iter()
+            .map(|meta| {
+                let current = config
+                    .get(meta.key)
+                    .cloned()
+                    .unwrap_or_else(|| format!("(default: {})", meta.default));
+                format!(
+                    "[{}] {} = {}",
+                    meta.category, meta.key, current
+                )
+            })
+            .collect();
+
+        let mut all_items = items.clone();
+        all_items.push("Quit".to_string());
+
+        println!();
+        let selection = dialoguer::Select::new()
+            .with_prompt("werk Configuration")
+            .items(&all_items)
+            .default(0)
+            .interact_opt()
+            .map_err(|e| WerkError::IoError(format!("selection failed: {}", e)))?;
+
+        let selection = match selection {
+            Some(s) => s,
+            None => break, // Ctrl+C
+        };
+
+        // Quit
+        if selection >= CONFIG_SCHEMA.len() {
+            break;
+        }
+
+        let meta = &CONFIG_SCHEMA[selection];
+        let current = config
+            .get(meta.key)
+            .cloned()
+            .unwrap_or_else(|| meta.default.to_string());
+
+        println!();
+        println!(
+            "  {} {}",
+            output.styled(meta.key, ColorStyle::Highlight),
+            output.styled(&format!("({})", meta.category), ColorStyle::Muted)
+        );
+        println!("  {}", meta.description);
+        println!(
+            "  Current: {}",
+            output.styled(&current, ColorStyle::Info)
+        );
+        println!(
+            "  Default: {}",
+            output.styled(meta.default, ColorStyle::Muted)
+        );
+        println!();
+
+        let new_value: String = dialoguer::Input::new()
+            .with_prompt("New value (Enter to skip)")
+            .allow_empty(true)
+            .interact_text()
+            .map_err(|e| WerkError::IoError(format!("input failed: {}", e)))?;
+
+        if !new_value.is_empty() {
+            config.set(meta.key, new_value.clone());
+            config.save()?;
+            output
+                .success(&format!(
+                    "Set {} = {}",
+                    meta.key,
+                    output.styled(&new_value, ColorStyle::Highlight)
+                ))
+                .map_err(|e| WerkError::IoError(e.to_string()))?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

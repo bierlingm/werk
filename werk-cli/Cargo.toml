@@ -20,6 +20,10 @@ owo-colors = "4"
 thiserror = "2"
 dirs = "6"
 ulid = "1"
+which = "7"
+dialoguer = "0.11"
+serde_yaml = "0.9"
+regex = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

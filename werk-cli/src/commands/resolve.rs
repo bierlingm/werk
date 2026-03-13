@@ -23,7 +23,7 @@ pub fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     // Record old status for output
     let old_status = tension.status;

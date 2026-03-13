@@ -26,7 +26,7 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     // Record old status for output
     let old_status = tension.status;

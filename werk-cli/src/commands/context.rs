@@ -39,7 +39,7 @@ pub fn cmd_context(output: &Output, id: String) -> Result<(), WerkError> {
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     // Get mutations for this tension
     let mutations = engine

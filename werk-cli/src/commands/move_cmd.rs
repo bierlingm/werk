@@ -25,14 +25,14 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
     let resolver = PrefixResolver::new(tensions.clone());
 
     // Resolve the tension to move
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
     let tension_id = tension.id.clone();
     let old_parent_id = tension.parent_id.clone();
 
     // Resolve the new parent if provided
     let new_parent_id = if let Some(parent_prefix) = parent {
         // Prevent moving to self
-        let parent_tension = resolver.resolve(&parent_prefix)?;
+        let parent_tension = resolver.resolve_interactive(&parent_prefix)?;
         if parent_tension.id == tension_id {
             return Err(WerkError::InvalidInput(
                 "cannot move tension to itself".to_string(),

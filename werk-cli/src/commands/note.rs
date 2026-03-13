@@ -50,7 +50,7 @@ pub fn cmd_note(
             // Note on specific tension
             let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
             let resolver = PrefixResolver::new(tensions);
-            let tension = resolver.resolve(&id_prefix)?;
+            let tension = resolver.resolve_interactive(&id_prefix)?;
 
             // Record note mutation (notes work on any status, no validation needed)
             store

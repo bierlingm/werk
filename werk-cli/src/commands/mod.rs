@@ -33,11 +33,11 @@ pub enum Commands {
         global: bool,
     },
 
-    /// Get or set configuration values.
+    /// Get or set configuration values. Run without subcommand for interactive menu.
     Config {
-        /// Config subcommand.
+        /// Config subcommand (omit for interactive menu).
         #[command(subcommand)]
-        command: ConfigCommand,
+        command: Option<ConfigCommand>,
     },
 
     /// Create a new tension.
@@ -166,12 +166,24 @@ pub enum Commands {
     },
 
     /// Launch an agent with structural context.
+    ///
+    /// Two modes:
+    ///   werk run <id> "prompt"       One-shot: send prompt with tension context, get response
+    ///   werk run <id> -- <command>   Interactive: launch agent with context piped to stdin
     Run {
         /// Tension ID or prefix.
         id: String,
 
-        /// Agent command to run (overrides config default).
-        #[arg(trailing_var_arg = true)]
+        /// User prompt for one-shot mode.
+        #[arg(value_name = "PROMPT")]
+        prompt: Option<String>,
+
+        /// Don't prompt for reality updates from agent suggestions.
+        #[arg(long)]
+        no_suggest: bool,
+
+        /// Agent command to run (overrides config default, for interactive mode).
+        #[arg(last = true)]
         command: Vec<String>,
     },
 

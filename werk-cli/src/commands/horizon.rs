@@ -35,7 +35,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     match value {
         Some(new_value) => {

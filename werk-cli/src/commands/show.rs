@@ -65,7 +65,7 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     // Get mutations for this tension
     let mutations = engine
@@ -529,11 +529,12 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
     Ok(())
 }
 
-/// Truncate a string to max length, adding ellipsis if needed.
+/// Truncate a string to max length, adding ellipsis if needed (Unicode-safe).
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
+        let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{}...", truncated)
     }
 }

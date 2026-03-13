@@ -23,7 +23,7 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     // Record the tension ID before deletion
     let tension_id = tension.id.clone();

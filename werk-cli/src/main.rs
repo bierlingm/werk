@@ -44,7 +44,7 @@ fn main() {
     // Dispatch to subcommand handlers
     let result = match args.command {
         Commands::Init { global } => werk::commands::init::cmd_init(&output, global),
-        Commands::Config { command } => werk::commands::config::cmd_config(&output, command),
+        Commands::Config { command } => werk::commands::config::cmd_config(&output, command.as_ref()),
         Commands::Add {
             desired,
             actual,
@@ -70,7 +70,12 @@ fn main() {
             released,
         } => werk::commands::tree::cmd_tree(&output, open, all, resolved, released),
         Commands::Context { id } => werk::commands::context::cmd_context(&output, id),
-        Commands::Run { id, command } => werk::commands::run::cmd_run(&output, id, command),
+        Commands::Run {
+            id,
+            prompt,
+            no_suggest,
+            command,
+        } => werk::commands::run::cmd_run(&output, id, prompt, no_suggest, command),
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)
         }

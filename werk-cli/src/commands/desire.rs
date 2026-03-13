@@ -24,7 +24,7 @@ pub fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve(&id)?;
+    let tension = resolver.resolve_interactive(&id)?;
 
     // Get the new value - either from argument or editor
     let new_value = match value {

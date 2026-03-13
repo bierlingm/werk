@@ -67,7 +67,7 @@ pub fn cmd_add(
     let parent_id = if let Some(parent_prefix) = parent {
         let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
         let resolver = PrefixResolver::new(tensions);
-        let parent_tension = resolver.resolve(&parent_prefix)?;
+        let parent_tension = resolver.resolve_interactive(&parent_prefix)?;
         Some(parent_tension.id.clone())
     } else {
         None
