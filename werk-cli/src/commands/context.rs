@@ -14,13 +14,13 @@ use serde::Serialize;
 
 /// Context output structure - always JSON, designed for agent consumption.
 #[derive(Serialize)]
-struct ContextResult {
-    tension: TensionInfo,
-    ancestors: Vec<TensionInfo>,
-    siblings: Vec<TensionInfo>,
-    children: Vec<TensionInfo>,
-    dynamics: ContextDynamicsJson,
-    mutations: Vec<MutationInfo>,
+pub struct ContextResult {
+    pub tension: TensionInfo,
+    pub ancestors: Vec<TensionInfo>,
+    pub siblings: Vec<TensionInfo>,
+    pub children: Vec<TensionInfo>,
+    pub dynamics: ContextDynamicsJson,
+    pub mutations: Vec<MutationInfo>,
 }
 
 pub fn cmd_context(output: &Output, id: String) -> Result<(), WerkError> {
@@ -39,7 +39,7 @@ pub fn cmd_context(output: &Output, id: String) -> Result<(), WerkError> {
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Get mutations for this tension
     let mutations = engine

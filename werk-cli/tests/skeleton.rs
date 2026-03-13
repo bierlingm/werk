@@ -23,8 +23,7 @@ fn test_werk_help_shows_global_flags() {
     cmd.arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("--json"))
-        .stdout(predicate::str::contains("--no-color"));
+        .stdout(predicate::str::contains("--json"));
 }
 
 #[test]
@@ -81,9 +80,9 @@ fn test_werk_json_flag() {
 }
 
 #[test]
-fn test_werk_no_color_flag() {
+fn test_werk_plain_text_output() {
     let mut cmd = cargo_bin_cmd!("werk");
-    cmd.arg("--no-color").arg("init");
+    cmd.arg("init");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Workspace"));

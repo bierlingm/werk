@@ -600,45 +600,6 @@ fn test_show_without_horizon() {
     // Should not have urgency/pressure for no-horizon tension
 }
 
-// VAL-HCLI-010: Show --verbose with horizon dynamics
-#[test]
-fn test_show_verbose_with_horizon() {
-    let dir = TempDir::new().unwrap();
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Create tension with horizon
-    let output = cargo_bin_cmd!("werk")
-        .arg("--json")
-        .arg("add")
-        .arg("desired")
-        .arg("actual")
-        .arg("--horizon")
-        .arg("2026-05")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
-    let id = json["id"].as_str().unwrap();
-
-    // Show verbose
-    cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Urgency:"))
-        .stdout(predicate::str::contains("Pressure:"));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tree with horizon

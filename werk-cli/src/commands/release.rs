@@ -1,7 +1,7 @@
 //! Release command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
@@ -26,7 +26,7 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Record old status for output
     let old_status = tension.status;
@@ -67,16 +67,11 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        let id_styled = output.styled(&tension.id, ColorStyle::Id);
         output
-            .success(&format!("Released tension {}", id_styled))
+            .success(&format!("Released tension {}", &tension.id))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
-        println!(
-            "  Status: {} -> {}",
-            output.styled(&old_status.to_string(), ColorStyle::Muted),
-            output.styled("Released", ColorStyle::Released)
-        );
-        println!("  Reason: {}", output.styled(&reason, ColorStyle::Muted));
+        println!("  Status: {} -> Released", old_status);
+        println!("  Reason: {}", &reason);
     }
 
     Ok(())

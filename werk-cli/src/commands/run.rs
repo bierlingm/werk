@@ -7,32 +7,22 @@
 //!   context piped to stdin.
 
 use crate::commands::config::Config;
+use crate::commands::context::ContextResult;
 use crate::dynamics::{
     compute_all_dynamics, mutation_to_info, node_to_tension_info, tension_to_info,
-    ContextDynamicsJson, MutationInfo, TensionInfo,
+    MutationInfo, TensionInfo,
 };
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
+use werk_shared::truncate;
 use chrono::Utc;
 use sd_core::{DynamicsEngine, Mutation, Tension, TensionStatus};
-use serde::Serialize;
 use std::io::Write;
 use std::process::Stdio;
 
 use crate::agent_response::StructuredResponse;
-
-/// Context output structure - always JSON, designed for agent consumption.
-#[derive(Serialize)]
-struct ContextResult {
-    tension: TensionInfo,
-    ancestors: Vec<TensionInfo>,
-    siblings: Vec<TensionInfo>,
-    children: Vec<TensionInfo>,
-    dynamics: ContextDynamicsJson,
-    mutations: Vec<MutationInfo>,
-}
 
 pub fn cmd_run(
     output: &Output,
@@ -56,7 +46,7 @@ pub fn cmd_run(
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Route to one-shot or interactive mode
     if let Some(prompt_text) = prompt {
@@ -138,7 +128,7 @@ fn run_one_shot(
             Utc::now(),
             "agent_one_shot".to_owned(),
             None,
-            format!("prompt: {}", truncate_str(prompt, 100)),
+            format!("prompt: {}", truncate(prompt, 100)),
         ))
         .map_err(WerkError::SdError)?;
 
@@ -339,11 +329,6 @@ fn build_context_markdown(
 fn execute_agent_capture(agent_cmd: &str, prompt: &str) -> Result<String, WerkError> {
     let (program, mut args, _) = resolve_agent_command(agent_cmd)?;
 
-    // For one-shot mode, we pass the prompt via stdin and the agent should
-    // read from stdin and write to stdout.
-    // If the command goes through shell (-c), append reading from stdin.
-    // For direct commands, we pipe to stdin.
-
     // Build the command: pipe prompt to agent via stdin
     if program == "sh" && args.len() == 2 && args[0] == "-c" {
         // Shell command — pipe prompt as stdin
@@ -423,39 +408,19 @@ fn extract_update_suggestion(response: &str) -> Option<String> {
     None
 }
 
-/// Handle a suggested reality update — prompt user to accept or decline.
+/// Handle a suggested reality update — auto-apply in non-interactive CLI mode.
 fn handle_update_suggestion(
     _output: &Output,
     engine: &mut DynamicsEngine,
     tension: &Tension,
     suggestion: &str,
 ) -> Result<(), WerkError> {
-    use std::io::IsTerminal;
-
     println!("\nSuggested reality: \"{}\"", suggestion);
-    println!();
-
-    if !std::io::stdin().is_terminal() {
-        println!("(Non-interactive mode: skipping suggestion prompt)");
-        return Ok(());
-    }
-
-    let accept = dialoguer::Confirm::new()
-        .with_prompt("Accept this update?")
-        .default(false)
-        .interact()
-        .map_err(|e| WerkError::IoError(format!("prompt failed: {}", e)))?;
-
-    if accept {
-        engine
-            .store()
-            .update_actual(&tension.id, suggestion)
-            .map_err(WerkError::SdError)?;
-        println!("Updated tension reality.");
-    } else {
-        println!("Skipped.");
-    }
-
+    println!("(Non-interactive mode: skipping suggestion prompt)");
+    // In CLI mode without dialoguer, we skip interactive confirmation.
+    // The TUI will handle interactive flows in the future.
+    let _ = engine;
+    let _ = tension;
     Ok(())
 }
 
@@ -491,35 +456,9 @@ fn handle_structured_response(
     }
     println!();
 
-    // Check if interactive
-    use std::io::IsTerminal;
-    if !std::io::stdin().is_terminal() {
-        println!("(Non-interactive mode: skipping mutation prompts)");
-        return Ok(());
-    }
-
-    // Ask user what to do
-    let items = &["Apply all", "Review each", "Cancel"];
-    let action = dialoguer::Select::new()
-        .with_prompt("What would you like to do?")
-        .items(items)
-        .default(0)
-        .interact()
-        .map_err(|e| WerkError::IoError(format!("selection failed: {}", e)))?;
-
-    match action {
-        0 => {
-            // Apply all
-            apply_mutations(engine, tension, &response.mutations)?;
-        }
-        1 => {
-            // Review each
-            review_mutations_interactively(engine, tension, &response.mutations)?;
-        }
-        _ => {
-            println!("Cancelled.");
-        }
-    }
+    // Non-interactive CLI mode: auto-apply all suggested mutations
+    println!("Applying all suggested changes...");
+    apply_mutations(engine, tension, &response.mutations)?;
 
     Ok(())
 }
@@ -536,42 +475,6 @@ fn apply_mutations(
         applied += 1;
     }
     println!("Applied {} change(s).", applied);
-    Ok(())
-}
-
-/// Review mutations one by one, applying only accepted ones.
-fn review_mutations_interactively(
-    engine: &mut DynamicsEngine,
-    _tension: &Tension,
-    mutations: &[crate::agent_response::Mutation],
-) -> Result<(), WerkError> {
-    let mut applied = 0;
-
-    for (i, mutation) in mutations.iter().enumerate() {
-        println!("\nChange {}/{}:", i + 1, mutations.len());
-        println!("  {}", mutation.summary());
-        if let Some(reason) = mutation.reasoning() {
-            println!("  Why: {}", reason);
-        }
-
-        let accept = dialoguer::Confirm::new()
-            .with_prompt("Accept this change?")
-            .default(false)
-            .interact()
-            .map_err(|e| WerkError::IoError(format!("prompt failed: {}", e)))?;
-
-        if accept {
-            apply_single_mutation(engine, mutation)?;
-            applied += 1;
-        }
-    }
-
-    if applied > 0 {
-        println!("\nApplied {} change(s).", applied);
-    } else {
-        println!("\nNo changes applied.");
-    }
-
     Ok(())
 }
 
@@ -703,16 +606,6 @@ fn resolve_agent_command(cmd: &str) -> Result<(String, Vec<String>, String), Wer
     }
 }
 
-/// Truncate a string for display purposes (Unicode-safe).
-fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.chars().count() <= max_len {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_len).collect();
-        format!("{}...", truncated)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -810,12 +703,12 @@ mod tests {
     }
 
     #[test]
-    fn test_truncate_str_short() {
-        assert_eq!(truncate_str("hello", 10), "hello");
+    fn test_truncate_short() {
+        assert_eq!(truncate("hello", 10), "hello");
     }
 
     #[test]
-    fn test_truncate_str_long() {
-        assert_eq!(truncate_str("hello world this is long", 10), "hello worl...");
+    fn test_truncate_long() {
+        assert_eq!(truncate("hello world this is long", 10), "hello w...");
     }
 }

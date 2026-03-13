@@ -1,2 +1,5 @@
 /target
 **/.werk/
+
+# bv (beads viewer) local config and caches
+.bv/

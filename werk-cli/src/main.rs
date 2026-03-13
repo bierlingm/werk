@@ -21,16 +21,8 @@ use werk::output::Output;
 #[command(version, about, long_about = None)]
 struct Cli {
     /// Output in JSON format.
-    #[arg(short, long, global = true, conflicts_with = "toon")]
+    #[arg(short, long, global = true)]
     json: bool,
-
-    /// Output in TOON format (token-efficient, LLM-optimized).
-    #[arg(long, global = true, conflicts_with = "json")]
-    toon: bool,
-
-    /// Disable colored output.
-    #[arg(long, global = true)]
-    no_color: bool,
 
     /// Subcommand to execute.
     #[command(subcommand)]
@@ -39,7 +31,7 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
-    let output = Output::new_with_toon(args.json, args.toon, args.no_color);
+    let output = Output::new(args.json);
 
     // Dispatch to subcommand handlers
     let result = match args.command {
@@ -52,7 +44,7 @@ fn main() {
             horizon,
         } => werk::commands::add::cmd_add(&output, desired, actual, parent, horizon),
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
-        Commands::Show { id, verbose } => werk::commands::show::cmd_show(&output, id, verbose),
+        Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
         Commands::Reality { id, value } => werk::commands::reality::cmd_reality(&output, id, value),
         Commands::Desire { id, value } => werk::commands::desire::cmd_desire(&output, id, value),
         Commands::Resolve { id } => werk::commands::resolve::cmd_resolve(&output, id),
@@ -84,8 +76,8 @@ fn main() {
     match result {
         Ok(()) => std::process::exit(0),
         Err(e) => {
-            if output.is_structured() {
-                // Output structured error when --json or --toon flag is set
+            if output.is_json() {
+                // Output structured error when --json flag is set
                 let code = match e.error_code() {
                     ErrorCode::NOT_FOUND => "NOT_FOUND",
                     ErrorCode::INVALID_INPUT => "INVALID_INPUT",

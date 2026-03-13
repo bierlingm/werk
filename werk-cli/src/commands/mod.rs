@@ -71,10 +71,6 @@ pub enum Commands {
     Show {
         /// Tension ID or prefix (4+ characters).
         id: String,
-
-        /// Show all computed dynamics in detail.
-        #[arg(short, long)]
-        verbose: bool,
     },
 
     /// Update the actual state of a tension.

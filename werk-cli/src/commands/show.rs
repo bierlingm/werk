@@ -2,13 +2,13 @@
 
 use crate::dynamics::{compute_all_dynamics, HorizonRangeJson};
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use chrono::Utc;
+use werk_shared::{relative_time, truncate};
+use chrono::{DateTime, Utc};
 use sd_core::{
-    compute_structural_tension, compute_urgency, DynamicsEngine, DynamicsThresholds, HorizonKind,
-    TensionStatus,
+    compute_structural_tension, compute_urgency, DynamicsEngine, HorizonKind,
 };
 use serde::Serialize;
 
@@ -49,7 +49,7 @@ struct ChildInfo {
     status: String,
 }
 
-pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkError> {
+pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
@@ -65,7 +65,7 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Get mutations for this tension
     let mutations = engine
@@ -145,43 +145,22 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        let id_styled = output.styled(&tension.id, ColorStyle::Id);
-        let status_style = match tension.status {
-            TensionStatus::Active => ColorStyle::Active,
-            TensionStatus::Resolved => ColorStyle::Resolved,
-            TensionStatus::Released => ColorStyle::Released,
-        };
-        let status_styled = output.styled(&tension.status.to_string(), status_style);
-
-        println!("Tension {}", id_styled);
-        println!(
-            "  Desired:    {}",
-            output.styled(&tension.desired, ColorStyle::Highlight)
-        );
-        println!(
-            "  Actual:     {}",
-            output.styled(&tension.actual, ColorStyle::Muted)
-        );
-        println!("  Status:     {}", status_styled);
+        println!("Tension {}", &tension.id);
+        println!("  Desired:    {}", &tension.desired);
+        println!("  Actual:     {}", &tension.actual);
+        println!("  Status:     {}", &tension.status);
         println!(
             "  Created:    {}",
-            output.styled(
-                &tension
-                    .created_at
-                    .format("%Y-%m-%d %H:%M:%S UTC")
-                    .to_string(),
-                ColorStyle::Muted
-            )
+            relative_time(tension.created_at, now)
         );
 
         if let Some(pid) = &tension.parent_id {
-            println!("  Parent:     {}", output.styled(pid, ColorStyle::Id));
+            println!("  Parent:     {}", pid);
         }
 
         // Horizon display
         if let Some(h) = &tension.horizon {
             let horizon_str = h.to_string();
-            // Human interpretation
             let interpretation = match h.kind() {
                 HorizonKind::Year(y) => format!("Year {}", y),
                 HorizonKind::Month(y, m) => {
@@ -195,7 +174,6 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
                 HorizonKind::DateTime(dt) => dt.format("%B %d, %Y %H:%M UTC").to_string(),
             };
 
-            // Days remaining
             let days_remaining = h.range_end().signed_duration_since(now).num_days();
             let days_str = if days_remaining > 0 {
                 format!(", {} days remaining", days_remaining)
@@ -207,334 +185,82 @@ pub fn cmd_show(output: &Output, id: String, verbose: bool) -> Result<(), WerkEr
 
             println!(
                 "  Horizon:    {} ({}{})",
-                output.styled(&horizon_str, ColorStyle::Highlight),
-                output.styled(&interpretation, ColorStyle::Muted),
-                output.styled(&days_str, ColorStyle::Muted)
+                &horizon_str, &interpretation, &days_str
             );
         }
 
-        // Mutation count
-        println!(
-            "  Mutations:  {}",
-            output.styled(&format!("{}", mutations.len()), ColorStyle::Info)
-        );
-
-        // Children count
-        if !result.children.is_empty() {
-            println!(
-                "  Children:   {}",
-                output.styled(&format!("{}", result.children.len()), ColorStyle::Info)
-            );
-        }
-
-        // === Dynamics Summary (always shown) ===
+        // === Key Dynamics (5 only) ===
         println!();
         println!("Dynamics:");
 
-        // Phase (always shown)
-        let phase_display = output.styled(&result.dynamics.phase.phase, ColorStyle::Info);
+        // 1. Phase
         println!(
             "  Phase:      {} (mutations: {}, convergence: {:.0}%)",
-            phase_display,
+            &result.dynamics.phase.phase,
             result.dynamics.phase.evidence.mutation_count,
             (1.0 - result.dynamics.phase.evidence.convergence_ratio) * 100.0
         );
 
-        // Structural Tension (show magnitude)
-        match &result.dynamics.structural_tension {
-            Some(st) => {
-                println!(
-                    "  Magnitude:  {}",
-                    output.styled(&format!("{:.2}", st.magnitude), ColorStyle::Highlight)
-                );
-            }
-            None => {
-                println!(
-                    "  Magnitude:  {}",
-                    output.styled("None (no gap)", ColorStyle::Muted)
-                );
-            }
+        // 2. Magnitude (skip if not computed)
+        if let Some(st) = &result.dynamics.structural_tension {
+            println!("  Magnitude:  {:.2}", st.magnitude);
         }
 
-        // Conflict (show if present, else None)
-        match &result.dynamics.structural_conflict {
-            Some(c) => {
-                println!(
-                    "  Conflict:   {} with {} tensions",
-                    output.styled(&c.pattern, ColorStyle::Error),
-                    c.tension_ids.len()
-                );
-            }
-            None => {
-                println!("  Conflict:   {}", output.styled("None", ColorStyle::Muted));
-            }
+        // 3. Urgency (skip if not computed)
+        if let Some(urg) = &urgency {
+            let pct = (urg.value * 100.0).min(999.0);
+            println!("  Urgency:    {:.0}%", pct);
         }
 
-        // Movement/Tendency
+        // 4. Neglect (skip if not detected)
+        if let Some(n) = &result.dynamics.neglect {
+            println!("  Neglect:    {} (ratio: {:.2})", n.neglect_type, n.activity_ratio);
+        }
+
+        // 5. Movement/Tendency
         let movement_symbol = match result.dynamics.structural_tendency.tendency.as_str() {
-            "Advancing" => "→",
-            "Oscillating" => "↔",
-            _ => "○",
+            "Advancing" => "->",
+            "Oscillating" => "<>",
+            _ => "--",
         };
         println!(
             "  Movement:   {} {}",
-            movement_symbol,
-            output.styled(
-                &result.dynamics.structural_tendency.tendency,
-                ColorStyle::Info
-            )
+            movement_symbol, &result.dynamics.structural_tendency.tendency
         );
-
-        // === Verbose: Show all 10 dynamics ===
-        if verbose {
-            println!();
-            println!("All Dynamics:");
-
-            // Horizon dynamics (if present)
-            if tension.horizon.is_some() {
-                // Urgency
-                let default_thresholds = DynamicsThresholds::default();
-                match &urgency {
-                    Some(urg) => {
-                        let pct = (urg.value * 100.0).min(999.0);
-                        println!(
-                            "  Urgency:      {:.0}% ({}s remaining of {}s window)",
-                            pct, urg.time_remaining, urg.total_window
-                        );
-                        // Urgency threshold status
-                        let threshold = default_thresholds.urgency_threshold;
-                        let status_str = if urg.value >= threshold {
-                            format!("above threshold ({:.0}% >= {:.0}%)", pct, threshold * 100.0)
-                        } else {
-                            format!("below threshold ({:.0}% < {:.0}%)", pct, threshold * 100.0)
-                        };
-                        println!(
-                            "  UrgencyThreshold: {}",
-                            output.styled(&status_str, ColorStyle::Info)
-                        );
-                    }
-                    None => {
-                        println!(
-                            "  Urgency:      {}",
-                            output.styled("None", ColorStyle::Muted)
-                        );
-                    }
-                }
-
-                // Pressure
-                match &structural_tension {
-                    Some(st) if st.pressure.is_some() => {
-                        println!(
-                            "  Pressure:     {:.2} (magnitude * urgency)",
-                            st.pressure.unwrap()
-                        );
-                    }
-                    _ => {
-                        println!(
-                            "  Pressure:     {}",
-                            output.styled("None", ColorStyle::Muted)
-                        );
-                    }
-                }
-
-                // Horizon drift
-                println!(
-                    "  HorizonDrift: {} ({} changes, net shift {}s)",
-                    result.dynamics.horizon_drift.drift_type,
-                    result.dynamics.horizon_drift.change_count,
-                    result.dynamics.horizon_drift.net_shift_seconds
-                );
-
-                println!();
-            }
-
-            // 1. Structural Tension
-            match &result.dynamics.structural_tension {
-                Some(st) => {
-                    println!(
-                        "  StructuralTension: magnitude={:.2}, has_gap={}",
-                        st.magnitude, st.has_gap
-                    );
-                }
-                None => {
-                    println!(
-                        "  StructuralTension: {}",
-                        output.styled("None", ColorStyle::Muted)
-                    );
-                }
-            }
-
-            // 2. Structural Conflict
-            match &result.dynamics.structural_conflict {
-                Some(c) => {
-                    println!(
-                        "  StructuralConflict: pattern={}, tensions={}",
-                        c.pattern,
-                        c.tension_ids.join(", ")
-                    );
-                }
-                None => {
-                    println!(
-                        "  StructuralConflict: {}",
-                        output.styled("None", ColorStyle::Muted)
-                    );
-                }
-            }
-
-            // 3. Oscillation
-            match &result.dynamics.oscillation {
-                Some(o) => {
-                    println!(
-                        "  Oscillation: reversals={}, magnitude={:.2}",
-                        o.reversals, o.magnitude
-                    );
-                }
-                None => {
-                    println!(
-                        "  Oscillation: {}",
-                        output.styled("None", ColorStyle::Muted)
-                    );
-                }
-            }
-
-            // 4. Resolution
-            match &result.dynamics.resolution {
-                Some(r) => {
-                    println!(
-                        "  Resolution: velocity={:.2}, trend={}",
-                        r.velocity, r.trend
-                    );
-                }
-                None => {
-                    println!("  Resolution: {}", output.styled("None", ColorStyle::Muted));
-                }
-            }
-
-            // 5. Creative Cycle Phase (already in summary)
-            println!(
-                "  CreativeCyclePhase: phase={}, mutations={}, convergence={:.0}%",
-                result.dynamics.phase.phase,
-                result.dynamics.phase.evidence.mutation_count,
-                (1.0 - result.dynamics.phase.evidence.convergence_ratio) * 100.0
-            );
-
-            // 6. Orientation
-            match &result.dynamics.orientation {
-                Some(o) => {
-                    println!(
-                        "  Orientation: {} (creative={:.0}%, problem={:.0}%, reactive={:.0}%)",
-                        o.orientation,
-                        o.creative_ratio * 100.0,
-                        o.problem_solving_ratio * 100.0,
-                        o.reactive_ratio * 100.0
-                    );
-                }
-                None => {
-                    println!(
-                        "  Orientation: {}",
-                        output.styled("None", ColorStyle::Muted)
-                    );
-                }
-            }
-
-            // 7. Compensating Strategy
-            match &result.dynamics.compensating_strategy {
-                Some(cs) => {
-                    println!(
-                        "  CompensatingStrategy: type={}, persistence={}s",
-                        cs.strategy_type, cs.persistence_seconds
-                    );
-                }
-                None => {
-                    println!(
-                        "  CompensatingStrategy: {}",
-                        output.styled("None", ColorStyle::Muted)
-                    );
-                }
-            }
-
-            // 8. Structural Tendency (already in summary)
-            println!(
-                "  StructuralTendency: tendency={}, has_conflict={}",
-                result.dynamics.structural_tendency.tendency,
-                result.dynamics.structural_tendency.has_conflict
-            );
-
-            // 9. Assimilation Depth
-            match &result.dynamics.assimilation_depth {
-                Some(a) => {
-                    println!(
-                        "  AssimilationDepth: depth={}, frequency={:.2}, trend={:.2}",
-                        a.depth, a.mutation_frequency, a.frequency_trend
-                    );
-                }
-                None => {
-                    println!(
-                        "  AssimilationDepth: {}",
-                        output.styled("None", ColorStyle::Muted)
-                    );
-                }
-            }
-
-            // 10. Neglect
-            match &result.dynamics.neglect {
-                Some(n) => {
-                    println!(
-                        "  Neglect: type={}, ratio={:.2}",
-                        n.neglect_type, n.activity_ratio
-                    );
-                }
-                None => {
-                    println!("  Neglect: {}", output.styled("None", ColorStyle::Muted));
-                }
-            }
-        }
-
-        // === Mutation History (last 10) ===
-        println!();
-        println!("Mutation History:");
-        for m in &result.mutations {
-            let old = m.old_value.as_deref().unwrap_or("(none)");
-            println!(
-                "  {} [{}] {} -> {}",
-                output.styled(&m.timestamp[..19].replace('T', " "), ColorStyle::Muted),
-                output.styled(&m.field, ColorStyle::Info),
-                output.styled(old, ColorStyle::Muted),
-                output.styled(&m.new_value, ColorStyle::Highlight)
-            );
-        }
 
         // === Children List ===
         if !result.children.is_empty() {
             println!();
             println!("Children:");
             for child in &result.children {
-                let status_style = match child.status.as_str() {
-                    "Active" => ColorStyle::Active,
-                    "Resolved" => ColorStyle::Resolved,
-                    "Released" => ColorStyle::Released,
-                    _ => ColorStyle::Muted,
-                };
                 println!(
-                    "  {} {} [{}] {}",
-                    output.styled(&child.id_prefix, ColorStyle::Id),
-                    output.styled(&child.status, status_style),
-                    output.styled(&child.status, status_style),
-                    output.styled(&child.desired, ColorStyle::Muted)
+                    "  {} [{}] {}",
+                    &child.id_prefix,
+                    &child.status,
+                    &child.desired
+                );
+            }
+        }
+
+        // === Mutation History (last 10) ===
+        if !result.mutations.is_empty() {
+            println!();
+            println!("Recent mutations:");
+            for m in &result.mutations {
+                let ts = DateTime::parse_from_rfc3339(&m.timestamp)
+                    .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                    .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
+                let old = m.old_value.as_deref().unwrap_or("(none)");
+                println!(
+                    "  {} [{}] {} -> {}",
+                    ts,
+                    &m.field,
+                    old,
+                    &m.new_value
                 );
             }
         }
     }
 
     Ok(())
-}
-
-/// Truncate a string to max length, adding ellipsis if needed (Unicode-safe).
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.chars().count() <= max_len {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
-        format!("{}...", truncated)
-    }
 }

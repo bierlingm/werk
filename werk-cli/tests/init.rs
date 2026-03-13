@@ -210,28 +210,13 @@ fn test_init_exit_code_success() {
         .success(); // exit code 0
 }
 
-/// --no-color flag works
+/// Plain text init output works
 #[test]
-fn test_init_no_color_flag() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("--no-color")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Workspace initialized"));
-}
-
-/// NO_COLOR env var works
-#[test]
-fn test_init_no_color_env() {
+fn test_init_plain_text() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
         .arg("init")
-        .env("NO_COLOR", "1")
         .current_dir(dir.path())
         .assert()
         .success()

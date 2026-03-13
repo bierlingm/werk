@@ -1,10 +1,10 @@
-//! Integration tests for color and formatting control.
+//! Integration tests for output formatting.
 //!
 //! Tests verify:
-//! - VAL-FMT-001: NO_COLOR=1 env var disables all ANSI escape codes
-//! - VAL-FMT-002: --no-color flag disables colors
-//! - VAL-FMT-003: Colors auto-disabled for pipe/non-TTY
+//! - VAL-FMT-001: Plain text output has no ANSI escape codes
+//! - VAL-FMT-002: JSON output has no ANSI codes
 //!
+//! Since colors have been removed, all output should be plain text.
 //! ANSI escape codes start with \x1b[ (ESC followed by [)
 
 use assert_cmd::cargo_bin_cmd;
@@ -31,12 +31,12 @@ fn extract_ulid(output: &str) -> Option<String> {
 }
 
 // =============================================================================
-// VAL-FMT-001: NO_COLOR env var disables ANSI codes
+// VAL-FMT-001: Plain text output has no ANSI codes (colors removed)
 // =============================================================================
 
-/// NO_COLOR=1 werk tree produces no ANSI codes
+/// werk tree produces no ANSI codes
 #[test]
-fn test_no_color_env_tree() {
+fn test_plain_text_tree() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -55,7 +55,6 @@ fn test_no_color_env_tree() {
 
     let output = cargo_bin_cmd!("werk")
         .arg("tree")
-        .env("NO_COLOR", "1")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -66,14 +65,14 @@ fn test_no_color_env_tree() {
     let stdout = String::from_utf8_lossy(&output);
     assert!(
         !has_ansi_codes(&stdout),
-        "NO_COLOR=1 should disable ANSI codes in tree output, got: {}",
+        "Plain text output should have no ANSI codes in tree output, got: {}",
         stdout
     );
 }
 
-/// NO_COLOR=1 werk show produces no ANSI codes
+/// werk show produces no ANSI codes
 #[test]
-fn test_no_color_env_show() {
+fn test_plain_text_show() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -99,7 +98,6 @@ fn test_no_color_env_show() {
     let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&id[..8])
-        .env("NO_COLOR", "1")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -110,14 +108,14 @@ fn test_no_color_env_show() {
     let stdout = String::from_utf8_lossy(&output);
     assert!(
         !has_ansi_codes(&stdout),
-        "NO_COLOR=1 should disable ANSI codes in show output, got: {}",
+        "Plain text output should have no ANSI codes in show output, got: {}",
         stdout
     );
 }
 
-/// NO_COLOR=1 werk add produces no ANSI codes
+/// werk add produces no ANSI codes
 #[test]
-fn test_no_color_env_add() {
+fn test_plain_text_add() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -130,7 +128,6 @@ fn test_no_color_env_add() {
         .arg("add")
         .arg("test goal")
         .arg("test reality")
-        .env("NO_COLOR", "1")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -141,19 +138,18 @@ fn test_no_color_env_add() {
     let stdout = String::from_utf8_lossy(&output);
     assert!(
         !has_ansi_codes(&stdout),
-        "NO_COLOR=1 should disable ANSI codes in add output, got: {}",
+        "Plain text output should have no ANSI codes in add output, got: {}",
         stdout
     );
 }
 
-/// NO_COLOR=1 werk init produces no ANSI codes
+/// werk init produces no ANSI codes
 #[test]
-fn test_no_color_env_init() {
+fn test_plain_text_init() {
     let dir = TempDir::new().unwrap();
 
     let output = cargo_bin_cmd!("werk")
         .arg("init")
-        .env("NO_COLOR", "1")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -164,342 +160,18 @@ fn test_no_color_env_init() {
     let stdout = String::from_utf8_lossy(&output);
     assert!(
         !has_ansi_codes(&stdout),
-        "NO_COLOR=1 should disable ANSI codes in init output, got: {}",
+        "Plain text output should have no ANSI codes in init output, got: {}",
         stdout
     );
 }
 
 // =============================================================================
-// VAL-FMT-002: --no-color flag disables colors
+// Combined tests: Verify output is still readable
 // =============================================================================
 
-/// werk tree --no-color produces no ANSI codes
+/// Tree output is readable (contains expected content)
 #[test]
-fn test_no_color_flag_tree() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
-        .arg("tree")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "--no-color should disable ANSI codes in tree output, got: {}",
-        stdout
-    );
-}
-
-/// werk show --no-color produces no ANSI codes
-#[test]
-fn test_no_color_flag_show() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    let id = extract_ulid(&stdout).expect("Should have tension ID");
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
-        .arg("show")
-        .arg(&id[..8])
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "--no-color should disable ANSI codes in show output, got: {}",
-        stdout
-    );
-}
-
-/// werk add --no-color produces no ANSI codes
-#[test]
-fn test_no_color_flag_add() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "--no-color should disable ANSI codes in add output, got: {}",
-        stdout
-    );
-}
-
-/// werk init --no-color produces no ANSI codes
-#[test]
-fn test_no_color_flag_init() {
-    let dir = TempDir::new().unwrap();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "--no-color should disable ANSI codes in init output, got: {}",
-        stdout
-    );
-}
-
-/// werk show --verbose --no-color produces no ANSI codes
-#[test]
-fn test_no_color_flag_show_verbose() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    let id = extract_ulid(&stdout).expect("Should have tension ID");
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
-        .arg("show")
-        .arg(&id[..8])
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "--no-color should disable ANSI codes in show --verbose output, got: {}",
-        stdout
-    );
-}
-
-// =============================================================================
-// VAL-FMT-003: Colors auto-disabled for pipe/non-TTY
-// =============================================================================
-
-/// werk tree piped to cat produces no ANSI codes (auto-detect non-TTY)
-#[test]
-fn test_piped_output_tree() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // When stdout is piped (not a TTY), colors should be auto-disabled
-    // assert_cmd pipes output by default, so this tests non-TTY behavior
-    let output = cargo_bin_cmd!("werk")
-        .arg("tree")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "Piped output should have no ANSI codes (non-TTY auto-detection), got: {}",
-        stdout
-    );
-}
-
-/// werk show piped to cat produces no ANSI codes (auto-detect non-TTY)
-#[test]
-fn test_piped_output_show() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    let id = extract_ulid(&stdout).expect("Should have tension ID");
-
-    // assert_cmd pipes output by default
-    let output = cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&id[..8])
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "Piped output should have no ANSI codes (non-TTY auto-detection), got: {}",
-        stdout
-    );
-}
-
-/// werk add piped to cat produces no ANSI codes (auto-detect non-TTY)
-#[test]
-fn test_piped_output_add() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // assert_cmd pipes output by default
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("test goal")
-        .arg("test reality")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "Piped output should have no ANSI codes (non-TTY auto-detection), got: {}",
-        stdout
-    );
-}
-
-/// werk init piped to cat produces no ANSI codes (auto-detect non-TTY)
-#[test]
-fn test_piped_output_init() {
-    let dir = TempDir::new().unwrap();
-
-    // assert_cmd pipes output by default
-    let output = cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        !has_ansi_codes(&stdout),
-        "Piped output should have no ANSI codes (non-TTY auto-detection), got: {}",
-        stdout
-    );
-}
-
-// =============================================================================
-// Combined tests: Verify output is still readable without colors
-// =============================================================================
-
-/// Tree output is readable without colors (contains expected content)
-#[test]
-fn test_tree_readable_without_colors() {
+fn test_tree_readable() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -517,7 +189,6 @@ fn test_tree_readable_without_colors() {
         .success();
 
     let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
         .arg("tree")
         .current_dir(dir.path())
         .assert()
@@ -551,9 +222,9 @@ fn test_tree_readable_without_colors() {
     );
 }
 
-/// Show output is readable without colors (contains expected content)
+/// Show output is readable (contains expected content)
 #[test]
-fn test_show_readable_without_colors() {
+fn test_show_readable() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -577,7 +248,6 @@ fn test_show_readable_without_colors() {
     let id = extract_ulid(&stdout).expect("Should have tension ID");
 
     let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
         .arg("show")
         .arg(&id[..8])
         .current_dir(dir.path())
@@ -632,9 +302,9 @@ fn test_show_readable_without_colors() {
     );
 }
 
-/// Error messages are readable without colors
+/// Error messages are readable
 #[test]
-fn test_error_readable_without_colors() {
+fn test_error_readable() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -644,7 +314,6 @@ fn test_error_readable_without_colors() {
         .success();
 
     let output = cargo_bin_cmd!("werk")
-        .arg("--no-color")
         .arg("show")
         .arg("NONEXISTENT")
         .current_dir(dir.path())
@@ -671,7 +340,7 @@ fn test_error_readable_without_colors() {
     );
 }
 
-/// JSON output has no ANSI codes (colors not applicable to JSON)
+/// JSON output has no ANSI codes
 #[test]
 fn test_json_no_ansi_codes() {
     let dir = TempDir::new().unwrap();

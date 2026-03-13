@@ -1,7 +1,7 @@
 //! Note command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
@@ -50,7 +50,7 @@ pub fn cmd_note(
             // Note on specific tension
             let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
             let resolver = PrefixResolver::new(tensions);
-            let tension = resolver.resolve_interactive(&id_prefix)?;
+            let tension = resolver.resolve(&id_prefix)?;
 
             // Record note mutation (notes work on any status, no validation needed)
             store
@@ -100,10 +100,7 @@ pub fn cmd_note(
         match &result.id {
             Some(tid) => {
                 output
-                    .success(&format!(
-                        "Added note to tension {}",
-                        output.styled(tid, ColorStyle::Id)
-                    ))
+                    .success(&format!("Added note to tension {}", tid))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
             None => {
@@ -112,7 +109,7 @@ pub fn cmd_note(
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
         }
-        println!("  Note: {}", output.styled(&text, ColorStyle::Muted));
+        println!("  Note: {}", &text);
     }
 
     Ok(())

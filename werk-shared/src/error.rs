@@ -1,4 +1,4 @@
-//! Error types for werk-cli.
+//! Error types for werk.
 //!
 //! Exit codes:
 //! - 0: Success
@@ -8,7 +8,7 @@
 use serde::Serialize;
 use thiserror::Error;
 
-/// Errors that can occur in werk-cli operations.
+/// Errors that can occur in werk operations.
 #[derive(Debug, Error)]
 pub enum WerkError {
     /// No workspace found (no .werk/ in ancestor directories and no ~/.werk/)
@@ -141,5 +141,5 @@ impl WerkError {
     }
 }
 
-/// Result type alias for werk-cli operations.
+/// Result type alias for werk operations.
 pub type Result<T> = std::result::Result<T, WerkError>;

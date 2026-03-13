@@ -1,7 +1,7 @@
 //! Horizon command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
@@ -35,7 +35,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     match value {
         Some(new_value) => {
@@ -78,20 +78,18 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                     .print_structured(&result)
                     .map_err(WerkError::IoError)?;
             } else {
-                let id_styled = output.styled(&tension.id, ColorStyle::Id);
                 match &horizon_parsed {
                     Some(h) => {
                         output
                             .success(&format!(
                                 "Set horizon for tension {} to {}",
-                                id_styled,
-                                output.styled(&h.to_string(), ColorStyle::Highlight)
+                                &tension.id, h
                             ))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                     None => {
                         output
-                            .success(&format!("Cleared horizon for tension {}", id_styled))
+                            .success(&format!("Cleared horizon for tension {}", &tension.id))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                 }
@@ -125,15 +123,11 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                     .print_structured(&result)
                     .map_err(WerkError::IoError)?;
             } else {
-                let id_styled = output.styled(&tension.id, ColorStyle::Id);
-                println!("Tension {}", id_styled);
+                println!("Tension {}", &tension.id);
 
                 match &tension.horizon {
                     Some(h) => {
-                        println!(
-                            "  Horizon: {}",
-                            output.styled(&h.to_string(), ColorStyle::Highlight)
-                        );
+                        println!("  Horizon: {}", h);
 
                         // Human interpretation
                         let interpretation = match h.kind() {
@@ -142,10 +136,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                             HorizonKind::Day(d) => d.format("%Y-%m-%d").to_string(),
                             HorizonKind::DateTime(_) => h.to_string(),
                         };
-                        println!(
-                            "  Interpreted: {}",
-                            output.styled(&interpretation, ColorStyle::Muted)
-                        );
+                        println!("  Interpreted: {}", &interpretation);
 
                         if let Some(urg) = &urgency {
                             let urgency_pct = (urg.value * 100.0).min(999.0);
@@ -153,14 +144,11 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                         }
 
                         if let Some(days) = days_remaining {
-                            println!(
-                                "  Days remaining: {}",
-                                output.styled(&format!("{}", days), ColorStyle::Highlight)
-                            );
+                            println!("  Days remaining: {}", days);
                         }
                     }
                     None => {
-                        println!("  Horizon:    {}", output.styled("None", ColorStyle::Muted));
+                        println!("  Horizon:    None");
                     }
                 }
             }

@@ -1,7 +1,7 @@
 //! Rm command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
@@ -23,7 +23,7 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Record the tension ID before deletion
     let tension_id = tension.id.clone();
@@ -45,14 +45,10 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        let id_styled = output.styled(&tension_id, ColorStyle::Id);
         output
-            .success(&format!("Deleted tension {}", id_styled))
+            .success(&format!("Deleted tension {}", &tension_id))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
-        println!(
-            "  Desired: {}",
-            output.styled(&tension_desired, ColorStyle::Muted)
-        );
+        println!("  Desired: {}", &tension_desired);
     }
 
     Ok(())

@@ -1,7 +1,7 @@
 //! Reality command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
@@ -24,7 +24,7 @@ pub fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Get the new value - either from argument or editor
     let new_value = match value {
@@ -83,18 +83,11 @@ pub fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        let id_styled = output.styled(&tension.id, ColorStyle::Id);
         output
-            .success(&format!("Updated actual for tension {}", id_styled))
+            .success(&format!("Updated actual for tension {}", &tension.id))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
-        println!(
-            "  Old:  {}",
-            output.styled(&result.old_actual, ColorStyle::Muted)
-        );
-        println!(
-            "  New:  {}",
-            output.styled(&result.actual, ColorStyle::Highlight)
-        );
+        println!("  Old:  {}", &result.old_actual);
+        println!("  New:  {}", &result.actual);
     }
 
     Ok(())

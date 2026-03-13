@@ -586,29 +586,3 @@ fn test_show_displays_parent() {
         stdout
     );
 }
-
-/// --verbose flag is accepted
-#[test]
-fn test_show_verbose_flag() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store
-        .create_tension("verbose goal", "verbose reality")
-        .unwrap();
-
-    // --verbose should be accepted (might not show extra info yet)
-    cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&tension.id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-}

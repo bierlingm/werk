@@ -1,7 +1,7 @@
 //! Notes command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::workspace::Workspace;
 use serde::Serialize;
 
@@ -58,11 +58,11 @@ pub fn cmd_notes(output: &Output) -> Result<(), WerkError> {
                 println!(
                     "\n{}. {}",
                     i + 1,
-                    output.styled(&note.text, ColorStyle::Highlight)
+                    &note.text
                 );
                 println!(
                     "   {}",
-                    output.styled(&note.timestamp[..19].replace('T', " "), ColorStyle::Muted)
+                    &note.timestamp[..19].replace('T', " ")
                 );
             }
         }

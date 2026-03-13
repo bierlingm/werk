@@ -9,13 +9,24 @@ pub mod agent_response;
 pub mod commands;
 pub mod dynamics;
 pub mod editor;
-pub mod error;
 pub mod output;
-pub mod prefix;
-pub mod workspace;
+
+// Re-export shared types from werk-shared for backward compatibility
+pub mod error {
+    pub use werk_shared::error::*;
+}
+
+pub mod workspace {
+    pub use werk_shared::workspace::*;
+}
+
+pub mod prefix {
+    pub use werk_shared::prefix::*;
+}
 
 pub use editor::edit_content;
-pub use error::WerkError;
+pub use werk_shared::error::WerkError;
+pub use werk_shared::Config;
 pub use output::Output;
-pub use prefix::PrefixResolver;
-pub use workspace::Workspace;
+pub use werk_shared::PrefixResolver;
+pub use werk_shared::Workspace;

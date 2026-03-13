@@ -1,9 +1,10 @@
 //! Tree command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::workspace::Workspace;
 use sd_core::{DynamicsEngine, Forest, TensionStatus};
+use werk_shared::truncate;
 use serde::Serialize;
 
 /// JSON output structure for a tension in tree.
@@ -217,7 +218,7 @@ pub fn cmd_tree(
         root_ids: &[String],
         filtered_ids: &std::collections::HashSet<&str>,
         dynamics_map: &std::collections::HashMap<String, (String, String, bool)>,
-        output: &Output,
+        _output: &Output,
         prefix: &str,
         lines: &mut Vec<String>,
     ) {
@@ -245,13 +246,6 @@ pub fn cmd_tree(
                 false,
             ));
 
-            // Status style
-            let status_style = match node.tension.status {
-                TensionStatus::Active => ColorStyle::Active,
-                TensionStatus::Resolved => ColorStyle::Resolved,
-                TensionStatus::Released => ColorStyle::Released,
-            };
-
             // Build the line
             let connector = if is_last { "└── " } else { "├── " };
 
@@ -270,13 +264,13 @@ pub fn cmd_tree(
                 "{}{}{}{} {} {} {}{} {}",
                 prefix,
                 connector,
-                output.styled(&phase, ColorStyle::Info),
-                output.styled(&node.tension.status.to_string(), status_style),
-                output.styled(id_short, ColorStyle::Id),
-                output.styled(&horizon_annotation, ColorStyle::Muted),
+                &phase,
+                &node.tension.status,
+                id_short,
+                &horizon_annotation,
                 conflict_marker,
                 movement,
-                output.styled(&truncate(&node.tension.desired, 50), ColorStyle::Highlight)
+                truncate(&node.tension.desired, 50)
             );
             lines.push(line);
 
@@ -307,7 +301,7 @@ pub fn cmd_tree(
                     &node.children,
                     filtered_ids,
                     dynamics_map,
-                    output,
+                    _output,
                     &new_prefix,
                     lines,
                 );
@@ -348,20 +342,8 @@ pub fn cmd_tree(
     println!();
     println!(
         "Total: {}  Active: {}  Resolved: {}  Released: {}",
-        output.styled(&format!("{}", tensions.len()), ColorStyle::Highlight),
-        output.styled(&format!("{}", active_count), ColorStyle::Active),
-        output.styled(&format!("{}", resolved_count), ColorStyle::Resolved),
-        output.styled(&format!("{}", released_count), ColorStyle::Released)
+        tensions.len(), active_count, resolved_count, released_count
     );
 
     Ok(())
-}
-
-/// Truncate a string to max length, adding ellipsis if needed.
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
-    }
 }

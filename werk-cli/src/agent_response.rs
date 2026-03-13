@@ -4,6 +4,7 @@
 //! that the user can review and apply in bulk.
 
 use serde::{Deserialize, Serialize};
+use werk_shared::truncate;
 
 /// A structured response from an agent, containing prose advice and
 /// optional mutation suggestions.
@@ -145,16 +146,6 @@ fn extract_yaml_block(text: &str) -> Option<&str> {
     }
 
     None
-}
-
-/// Truncate a string for display (Unicode-safe).
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.chars().count() <= max_len {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_len).collect();
-        format!("{}...", truncated)
-    }
 }
 
 #[cfg(test)]

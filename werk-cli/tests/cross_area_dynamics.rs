@@ -1,19 +1,18 @@
 //! Cross-area dynamics integration tests.
 //!
 //! These tests verify that all cross-area flows work correctly after the
-//! dynamics overhaul (gap magnitude, new events, TOON output, CLI refactor).
+//! dynamics overhaul (gap magnitude, new events, CLI refactor).
 //!
 //! Covers:
 //! - VAL-CROSS-001: Gap magnitude flows through all dynamics correctly
 //! - VAL-CROSS-002: New events visible through DynamicsEngine usage in CLI
-//! - VAL-CROSS-003: TOON output includes all new dynamics fields
+//! - VAL-CROSS-003: JSON output includes all new dynamics fields
 //! - VAL-CROSS-004: Full workspace tests pass (covered by cargo test --workspace)
 //! - VAL-CROSS-005: Existing databases backward compatible
 //! - VAL-CROSS-006: show --verbose displays compensating strategy, urgency threshold, horizon drift
 //! - VAL-CROSS-007: Canonical scenario with recalibrated defaults produces correct classifications
 
 use assert_cmd::cargo_bin_cmd;
-use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -91,21 +90,6 @@ fn show_json(dir: &TempDir, id: &str) -> Value {
         .clone();
     let stdout = String::from_utf8_lossy(&output);
     serde_json::from_str(&stdout).expect("show --json should produce valid JSON")
-}
-
-/// Helper: get TOON output from show command.
-fn show_toon(dir: &TempDir, id: &str) -> String {
-    let output = cargo_bin_cmd!("werk")
-        .arg("--toon")
-        .arg("show")
-        .arg(id)
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-    String::from_utf8_lossy(&output).to_string()
 }
 
 /// Helper: update reality for a tension.
@@ -420,13 +404,13 @@ fn test_compensating_strategy_visible_in_dynamics() {
 }
 
 // =============================================================================
-// VAL-CROSS-003: TOON output includes all new dynamics fields
+// VAL-CROSS-003: JSON output includes all new dynamics fields
 // =============================================================================
 
-/// VAL-CROSS-003: TOON output from show should include horizon_drift,
+/// VAL-CROSS-003: JSON output from show should include horizon_drift,
 /// resolution velocity sufficiency, staleness_ratio, and all dynamics fields.
 #[test]
-fn test_toon_includes_all_new_dynamics_fields() {
+fn test_json_includes_all_new_dynamics_fields() {
     let dir = init_workspace();
 
     let id = add_tension_with_horizon(
@@ -440,9 +424,7 @@ fn test_toon_includes_all_new_dynamics_fields() {
     update_reality(&dir, &id, "requirements gathered");
     update_reality(&dir, &id, "implementation started");
 
-    // Get JSON and TOON outputs
     let json = show_json(&dir, &id);
-    let toon = show_toon(&dir, &id);
 
     // Verify JSON has all expected fields
     let dynamics = &json["dynamics"];
@@ -474,40 +456,19 @@ fn test_toon_includes_all_new_dynamics_fields() {
         json.get("staleness_ratio").is_some(),
         "JSON should have staleness_ratio field"
     );
-
-    // Verify TOON contains the same key fields
-    assert!(
-        toon.contains("horizon_drift")
-            || toon.contains("horizonDrift")
-            || toon.contains("horizon drift"),
-        "TOON should contain horizon_drift field, got TOON:\n{}",
-        &toon[..toon.len().min(500)]
-    );
-    assert!(
-        toon.contains("drift_type") || toon.contains("driftType") || toon.contains("drift type"),
-        "TOON should contain drift_type field"
-    );
-    assert!(
-        toon.contains("staleness_ratio")
-            || toon.contains("stalenessRatio")
-            || toon.contains("staleness ratio"),
-        "TOON should contain staleness_ratio field"
-    );
 }
 
-/// VAL-CROSS-003: Compare TOON and JSON for field set equivalence.
-/// Both outputs should contain the same data fields.
+/// VAL-CROSS-003: Verify JSON has all expected top-level and dynamics fields.
 #[test]
-fn test_toon_and_json_same_fields() {
+fn test_json_has_all_expected_fields() {
     let dir = init_workspace();
 
     let id = add_tension(&dir, "test field consistency", "initial state");
     update_reality(&dir, &id, "updated state");
 
     let json = show_json(&dir, &id);
-    let toon = show_toon(&dir, &id);
 
-    // Verify key top-level fields exist in both formats
+    // Verify key top-level fields exist
     let expected_json_fields = ["id", "desired", "actual", "status", "dynamics", "mutations"];
     for field in expected_json_fields {
         assert!(
@@ -515,16 +476,9 @@ fn test_toon_and_json_same_fields() {
             "JSON should have '{}' field",
             field
         );
-        // TOON uses key-value format - check the key appears
-        assert!(
-            toon.contains(field),
-            "TOON should reference '{}' field, TOON:\n{}",
-            field,
-            &toon[..toon.len().min(500)]
-        );
     }
 
-    // Verify dynamics sub-fields exist in both
+    // Verify dynamics sub-fields exist
     let dynamics = &json["dynamics"];
     let expected_dynamics = [
         "structural_tension",
@@ -547,9 +501,9 @@ fn test_toon_and_json_same_fields() {
     }
 }
 
-/// VAL-CROSS-003: TOON output for tension with horizon includes velocity fields.
+/// VAL-CROSS-003: JSON output for tension with horizon includes velocity fields.
 #[test]
-fn test_toon_includes_resolution_velocity_fields() {
+fn test_json_includes_resolution_velocity_fields() {
     let dir = init_workspace();
 
     let id = add_tension_with_horizon(&dir, "finish manuscript", "chapter 1 drafted", "2026-07");
@@ -561,7 +515,6 @@ fn test_toon_includes_resolution_velocity_fields() {
     update_reality(&dir, &id, "chapter 5 drafted");
 
     let json = show_json(&dir, &id);
-    let toon = show_toon(&dir, &id);
 
     // If resolution is detected, check velocity fields
     if json["dynamics"]["resolution"].is_object() {
@@ -579,12 +532,6 @@ fn test_toon_includes_resolution_velocity_fields() {
         assert!(
             resolution.get("is_sufficient").is_some(),
             "Resolution should have is_sufficient field"
-        );
-
-        // TOON should also contain velocity
-        assert!(
-            toon.contains("velocity"),
-            "TOON should contain velocity field when resolution is detected"
         );
     }
 }
@@ -732,109 +679,6 @@ fn test_database_loads_without_migration() {
 // threshold, horizon drift
 // =============================================================================
 
-/// VAL-CROSS-006: show --verbose should display CompensatingStrategy line.
-#[test]
-fn test_show_verbose_displays_compensating_strategy() {
-    let dir = init_workspace();
-
-    let id = add_tension(&dir, "achieve ambitious goal", "far from goal");
-
-    // Make some mutations to build history
-    update_reality(&dir, &id, "made some progress");
-    update_reality(&dir, &id, "lost progress again");
-    update_reality(&dir, &id, "trying again");
-
-    // Run show --verbose
-    cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("CompensatingStrategy:"));
-}
-
-/// VAL-CROSS-006: show --verbose should display UrgencyThreshold line when horizon present.
-#[test]
-fn test_show_verbose_displays_urgency_threshold() {
-    let dir = init_workspace();
-
-    let id = add_tension_with_horizon(&dir, "meet deadline", "haven't started yet", "2026-06");
-
-    // Run show --verbose
-    cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("UrgencyThreshold:"))
-        .stdout(predicate::str::contains("threshold"));
-}
-
-/// VAL-CROSS-006: show --verbose should display HorizonDrift line when horizon present.
-#[test]
-fn test_show_verbose_displays_horizon_drift() {
-    let dir = init_workspace();
-
-    let id = add_tension_with_horizon(&dir, "complete project", "just starting", "2026-08");
-
-    // Run show --verbose
-    cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("HorizonDrift:"));
-}
-
-/// VAL-CROSS-006: show --verbose should display all three items together.
-#[test]
-fn test_show_verbose_displays_all_three_new_items() {
-    let dir = init_workspace();
-
-    let id = add_tension_with_horizon(&dir, "launch product", "initial concept", "2026-07");
-
-    // Make some mutations
-    update_reality(&dir, &id, "design phase");
-    update_reality(&dir, &id, "development phase");
-    update_reality(&dir, &id, "testing phase");
-
-    // Run show --verbose — should display all three items
-    let output = cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-
-    // All three should be present in verbose output
-    assert!(
-        stdout.contains("CompensatingStrategy:"),
-        "Verbose output should contain CompensatingStrategy line:\n{}",
-        stdout
-    );
-    assert!(
-        stdout.contains("UrgencyThreshold:"),
-        "Verbose output should contain UrgencyThreshold line:\n{}",
-        stdout
-    );
-    assert!(
-        stdout.contains("HorizonDrift:"),
-        "Verbose output should contain HorizonDrift line:\n{}",
-        stdout
-    );
-}
 
 // =============================================================================
 // VAL-CROSS-007: Canonical scenario with recalibrated defaults produces
@@ -1060,45 +904,6 @@ fn test_context_run_include_horizon_drift() {
             "Context resolution should have is_sufficient field"
         );
     }
-}
-
-/// VAL-CROSS-003/007: Verify TOON context output includes new dynamics fields.
-#[test]
-fn test_toon_context_includes_new_fields() {
-    let dir = init_workspace();
-
-    let id = add_tension_with_horizon(
-        &dir,
-        "build a web application",
-        "have a design mockup",
-        "2026-07",
-    );
-
-    update_reality(&dir, &id, "set up project scaffolding");
-    update_reality(&dir, &id, "implemented authentication");
-
-    // Get TOON context output
-    let ctx_output = cargo_bin_cmd!("werk")
-        .arg("--toon")
-        .arg("context")
-        .arg(&id)
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-    let toon = String::from_utf8_lossy(&ctx_output);
-
-    // TOON should contain the key dynamics fields
-    assert!(
-        toon.contains("horizon_drift"),
-        "TOON context should contain horizon_drift"
-    );
-    assert!(
-        toon.contains("staleness_ratio"),
-        "TOON context should contain staleness_ratio"
-    );
 }
 
 // =============================================================================

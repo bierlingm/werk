@@ -808,9 +808,9 @@ fn test_tree_movement_signals() {
 // No color
 // =============================================================================
 
-/// Tree --no-color produces no ANSI codes
+/// Tree produces no ANSI codes (plain text output)
 #[test]
-fn test_tree_no_color() {
+fn test_tree_plain_text() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -829,7 +829,6 @@ fn test_tree_no_color() {
 
     let output = cargo_bin_cmd!("werk")
         .arg("tree")
-        .arg("--no-color")
         .current_dir(dir.path())
         .assert()
         .success()

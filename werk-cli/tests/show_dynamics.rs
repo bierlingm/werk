@@ -92,7 +92,7 @@ fn test_show_displays_phase() {
     );
 }
 
-/// VAL-DISP-009: Show displays conflict indicator when present
+/// VAL-DISP-009: Show JSON includes conflict dynamics when present
 #[test]
 fn test_show_displays_conflict_when_present() {
     let dir = TempDir::new().unwrap();
@@ -119,6 +119,7 @@ fn test_show_displays_conflict_when_present() {
     }
 
     let output = cargo_bin_cmd!("werk")
+        .arg("--json")
         .arg("show")
         .arg(&child1.id)
         .current_dir(dir.path())
@@ -129,12 +130,14 @@ fn test_show_displays_conflict_when_present() {
         .clone();
 
     let stdout = String::from_utf8_lossy(&output);
+    let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    // Should show conflict section (either detected or None)
+    // Should have dynamics field with conflict info
+    let dynamics = json.get("dynamics").expect("Should have dynamics");
     assert!(
-        stdout.contains("Conflict") || stdout.contains("conflict"),
-        "Should show conflict section, got: {}",
-        stdout
+        dynamics.get("conflict").is_some() || dynamics.get("structural_conflict").is_some(),
+        "Should have conflict field in dynamics JSON, got: {:?}",
+        dynamics
     );
 }
 
@@ -181,100 +184,6 @@ fn test_show_displays_movement() {
 // Verbose Dynamics Tests (VAL-DISP-010)
 // =============================================================================
 
-/// VAL-DISP-010: Show --verbose displays all 10 dynamics
-#[test]
-fn test_show_verbose_displays_all_dynamics() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store.create_tension("goal", "reality").unwrap();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&tension.id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-
-    // Should show all 10 dynamics headers (even if values are None)
-    let dynamics_names = [
-        "StructuralTension",
-        "Structural Tension",
-        "StructuralConflict",
-        "Structural Conflict",
-        "Oscillation",
-        "Resolution",
-        "CreativeCyclePhase",
-        "Creative Cycle",
-        "Orientation",
-        "CompensatingStrategy",
-        "Compensating Strategy",
-        "StructuralTendency",
-        "Structural Tendency",
-        "AssimilationDepth",
-        "Assimilation Depth",
-        "Neglect",
-    ];
-
-    // At least half of the dynamics names should appear
-    let matches = dynamics_names
-        .iter()
-        .filter(|name| stdout.contains(*name))
-        .count();
-    assert!(
-        matches >= 5,
-        "Should show at least 5 dynamics names, found {} in: {}",
-        matches,
-        stdout
-    );
-}
-
-/// VAL-DISP-010: Dynamics with no data show as None
-#[test]
-fn test_show_verbose_shows_none_for_absent_dynamics() {
-    let dir = TempDir::new().unwrap();
-
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store.create_tension("goal", "reality").unwrap();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("show")
-        .arg(&tension.id)
-        .arg("--verbose")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-
-    // Should show None for dynamics that can't be computed
-    assert!(
-        stdout.contains("None"),
-        "Should show None for absent dynamics, got: {}",
-        stdout
-    );
-}
 
 // =============================================================================
 // Mutation History Tests (VAL-DISP-011)
@@ -308,7 +217,6 @@ fn test_show_displays_mutation_history() {
     let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
-        .arg("--verbose")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -350,7 +258,6 @@ fn test_show_limits_mutation_history() {
     let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
-        .arg("--verbose")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -506,7 +413,6 @@ fn test_show_new_tension_no_panic() {
     let output = cargo_bin_cmd!("werk")
         .arg("show")
         .arg(&tension.id)
-        .arg("--verbose")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -583,7 +489,6 @@ fn test_show_json_verbose_all_dynamics() {
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
-        .arg("--verbose")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -626,7 +531,6 @@ fn test_show_json_null_for_absent_dynamics() {
         .arg("--json")
         .arg("show")
         .arg(&tension.id)
-        .arg("--verbose")
         .current_dir(dir.path())
         .assert()
         .success()

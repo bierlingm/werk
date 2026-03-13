@@ -1,7 +1,7 @@
 //! Desire command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
@@ -24,7 +24,7 @@ pub fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<
     let resolver = PrefixResolver::new(tensions);
 
     // Resolve the ID/prefix
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
 
     // Get the new value - either from argument or editor
     let new_value = match value {
@@ -83,18 +83,11 @@ pub fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        let id_styled = output.styled(&tension.id, ColorStyle::Id);
         output
-            .success(&format!("Updated desired for tension {}", id_styled))
+            .success(&format!("Updated desired for tension {}", &tension.id))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
-        println!(
-            "  Old:  {}",
-            output.styled(&result.old_desired, ColorStyle::Muted)
-        );
-        println!(
-            "  New:  {}",
-            output.styled(&result.desired, ColorStyle::Highlight)
-        );
+        println!("  Old:  {}", &result.old_desired);
+        println!("  New:  {}", &result.desired);
     }
 
     Ok(())

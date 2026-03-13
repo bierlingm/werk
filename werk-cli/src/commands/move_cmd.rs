@@ -1,7 +1,7 @@
 //! Move command handler.
 
 use crate::error::WerkError;
-use crate::output::{ColorStyle, Output};
+use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use sd_core::Forest;
@@ -25,14 +25,14 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
     let resolver = PrefixResolver::new(tensions.clone());
 
     // Resolve the tension to move
-    let tension = resolver.resolve_interactive(&id)?;
+    let tension = resolver.resolve(&id)?;
     let tension_id = tension.id.clone();
     let old_parent_id = tension.parent_id.clone();
 
     // Resolve the new parent if provided
     let new_parent_id = if let Some(parent_prefix) = parent {
         // Prevent moving to self
-        let parent_tension = resolver.resolve_interactive(&parent_prefix)?;
+        let parent_tension = resolver.resolve(&parent_prefix)?;
         if parent_tension.id == tension_id {
             return Err(WerkError::InvalidInput(
                 "cannot move tension to itself".to_string(),
@@ -76,20 +76,15 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        let id_styled = output.styled(&tension_id, ColorStyle::Id);
         match &new_parent_id {
             Some(pid) => {
                 output
-                    .success(&format!(
-                        "Moved tension {} under {}",
-                        id_styled,
-                        output.styled(pid, ColorStyle::Id)
-                    ))
+                    .success(&format!("Moved tension {} under {}", &tension_id, pid))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
             None => {
                 output
-                    .success(&format!("Moved tension {} to root", id_styled))
+                    .success(&format!("Moved tension {} to root", &tension_id))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
         }

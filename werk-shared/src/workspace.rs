@@ -1,4 +1,4 @@
-//! Workspace resolution for werk-cli.
+//! Workspace resolution for werk.
 //!
 //! A workspace is a `.werk/` directory containing `sd.db` and optionally `config.toml`.
 //!
