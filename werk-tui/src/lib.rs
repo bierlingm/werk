@@ -2,6 +2,9 @@
 
 //! werk-tui: FrankenTUI dashboard for structural dynamics.
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use chrono::Utc;
 
 use ftui::{App, Cmd, Event, Frame, KeyCode, Model, PackedRgba};
@@ -10,6 +13,7 @@ use ftui::text::{Line, Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::runtime::{Every, Subscription};
 
 use sd_core::{
     compute_urgency, ComputedDynamics, CreativeCyclePhase, DynamicsEngine, Forest,
@@ -75,6 +79,54 @@ impl Filter {
         }
     }
 }
+
+// ============================================================================
+// Toast notification types
+// ============================================================================
+
+/// Severity level for toast notifications.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastSeverity {
+    Info,
+    Warning,
+    Alert,
+}
+
+/// A toast notification with auto-dismiss.
+#[derive(Debug, Clone)]
+pub struct Toast {
+    pub message: String,
+    pub severity: ToastSeverity,
+    pub created_at: Instant,
+}
+
+impl Toast {
+    fn new(message: String, severity: ToastSeverity) -> Self {
+        Self {
+            message,
+            severity,
+            created_at: Instant::now(),
+        }
+    }
+
+    fn is_expired(&self) -> bool {
+        self.created_at.elapsed() > Duration::from_secs(5)
+    }
+
+    fn color(&self) -> PackedRgba {
+        match self.severity {
+            ToastSeverity::Info => CLR_LIGHT_GRAY,
+            ToastSeverity::Warning => CLR_YELLOW,
+            ToastSeverity::Alert => CLR_RED,
+        }
+    }
+}
+
+/// Maximum number of visible toasts at a time.
+const MAX_VISIBLE_TOASTS: usize = 3;
+
+/// Urgency threshold for toast alerts.
+const URGENCY_ALERT_THRESHOLD: f64 = 0.75;
 
 // ============================================================================
 // Input overlay types
@@ -239,6 +291,10 @@ pub enum Msg {
     PickerSelect,
     PickerCancel,
 
+    // Phase 4: Dynamics events and periodic tick
+    Tick,
+    DynamicsEvent(String, ToastSeverity),
+
     // Raw key event for mode-based routing
     RawKey(KeyCode, bool), // (code, shift)
 }
@@ -295,6 +351,10 @@ pub struct WerkApp {
     input_mode: InputMode,
     input_overlay: Option<InputOverlay>,
     status_toast: Option<String>,
+
+    // Phase 4: Toasts and dynamics tracking
+    toasts: Vec<Toast>,
+    previous_urgencies: HashMap<String, f64>,
 }
 
 impl WerkApp {
@@ -340,6 +400,9 @@ impl WerkApp {
             input_mode: InputMode::Normal,
             input_overlay: None,
             status_toast: None,
+
+            toasts: Vec::new(),
+            previous_urgencies: HashMap::new(),
         }
     }
 
@@ -539,14 +602,150 @@ impl WerkApp {
         }
     }
 
+    /// Add a toast notification, enforcing the max visible limit.
+    fn push_toast(&mut self, message: String, severity: ToastSeverity) {
+        self.toasts.push(Toast::new(message, severity));
+        // Enforce maximum visible toasts (remove oldest first)
+        while self.toasts.len() > MAX_VISIBLE_TOASTS {
+            self.toasts.remove(0);
+        }
+    }
+
+    /// Remove expired toasts.
+    fn expire_toasts(&mut self) {
+        self.toasts.retain(|t| !t.is_expired());
+    }
+
+    /// Convert sd-core events from a ComputedDynamics into toast notifications.
+    fn process_dynamics_events(&mut self, computed: &ComputedDynamics, desired: &str) {
+        for event in &computed.events {
+            let (message, severity) = match event {
+                sd_core::Event::OscillationDetected { .. } => (
+                    format!("Oscillation detected: {}", truncate(desired, 30)),
+                    ToastSeverity::Warning,
+                ),
+                sd_core::Event::ResolutionAchieved { .. } => (
+                    format!("Resolution achieved: {}", truncate(desired, 30)),
+                    ToastSeverity::Info,
+                ),
+                sd_core::Event::NeglectDetected { tension_ids, .. } => (
+                    format!(
+                        "{} tension{} neglected",
+                        tension_ids.len(),
+                        if tension_ids.len() == 1 { " is being" } else { "s are being" }
+                    ),
+                    ToastSeverity::Warning,
+                ),
+                sd_core::Event::UrgencyThresholdCrossed { crossed_above, .. } => {
+                    if *crossed_above {
+                        (
+                            format!("{} is now urgent", truncate(desired, 30)),
+                            ToastSeverity::Alert,
+                        )
+                    } else {
+                        (
+                            format!("{} no longer urgent", truncate(desired, 30)),
+                            ToastSeverity::Info,
+                        )
+                    }
+                }
+                sd_core::Event::ConflictDetected { tension_ids, .. } => (
+                    format!(
+                        "Conflict between {} sibling tensions",
+                        tension_ids.len()
+                    ),
+                    ToastSeverity::Warning,
+                ),
+                sd_core::Event::LifecycleTransition {
+                    old_phase,
+                    new_phase,
+                    ..
+                } => (
+                    format!(
+                        "Phase: {} \u{2192} {}",
+                        phase_name(*old_phase),
+                        phase_name(*new_phase)
+                    ),
+                    ToastSeverity::Info,
+                ),
+                sd_core::Event::HorizonDriftDetected { drift_type, .. } => (
+                    format!("Horizon drifting: {:?}", drift_type),
+                    ToastSeverity::Warning,
+                ),
+                sd_core::Event::CompensatingStrategyDetected {
+                    strategy_type, ..
+                } => (
+                    format!("Compensating strategy: {:?}", strategy_type),
+                    ToastSeverity::Info,
+                ),
+                sd_core::Event::OscillationResolved { .. } => (
+                    format!("Oscillation resolved: {}", truncate(desired, 30)),
+                    ToastSeverity::Info,
+                ),
+                sd_core::Event::NeglectResolved { .. } => (
+                    format!("No longer neglected: {}", truncate(desired, 30)),
+                    ToastSeverity::Info,
+                ),
+                sd_core::Event::ConflictResolved { .. } => (
+                    "Conflict resolved".to_string(),
+                    ToastSeverity::Info,
+                ),
+                // State-change events (TensionCreated, etc.) don't need toasts
+                _ => continue,
+            };
+            self.push_toast(message, severity);
+        }
+    }
+
+    /// Check urgency changes after recomputation and emit toasts.
+    fn check_urgency_changes(&mut self) {
+        let tensions = self.engine.store().list_tensions().unwrap_or_default();
+        let now = Utc::now();
+        let mut new_urgencies = HashMap::new();
+
+        for tension in &tensions {
+            if tension.status != TensionStatus::Active {
+                continue;
+            }
+            if let Some(urgency) = compute_urgency(tension, now) {
+                let was_above = self
+                    .previous_urgencies
+                    .get(&tension.id)
+                    .map(|&u| u >= URGENCY_ALERT_THRESHOLD)
+                    .unwrap_or(false);
+                let is_above = urgency.value >= URGENCY_ALERT_THRESHOLD;
+
+                if is_above && !was_above {
+                    self.push_toast(
+                        format!("{} is now urgent", truncate(&tension.desired, 30)),
+                        ToastSeverity::Alert,
+                    );
+                }
+                new_urgencies.insert(tension.id.clone(), urgency.value);
+            }
+        }
+
+        self.previous_urgencies = new_urgencies;
+    }
+
     /// Reload all tension data after a mutation.
     fn reload_data(&mut self) {
         let now = Utc::now();
         let tensions = self.engine.store().list_tensions().unwrap_or_default();
-        let mut rows: Vec<TensionRow> = tensions
-            .iter()
-            .map(|t| build_tension_row(&mut self.engine, t, now))
-            .collect();
+
+        // Build rows and collect dynamics events for toasts
+        let mut rows: Vec<TensionRow> = Vec::with_capacity(tensions.len());
+        for t in &tensions {
+            // Compute dynamics (which also emits transition events)
+            let computed = self.engine.compute_full_dynamics_for_tension(&t.id);
+            if let Some(ref cd) = computed {
+                self.process_dynamics_events(cd, &t.desired);
+            }
+            rows.push(build_tension_row_from_computed(&computed, t, now));
+        }
+
+        // Track urgency state for threshold crossing detection
+        self.check_urgency_changes();
         rows.sort_by(|a, b| {
             a.tier.cmp(&b.tier).then_with(|| {
                 let ua = a.urgency.unwrap_or(-1.0);
@@ -965,8 +1164,11 @@ impl Model for WerkApp {
     type Message = Msg;
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
-        // Clear toast on any action
-        if !matches!(msg, Msg::Noop) {
+        // Expire old toasts on every update cycle
+        self.expire_toasts();
+
+        // Clear status toast on any deliberate action (not ticks/noops)
+        if !matches!(msg, Msg::Noop | Msg::Tick | Msg::DynamicsEvent(_, _)) {
             self.status_toast = None;
         }
 
@@ -1289,10 +1491,25 @@ impl Model for WerkApp {
             | Msg::PickerSelect
             | Msg::PickerCancel => Cmd::None,
 
+            // Phase 4: Tick and dynamics event handling
+            Msg::Tick => {
+                // Recompute urgency for all tensions (time-dependent)
+                self.reload_data();
+                Cmd::None
+            }
+            Msg::DynamicsEvent(message, severity) => {
+                self.push_toast(message, severity);
+                Cmd::None
+            }
+
             Msg::RawKey(_, _) => Cmd::None, // already handled above
             Msg::Quit => Cmd::Quit,
             Msg::Noop => Cmd::None,
         }
+    }
+
+    fn subscriptions(&self) -> Vec<Box<dyn Subscription<Msg>>> {
+        vec![Box::new(Every::new(Duration::from_secs(60), || Msg::Tick))]
     }
 
     fn view(&self, frame: &mut Frame<'_>) {
@@ -1343,6 +1560,9 @@ impl Model for WerkApp {
 
         // Render input overlay on top of everything
         self.render_input_overlay(area, frame);
+
+        // Render toasts in top-right corner, on top of everything
+        self.render_toasts(area, frame);
     }
 }
 
@@ -1988,6 +2208,45 @@ impl WerkApp {
             }
         }
     }
+
+    // ── Toast rendering ───────────────────────────────────────────
+
+    fn render_toasts(&self, area: Rect, frame: &mut Frame<'_>) {
+        if self.toasts.is_empty() {
+            return;
+        }
+
+        let visible_toasts: Vec<&Toast> = self
+            .toasts
+            .iter()
+            .rev()
+            .take(MAX_VISIBLE_TOASTS)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        for (i, toast) in visible_toasts.iter().enumerate() {
+            let toast_width = (toast.message.len() as u16 + 4).min(area.width.saturating_sub(2));
+            let x = area.width.saturating_sub(toast_width + 1);
+            let y = 1 + (i as u16);
+
+            if y >= area.height.saturating_sub(2) {
+                break; // Don't render below the screen
+            }
+
+            let toast_area = Rect::new(x, y, toast_width, 1);
+            let border_color = toast.color();
+            let content = format!(
+                " {} ",
+                truncate(&toast.message, toast_width.saturating_sub(2) as usize)
+            );
+
+            let style = Style::new().fg(border_color).bg(CLR_BG_DARK).bold();
+            let paragraph = Paragraph::new(Text::from_spans([Span::styled(&content, style)]));
+            paragraph.render(toast_area, frame);
+        }
+    }
 }
 
 // ============================================================================
@@ -2262,10 +2521,18 @@ fn build_tension_row(
     tension: &Tension,
     now: chrono::DateTime<Utc>,
 ) -> TensionRow {
-    let short_id = tension.id.chars().take(6).collect::<String>();
     let computed = engine.compute_full_dynamics_for_tension(&tension.id);
+    build_tension_row_from_computed(&computed, tension, now)
+}
 
-    let (phase, movement, neglected, magnitude) = match &computed {
+fn build_tension_row_from_computed(
+    computed: &Option<ComputedDynamics>,
+    tension: &Tension,
+    now: chrono::DateTime<Utc>,
+) -> TensionRow {
+    let short_id = tension.id.chars().take(6).collect::<String>();
+
+    let (phase, movement, neglected, magnitude) = match computed {
         Some(cd) => {
             let p = phase_char(cd.phase.phase);
             let m = movement_char(cd.tendency.tendency);
