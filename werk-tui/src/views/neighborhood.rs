@@ -15,96 +15,14 @@ use crate::app::WerkApp;
 use crate::theme::*;
 use crate::types::TensionRow;
 
-// ---------------------------------------------------------------------------
-// Card rendering helper
-// ---------------------------------------------------------------------------
-
-/// Build a bordered card widget for a single tension node.
-/// Uses pre-computed TensionRow data when available, falls back to raw tension.
-fn tension_card<'a>(
-    tension: &Tension,
-    row: Option<&TensionRow>,
-    label: &'a str,
-    selected: bool,
-    card_width: usize,
-) -> Paragraph<'a> {
-    let border_color = if selected { CLR_CYAN } else { CLR_DIM_GRAY };
-    let text_color = if selected { CLR_WHITE } else { CLR_LIGHT_GRAY };
-
-    let phase_str = row.map(|r| r.phase.as_str()).unwrap_or("?");
-
-    let urgency_str = row
-        .and_then(|r| r.urgency)
-        .map(|u| format!("{:.0}%", u * 100.0))
-        .unwrap_or_else(|| "--".to_string());
-
-    let horizon_str = row
-        .map(|r| r.horizon_display.clone())
-        .unwrap_or_else(|| "\u{2014}".to_string());
-
-    // Inner width = card_width minus 2 for borders
-    let inner = card_width.saturating_sub(2);
-    let desired = truncate(&tension.desired, inner.saturating_sub(5));
-
-    let line1 = Line::from_spans([
-        Span::styled(
-            format!("[{}] ", phase_str),
-            Style::new().fg(CLR_MID_GRAY),
-        ),
-        Span::styled(
-            format!("\"{}\"", desired),
-            Style::new().fg(text_color),
-        ),
-    ]);
-
-    let line2 = Line::from_spans([
-        Span::styled(urgency_str, Style::new().fg(CLR_YELLOW_SOFT)),
-        Span::styled("  ", Style::new()),
-        Span::styled(horizon_str, Style::new().fg(CLR_MID_GRAY)),
-    ]);
-
-    let block = Block::bordered()
-        .title(label)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(border_color));
-
-    Paragraph::new(Text::from_lines([line1, line2])).block(block)
-}
-
-// ---------------------------------------------------------------------------
-// Connector helper
-// ---------------------------------------------------------------------------
-
-/// Render a centered vertical connector "|" in the given area.
-fn render_connector(area: &Rect, frame: &mut Frame<'_>) {
-    if area.height == 0 || area.width == 0 {
-        return;
-    }
-    let mid_x = area.x + area.width / 2;
-    let connector_area = Rect {
-        x: mid_x,
-        y: area.y,
-        width: 1,
-        height: 1,
-    };
-    let text = Paragraph::new(Text::from_spans([
-        Span::styled("|", Style::new().fg(CLR_DIM_GRAY)),
-    ]));
-    text.render(connector_area, frame);
-}
-
-// ---------------------------------------------------------------------------
-// Neighborhood view implementation
-// ---------------------------------------------------------------------------
-
 impl WerkApp {
     pub(crate) fn render_neighborhood_title(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let title = match self.selected_tension_id() {
+        let title = match &self.neighborhood_tension_id {
             Some(id) => {
                 let desired = self
                     .engine
                     .store()
-                    .get_tension(&id)
+                    .get_tension(id)
                     .ok()
                     .flatten()
                     .map(|t| {
@@ -127,43 +45,58 @@ impl WerkApp {
             .separator("  ")
             .left(StatusItem::key_hint("Esc", "back"))
             .left(StatusItem::key_hint("Enter", "detail"))
-            .left(StatusItem::key_hint("F", "focus"))
-            .left(StatusItem::key_hint("c/p", "child/parent"))
             .left(StatusItem::key_hint("r/d", "edit"))
+            .left(StatusItem::key_hint("c/p", "child/parent"))
+            .left(StatusItem::key_hint("F", "focus"))
             .left(StatusItem::key_hint("q/?", ""))
             .style(Style::new().fg(CLR_DIM_GRAY));
         hints.render(*area, frame);
     }
 
-    /// Look up the pre-computed TensionRow for a given tension ID.
     fn find_tension_row(&self, id: &str) -> Option<&TensionRow> {
         self.tensions.iter().find(|r| r.id == id)
     }
 
+    fn card_line(
+        &self,
+        tension: &Tension,
+        width: usize,
+    ) -> (String, String) {
+        let row = self.find_tension_row(&tension.id);
+        let phase = row.map(|r| r.phase.as_str()).unwrap_or("?");
+        let urgency = row
+            .and_then(|r| r.urgency)
+            .map(|u| format!("{:.0}%", u * 100.0))
+            .unwrap_or_else(|| "--".to_string());
+        let horizon = row
+            .map(|r| r.horizon_display.clone())
+            .unwrap_or_default();
+        let desired = truncate(&tension.desired, width.saturating_sub(8));
+        let line1 = format!("[{}] \"{}\"", phase, desired);
+        let line2 = format!("{}  {}", urgency, horizon);
+        (line1, line2)
+    }
+
     pub(crate) fn render_neighborhood(&self, area: &Rect, frame: &mut Frame<'_>) {
-        // Get the selected tension
-        let selected_id = match self.selected_tension_id() {
-            Some(id) => id,
+        let selected_id = match &self.neighborhood_tension_id {
+            Some(id) => id.clone(),
             None => {
-                let msg = "  No tension selected. Press Esc to go back to the dashboard.";
-                Paragraph::new(Text::from_spans([
-                    Span::styled(msg, Style::new().fg(CLR_MID_GRAY)),
-                ]))
+                Paragraph::new(Text::from_spans([Span::styled(
+                    "  No tension selected. Press Esc to go back.",
+                    Style::new().fg(CLR_MID_GRAY),
+                )]))
                 .render(*area, frame);
                 return;
             }
         };
 
-        // Build a forest from all tensions
         let tensions = match self.engine.store().list_tensions() {
             Ok(t) => t,
             Err(_) => {
-                Paragraph::new(Text::from_spans([
-                    Span::styled(
-                        "  Error loading tensions.",
-                        Style::new().fg(CLR_RED_SOFT),
-                    ),
-                ]))
+                Paragraph::new(Text::from_spans([Span::styled(
+                    "  Error loading tensions.",
+                    Style::new().fg(CLR_RED_SOFT),
+                )]))
                 .render(*area, frame);
                 return;
             }
@@ -172,12 +105,10 @@ impl WerkApp {
         let forest = match Forest::from_tensions(tensions) {
             Ok(f) => f,
             Err(_) => {
-                Paragraph::new(Text::from_spans([
-                    Span::styled(
-                        "  Error building tension tree.",
-                        Style::new().fg(CLR_RED_SOFT),
-                    ),
-                ]))
+                Paragraph::new(Text::from_spans([Span::styled(
+                    "  Error building tension tree.",
+                    Style::new().fg(CLR_RED_SOFT),
+                )]))
                 .render(*area, frame);
                 return;
             }
@@ -186,18 +117,16 @@ impl WerkApp {
         let selected_node = match forest.find(&selected_id) {
             Some(n) => n,
             None => {
-                Paragraph::new(Text::from_spans([
-                    Span::styled(
-                        "  Selected tension not found in tree.",
-                        Style::new().fg(CLR_MID_GRAY),
-                    ),
-                ]))
+                Paragraph::new(Text::from_spans([Span::styled(
+                    "  Tension not found in tree.",
+                    Style::new().fg(CLR_MID_GRAY),
+                )]))
                 .render(*area, frame);
                 return;
             }
         };
 
-        // Gather neighborhood data
+        // Gather neighborhood
         let parent: Option<&Tension> = selected_node
             .tension
             .parent_id
@@ -219,200 +148,176 @@ impl WerkApp {
             .map(|n| &n.tension)
             .collect();
 
-        // ---------------------------------------------------------------------------
-        // Layout: 3 vertical rows -- parent, selected+siblings, children
-        // Each card is 4 lines tall (2 border + 2 content).
-        // Connector lines are 1 line tall.
-        // ---------------------------------------------------------------------------
+        let w = area.width as usize;
+        let card_w = (w / 2).max(20).min(w.saturating_sub(4));
 
-        let card_height: u16 = 4;
-        let connector_height: u16 = 1;
-
+        // Build layout: parent card, connector, center row, connector, children
+        let card_h: u16 = 4;
+        let conn_h: u16 = 1;
         let has_parent = parent.is_some();
         let has_children = !children.is_empty();
 
         let mut v_constraints: Vec<Constraint> = Vec::new();
         if has_parent {
-            v_constraints.push(Constraint::Fixed(card_height)); // parent card
-            v_constraints.push(Constraint::Fixed(connector_height)); // connector
+            v_constraints.push(Constraint::Fixed(card_h));
+            v_constraints.push(Constraint::Fixed(conn_h));
         }
-        v_constraints.push(Constraint::Fixed(card_height)); // selected row
+        v_constraints.push(Constraint::Fixed(card_h)); // center row
         if has_children {
-            v_constraints.push(Constraint::Fixed(connector_height)); // connector
-            v_constraints.push(Constraint::Fixed(card_height)); // children row
+            v_constraints.push(Constraint::Fixed(conn_h));
+            v_constraints.push(Constraint::Fixed(card_h));
         }
-        v_constraints.push(Constraint::Fill); // remaining space
+        v_constraints.push(Constraint::Fill);
 
-        let v_layout = Flex::vertical().constraints(v_constraints);
-        let v_rects = v_layout.split(*area);
+        let v_rects = Flex::vertical().constraints(v_constraints).split(*area);
+        let mut ri: usize = 0;
 
-        let full_width = area.width as usize;
-        let mut row_idx: usize = 0;
-
-        // ---- Parent row ----
-        if let Some(parent_tension) = parent {
-            let parent_card_width = (full_width / 2).max(20).min(full_width);
-            let parent_area = v_rects[row_idx];
-            row_idx += 1;
-
-            // Center the parent card horizontally
-            let h_layout = Flex::horizontal().constraints([
-                Constraint::Fill,
-                Constraint::Fixed(parent_card_width as u16),
-                Constraint::Fill,
-            ]);
-            let h_rects = h_layout.split(parent_area);
-
-            let row_data = self.find_tension_row(&parent_tension.id);
-            let card = tension_card(
-                parent_tension,
-                row_data,
-                " Parent ",
-                false,
-                parent_card_width,
-            );
-            card.render(h_rects[1], frame);
-
-            // Connector below parent
-            render_connector(&v_rects[row_idx], frame);
-            row_idx += 1;
+        // ---- Parent card ----
+        if let Some(pt) = parent {
+            let (l1, l2) = self.card_line(pt, card_w.saturating_sub(4));
+            render_card(" Parent ", &l1, &l2, false, card_w, &v_rects[ri], frame);
+            ri += 1;
+            render_connector_line(&v_rects[ri], frame);
+            ri += 1;
         }
 
-        // ---- Selected + siblings row ----
-        let sibling_row_area = v_rects[row_idx];
-        row_idx += 1;
-
-        // Limit visible siblings to avoid overflow
-        let max_siblings_per_side = 2;
-        let left_siblings: Vec<&Tension> =
-            siblings.iter().take(max_siblings_per_side).copied().collect();
-        let right_siblings: Vec<&Tension> = siblings
-            .iter()
-            .skip(max_siblings_per_side)
-            .take(max_siblings_per_side)
-            .copied()
-            .collect();
-
-        let total_cards = 1 + left_siblings.len() + right_siblings.len();
-        let card_width = (full_width / total_cards).max(16).min(40);
-
-        let mut h_constraints: Vec<Constraint> = Vec::new();
-        h_constraints.push(Constraint::Fill); // left margin
-        for _ in &left_siblings {
-            h_constraints.push(Constraint::Fixed(card_width as u16));
-        }
-        // Selected card is slightly wider
-        let selected_width = (card_width + 4).min(full_width);
-        h_constraints.push(Constraint::Fixed(selected_width as u16));
-        for _ in &right_siblings {
-            h_constraints.push(Constraint::Fixed(card_width as u16));
-        }
-        h_constraints.push(Constraint::Fill); // right margin
-
-        let h_layout = Flex::horizontal().constraints(h_constraints);
-        let h_rects = h_layout.split(sibling_row_area);
-
-        let mut col_idx: usize = 1; // skip left fill
-
-        // Left siblings
-        for sib in &left_siblings {
-            let row_data = self.find_tension_row(&sib.id);
-            let card = tension_card(sib, row_data, " Sibling ", false, card_width);
-            card.render(h_rects[col_idx], frame);
-            col_idx += 1;
-        }
-
-        // Selected node
+        // ---- Center row: siblings + selected ----
         {
-            let row_data = self.find_tension_row(&selected_node.tension.id);
-            let card = tension_card(
-                &selected_node.tension,
-                row_data,
-                " SELECTED ",
-                true,
-                selected_width,
-            );
-            card.render(h_rects[col_idx], frame);
-            col_idx += 1;
-        }
+            let center_area = v_rects[ri];
+            ri += 1;
 
-        // Right siblings
-        for sib in &right_siblings {
-            let row_data = self.find_tension_row(&sib.id);
-            let card = tension_card(sib, row_data, " Sibling ", false, card_width);
-            card.render(h_rects[col_idx], frame);
-            col_idx += 1;
-        }
+            let total = 1 + siblings.len().min(4);
+            let cw = (w / total).max(16).min(40);
+            let sel_w = (cw + 4).min(w);
 
-        // Overflow indicator for siblings
-        let overflow = siblings.len().saturating_sub(max_siblings_per_side * 2);
-        if overflow > 0 {
-            let hint = format!("+{} more siblings", overflow);
-            let trailing_rect = h_rects[col_idx]; // the trailing Fill
-            if trailing_rect.width >= hint.len() as u16 + 1 {
-                let hint_area = Rect {
-                    x: trailing_rect.x,
-                    y: sibling_row_area.y,
-                    width: hint.len() as u16 + 1,
-                    height: 1,
-                };
-                Paragraph::new(Text::from_spans([
-                    Span::styled(hint, Style::new().fg(CLR_DIM_GRAY)),
-                ]))
-                .render(hint_area, frame);
+            let shown_left: Vec<&Tension> = siblings.iter().take(2).copied().collect();
+            let shown_right: Vec<&Tension> = siblings.iter().skip(2).take(2).copied().collect();
+
+            let mut h_constraints: Vec<Constraint> = vec![Constraint::Fill];
+            for _ in &shown_left {
+                h_constraints.push(Constraint::Fixed(cw as u16));
+            }
+            h_constraints.push(Constraint::Fixed(sel_w as u16));
+            for _ in &shown_right {
+                h_constraints.push(Constraint::Fixed(cw as u16));
+            }
+            h_constraints.push(Constraint::Fill);
+
+            let h_rects = Flex::horizontal().constraints(h_constraints).split(center_area);
+            let mut ci: usize = 1;
+
+            for sib in &shown_left {
+                let (l1, l2) = self.card_line(sib, cw.saturating_sub(4));
+                render_card(" Sibling ", &l1, &l2, false, cw, &h_rects[ci], frame);
+                ci += 1;
+            }
+
+            // Selected node — accent border
+            let (l1, l2) = self.card_line(&selected_node.tension, sel_w.saturating_sub(4));
+            render_card(" SELECTED ", &l1, &l2, true, sel_w, &h_rects[ci], frame);
+            ci += 1;
+
+            for sib in &shown_right {
+                let (l1, l2) = self.card_line(sib, cw.saturating_sub(4));
+                render_card(" Sibling ", &l1, &l2, false, cw, &h_rects[ci], frame);
+                ci += 1;
+            }
+
+            if siblings.len() > 4 {
+                let overflow = siblings.len() - 4;
+                let hint = format!("+{} more", overflow);
+                let trailing = h_rects[ci];
+                if trailing.width > hint.len() as u16 {
+                    Paragraph::new(Text::from_spans([Span::styled(
+                        hint,
+                        Style::new().fg(CLR_DIM_GRAY),
+                    )]))
+                    .render(
+                        Rect::new(trailing.x, center_area.y, trailing.width, 1),
+                        frame,
+                    );
+                }
             }
         }
 
         // ---- Children row ----
-        if !children.is_empty() {
-            // Connector above children
-            render_connector(&v_rects[row_idx], frame);
-            row_idx += 1;
+        if has_children {
+            render_connector_line(&v_rects[ri], frame);
+            ri += 1;
 
-            let children_area = v_rects[row_idx];
+            let ch_area = v_rects[ri];
+            let max_ch = (w / 16).max(2).min(children.len());
+            let shown: Vec<&Tension> = children.iter().take(max_ch).copied().collect();
+            let ch_w = (w / shown.len().max(1)).max(16).min(36);
 
-            let max_children = (full_width / 16).max(2).min(children.len());
-            let shown_children: Vec<&Tension> =
-                children.iter().take(max_children).copied().collect();
-            let child_card_width =
-                (full_width / shown_children.len().max(1)).max(16).min(36);
-
-            let mut ch_constraints: Vec<Constraint> = Vec::new();
-            ch_constraints.push(Constraint::Fill);
-            for _ in &shown_children {
-                ch_constraints.push(Constraint::Fixed(child_card_width as u16));
+            let mut ch_constraints: Vec<Constraint> = vec![Constraint::Fill];
+            for _ in &shown {
+                ch_constraints.push(Constraint::Fixed(ch_w as u16));
             }
             ch_constraints.push(Constraint::Fill);
 
-            let ch_layout = Flex::horizontal().constraints(ch_constraints);
-            let ch_rects = ch_layout.split(children_area);
+            let ch_rects = Flex::horizontal().constraints(ch_constraints).split(ch_area);
 
-            for (i, child) in shown_children.iter().enumerate() {
+            for (i, child) in shown.iter().enumerate() {
                 let label = format!(" Child {} ", i + 1);
-                let row_data = self.find_tension_row(&child.id);
-                let card =
-                    tension_card(child, row_data, &label, false, child_card_width);
-                card.render(ch_rects[i + 1], frame);
+                let (l1, l2) = self.card_line(child, ch_w.saturating_sub(4));
+                render_card(&label, &l1, &l2, false, ch_w, &ch_rects[i + 1], frame);
             }
 
-            // Overflow hint for children
-            let child_overflow = children.len().saturating_sub(max_children);
-            if child_overflow > 0 {
-                let hint = format!("+{} more", child_overflow);
-                let trailing = ch_rects[shown_children.len() + 1];
-                if trailing.width >= hint.len() as u16 + 1 {
-                    let hint_area = Rect {
-                        x: trailing.x,
-                        y: children_area.y,
-                        width: hint.len() as u16 + 1,
-                        height: 1,
-                    };
-                    Paragraph::new(Text::from_spans([
-                        Span::styled(hint, Style::new().fg(CLR_DIM_GRAY)),
-                    ]))
-                    .render(hint_area, frame);
+            if children.len() > max_ch {
+                let hint = format!("+{} more", children.len() - max_ch);
+                let trailing = ch_rects[shown.len() + 1];
+                if trailing.width > hint.len() as u16 {
+                    Paragraph::new(Text::from_spans([Span::styled(
+                        hint,
+                        Style::new().fg(CLR_DIM_GRAY),
+                    )]))
+                    .render(
+                        Rect::new(trailing.x, ch_area.y, trailing.width, 1),
+                        frame,
+                    );
                 }
             }
         }
     }
+}
+
+/// Render a single card: bordered block with two content lines.
+fn render_card(
+    title: &str,
+    line1: &str,
+    line2: &str,
+    selected: bool,
+    _width: usize,
+    area: &Rect,
+    frame: &mut Frame<'_>,
+) {
+    let border_color = if selected { CLR_CYAN } else { CLR_DIM_GRAY };
+    let text_color = if selected { CLR_WHITE } else { CLR_LIGHT_GRAY };
+    let meta_color = if selected { CLR_YELLOW } else { CLR_YELLOW_SOFT };
+
+    let block = Block::bordered()
+        .title(title)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(border_color));
+
+    let text = Text::from_lines([
+        Line::from_spans([Span::styled(line1.to_string(), Style::new().fg(text_color))]),
+        Line::from_spans([Span::styled(line2.to_string(), Style::new().fg(meta_color))]),
+    ]);
+
+    Paragraph::new(text).block(block).render(*area, frame);
+}
+
+/// Render a centered "|" connector.
+fn render_connector_line(area: &Rect, frame: &mut Frame<'_>) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let mid_x = area.x + area.width / 2;
+    Paragraph::new(Text::from_spans([Span::styled(
+        "\u{2502}",
+        Style::new().fg(CLR_DIM_GRAY),
+    )]))
+    .render(Rect::new(mid_x, area.y, 1, 1), frame);
 }

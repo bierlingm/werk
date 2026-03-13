@@ -1561,7 +1561,14 @@ impl Model for WerkApp {
                             self.load_detail(&child_id);
                         }
                     }
-                    View::Agent(_) | View::Timeline | View::Focus | View::DynamicsSummary | View::Neighborhood | View::Welcome => {}
+                    View::Neighborhood => {
+                        if let Some(id) = self.neighborhood_tension_id.clone() {
+                            self.detail_nav_stack.clear();
+                            self.load_detail(&id);
+                            self.active_view = View::Detail;
+                        }
+                    }
+                    View::Agent(_) | View::Timeline | View::Focus | View::DynamicsSummary | View::Welcome => {}
                 }
                 Cmd::None
             }
