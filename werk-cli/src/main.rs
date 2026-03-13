@@ -30,6 +30,15 @@ struct Cli {
 }
 
 fn main() {
+    // No args + interactive terminal → launch TUI
+    if std::env::args().len() <= 1 && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        if let Err(e) = werk_tui::run() {
+            eprintln!("Error: {e}");
+            std::process::exit(2);
+        }
+        return;
+    }
+
     let args = Cli::parse();
     let output = Output::new(args.json);
 
