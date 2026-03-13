@@ -2391,7 +2391,7 @@ dependencies = [
 
 [[package]]
 name = "werk"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -2414,13 +2414,14 @@ dependencies = [
 
 [[package]]
 name = "werk-shared"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
  "sd-core",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
  "toml",
@@ -2428,7 +2429,7 @@ dependencies = [
 
 [[package]]
 name = "werk-tui"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "ftui",
@@ -2436,6 +2437,7 @@ dependencies = [
  "serde",
  "serde_json",
  "werk-shared",
+ "which",
 ]
 
 [[package]]
