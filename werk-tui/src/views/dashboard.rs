@@ -196,7 +196,7 @@ impl WerkApp {
 
     pub(crate) fn render_dashboard_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
         let hints = format!(
-            " j/k nav  Enter detail  t tree  f[{}]  a add  c child  p parent  r/d edit  R resolve  m move  q/?",
+            " j/k  Enter detail  t tree  f[{}]  a add  c/p child/parent  r/d edit  w reflect  F focus  T timeline  D health  N graph  L lever  q/?",
             self.filter.label()
         );
         let style = Style::new().fg(CLR_MID_GRAY);

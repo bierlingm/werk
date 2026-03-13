@@ -451,7 +451,7 @@ impl WerkApp {
     pub(crate) fn render_detail_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
         let verbose_label = if self.verbose { "v-" } else { "v+" };
         let hints = format!(
-            " Esc back  j/k  {}  r/d edit  n note  h horizon  a add  R resolve  X release  Del delete  m move  g agent  q/?",
+            " Esc back  j/k  {}  r/d edit  n note  h horizon  a add  R resolve  X release  Del  m move  g agent  w reflect  F focus  N graph  L lever  q/?",
             verbose_label,
         );
         let style = Style::new().fg(CLR_MID_GRAY);
