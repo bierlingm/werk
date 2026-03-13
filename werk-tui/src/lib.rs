@@ -2211,7 +2211,7 @@ impl Model for WerkApp {
 
     fn view(&self, frame: &mut Frame<'_>) {
         let area = Rect::new(0, 0, frame.width(), frame.height());
-        let hide_hints = area.height < 10;
+        let hide_hints = area.height < 10 || !matches!(self.input_mode, InputMode::Normal);
 
         match &self.active_view {
             View::Welcome => {
