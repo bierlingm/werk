@@ -301,12 +301,16 @@ fn render_card(
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(border_color));
 
+    // Render block first, then content in inner area
+    let inner = block.inner(*area);
+    block.render(*area, frame);
+
     let text = Text::from_lines([
         Line::from_spans([Span::styled(line1.to_string(), Style::new().fg(text_color))]),
         Line::from_spans([Span::styled(line2.to_string(), Style::new().fg(meta_color))]),
     ]);
 
-    Paragraph::new(text).block(block).render(*area, frame);
+    Paragraph::new(text).render(inner, frame);
 }
 
 /// Render a centered "|" connector.
