@@ -2210,6 +2210,10 @@ impl Model for WerkApp {
     }
 
     fn view(&self, frame: &mut Frame<'_>) {
+        // Hide the terminal cursor by default; position it only during text input
+        frame.set_cursor_visible(false);
+        frame.set_cursor(None);
+
         let area = Rect::new(0, 0, frame.width(), frame.height());
         let hide_hints = area.height < 10 || !matches!(self.input_mode, InputMode::Normal);
 
@@ -3233,21 +3237,18 @@ impl WerkApp {
 
                     let separator = "\u{2500}".repeat(w);
 
-                    let (before_cursor, after_cursor) =
-                        overlay.buffer.split_at(overlay.cursor.min(overlay.buffer.len()));
-                    let input_raw = format!(
-                        "  > {}{}",
-                        before_cursor,
-                        if after_cursor.is_empty() {
-                            "\u{2588}".to_string()
-                        } else {
-                            let mut chars = after_cursor.chars();
-                            let cursor_char = chars.next().unwrap_or(' ');
-                            format!("{}{}", cursor_char, chars.as_str())
-                        },
-                    );
+                    let prefix = "  > ";
+                    let input_raw = format!("{}{}", prefix, overlay.buffer);
 
                     let prompt_raw = format!("  {}", overlay.prompt);
+
+                    // Position the real terminal cursor on the input line
+                    let cursor_x = (prefix.len() + overlay.buffer[..overlay.cursor.min(overlay.buffer.len())]
+                        .chars()
+                        .count()) as u16;
+                    let cursor_y = y + 2; // third line of overlay
+                    frame.set_cursor_visible(true);
+                    frame.set_cursor(Some((cursor_x, cursor_y)));
 
                     let lines = vec![
                         Line::from_spans([Span::styled(
