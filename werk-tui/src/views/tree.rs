@@ -47,7 +47,7 @@ impl WerkApp {
                 };
 
                 let desired_width = (area.width as usize)
-                    .saturating_sub(item.connector.chars().count() + 2 + 4 + 4 + 8 + 12 + 5);
+                    .saturating_sub(item.connector.chars().count() + 2 + 4 + 4 + 12 + 5);
                 let desired_trunc = truncate(&item.desired, desired_width.max(10));
 
                 let item_style = match item.tier {
@@ -61,7 +61,6 @@ impl WerkApp {
                     Span::styled("  ", item_style),
                     Span::styled(&item.connector, Style::new().fg(CLR_DIM_GRAY)),
                     Span::styled(format!("[{}] {} ", item.phase, item.movement), item_style),
-                    Span::styled(format!("{}  ", item.short_id), item_style),
                     Span::styled(
                         format!("{:<width$} ", desired_trunc, width = desired_width),
                         item_style,
@@ -76,7 +75,7 @@ impl WerkApp {
 
         let list = List::new(items)
             .highlight_style(Style::new().fg(CLR_WHITE).bold())
-            .highlight_symbol("> ");
+;
 
         let mut state = self.tree_state.borrow_mut();
         StatefulWidget::render(&list, *area, frame, &mut state);

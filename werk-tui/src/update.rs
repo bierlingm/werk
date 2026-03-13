@@ -292,7 +292,8 @@ impl WerkApp {
                 .map(|i| i.tension_id.clone()),
             View::Agent(id) => Some(id.clone()),
             View::Focus => self.detail_tension.as_ref().map(|t| t.id.clone()),
-            View::Timeline | View::DynamicsSummary | View::Neighborhood | View::Welcome => None,
+            View::Neighborhood => self.neighborhood_tension_id.clone(),
+            View::Timeline | View::DynamicsSummary | View::Welcome => None,
         }
     }
 
@@ -1225,11 +1226,14 @@ impl WerkApp {
             KeyCode::Char('L') if shift => Msg::ShowLever,
             KeyCode::Char(':') => Msg::OpenCommandPalette,
             KeyCode::Char('/') => Msg::OpenSearch,
+            KeyCode::Char('!') => Msg::TickerJump(0),
+            KeyCode::Char('@') => Msg::TickerJump(1),
+            KeyCode::Char('#') => Msg::TickerJump(2),
             _ => Msg::Noop,
         }
     }
 
-    fn handle_reflect_key(&mut self, code: KeyCode, shift: bool) -> Cmd<Msg> {
+    fn handle_reflect_key(&mut self, code: KeyCode, mods: Modifiers) -> Cmd<Msg> {
         match code {
             KeyCode::Escape => {
                 self.reflect_textarea = None;
@@ -1237,12 +1241,43 @@ impl WerkApp {
                 self.input_mode = InputMode::Normal;
             }
             _ => {
-                // Delegate all other keys to the native TextArea widget.
                 if let Some(ref mut textarea) = self.reflect_textarea {
-                    let mut mods = Modifiers::NONE;
-                    if shift { mods |= Modifiers::SHIFT; }
+                    let alt = mods.contains(Modifiers::ALT);
+                    let super_key = mods.contains(Modifiers::SUPER);
+
+                    // macOS: Option+arrow = word nav, Cmd+arrow = line nav
+                    // ftui TextArea uses Ctrl+arrow for word nav
+                    let (mapped_code, mapped_mods) = if alt {
+                        match code {
+                            // Option+Left/Right → Ctrl+Left/Right (word nav)
+                            KeyCode::Left | KeyCode::Right => {
+                                let mut m = (mods - Modifiers::ALT) | Modifiers::CTRL;
+                                m -= Modifiers::SHIFT; // keep shift if present
+                                if mods.contains(Modifiers::SHIFT) { m |= Modifiers::SHIFT; }
+                                (code, m)
+                            }
+                            // Option+Backspace → Ctrl+Backspace (word delete)
+                            KeyCode::Backspace => (code, (mods - Modifiers::ALT) | Modifiers::CTRL),
+                            _ => (code, mods),
+                        }
+                    } else if super_key {
+                        match code {
+                            // Cmd+Left → Home, Cmd+Right → End
+                            KeyCode::Left => (KeyCode::Home, mods - Modifiers::SUPER),
+                            KeyCode::Right => (KeyCode::End, mods - Modifiers::SUPER),
+                            // Cmd+Up → top, Cmd+Down → bottom
+                            KeyCode::Up => (KeyCode::Home, (mods - Modifiers::SUPER) | Modifiers::CTRL),
+                            KeyCode::Down => (KeyCode::End, (mods - Modifiers::SUPER) | Modifiers::CTRL),
+                            // Cmd+Backspace → Ctrl+K equivalent (delete line)
+                            KeyCode::Backspace => (KeyCode::Char('k'), (mods - Modifiers::SUPER) | Modifiers::CTRL),
+                            _ => (code, mods),
+                        }
+                    } else {
+                        (code, mods)
+                    };
+
                     let event = Event::Key(
-                        KeyEvent::new(code).with_modifiers(mods),
+                        KeyEvent::new(mapped_code).with_modifiers(mapped_mods),
                     );
                     textarea.handle_event(&event);
                 }
@@ -1262,7 +1297,8 @@ impl Model for WerkApp {
             self.status_toast = None;
         }
 
-        if let Msg::RawKey(code, shift) = msg {
+        if let Msg::RawKey(code, mods) = msg {
+            let shift = mods.contains(Modifiers::SHIFT);
             if self.active_view == View::Welcome {
                 match code {
                     KeyCode::Char('j') | KeyCode::Down => {
@@ -1281,10 +1317,6 @@ impl Model for WerkApp {
             }
 
             if self.command_palette.is_visible() {
-                // Reconstruct a raw Event from the key code + shift to pass
-                // to the native CommandPalette widget's handle_event.
-                let mut mods = Modifiers::NONE;
-                if shift { mods |= Modifiers::SHIFT; }
                 let event = Event::Key(
                     KeyEvent::new(code).with_modifiers(mods),
                 );
@@ -1349,7 +1381,7 @@ impl Model for WerkApp {
                         let event = Event::Key(KeyEvent {
                             code: other,
                             kind: KeyEventKind::Press,
-                            modifiers: Modifiers::NONE,
+                            modifiers: mods,
                         });
                         self.search_input_widget.handle_event(&event);
 
@@ -1395,7 +1427,7 @@ impl Model for WerkApp {
                     return self.update(mapped);
                 }
                 InputMode::Reflect => {
-                    return self.handle_reflect_key(code, shift);
+                    return self.handle_reflect_key(code, mods);
                 }
             }
         }
@@ -1571,7 +1603,10 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::ViewNeighborhood => {
-                self.active_view = View::Neighborhood;
+                if let Some(id) = self.selected_tension_id() {
+                    self.neighborhood_tension_id = Some(id);
+                    self.active_view = View::Neighborhood;
+                }
                 Cmd::None
             }
             Msg::ViewTimeline => {
@@ -1986,6 +2021,28 @@ impl Model for WerkApp {
                 Cmd::None
             }
 
+            Msg::TickerJump(n) => {
+                let mut urgent: Vec<&crate::types::TensionRow> = self
+                    .tensions
+                    .iter()
+                    .filter(|t| !matches!(t.tier, UrgencyTier::Resolved))
+                    .filter(|t| t.urgency.is_some())
+                    .collect();
+                urgent.sort_by(|a, b| {
+                    b.urgency
+                        .unwrap()
+                        .partial_cmp(&a.urgency.unwrap())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                if let Some(row) = urgent.get(n) {
+                    let id = row.id.clone();
+                    self.detail_nav_stack.clear();
+                    self.load_detail(&id);
+                    self.active_view = View::Detail;
+                }
+                Cmd::None
+            }
+
             Msg::RawKey(_, _) => Cmd::None,
             Msg::Quit => Cmd::Quit,
             Msg::Noop => Cmd::None,
@@ -2073,10 +2130,10 @@ impl Model for WerkApp {
                 let rects = layout.split(area);
                 let mut idx = 0;
                 if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
-                self.render_title_bar(&rects[idx], frame); idx += 1;
+                self.render_neighborhood_title(&rects[idx], frame); idx += 1;
                 self.render_neighborhood(&rects[idx], frame); idx += 1;
                 if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
-                if !hide_hints { self.render_dashboard_hints(&rects[idx], frame); }
+                if !hide_hints { self.render_neighborhood_hints(&rects[idx], frame); }
             }
             View::Timeline => {
                 let mut constraints: Vec<Constraint> = Vec::new();
@@ -2151,9 +2208,14 @@ impl Model for WerkApp {
 
         if matches!(self.input_mode, InputMode::Reflect) {
             self.render_reflect_overlay(area, frame);
+            // Show cursor for TextArea editing
+            frame.set_cursor_visible(true);
         }
 
         self.render_input_overlay(area, frame);
+        if matches!(self.input_mode, InputMode::TextInput(_)) {
+            frame.set_cursor_visible(true);
+        }
         self.render_toasts(area, frame);
     }
 }

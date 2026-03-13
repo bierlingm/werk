@@ -1,4 +1,4 @@
-use ftui::{Event, KeyCode};
+use ftui::{Event, KeyCode, Modifiers};
 use crate::types::ToastSeverity;
 
 /// Messages the app can process.
@@ -100,11 +100,14 @@ pub enum Msg {
     StartReflect,
     ReflectSubmit,
 
+    // Ticker jump: jump to Nth most urgent tension (0-indexed)
+    TickerJump(usize),
+
     // Phase 9: Lever
     ShowLever,
 
-    // Raw key event for mode-based routing
-    RawKey(KeyCode, bool),
+    // Raw key event for mode-based routing (carries full modifiers)
+    RawKey(KeyCode, Modifiers),
 }
 
 impl From<Event> for Msg {
@@ -117,7 +120,7 @@ impl From<Event> for Msg {
                 if key.ctrl() && key.code == KeyCode::Char('s') {
                     return Msg::ReflectSubmit;
                 }
-                Msg::RawKey(key.code, key.shift())
+                Msg::RawKey(key.code, key.modifiers)
             }
             _ => Msg::Noop,
         }
