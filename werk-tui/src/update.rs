@@ -137,6 +137,53 @@ impl WerkApp {
         self.detail_ancestors = ancestors;
     }
 
+    /// Build the flat list of navigable tensions for the neighborhood view.
+    /// Order: parent, SELECTED, siblings, children.
+    pub(crate) fn build_neighborhood_items(&mut self, center_id: &str) {
+        let tensions = self.engine.store().list_tensions().unwrap_or_default();
+        let forest = match Forest::from_tensions(tensions) {
+            Ok(f) => f,
+            Err(_) => {
+                self.neighborhood_items.clear();
+                return;
+            }
+        };
+
+        let node = match forest.find(center_id) {
+            Some(n) => n,
+            None => {
+                self.neighborhood_items.clear();
+                return;
+            }
+        };
+
+        let mut items: Vec<(String, String)> = Vec::new();
+
+        // Parent
+        if let Some(pid) = &node.tension.parent_id {
+            if forest.find(pid).is_some() {
+                items.push((pid.clone(), "Parent".to_string()));
+            }
+        }
+
+        // Selected (always index after parent, or 0)
+        let selected_idx = items.len();
+        items.push((center_id.to_string(), "SELECTED".to_string()));
+
+        // Siblings
+        for sib in forest.siblings(center_id).unwrap_or_default() {
+            items.push((sib.tension.id.clone(), "Sibling".to_string()));
+        }
+
+        // Children
+        for child in forest.children(center_id).unwrap_or_default() {
+            items.push((child.tension.id.clone(), "Child".to_string()));
+        }
+
+        self.neighborhood_items = items;
+        self.neighborhood_state.borrow_mut().select(Some(selected_idx));
+    }
+
     /// Build tree items from the store.
     pub(crate) fn build_tree_items(&mut self) {
         let tensions = self.engine.store().list_tensions().unwrap_or_default();
@@ -292,7 +339,11 @@ impl WerkApp {
                 .map(|i| i.tension_id.clone()),
             View::Agent(id) => Some(id.clone()),
             View::Focus => self.detail_tension.as_ref().map(|t| t.id.clone()),
-            View::Neighborhood => self.neighborhood_tension_id.clone(),
+            View::Neighborhood => {
+                let cursor = self.neighborhood_state.borrow().selected().unwrap_or(0);
+                self.neighborhood_items.get(cursor).map(|(id, _)| id.clone())
+                    .or_else(|| self.neighborhood_tension_id.clone())
+            }
             View::Timeline | View::DynamicsSummary | View::Welcome => None,
         }
     }
@@ -1468,7 +1519,17 @@ impl Model for WerkApp {
                             }
                         }
                     }
-                    View::Timeline | View::DynamicsSummary | View::Neighborhood | View::Welcome => {}
+                    View::Neighborhood => {
+                        let len = self.neighborhood_items.len();
+                        if len > 0 {
+                            let mut state = self.neighborhood_state.borrow_mut();
+                            let cur = state.selected().unwrap_or(0);
+                            if cur < len - 1 {
+                                state.select(Some(cur + 1));
+                            }
+                        }
+                    }
+                    View::Timeline | View::DynamicsSummary | View::Welcome => {}
                 }
                 Cmd::None
             }
@@ -1503,7 +1564,14 @@ impl Model for WerkApp {
                             }
                         }
                     }
-                    View::Timeline | View::DynamicsSummary | View::Neighborhood | View::Welcome => {}
+                    View::Neighborhood => {
+                        let mut state = self.neighborhood_state.borrow_mut();
+                        let cur = state.selected().unwrap_or(0);
+                        if cur > 0 {
+                            state.select(Some(cur - 1));
+                        }
+                    }
+                    View::Timeline | View::DynamicsSummary | View::Welcome => {}
                 }
                 Cmd::None
             }
@@ -1562,10 +1630,18 @@ impl Model for WerkApp {
                         }
                     }
                     View::Neighborhood => {
-                        if let Some(id) = self.neighborhood_tension_id.clone() {
-                            self.detail_nav_stack.clear();
-                            self.load_detail(&id);
-                            self.active_view = View::Detail;
+                        let cursor = self.neighborhood_state.borrow().selected().unwrap_or(0);
+                        if let Some((id, role)) = self.neighborhood_items.get(cursor).cloned() {
+                            if role == "SELECTED" {
+                                // Enter on the center tension opens detail
+                                self.detail_nav_stack.clear();
+                                self.load_detail(&id);
+                                self.active_view = View::Detail;
+                            } else {
+                                // Enter on any other item re-centers neighborhood on it
+                                self.neighborhood_tension_id = Some(id.clone());
+                                self.build_neighborhood_items(&id);
+                            }
                         }
                     }
                     View::Agent(_) | View::Timeline | View::Focus | View::DynamicsSummary | View::Welcome => {}
@@ -1611,7 +1687,8 @@ impl Model for WerkApp {
             }
             Msg::ViewNeighborhood => {
                 if let Some(id) = self.selected_tension_id() {
-                    self.neighborhood_tension_id = Some(id);
+                    self.neighborhood_tension_id = Some(id.clone());
+                    self.build_neighborhood_items(&id);
                     self.active_view = View::Neighborhood;
                 }
                 Cmd::None

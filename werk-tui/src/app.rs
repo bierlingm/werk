@@ -46,6 +46,8 @@ pub struct WerkApp {
 
     // Neighborhood view state
     pub(crate) neighborhood_tension_id: Option<String>,
+    pub(crate) neighborhood_items: Vec<(String, String)>, // (tension_id, role label)
+    pub(crate) neighborhood_state: RefCell<ListState>,
 
     // Tree view state
     pub(crate) tree_state: RefCell<ListState>,
@@ -140,6 +142,8 @@ impl WerkApp {
             detail_nav_stack: Vec::new(),
 
             neighborhood_tension_id: None,
+            neighborhood_items: Vec::new(),
+            neighborhood_state: RefCell::new(ListState::default()),
 
             tree_state: RefCell::new({
                 let mut s = ListState::default();
