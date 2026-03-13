@@ -4,6 +4,7 @@ use ftui::text::{Line, Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::modal::{Modal, ModalPosition, ModalSizeConstraints};
 
 use crate::app::WerkApp;
 use crate::input::{InputMode, View};
@@ -13,15 +14,18 @@ impl WerkApp {
     pub(crate) fn render_help_overlay(&self, area: Rect, frame: &mut Frame<'_>) {
         let help_lines = self.context_help_lines();
         let line_count = help_lines.len() as u16;
-        let help_width = 62u16.min(area.width.saturating_sub(4));
-        let help_height = (line_count + 2).min(area.height.saturating_sub(4));
-        let x = (area.width.saturating_sub(help_width)) / 2;
-        let y = (area.height.saturating_sub(help_height)) / 2;
-        let help_area = Rect::new(x, y, help_width, help_height);
 
         let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
-        let paragraph = Paragraph::new(Text::from_lines(help_lines)).style(bg_style);
-        paragraph.render(help_area, frame);
+        let content = Paragraph::new(Text::from_lines(help_lines)).style(bg_style);
+
+        let modal = Modal::new(content)
+            .position(ModalPosition::Center)
+            .size(
+                ModalSizeConstraints::new()
+                    .max_width(62)
+                    .max_height(line_count.saturating_add(2)),
+            );
+        modal.render(area, frame);
     }
 
     pub(crate) fn context_help_lines(&self) -> Vec<Line> {

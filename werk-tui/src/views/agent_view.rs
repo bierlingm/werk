@@ -3,9 +3,12 @@ use ftui::layout::{Constraint, Flex, Rect};
 use ftui::text::{Line, Span, Text, WrapMode};
 use ftui::style::Style;
 use ftui::widgets::Widget;
+use ftui::widgets::StatefulWidget;
 use ftui::widgets::block::Block;
 use ftui::widgets::borders::BorderType;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::list::{List, ListItem};
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 
 use sd_core::compute_urgency;
 use chrono::Utc;
@@ -25,11 +28,15 @@ impl WerkApp {
             .map(|t| truncate(&t.desired, area.width.saturating_sub(16) as usize).to_string())
             .unwrap_or_else(|| tension_id.chars().take(8).collect());
 
-        let running = if self.agent_running { "  [running...]" } else { "" };
-        let title = format!(" Agent: {}{}", desired, running);
-        let style = Style::new().fg(CLR_CYAN).bold();
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&title, style)]));
-        paragraph.render(*area, frame);
+        let left_text = format!(" Agent: {}", desired);
+        let right_text = if self.agent_running { "[running...]" } else { "" };
+        let mut status = StatusLine::new()
+            .left(StatusItem::text(&left_text))
+            .style(Style::new().fg(CLR_CYAN).bold());
+        if !right_text.is_empty() {
+            status = status.right(StatusItem::text(right_text));
+        }
+        status.render(*area, frame);
     }
 
     pub(crate) fn render_agent_body(&self, area: &Rect, frame: &mut Frame<'_>) {
@@ -102,20 +109,15 @@ impl WerkApp {
             .title(title.as_str())
             .border_type(BorderType::Rounded)
             .border_style(border_style);
-        block.render(*area, frame);
         let inner = block.inner(*area);
 
-        let mut lines: Vec<Line> = Vec::new();
-
-        for (i, mutation) in self.agent_mutations.iter().enumerate() {
+        let items: Vec<ListItem> = self.agent_mutations.iter().enumerate().map(|(i, mutation)| {
             let is_selected = self
                 .agent_mutation_selected
                 .get(i)
                 .copied()
                 .unwrap_or(false);
-            let is_cursor = i == self.agent_mutation_cursor;
             let check = if is_selected { "x" } else { " " };
-            let cursor_marker = if is_cursor { ">" } else { " " };
 
             let summary = mutation.summary();
             let reasoning_budget = (inner.width as usize).saturating_sub(summary.len() + 12);
@@ -125,23 +127,26 @@ impl WerkApp {
                 .map(|r| format!(" ({})", truncate(r, reasoning_budget)))
                 .unwrap_or_default();
 
-            let style = if is_cursor {
-                Style::new().fg(CLR_WHITE).bold()
-            } else if is_selected {
+            let item_style = if is_selected {
                 Style::new().fg(CLR_GREEN)
             } else {
                 Style::new().fg(CLR_MID_GRAY)
             };
 
-            lines.push(Line::from_spans([Span::styled(
-                format!("{} {}. [{}] {}{}", cursor_marker, i + 1, check, summary, reasoning),
-                style,
-            )]));
-        }
+            let label = format!(" {}. [{}] {}{}", i + 1, check, summary, reasoning);
+            ListItem::new(Text::from_spans([Span::styled(label, item_style)])).style(item_style)
+        }).collect();
 
-        let text = Text::from_lines(lines);
-        let paragraph = Paragraph::new(text);
-        paragraph.render(inner, frame);
+        let list = List::new(items)
+            .block(block)
+            .highlight_style(Style::new().fg(CLR_WHITE).bold())
+            .highlight_symbol("> ");
+
+        let mut state = ftui::widgets::list::ListState::default();
+        if !self.agent_mutations.is_empty() {
+            state.select(Some(self.agent_mutation_cursor));
+        }
+        StatefulWidget::render(&list, *area, frame, &mut state);
     }
 
     #[allow(dead_code)]
@@ -201,12 +206,23 @@ impl WerkApp {
 
     pub(crate) fn render_agent_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
         let hints = if self.agent_mutations.is_empty() {
-            " Esc back  q quit  ? help"
+            StatusLine::new()
+                .separator("  ")
+                .left(StatusItem::key_hint("Esc", "back"))
+                .left(StatusItem::key_hint("q", "quit"))
+                .left(StatusItem::key_hint("?", "help"))
+                .style(Style::new().fg(CLR_MID_GRAY))
         } else {
-            " j/k nav  Enter toggle  1-9 toggle  a apply selected  Esc back  q quit"
+            StatusLine::new()
+                .separator("  ")
+                .left(StatusItem::key_hint("j/k", "nav"))
+                .left(StatusItem::key_hint("Enter", "toggle"))
+                .left(StatusItem::key_hint("1-9", "toggle"))
+                .left(StatusItem::key_hint("a", "apply selected"))
+                .left(StatusItem::key_hint("Esc", "back"))
+                .left(StatusItem::key_hint("q", "quit"))
+                .style(Style::new().fg(CLR_MID_GRAY))
         };
-        let style = Style::new().fg(CLR_MID_GRAY);
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(hints, style)]));
-        paragraph.render(*area, frame);
+        hints.render(*area, frame);
     }
 }

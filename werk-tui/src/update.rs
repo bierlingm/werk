@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 
-use ftui::{Cmd, Frame, KeyCode, Model};
+use ftui::{Cmd, Event, Frame, KeyCode, KeyEvent, KeyEventKind, Modifiers, Model};
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::runtime::{Every, Subscription};
 
@@ -19,8 +19,10 @@ use crate::helpers::{
     build_detail_dynamics, build_tension_row, build_tension_row_from_computed,
     compute_tier, format_horizon, movement_char, phase_char, phase_name,
 };
+use ftui::widgets::command_palette::PaletteAction;
+use ftui::widgets::textarea::TextArea;
 use crate::input::{
-    CommandPaletteState, ConfirmAction, InputContext, InputMode, InputOverlay,
+    ConfirmAction, InputContext, InputMode, InputOverlay,
     MovePickerState, View,
 };
 use crate::msg::Msg;
@@ -479,6 +481,7 @@ impl WerkApp {
     }
 
     fn enter_text_input(&mut self, context: InputContext, prompt: String, prefill: String) {
+        self.text_input_widget.set_value(&prefill);
         self.input_overlay = Some(InputOverlay::new(prompt, prefill));
         self.input_mode = InputMode::TextInput(context);
     }
@@ -491,71 +494,39 @@ impl WerkApp {
     fn cancel_input(&mut self) {
         self.input_mode = InputMode::Normal;
         self.input_overlay = None;
+        self.text_input_widget.clear();
     }
 
     fn handle_text_input_key(&mut self, code: KeyCode) {
-        let overlay = match &mut self.input_overlay {
-            Some(o) => o,
-            None => return,
-        };
+        if self.input_overlay.is_none() {
+            return;
+        }
 
-        match code {
-            KeyCode::Char(c) => {
-                overlay.buffer.insert(overlay.cursor, c);
-                overlay.cursor += c.len_utf8();
-            }
-            KeyCode::Backspace if overlay.cursor > 0 => {
-                let prev = overlay.buffer[..overlay.cursor]
-                    .char_indices()
-                    .next_back()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                overlay.buffer.drain(prev..overlay.cursor);
-                overlay.cursor = prev;
-            }
-            KeyCode::Delete if overlay.cursor < overlay.buffer.len() => {
-                let next = overlay.buffer[overlay.cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| overlay.cursor + i)
-                    .unwrap_or(overlay.buffer.len());
-                overlay.buffer.drain(overlay.cursor..next);
-            }
-            KeyCode::Left if overlay.cursor > 0 => {
-                overlay.cursor = overlay.buffer[..overlay.cursor]
-                    .char_indices()
-                    .next_back()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-            }
-            KeyCode::Right if overlay.cursor < overlay.buffer.len() => {
-                overlay.cursor = overlay.buffer[overlay.cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| overlay.cursor + i)
-                    .unwrap_or(overlay.buffer.len());
-            }
-            KeyCode::Home => {
-                overlay.cursor = 0;
-            }
-            KeyCode::End => {
-                overlay.cursor = overlay.buffer.len();
-            }
-            _ => {}
+        let event = Event::Key(KeyEvent {
+            code,
+            kind: KeyEventKind::Press,
+            modifiers: Modifiers::NONE,
+        });
+        self.text_input_widget.handle_event(&event);
+
+        // Sync widget value back to overlay buffer
+        if let Some(ref mut overlay) = self.input_overlay {
+            overlay.buffer = self.text_input_widget.value().to_string();
+            overlay.cursor = overlay.buffer.len(); // approximate sync
         }
     }
 
     fn handle_submit(&mut self) -> Cmd<Msg> {
-        let buffer = match &self.input_overlay {
-            Some(o) => o.buffer.clone(),
-            None => {
-                self.cancel_input();
-                return Cmd::None;
-            }
+        let buffer = if self.input_overlay.is_some() {
+            self.text_input_widget.value().to_string()
+        } else {
+            self.cancel_input();
+            return Cmd::None;
         };
 
         let mode = std::mem::replace(&mut self.input_mode, InputMode::Normal);
         self.input_overlay = None;
+        self.text_input_widget.clear();
 
         match mode {
             InputMode::TextInput(ctx) => self.dispatch_text_submit(ctx, buffer),
@@ -924,26 +895,27 @@ impl WerkApp {
     fn handle_move_picker_key(&mut self, code: KeyCode) {
         match code {
             KeyCode::Char('j') | KeyCode::Down => {
-                if let InputMode::MovePicker(ref mut state) = self.input_mode {
-                    if !state.candidates.is_empty()
-                        && state.selected < state.candidates.len() - 1
-                    {
-                        state.selected += 1;
+                if let InputMode::MovePicker(ref state) = self.input_mode {
+                    let count = state.candidates.len();
+                    let current = self.move_picker_state.borrow().selected().unwrap_or(0);
+                    if count > 0 && current < count - 1 {
+                        self.move_picker_state.borrow_mut().select(Some(current + 1));
                     }
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                if let InputMode::MovePicker(ref mut state) = self.input_mode {
-                    if state.selected > 0 {
-                        state.selected -= 1;
-                    }
+                let current = self.move_picker_state.borrow().selected().unwrap_or(0);
+                if current > 0 {
+                    self.move_picker_state.borrow_mut().select(Some(current - 1));
                 }
             }
             KeyCode::Enter => {
+                let selected_idx = self.move_picker_state.borrow().selected().unwrap_or(0);
                 let mode = std::mem::replace(&mut self.input_mode, InputMode::Normal);
                 self.input_overlay = None;
+                *self.move_picker_state.borrow_mut() = ftui::widgets::list::ListState::default();
                 if let InputMode::MovePicker(state) = mode {
-                    if let Some((target_id, _)) = state.candidates.get(state.selected) {
+                    if let Some((target_id, _)) = state.candidates.get(selected_idx) {
                         let new_parent = if target_id == "__ROOT__" {
                             None
                         } else {
@@ -1257,29 +1229,24 @@ impl WerkApp {
         }
     }
 
-    fn handle_reflect_key(&mut self, code: KeyCode, _shift: bool) -> Cmd<Msg> {
+    fn handle_reflect_key(&mut self, code: KeyCode, shift: bool) -> Cmd<Msg> {
         match code {
             KeyCode::Escape => {
-                self.reflect_buffer = None;
+                self.reflect_textarea = None;
                 self.reflect_tension_id = None;
                 self.input_mode = InputMode::Normal;
             }
-            KeyCode::Char(c) => {
-                if let Some(ref mut buf) = self.reflect_buffer {
-                    buf.push(c);
+            _ => {
+                // Delegate all other keys to the native TextArea widget.
+                if let Some(ref mut textarea) = self.reflect_textarea {
+                    let mut mods = Modifiers::NONE;
+                    if shift { mods |= Modifiers::SHIFT; }
+                    let event = Event::Key(
+                        KeyEvent::new(code).with_modifiers(mods),
+                    );
+                    textarea.handle_event(&event);
                 }
             }
-            KeyCode::Enter => {
-                if let Some(ref mut buf) = self.reflect_buffer {
-                    buf.push('\n');
-                }
-            }
-            KeyCode::Backspace => {
-                if let Some(ref mut buf) = self.reflect_buffer {
-                    buf.pop();
-                }
-            }
-            _ => {}
         }
         Cmd::None
     }
@@ -1313,59 +1280,26 @@ impl Model for WerkApp {
                 return Cmd::None;
             }
 
-            if self.command_palette.is_some() {
-                match code {
-                    KeyCode::Escape => {
-                        self.command_palette = None;
-                    }
-                    KeyCode::Down => {
-                        if let Some(ref mut palette) = self.command_palette {
-                            let count = palette.filtered_actions().len();
-                            if count > 0 && palette.selected < count - 1 {
-                                palette.selected += 1;
+            if self.command_palette.is_visible() {
+                // Reconstruct a raw Event from the key code + shift to pass
+                // to the native CommandPalette widget's handle_event.
+                let mut mods = Modifiers::NONE;
+                if shift { mods |= Modifiers::SHIFT; }
+                let event = Event::Key(
+                    KeyEvent::new(code).with_modifiers(mods),
+                );
+                if let Some(action) = self.command_palette.handle_event(&event) {
+                    match action {
+                        PaletteAction::Execute(id) => {
+                            self.command_palette.close();
+                            if let Some(msg) = Self::palette_id_to_msg(&id) {
+                                return self.update(msg);
                             }
                         }
-                    }
-                    KeyCode::Up => {
-                        if let Some(ref mut palette) = self.command_palette {
-                            if palette.selected > 0 {
-                                palette.selected -= 1;
-                            }
+                        PaletteAction::Dismiss => {
+                            self.command_palette.close();
                         }
                     }
-                    KeyCode::Enter => {
-                        if let Some(palette) = self.command_palette.take() {
-                            let filtered = palette.filtered_actions();
-                            if let Some(action) = filtered.get(palette.selected) {
-                                if let Some(ref msg) = action.msg {
-                                    let msg = msg.clone();
-                                    return self.update(msg);
-                                }
-                            }
-                        }
-                    }
-                    KeyCode::Backspace => {
-                        if let Some(ref mut palette) = self.command_palette {
-                            if palette.cursor > 0 {
-                                let prev = palette.query[..palette.cursor]
-                                    .char_indices()
-                                    .next_back()
-                                    .map(|(i, _)| i)
-                                    .unwrap_or(0);
-                                palette.query.drain(prev..palette.cursor);
-                                palette.cursor = prev;
-                                palette.selected = 0;
-                            }
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        if let Some(ref mut palette) = self.command_palette {
-                            palette.query.insert(palette.cursor, c);
-                            palette.cursor += c.len_utf8();
-                            palette.selected = 0;
-                        }
-                    }
-                    _ => {}
                 }
                 return Cmd::None;
             }
@@ -1388,6 +1322,7 @@ impl Model for WerkApp {
                         self.search_query = None;
                         self.search_buffer.clear();
                         self.search_cursor = 0;
+                        self.search_input_widget.clear();
                         let visible = self.visible_tensions().len();
                         if visible > 0 && self.selected() >= visible {
                             self.set_selected(visible - 1);
@@ -1407,30 +1342,27 @@ impl Model for WerkApp {
                         self.search_query = None;
                         self.search_buffer.clear();
                         self.search_cursor = 0;
+                        self.search_input_widget.clear();
                     }
-                    KeyCode::Backspace
-                        if self.search_cursor > 0 => {
-                            let prev = self.search_buffer[..self.search_cursor]
-                                .char_indices()
-                                .next_back()
-                                .map(|(i, _)| i)
-                                .unwrap_or(0);
-                            self.search_buffer.drain(prev..self.search_cursor);
-                            self.search_cursor = prev;
-                            self.search_query = if self.search_buffer.is_empty() {
-                                None
-                            } else {
-                                Some(self.search_buffer.clone())
-                            };
-                            self.set_selected(0);
-                    }
-                    KeyCode::Char(c) => {
-                        self.search_buffer.insert(self.search_cursor, c);
-                        self.search_cursor += c.len_utf8();
-                        self.search_query = Some(self.search_buffer.clone());
+                    other => {
+                        // Delegate to the search TextInput widget
+                        let event = Event::Key(KeyEvent {
+                            code: other,
+                            kind: KeyEventKind::Press,
+                            modifiers: Modifiers::NONE,
+                        });
+                        self.search_input_widget.handle_event(&event);
+
+                        // Sync widget value back to search state
+                        self.search_buffer = self.search_input_widget.value().to_string();
+                        self.search_cursor = self.search_buffer.len();
+                        self.search_query = if self.search_buffer.is_empty() {
+                            None
+                        } else {
+                            Some(self.search_buffer.clone())
+                        };
                         self.set_selected(0);
                     }
-                    _ => {}
                 }
                 return Cmd::None;
             }
@@ -1843,6 +1775,11 @@ impl Model for WerkApp {
                         "Move tension - select new parent (j/k/Enter):".to_string(),
                         String::new(),
                     ));
+                    {
+                        let mut mps = self.move_picker_state.borrow_mut();
+                        *mps = ftui::widgets::list::ListState::default();
+                        mps.select(Some(0));
+                    }
                     self.input_mode = InputMode::MovePicker(MovePickerState {
                         tension_id: id,
                         candidates,
@@ -1987,7 +1924,7 @@ impl Model for WerkApp {
             Msg::WelcomeSelect | Msg::WelcomeConfirm => Cmd::None,
 
             Msg::OpenCommandPalette => {
-                self.command_palette = Some(CommandPaletteState::new());
+                self.command_palette.open();
                 Cmd::None
             }
             Msg::OpenSearch => {
@@ -1995,6 +1932,7 @@ impl Model for WerkApp {
                 self.search_buffer.clear();
                 self.search_cursor = 0;
                 self.search_query = None;
+                self.search_input_widget.clear();
                 Cmd::None
             }
 
@@ -2011,7 +1949,12 @@ impl Model for WerkApp {
                 if let Some(id) = self.selected_tension_id() {
                     if let Ok(Some(_t)) = self.engine.store().get_tension(&id) {
                         self.load_detail(&id);
-                        self.reflect_buffer = Some(String::new());
+                        self.reflect_textarea = Some(
+                            TextArea::new()
+                                .with_placeholder("Write your reflections...")
+                                .with_focus(true)
+                                .with_soft_wrap(true)
+                        );
                         self.reflect_tension_id = Some(id);
                         self.input_mode = InputMode::Reflect;
                     }
@@ -2019,7 +1962,9 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::ReflectSubmit => {
-                if let (Some(buffer), Some(tid)) = (self.reflect_buffer.take(), self.reflect_tension_id.take()) {
+                let buffer_text = self.reflect_textarea.as_ref().map(|ta| ta.text());
+                if let (Some(buffer), Some(tid)) = (buffer_text, self.reflect_tension_id.take()) {
+                    self.reflect_textarea = None;
                     let reflect_text = buffer.trim().to_owned();
                     if !reflect_text.is_empty() {
                         self.input_mode = InputMode::Normal;
@@ -2196,7 +2141,7 @@ impl Model for WerkApp {
             self.render_help_overlay(area, frame);
         }
 
-        if self.command_palette.is_some() {
+        if self.command_palette.is_visible() {
             self.render_command_palette(area, frame);
         }
 

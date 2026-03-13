@@ -3,8 +3,10 @@ use ftui::layout::Rect;
 use ftui::text::{Line, Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
+use ftui::widgets::StatefulWidget;
 use ftui::widgets::paragraph::Paragraph;
-
+use ftui::widgets::input::TextInput;
+use ftui::widgets::list::{List, ListItem};
 use werk_shared::truncate;
 
 use crate::app::WerkApp;
@@ -27,55 +29,65 @@ impl WerkApp {
                 }
             }
             InputMode::TextInput(_) => {
-                if let Some(overlay) = &self.input_overlay {
+                if self.input_overlay.is_some() {
                     let overlay_height = 3u16;
                     let y = area.height.saturating_sub(overlay_height);
-                    let overlay_area = Rect::new(0, y, area.width, overlay_height);
                     let w = area.width as usize;
 
                     let separator = "\u{2500}".repeat(w);
-                    let prefix = "  > ";
-                    let input_raw = format!("{}{}", prefix, overlay.buffer);
+                    let prompt_raw = format!("  {}", self.input_overlay.as_ref().unwrap().prompt);
 
-                    let prompt_raw = format!("  {}", overlay.prompt);
+                    // Render separator and prompt lines
+                    let separator_area = Rect::new(0, y, area.width, 1);
+                    let sep_paragraph = Paragraph::new(Text::from_spans([Span::styled(
+                        separator,
+                        Style::new().fg(CLR_DIM_GRAY).bg(CLR_BG_DARK),
+                    )]));
+                    sep_paragraph.render(separator_area, frame);
 
-                    let cursor_x = (prefix.len() + overlay.buffer[..overlay.cursor.min(overlay.buffer.len())]
-                        .chars()
-                        .count()) as u16;
-                    let cursor_y = y + 2;
-                    frame.set_cursor_visible(true);
-                    frame.set_cursor(Some((cursor_x, cursor_y)));
+                    let prompt_area = Rect::new(0, y + 1, area.width, 1);
+                    let prompt_paragraph = Paragraph::new(Text::from_spans([Span::styled(
+                        format!("{:<width$}", prompt_raw, width = w),
+                        Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK),
+                    )]));
+                    prompt_paragraph.render(prompt_area, frame);
 
-                    let lines = vec![
-                        Line::from_spans([Span::styled(
-                            separator,
-                            Style::new().fg(CLR_DIM_GRAY).bg(CLR_BG_DARK),
-                        )]),
-                        Line::from_spans([Span::styled(
-                            format!("{:<width$}", prompt_raw, width = w),
-                            Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK),
-                        )]),
-                        Line::from_spans([Span::styled(
-                            format!("{:<width$}", input_raw, width = w),
-                            Style::new().fg(CLR_WHITE).bg(CLR_BG_DARK),
-                        )]),
-                    ];
+                    // Render TextInput widget on the input line
+                    let input_area = Rect::new(2, y + 2, area.width.saturating_sub(2), 1);
 
-                    let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
-                    let paragraph =
-                        Paragraph::new(Text::from_lines(lines)).style(bg_style);
-                    paragraph.render(overlay_area, frame);
+                    // Fill the input line background
+                    let input_bg_area = Rect::new(0, y + 2, area.width, 1);
+                    let bg_fill = Paragraph::new(Text::from_spans([Span::styled(
+                        " ".repeat(w),
+                        Style::new().bg(CLR_BG_DARK),
+                    )]));
+                    bg_fill.render(input_bg_area, frame);
+
+                    // Render the "> " prefix
+                    let prefix_paragraph = Paragraph::new(Text::from_spans([Span::styled(
+                        "> ",
+                        Style::new().fg(CLR_WHITE).bg(CLR_BG_DARK),
+                    )]));
+                    let prefix_area = Rect::new(0, y + 2, 2, 1);
+                    prefix_paragraph.render(prefix_area, frame);
+
+                    let input_widget = TextInput::new()
+                        .with_value(self.text_input_widget.value())
+                        .with_style(Style::new().fg(CLR_WHITE).bg(CLR_BG_DARK))
+                        .with_cursor_style(Style::new().fg(CLR_CYAN).bg(CLR_BG_DARK).reverse())
+                        .with_focused(true);
+                    input_widget.render(input_area, frame);
                 }
             }
             InputMode::Confirm(_) => {
-                if let Some(overlay) = &self.input_overlay {
+                if self.input_overlay.is_some() {
                     let overlay_height = 2u16;
                     let y = area.height.saturating_sub(overlay_height);
                     let overlay_area = Rect::new(0, y, area.width, overlay_height);
                     let w = area.width as usize;
 
                     let separator = "\u{2500}".repeat(w);
-                    let prompt_raw = format!("  {}", overlay.prompt);
+                    let prompt_raw = format!("  {}", self.input_overlay.as_ref().unwrap().prompt);
 
                     let lines = vec![
                         Line::from_spans([Span::styled(
@@ -98,54 +110,48 @@ impl WerkApp {
                 let visible_count = state.candidates.len().min(10);
                 let overlay_height = (visible_count as u16) + 2;
                 let y = area.height.saturating_sub(overlay_height);
-                let overlay_area = Rect::new(0, y, area.width, overlay_height);
                 let w = area.width as usize;
 
+                // Render separator
                 let separator = "\u{2500}".repeat(w);
-                let mut lines = vec![Line::from_spans([Span::styled(
+                let sep_area = Rect::new(0, y, area.width, 1);
+                let sep_paragraph = Paragraph::new(Text::from_spans([Span::styled(
                     separator,
                     Style::new().fg(CLR_DIM_GRAY).bg(CLR_BG_DARK),
-                )])];
+                )]));
+                sep_paragraph.render(sep_area, frame);
 
+                // Render prompt
                 if let Some(overlay) = &self.input_overlay {
                     let prompt_raw = format!("  {}", overlay.prompt);
-                    lines.push(Line::from_spans([Span::styled(
+                    let prompt_area = Rect::new(0, y + 1, area.width, 1);
+                    let prompt_paragraph = Paragraph::new(Text::from_spans([Span::styled(
                         format!("{:<width$}", prompt_raw, width = w),
                         Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK),
                     )]));
+                    prompt_paragraph.render(prompt_area, frame);
                 }
 
-                let scroll_offset = if state.selected >= visible_count {
-                    state.selected - visible_count + 1
-                } else {
-                    0
-                };
-
-                for (i, (_, label)) in state
+                // Build list items from candidates
+                let items: Vec<ListItem<'_>> = state
                     .candidates
                     .iter()
-                    .enumerate()
-                    .skip(scroll_offset)
-                    .take(visible_count)
-                {
-                    let is_selected = i == state.selected;
-                    let marker = if is_selected { ">" } else { " " };
-                    let style = if is_selected {
-                        Style::new().fg(CLR_WHITE).bold().bg(CLR_BG_DARK)
-                    } else {
-                        Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK)
-                    };
-                    let row_raw = format!("  {} {}", marker, truncate(label, w.saturating_sub(6)));
-                    lines.push(Line::from_spans([Span::styled(
-                        format!("{:<width$}", row_raw, width = w),
-                        style,
-                    )]));
-                }
+                    .map(|(_, label)| {
+                        ListItem::new(format!("  {}", truncate(label, w.saturating_sub(6))))
+                            .style(Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK))
+                    })
+                    .collect();
 
-                let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
-                let paragraph =
-                    Paragraph::new(Text::from_lines(lines)).style(bg_style);
-                paragraph.render(overlay_area, frame);
+                let list = List::new(items)
+                    .style(Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK))
+                    .highlight_style(Style::new().fg(CLR_WHITE).bold().bg(CLR_BG_DARK))
+                    .highlight_symbol("> ");
+
+                let list_area = Rect::new(0, y + 2, area.width, visible_count as u16);
+
+                // Use the move_picker_state from self (via RefCell for interior mutability)
+                let mut list_state = self.move_picker_state.borrow_mut();
+                StatefulWidget::render(&list, list_area, frame, &mut list_state);
             }
             InputMode::Reflect => {}
         }

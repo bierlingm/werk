@@ -6,6 +6,7 @@ use ftui::widgets::Widget;
 use ftui::widgets::StatefulWidget;
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::list::{List, ListItem};
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 
 use werk_shared::truncate;
 
@@ -15,14 +16,15 @@ use crate::types::UrgencyTier;
 
 impl WerkApp {
     pub(crate) fn render_tree_title(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let status = format!(
+        let left_text = format!(
             " Tree  |  {} tensions  {} roots",
             self.tree_items.len(),
             self.tree_items.iter().filter(|i| i.depth == 0).count(),
         );
-        let style = Style::new().fg(CLR_LIGHT_GRAY).bold();
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&status, style)]));
-        paragraph.render(*area, frame);
+        let status = StatusLine::new()
+            .left(StatusItem::text(&left_text))
+            .style(Style::new().fg(CLR_LIGHT_GRAY).bold());
+        status.render(*area, frame);
     }
 
     pub(crate) fn render_tree_body(&self, area: &Rect, frame: &mut Frame<'_>) {
@@ -81,9 +83,16 @@ impl WerkApp {
     }
 
     pub(crate) fn render_tree_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = " j/k navigate  Enter detail  Esc dashboard  1 dashboard  f filter  q quit  ? help";
-        let style = Style::new().fg(CLR_MID_GRAY);
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(hints, style)]));
-        paragraph.render(*area, frame);
+        let hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("j/k", "navigate"))
+            .left(StatusItem::key_hint("Enter", "detail"))
+            .left(StatusItem::key_hint("Esc", "dashboard"))
+            .left(StatusItem::key_hint("1", "dashboard"))
+            .left(StatusItem::key_hint("f", "filter"))
+            .left(StatusItem::key_hint("q", "quit"))
+            .left(StatusItem::key_hint("?", "help"))
+            .style(Style::new().fg(CLR_MID_GRAY));
+        hints.render(*area, frame);
     }
 }

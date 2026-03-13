@@ -6,6 +6,7 @@ use ftui::widgets::Widget;
 use ftui::widgets::StatefulWidget;
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::table::{Row, Table};
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 
 use werk_shared::truncate;
 
@@ -39,7 +40,7 @@ impl WerkApp {
         } else {
             String::new()
         };
-        let status = format!(
+        let left_text = format!(
             " werk  |  {} active  {} urgent  {} neglected  {} resolved  {} released{}",
             self.total_active,
             self.total_urgent,
@@ -48,9 +49,10 @@ impl WerkApp {
             self.total_released,
             filter_label,
         );
-        let style = Style::new().fg(CLR_LIGHT_GRAY).bold();
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&status, style)]));
-        paragraph.render(*area, frame);
+        let status = StatusLine::new()
+            .left(StatusItem::text(&left_text))
+            .style(Style::new().fg(CLR_LIGHT_GRAY).bold());
+        status.render(*area, frame);
     }
 
     pub(crate) fn render_tension_list(&self, area: &Rect, frame: &mut Frame<'_>) {
@@ -195,12 +197,24 @@ impl WerkApp {
     }
 
     pub(crate) fn render_dashboard_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = format!(
-            " j/k  Enter detail  t tree  f[{}]  a add  c/p child/parent  r/d edit  w reflect  F focus  T timeline  D health  N graph  L lever  q/?",
-            self.filter.label()
-        );
-        let style = Style::new().fg(CLR_MID_GRAY);
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&hints, style)]));
-        paragraph.render(*area, frame);
+        let filter_hint = format!("f[{}]", self.filter.label());
+        let hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("j/k", ""))
+            .left(StatusItem::key_hint("Enter", "detail"))
+            .left(StatusItem::key_hint("t", "tree"))
+            .left(StatusItem::text(&filter_hint))
+            .left(StatusItem::key_hint("a", "add"))
+            .left(StatusItem::key_hint("c/p", "child/parent"))
+            .left(StatusItem::key_hint("r/d", "edit"))
+            .left(StatusItem::key_hint("w", "reflect"))
+            .left(StatusItem::key_hint("F", "focus"))
+            .left(StatusItem::key_hint("T", "timeline"))
+            .left(StatusItem::key_hint("D", "health"))
+            .left(StatusItem::key_hint("N", "graph"))
+            .left(StatusItem::key_hint("L", "lever"))
+            .left(StatusItem::key_hint("q/?", ""))
+            .style(Style::new().fg(CLR_MID_GRAY));
+        hints.render(*area, frame);
     }
 }

@@ -1,12 +1,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use ftui::widgets::command_palette::{CommandPalette, ActionItem};
+use ftui::widgets::input::TextInput;
 use ftui::widgets::list::ListState;
 use ftui::widgets::table::TableState;
+use ftui::widgets::textarea::TextArea;
 use sd_core::DynamicsEngine;
 use werk_shared::AgentMutation;
 
-use crate::input::{CommandPaletteState, InputMode, InputOverlay, View};
+use crate::input::{InputMode, InputOverlay, View};
 use crate::lever::LeverResult;
 use crate::types::{
     DetailDynamics, Filter, MutationDisplay, TensionRow, Toast, UrgencyTier,
@@ -66,8 +69,8 @@ pub struct WerkApp {
     // Phase 6: Welcome screen
     pub(crate) welcome_selected: usize,
 
-    // Phase 6: Command palette
-    pub(crate) command_palette: Option<CommandPaletteState>,
+    // Phase 6: Command palette (native ftui widget)
+    pub(crate) command_palette: CommandPalette,
 
     // Phase 6: Search
     pub(crate) search_query: Option<String>,
@@ -79,9 +82,14 @@ pub struct WerkApp {
     pub(crate) lever: Option<LeverResult>,
     pub(crate) show_lever_overlay: bool,
 
-    // Phase 15A: Reflect
-    pub(crate) reflect_buffer: Option<String>,
+    // Phase 15A: Reflect (native ftui TextArea widget)
+    pub(crate) reflect_textarea: Option<TextArea>,
     pub(crate) reflect_tension_id: Option<String>,
+
+    // Native ftui widget state for input overlay migration
+    pub(crate) text_input_widget: TextInput,
+    pub(crate) move_picker_state: RefCell<ListState>,
+    pub(crate) search_input_widget: TextInput,
 }
 
 impl WerkApp {
@@ -151,7 +159,7 @@ impl WerkApp {
             agent_response_text: None,
 
             welcome_selected: 0,
-            command_palette: None,
+            command_palette: Self::build_command_palette(),
             search_query: None,
             search_buffer: String::new(),
             search_cursor: 0,
@@ -160,8 +168,12 @@ impl WerkApp {
             lever: None,
             show_lever_overlay: false,
 
-            reflect_buffer: None,
+            reflect_textarea: None,
             reflect_tension_id: None,
+
+            text_input_widget: TextInput::new(),
+            move_picker_state: RefCell::new(ListState::default()),
+            search_input_widget: TextInput::new(),
         }
     }
 
@@ -172,6 +184,47 @@ impl WerkApp {
         let mut app = Self::new(engine, Vec::new());
         app.active_view = View::Welcome;
         app
+    }
+
+    /// Build and populate the native CommandPalette widget with all actions.
+    fn build_command_palette() -> CommandPalette {
+        use crate::input::all_palette_actions;
+        let mut palette = CommandPalette::new().with_max_visible(14);
+        for action in all_palette_actions() {
+            let item = ActionItem::new(action.name, action.name)
+                .with_description(action.description);
+            palette.register_action(item);
+        }
+        palette
+    }
+
+    /// Map a command palette action ID back to the corresponding Msg.
+    pub(crate) fn palette_id_to_msg(id: &str) -> Option<crate::msg::Msg> {
+        use crate::msg::Msg;
+        match id {
+            "add" => Some(Msg::StartAddTension),
+            "reality" => Some(Msg::StartUpdateReality),
+            "desire" => Some(Msg::StartUpdateDesire),
+            "resolve" => Some(Msg::StartResolve),
+            "release" => Some(Msg::StartRelease),
+            "delete" => Some(Msg::StartDelete),
+            "move" => Some(Msg::StartMove),
+            "child" => Some(Msg::CreateChild),
+            "parent" => Some(Msg::CreateParent),
+            "note" => Some(Msg::StartAddNote),
+            "horizon" => Some(Msg::StartSetHorizon),
+            "tree" => Some(Msg::SwitchTree),
+            "dashboard" => Some(Msg::SwitchDashboard),
+            "agent" => Some(Msg::StartAgent),
+            "neighborhood" => Some(Msg::ViewNeighborhood),
+            "timeline" => Some(Msg::ViewTimeline),
+            "focus" => Some(Msg::ViewFocus),
+            "health" => Some(Msg::ViewDynamics),
+            "reflect" => Some(Msg::StartReflect),
+            "help" => Some(Msg::ToggleHelp),
+            "quit" => Some(Msg::Quit),
+            _ => None,
+        }
     }
 
     /// Get the current dashboard selected index.

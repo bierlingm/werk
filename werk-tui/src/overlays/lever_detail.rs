@@ -4,6 +4,8 @@ use ftui::text::{Line, Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::modal::{Modal, ModalPosition, ModalSizeConstraints};
+use ftui::widgets::progress::MiniBar;
 
 use werk_shared::truncate;
 
@@ -15,15 +17,13 @@ impl WerkApp {
         let lever = match &self.lever {
             Some(l) => l,
             None => {
-                // No lever — show a short message
-                let msg = " No active tensions to compute lever. ";
-                let w = (msg.len() as u16 + 4).min(area.width.saturating_sub(4));
-                let h = 3u16.min(area.height.saturating_sub(4));
-                let x = (area.width.saturating_sub(w)) / 2;
-                let y = (area.height.saturating_sub(h)) / 2;
-                let r = Rect::new(x, y, w, h);
-                let style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
-                Paragraph::new(Text::from(msg)).style(style).render(r, frame);
+                // No lever — show a short message in a Modal
+                let msg = Paragraph::new(Text::from(" No active tensions to compute lever. "))
+                    .style(Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK));
+                let modal = Modal::new(msg)
+                    .position(ModalPosition::Center)
+                    .size(ModalSizeConstraints::new().max_width(45).max_height(3));
+                modal.render(area, frame);
                 return;
             }
         };
@@ -86,10 +86,10 @@ impl WerkApp {
             ("  Horizon integrity", b.horizon_integrity, 0.05),
         ];
 
+        // Build breakdown lines using MiniBar::render_string() for inline bar text
         for (label, value, weight) in &components {
-            let bar_len = (*value * 10.0).round() as usize;
-            let bar: String = "\u{2588}".repeat(bar_len);
-            let empty: String = "\u{2591}".repeat(10 - bar_len);
+            let bar = MiniBar::new(*value, 10);
+            let bar_str = bar.render_string();
             let color = if *value > 0.7 {
                 CLR_RED_SOFT
             } else if *value > 0.3 {
@@ -103,8 +103,7 @@ impl WerkApp {
                     format!(" ({:.0}%) ", weight * 100.0),
                     Style::new().fg(CLR_DIM_GRAY),
                 ),
-                Span::styled(bar, Style::new().fg(color)),
-                Span::styled(empty, Style::new().fg(CLR_DIM_GRAY)),
+                Span::styled(bar_str, Style::new().fg(color)),
                 Span::styled(format!(" {:.0}%", value * 100.0), Style::new().fg(CLR_LIGHT_GRAY)),
             ]));
         }
@@ -139,17 +138,18 @@ impl WerkApp {
             Style::new().fg(CLR_DIM_GRAY),
         )]));
 
-        // Size and position
         let line_count = lines.len() as u16;
-        let overlay_width = 65u16.min(area.width.saturating_sub(4));
-        let overlay_height = (line_count + 2).min(area.height.saturating_sub(2));
-        let x = (area.width.saturating_sub(overlay_width)) / 2;
-        let y = (area.height.saturating_sub(overlay_height)) / 2;
-        let overlay_area = Rect::new(x, y, overlay_width, overlay_height);
 
-        // Pad lines to full width to create solid background
+        // Wrap content in a Modal for proper overlay positioning and backdrop
         let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
-        let paragraph = Paragraph::new(Text::from_lines(lines)).style(bg_style);
-        paragraph.render(overlay_area, frame);
+        let content = Paragraph::new(Text::from_lines(lines)).style(bg_style);
+        let modal = Modal::new(content)
+            .position(ModalPosition::Center)
+            .size(
+                ModalSizeConstraints::new()
+                    .max_width(65)
+                    .max_height(line_count.saturating_add(2)),
+            );
+        modal.render(area, frame);
     }
 }

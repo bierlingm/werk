@@ -7,6 +7,7 @@ use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::block::Block;
 use ftui::widgets::borders::BorderType;
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 
 use werk_shared::truncate;
 
@@ -17,20 +18,21 @@ use crate::types::MutationKind;
 
 impl WerkApp {
     pub(crate) fn render_detail_title(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let title = match &self.detail_tension {
+        let (left_text, right_text) = match &self.detail_tension {
             Some(t) => {
                 let short_id: String = t.id.chars().take(8).collect();
-                format!(
-                    " {}  {}",
-                    truncate(&t.desired, area.width.saturating_sub(12) as usize),
-                    short_id,
-                )
+                let desired = truncate(&t.desired, area.width.saturating_sub(12) as usize).to_string();
+                (format!(" {}", desired), short_id)
             }
-            None => " Detail".to_string(),
+            None => (" Detail".to_string(), String::new()),
         };
-        let style = Style::new().fg(CLR_WHITE).bold();
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&title, style)]));
-        paragraph.render(*area, frame);
+        let mut status = StatusLine::new()
+            .left(StatusItem::text(&left_text))
+            .style(Style::new().fg(CLR_WHITE).bold());
+        if !right_text.is_empty() {
+            status = status.right(StatusItem::text(&right_text));
+        }
+        status.render(*area, frame);
     }
 
     /// Build a Block with rounded borders and a title, using the dim gray border color.
@@ -449,13 +451,27 @@ impl WerkApp {
     }
 
     pub(crate) fn render_detail_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let verbose_label = if self.verbose { "v-" } else { "v+" };
-        let hints = format!(
-            " Esc back  j/k  {}  r/d edit  n note  h horizon  a add  R resolve  X release  Del  m move  g agent  w reflect  F focus  N graph  L lever  q/?",
-            verbose_label,
-        );
-        let style = Style::new().fg(CLR_MID_GRAY);
-        let paragraph = Paragraph::new(Text::from_spans([Span::styled(&hints, style)]));
-        paragraph.render(*area, frame);
+        let verbose_hint = if self.verbose { "v-" } else { "v+" };
+        let hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("Esc", "back"))
+            .left(StatusItem::key_hint("j/k", ""))
+            .left(StatusItem::text(verbose_hint))
+            .left(StatusItem::key_hint("r/d", "edit"))
+            .left(StatusItem::key_hint("n", "note"))
+            .left(StatusItem::key_hint("h", "horizon"))
+            .left(StatusItem::key_hint("a", "add"))
+            .left(StatusItem::key_hint("R", "resolve"))
+            .left(StatusItem::key_hint("X", "release"))
+            .left(StatusItem::text("Del"))
+            .left(StatusItem::key_hint("m", "move"))
+            .left(StatusItem::key_hint("g", "agent"))
+            .left(StatusItem::key_hint("w", "reflect"))
+            .left(StatusItem::key_hint("F", "focus"))
+            .left(StatusItem::key_hint("N", "graph"))
+            .left(StatusItem::key_hint("L", "lever"))
+            .left(StatusItem::key_hint("q/?", ""))
+            .style(Style::new().fg(CLR_MID_GRAY));
+        hints.render(*area, frame);
     }
 }

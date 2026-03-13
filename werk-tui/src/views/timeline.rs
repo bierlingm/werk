@@ -4,6 +4,7 @@ use ftui::text::{Line, Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 use werk_shared::truncate;
 use crate::app::WerkApp;
 use crate::theme::*;
@@ -14,9 +15,11 @@ impl WerkApp {
         let count = self.tensions.iter()
             .filter(|t| t.tier != UrgencyTier::Resolved && !t.horizon_display.contains('\u{2014}'))
             .count();
-        let title = format!(" Timeline  |  {} tensions with horizons", count);
-        let style = Style::new().fg(CLR_LIGHT_GRAY).bold();
-        Paragraph::new(Text::from_spans([Span::styled(&title, style)])).render(*area, frame);
+        let left_text = format!(" Timeline  |  {} tensions with horizons", count);
+        let status = StatusLine::new()
+            .left(StatusItem::text(&left_text))
+            .style(Style::new().fg(CLR_LIGHT_GRAY).bold());
+        status.render(*area, frame);
     }
 
     pub(crate) fn render_timeline_body(&self, area: &Rect, frame: &mut Frame<'_>) {
@@ -88,8 +91,13 @@ impl WerkApp {
     }
 
     pub(crate) fn render_timeline_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = " Esc back  1 dashboard  q quit  ? help";
-        Paragraph::new(Text::from_spans([Span::styled(hints, Style::new().fg(CLR_MID_GRAY))]))
-            .render(*area, frame);
+        let hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("Esc", "back"))
+            .left(StatusItem::key_hint("1", "dashboard"))
+            .left(StatusItem::key_hint("q", "quit"))
+            .left(StatusItem::key_hint("?", "help"))
+            .style(Style::new().fg(CLR_MID_GRAY));
+        hints.render(*area, frame);
     }
 }

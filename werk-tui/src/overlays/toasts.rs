@@ -1,15 +1,14 @@
 use ftui::Frame;
 use ftui::layout::Rect;
-use ftui::text::{Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
-use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::toast::{Toast as FtuiToast, ToastIcon, ToastStyle as FtuiToastStyle};
 
 use werk_shared::truncate;
 
 use crate::app::WerkApp;
 use crate::theme::*;
-use crate::types::MAX_VISIBLE_TOASTS;
+use crate::types::{MAX_VISIBLE_TOASTS, ToastSeverity};
 
 impl WerkApp {
     pub(crate) fn render_toasts(&self, area: Rect, frame: &mut Frame<'_>) {
@@ -28,7 +27,7 @@ impl WerkApp {
             .collect();
 
         for (i, toast) in visible_toasts.iter().enumerate() {
-            let toast_width = (toast.message.len() as u16 + 4).min(area.width.saturating_sub(2));
+            let toast_width = (toast.message.len() as u16 + 6).min(area.width.saturating_sub(2));
             let x = area.width.saturating_sub(toast_width + 1);
             let y = 1 + (i as u16);
 
@@ -37,15 +36,19 @@ impl WerkApp {
             }
 
             let toast_area = Rect::new(x, y, toast_width, 1);
-            let border_color = toast.color();
-            let content = format!(
-                " {} ",
-                truncate(&toast.message, toast_width.saturating_sub(2) as usize)
-            );
+            let msg = truncate(&toast.message, toast_width.saturating_sub(4) as usize).to_string();
 
-            let style = Style::new().fg(border_color).bg(CLR_BG_DARK).bold();
-            let paragraph = Paragraph::new(Text::from_spans([Span::styled(&content, style)]));
-            paragraph.render(toast_area, frame);
+            let (icon, style_variant) = match toast.severity {
+                ToastSeverity::Info => (ToastIcon::Info, FtuiToastStyle::Info),
+                ToastSeverity::Warning => (ToastIcon::Warning, FtuiToastStyle::Warning),
+                ToastSeverity::Alert => (ToastIcon::Error, FtuiToastStyle::Error),
+            };
+
+            let ftui_toast = FtuiToast::new(msg)
+                .icon(icon)
+                .style_variant(style_variant)
+                .style(Style::new().fg(toast.color()).bg(CLR_BG_DARK).bold());
+            ftui_toast.render(toast_area, frame);
         }
     }
 }
