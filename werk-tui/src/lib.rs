@@ -13,7 +13,7 @@ use ftui::widgets::paragraph::Paragraph;
 
 use sd_core::{
     compute_urgency, ComputedDynamics, CreativeCyclePhase, DynamicsEngine, Forest,
-    StructuralTendency, Tension, TensionStatus,
+    Horizon, Mutation, StructuralTendency, Tension, TensionStatus,
 };
 use werk_shared::{relative_time, truncate, Workspace};
 
@@ -74,6 +74,60 @@ impl Filter {
             Filter::Released => "Released",
         }
     }
+}
+
+// ============================================================================
+// Input overlay types
+// ============================================================================
+
+/// Text input overlay state.
+pub struct InputOverlay {
+    pub prompt: String,
+    pub buffer: String,
+    pub cursor: usize,
+}
+
+impl InputOverlay {
+    fn new(prompt: String, prefill: String) -> Self {
+        let cursor = prefill.len();
+        Self {
+            prompt,
+            buffer: prefill,
+            cursor,
+        }
+    }
+}
+
+/// The input mode of the application.
+pub enum InputMode {
+    Normal,
+    TextInput(InputContext),
+    Confirm(ConfirmAction),
+    MovePicker(MovePickerState),
+}
+
+/// Context for text input operations.
+pub enum InputContext {
+    UpdateReality(String),
+    UpdateDesire(String),
+    AddNote(String),
+    SetHorizon(String),
+    AddTensionDesired { parent_id: Option<String> },
+    AddTensionActual { desired: String, parent_id: Option<String> },
+}
+
+/// Confirmation actions.
+pub enum ConfirmAction {
+    Resolve(String),
+    Release(String),
+    Delete { id: String, desired: String },
+}
+
+/// State for the move/reparent picker.
+pub struct MovePickerState {
+    pub tension_id: String,
+    pub candidates: Vec<(String, String)>, // (id, desired)
+    pub selected: usize,
 }
 
 /// The view currently displayed.
@@ -152,6 +206,41 @@ pub enum Msg {
 
     // Verbose toggle
     ToggleVerbose,
+
+    // Phase 3: CRUD operations
+    StartUpdateReality,
+    StartUpdateDesire,
+    StartAddNote,
+    StartSetHorizon,
+    StartAddTension,
+    StartResolve,
+    StartRelease,
+    StartDelete,
+    StartMove,
+
+    // Input overlay events
+    InputChar(char),
+    InputBackspace,
+    InputDelete,
+    InputLeft,
+    InputRight,
+    InputHome,
+    InputEnd,
+    InputSubmit,
+    InputCancel,
+
+    // Confirm events
+    ConfirmYes,
+    ConfirmNo,
+
+    // Move picker events
+    PickerUp,
+    PickerDown,
+    PickerSelect,
+    PickerCancel,
+
+    // Raw key event for mode-based routing
+    RawKey(KeyCode, bool), // (code, shift)
 }
 
 impl From<Event> for Msg {
@@ -161,20 +250,8 @@ impl From<Event> for Msg {
                 if key.ctrl() && key.code == KeyCode::Char('c') {
                     return Msg::Quit;
                 }
-                match key.code {
-                    KeyCode::Char('j') | KeyCode::Down => Msg::MoveDown,
-                    KeyCode::Char('k') | KeyCode::Up => Msg::MoveUp,
-                    KeyCode::Char('R') => Msg::ToggleResolved,
-                    KeyCode::Char('?') => Msg::ToggleHelp,
-                    KeyCode::Char('q') => Msg::Quit,
-                    KeyCode::Enter => Msg::OpenDetail,
-                    KeyCode::Escape => Msg::Back,
-                    KeyCode::Char('1') => Msg::SwitchDashboard,
-                    KeyCode::Char('2') | KeyCode::Char('t') => Msg::SwitchTree,
-                    KeyCode::Char('f') => Msg::CycleFilter,
-                    KeyCode::Char('v') => Msg::ToggleVerbose,
-                    _ => Msg::Noop,
-                }
+                // Pass raw key event — WerkApp.update() routes based on input mode
+                Msg::RawKey(key.code, key.shift())
             }
             _ => Msg::Noop,
         }
@@ -213,6 +290,11 @@ pub struct WerkApp {
     // Tree view state
     tree_selected: usize,
     tree_items: Vec<TreeItem>,
+
+    // Phase 3: Input mode
+    input_mode: InputMode,
+    input_overlay: Option<InputOverlay>,
+    status_toast: Option<String>,
 }
 
 impl WerkApp {
@@ -254,6 +336,10 @@ impl WerkApp {
 
             tree_selected: 0,
             tree_items: Vec::new(),
+
+            input_mode: InputMode::Normal,
+            input_overlay: None,
+            status_toast: None,
         }
     }
 
@@ -435,10 +521,488 @@ impl WerkApp {
     }
 }
 
+impl WerkApp {
+    // ── Phase 3: helpers ────────────────────────────────────────
+
+    /// Get the currently selected tension ID based on active view.
+    fn selected_tension_id(&self) -> Option<String> {
+        match self.active_view {
+            View::Dashboard => {
+                let visible = self.visible_tensions();
+                visible.get(self.selected).map(|r| r.id.clone())
+            }
+            View::Detail => self.detail_tension.as_ref().map(|t| t.id.clone()),
+            View::TreeView => self
+                .tree_items
+                .get(self.tree_selected)
+                .map(|i| i.tension_id.clone()),
+        }
+    }
+
+    /// Reload all tension data after a mutation.
+    fn reload_data(&mut self) {
+        let now = Utc::now();
+        let tensions = self.engine.store().list_tensions().unwrap_or_default();
+        let mut rows: Vec<TensionRow> = tensions
+            .iter()
+            .map(|t| build_tension_row(&mut self.engine, t, now))
+            .collect();
+        rows.sort_by(|a, b| {
+            a.tier.cmp(&b.tier).then_with(|| {
+                let ua = a.urgency.unwrap_or(-1.0);
+                let ub = b.urgency.unwrap_or(-1.0);
+                ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
+            })
+        });
+
+        self.total_active = rows.iter().filter(|t| t.tier == UrgencyTier::Active).count();
+        self.total_resolved = rows.iter().filter(|t| t.tier == UrgencyTier::Resolved).count();
+        self.total_released = rows.iter().filter(|t| t.status == "Released").count();
+        self.total_neglected = rows.iter().filter(|t| t.tier == UrgencyTier::Neglected).count();
+        self.total_urgent = rows.iter().filter(|t| t.tier == UrgencyTier::Urgent).count();
+        self.tensions = rows;
+
+        // Clamp selection
+        let visible = self.visible_tensions().len();
+        if visible > 0 && self.selected >= visible {
+            self.selected = visible - 1;
+        }
+
+        // Reload detail if in detail view
+        if self.active_view == View::Detail {
+            if let Some(t) = &self.detail_tension {
+                let id = t.id.clone();
+                self.load_detail(&id);
+            }
+        }
+
+        // Rebuild tree if in tree view
+        if self.active_view == View::TreeView {
+            self.build_tree_items();
+        }
+    }
+
+    /// Enter text input mode.
+    fn enter_text_input(&mut self, context: InputContext, prompt: String, prefill: String) {
+        self.input_overlay = Some(InputOverlay::new(prompt, prefill));
+        self.input_mode = InputMode::TextInput(context);
+    }
+
+    /// Enter confirm mode.
+    fn enter_confirm(&mut self, action: ConfirmAction, prompt: String) {
+        self.input_overlay = Some(InputOverlay::new(prompt, String::new()));
+        self.input_mode = InputMode::Confirm(action);
+    }
+
+    /// Cancel any input mode.
+    fn cancel_input(&mut self) {
+        self.input_mode = InputMode::Normal;
+        self.input_overlay = None;
+    }
+
+    /// Handle text input character insertion/editing.
+    fn handle_text_input_key(&mut self, code: KeyCode) {
+        let overlay = match &mut self.input_overlay {
+            Some(o) => o,
+            None => return,
+        };
+
+        match code {
+            KeyCode::Char(c) => {
+                overlay.buffer.insert(overlay.cursor, c);
+                overlay.cursor += c.len_utf8();
+            }
+            KeyCode::Backspace if overlay.cursor > 0 => {
+                // Find the previous char boundary
+                let prev = overlay.buffer[..overlay.cursor]
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                overlay.buffer.drain(prev..overlay.cursor);
+                overlay.cursor = prev;
+            }
+            KeyCode::Delete if overlay.cursor < overlay.buffer.len() => {
+                let next = overlay.buffer[overlay.cursor..]
+                    .char_indices()
+                    .nth(1)
+                    .map(|(i, _)| overlay.cursor + i)
+                    .unwrap_or(overlay.buffer.len());
+                overlay.buffer.drain(overlay.cursor..next);
+            }
+            KeyCode::Left if overlay.cursor > 0 => {
+                overlay.cursor = overlay.buffer[..overlay.cursor]
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+            }
+            KeyCode::Right if overlay.cursor < overlay.buffer.len() => {
+                overlay.cursor = overlay.buffer[overlay.cursor..]
+                    .char_indices()
+                    .nth(1)
+                    .map(|(i, _)| overlay.cursor + i)
+                    .unwrap_or(overlay.buffer.len());
+            }
+            KeyCode::Home => {
+                overlay.cursor = 0;
+            }
+            KeyCode::End => {
+                overlay.cursor = overlay.buffer.len();
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle text input submission.
+    fn handle_submit(&mut self) {
+        let buffer = match &self.input_overlay {
+            Some(o) => o.buffer.clone(),
+            None => {
+                self.cancel_input();
+                return;
+            }
+        };
+
+        // Take ownership of the input mode
+        let mode = std::mem::replace(&mut self.input_mode, InputMode::Normal);
+        self.input_overlay = None;
+
+        match mode {
+            InputMode::TextInput(ctx) => self.dispatch_text_submit(ctx, buffer),
+            InputMode::Confirm(action) => {
+                // Confirm should be handled by ConfirmYes, not Enter
+                self.input_mode = InputMode::Confirm(action);
+            }
+            InputMode::MovePicker(_) => {
+                // MovePicker should be handled by PickerSelect
+            }
+            InputMode::Normal => {}
+        }
+    }
+
+    fn dispatch_text_submit(&mut self, ctx: InputContext, buffer: String) {
+        if buffer.trim().is_empty() {
+            self.status_toast = Some("Input cannot be empty".to_string());
+            return;
+        }
+
+        match ctx {
+            InputContext::UpdateReality(id) => {
+                match self.engine.store().update_actual(&id, buffer.trim()) {
+                    Ok(()) => {
+                        self.status_toast = Some("Reality updated".to_string());
+                        self.reload_data();
+                    }
+                    Err(e) => {
+                        self.status_toast = Some(format!("Error: {}", e));
+                    }
+                }
+            }
+            InputContext::UpdateDesire(id) => {
+                match self.engine.store().update_desired(&id, buffer.trim()) {
+                    Ok(()) => {
+                        self.status_toast = Some("Desire updated".to_string());
+                        self.reload_data();
+                    }
+                    Err(e) => {
+                        self.status_toast = Some(format!("Error: {}", e));
+                    }
+                }
+            }
+            InputContext::AddNote(id) => {
+                let mutation = Mutation::new(
+                    id,
+                    Utc::now(),
+                    "note".to_owned(),
+                    None,
+                    buffer.trim().to_owned(),
+                );
+                match self.engine.store().record_mutation(&mutation) {
+                    Ok(()) => {
+                        self.status_toast = Some("Note added".to_string());
+                        self.reload_data();
+                    }
+                    Err(e) => {
+                        self.status_toast = Some(format!("Error: {}", e));
+                    }
+                }
+            }
+            InputContext::SetHorizon(id) => {
+                let trimmed = buffer.trim();
+                let horizon = if trimmed.eq_ignore_ascii_case("none") {
+                    None
+                } else {
+                    match Horizon::parse(trimmed) {
+                        Ok(h) => Some(h),
+                        Err(e) => {
+                            self.status_toast = Some(format!(
+                                "Invalid horizon: {}. Use: 2026, 2026-03, 2026-03-15",
+                                e
+                            ));
+                            return;
+                        }
+                    }
+                };
+                match self.engine.store().update_horizon(&id, horizon) {
+                    Ok(()) => {
+                        self.status_toast = Some("Horizon updated".to_string());
+                        self.reload_data();
+                    }
+                    Err(e) => {
+                        self.status_toast = Some(format!("Error: {}", e));
+                    }
+                }
+            }
+            InputContext::AddTensionDesired { parent_id } => {
+                // Move to step 2: capture actual
+                let desired = buffer.trim().to_owned();
+                self.enter_text_input(
+                    InputContext::AddTensionActual {
+                        desired,
+                        parent_id,
+                    },
+                    "Actual state (current reality):".to_string(),
+                    String::new(),
+                );
+            }
+            InputContext::AddTensionActual { desired, parent_id } => {
+                let actual = buffer.trim().to_owned();
+                match self
+                    .engine
+                    .store()
+                    .create_tension_with_parent(&desired, &actual, parent_id)
+                {
+                    Ok(t) => {
+                        self.status_toast =
+                            Some(format!("Created: {}", truncate(&t.desired, 40)));
+                        self.reload_data();
+                    }
+                    Err(e) => {
+                        self.status_toast = Some(format!("Error: {}", e));
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_confirm(&mut self, yes: bool) {
+        if !yes {
+            self.cancel_input();
+            return;
+        }
+
+        let mode = std::mem::replace(&mut self.input_mode, InputMode::Normal);
+        self.input_overlay = None;
+
+        if let InputMode::Confirm(action) = mode {
+            match action {
+                ConfirmAction::Resolve(id) => {
+                    match self
+                        .engine
+                        .store()
+                        .update_status(&id, TensionStatus::Resolved)
+                    {
+                        Ok(()) => {
+                            self.status_toast = Some("Tension resolved".to_string());
+                            self.reload_data();
+                        }
+                        Err(e) => {
+                            self.status_toast = Some(format!("Error: {}", e));
+                        }
+                    }
+                }
+                ConfirmAction::Release(id) => {
+                    match self
+                        .engine
+                        .store()
+                        .update_status(&id, TensionStatus::Released)
+                    {
+                        Ok(()) => {
+                            self.status_toast = Some("Tension released".to_string());
+                            self.reload_data();
+                        }
+                        Err(e) => {
+                            self.status_toast = Some(format!("Error: {}", e));
+                        }
+                    }
+                }
+                ConfirmAction::Delete { id, desired: _ } => {
+                    match self.engine.store().delete_tension(&id) {
+                        Ok(()) => {
+                            self.status_toast = Some("Tension deleted".to_string());
+                            // If we were viewing this tension, go back
+                            if self.active_view == View::Detail {
+                                self.detail_tension = None;
+                                self.active_view = View::Dashboard;
+                            }
+                            self.reload_data();
+                        }
+                        Err(e) => {
+                            self.status_toast = Some(format!("Error: {}", e));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_move_picker_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if let InputMode::MovePicker(ref mut state) = self.input_mode {
+                    if !state.candidates.is_empty()
+                        && state.selected < state.candidates.len() - 1
+                    {
+                        state.selected += 1;
+                    }
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if let InputMode::MovePicker(ref mut state) = self.input_mode {
+                    if state.selected > 0 {
+                        state.selected -= 1;
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                let mode = std::mem::replace(&mut self.input_mode, InputMode::Normal);
+                self.input_overlay = None;
+                if let InputMode::MovePicker(state) = mode {
+                    if let Some((target_id, _)) = state.candidates.get(state.selected) {
+                        let new_parent = if target_id == "__ROOT__" {
+                            None
+                        } else {
+                            Some(target_id.as_str())
+                        };
+                        match self
+                            .engine
+                            .store()
+                            .update_parent(&state.tension_id, new_parent)
+                        {
+                            Ok(()) => {
+                                self.status_toast = Some("Tension moved".to_string());
+                                self.reload_data();
+                            }
+                            Err(e) => {
+                                self.status_toast = Some(format!("Error: {}", e));
+                            }
+                        }
+                    }
+                }
+            }
+            KeyCode::Escape => {
+                self.cancel_input();
+            }
+            _ => {}
+        }
+    }
+
+    /// Build list of candidate parents for move picker (excluding self and descendants).
+    fn build_move_candidates(&self, tension_id: &str) -> Vec<(String, String)> {
+        let tensions = self.engine.store().list_tensions().unwrap_or_default();
+
+        // Find all descendants of tension_id
+        let mut descendants = std::collections::HashSet::new();
+        let mut stack = vec![tension_id.to_owned()];
+        while let Some(current) = stack.pop() {
+            for t in &tensions {
+                if t.parent_id.as_deref() == Some(&current) && !descendants.contains(&t.id) {
+                    descendants.insert(t.id.clone());
+                    stack.push(t.id.clone());
+                }
+            }
+        }
+
+        let mut candidates = vec![("__ROOT__".to_string(), "(root - no parent)".to_string())];
+        for t in &tensions {
+            if t.id != tension_id && !descendants.contains(&t.id) {
+                let label = format!(
+                    "{}  {}",
+                    &t.id[..6.min(t.id.len())],
+                    truncate(&t.desired, 50),
+                );
+                candidates.push((t.id.clone(), label));
+            }
+        }
+        candidates
+    }
+
+    /// Map a normal-mode key to a message.
+    fn normal_key_to_msg(&self, code: KeyCode, shift: bool) -> Msg {
+        match code {
+            KeyCode::Char('j') | KeyCode::Down => Msg::MoveDown,
+            KeyCode::Char('k') | KeyCode::Up => Msg::MoveUp,
+            KeyCode::Char('?') => Msg::ToggleHelp,
+            KeyCode::Char('q') => Msg::Quit,
+            KeyCode::Enter => Msg::OpenDetail,
+            KeyCode::Escape => Msg::Back,
+            KeyCode::Char('1') => Msg::SwitchDashboard,
+            KeyCode::Char('2') | KeyCode::Char('t') => Msg::SwitchTree,
+            KeyCode::Char('f') => Msg::CycleFilter,
+            KeyCode::Char('v') => Msg::ToggleVerbose,
+            // Phase 3 keybindings
+            KeyCode::Char('r') => Msg::StartUpdateReality,
+            KeyCode::Char('d') => Msg::StartUpdateDesire,
+            KeyCode::Char('n') => Msg::StartAddNote,
+            KeyCode::Char('h') => Msg::StartSetHorizon,
+            KeyCode::Char('a') => Msg::StartAddTension,
+            KeyCode::Char('R') if shift => Msg::StartResolve,
+            KeyCode::Char('R') => Msg::ToggleResolved,
+            KeyCode::Char('X') if shift => Msg::StartRelease,
+            KeyCode::Char('m') => Msg::StartMove,
+            KeyCode::Delete | KeyCode::Backspace
+                if self.active_view == View::Detail =>
+            {
+                Msg::StartDelete
+            }
+            _ => Msg::Noop,
+        }
+    }
+}
+
 impl Model for WerkApp {
     type Message = Msg;
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
+        // Clear toast on any action
+        if !matches!(msg, Msg::Noop) {
+            self.status_toast = None;
+        }
+
+        // Route RawKey based on input mode
+        if let Msg::RawKey(code, shift) = msg {
+            match &self.input_mode {
+                InputMode::TextInput(_) => {
+                    match code {
+                        KeyCode::Enter => self.handle_submit(),
+                        KeyCode::Escape => self.cancel_input(),
+                        other => self.handle_text_input_key(other),
+                    }
+                    return Cmd::None;
+                }
+                InputMode::Confirm(_) => {
+                    match code {
+                        KeyCode::Char('y') | KeyCode::Char('Y') => self.handle_confirm(true),
+                        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Escape => {
+                            self.handle_confirm(false);
+                        }
+                        _ => {}
+                    }
+                    return Cmd::None;
+                }
+                InputMode::MovePicker(_) => {
+                    self.handle_move_picker_key(code);
+                    return Cmd::None;
+                }
+                InputMode::Normal => {
+                    // Convert to specific message
+                    let mapped = self.normal_key_to_msg(code, shift);
+                    return self.update(mapped);
+                }
+            }
+        }
+
         match msg {
             Msg::MoveDown => {
                 match self.active_view {
@@ -455,7 +1019,7 @@ impl Model for WerkApp {
                         }
                     }
                     View::Detail => {
-                        // handled by ScrollDetailDown
+                        self.detail_scroll = self.detail_scroll.saturating_add(1);
                     }
                 }
                 Cmd::None
@@ -473,7 +1037,7 @@ impl Model for WerkApp {
                         }
                     }
                     View::Detail => {
-                        // handled by ScrollDetailUp
+                        self.detail_scroll = self.detail_scroll.saturating_sub(1);
                     }
                 }
                 Cmd::None
@@ -555,6 +1119,177 @@ impl Model for WerkApp {
                 self.verbose = !self.verbose;
                 Cmd::None
             }
+
+            // Phase 3: CRUD starters
+            Msg::StartUpdateReality => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        let prompt = format!(
+                            "Update reality for \"{}\":",
+                            truncate(&t.desired, 40)
+                        );
+                        let prefill = t.actual.clone();
+                        self.enter_text_input(
+                            InputContext::UpdateReality(id),
+                            prompt,
+                            prefill,
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartUpdateDesire => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        let prompt = format!(
+                            "Update desire for \"{}\":",
+                            truncate(&t.desired, 40)
+                        );
+                        let prefill = t.desired.clone();
+                        self.enter_text_input(
+                            InputContext::UpdateDesire(id),
+                            prompt,
+                            prefill,
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartAddNote => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        let prompt = format!(
+                            "Add note for \"{}\":",
+                            truncate(&t.desired, 40)
+                        );
+                        self.enter_text_input(
+                            InputContext::AddNote(id),
+                            prompt,
+                            String::new(),
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartSetHorizon => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        let prompt = format!(
+                            "Set horizon for \"{}\" (2026, 2026-03, 2026-03-15, or none):",
+                            truncate(&t.desired, 30)
+                        );
+                        let prefill = t
+                            .horizon
+                            .as_ref()
+                            .map(|h| h.to_string())
+                            .unwrap_or_default();
+                        self.enter_text_input(
+                            InputContext::SetHorizon(id),
+                            prompt,
+                            prefill,
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartAddTension => {
+                let parent_id = if self.active_view == View::Detail {
+                    self.detail_tension.as_ref().map(|t| t.id.clone())
+                } else {
+                    None
+                };
+                let prompt = if parent_id.is_some() {
+                    "New sub-tension - desired state:".to_string()
+                } else {
+                    "New tension - desired state:".to_string()
+                };
+                self.enter_text_input(
+                    InputContext::AddTensionDesired { parent_id },
+                    prompt,
+                    String::new(),
+                );
+                Cmd::None
+            }
+            Msg::StartResolve => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        if t.status == TensionStatus::Active {
+                            let prompt = format!(
+                                "Resolve \"{}\"? (y/n)",
+                                truncate(&t.desired, 40)
+                            );
+                            self.enter_confirm(ConfirmAction::Resolve(id), prompt);
+                        }
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartRelease => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        if t.status == TensionStatus::Active {
+                            let prompt = format!(
+                                "Release \"{}\"? (y/n)",
+                                truncate(&t.desired, 40)
+                            );
+                            self.enter_confirm(ConfirmAction::Release(id), prompt);
+                        }
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartDelete => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        let prompt = format!(
+                            "Delete \"{}\"? (y/n)",
+                            truncate(&t.desired, 40)
+                        );
+                        self.enter_confirm(
+                            ConfirmAction::Delete {
+                                id,
+                                desired: t.desired.clone(),
+                            },
+                            prompt,
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::StartMove => {
+                if let Some(id) = self.selected_tension_id() {
+                    let candidates = self.build_move_candidates(&id);
+                    self.input_overlay = Some(InputOverlay::new(
+                        "Move tension - select new parent (j/k/Enter):".to_string(),
+                        String::new(),
+                    ));
+                    self.input_mode = InputMode::MovePicker(MovePickerState {
+                        tension_id: id,
+                        candidates,
+                        selected: 0,
+                    });
+                }
+                Cmd::None
+            }
+
+            // These are handled by RawKey routing but included for exhaustiveness
+            Msg::InputChar(_)
+            | Msg::InputBackspace
+            | Msg::InputDelete
+            | Msg::InputLeft
+            | Msg::InputRight
+            | Msg::InputHome
+            | Msg::InputEnd
+            | Msg::InputSubmit
+            | Msg::InputCancel
+            | Msg::ConfirmYes
+            | Msg::ConfirmNo
+            | Msg::PickerUp
+            | Msg::PickerDown
+            | Msg::PickerSelect
+            | Msg::PickerCancel => Cmd::None,
+
+            Msg::RawKey(_, _) => Cmd::None, // already handled above
             Msg::Quit => Cmd::Quit,
             Msg::Noop => Cmd::None,
         }
@@ -605,6 +1340,9 @@ impl Model for WerkApp {
         if self.show_help {
             self.render_help_overlay(area, frame);
         }
+
+        // Render input overlay on top of everything
+        self.render_input_overlay(area, frame);
     }
 }
 
@@ -709,7 +1447,7 @@ impl WerkApp {
 
     fn render_dashboard_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
         let hints = format!(
-            " j/k navigate  Enter detail  t tree  f filter[{}]  R resolved  q quit  ? help",
+            " j/k nav  Enter detail  t tree  f[{}]  a add  r/d edit  R resolve  X release  m move  q/?",
             self.filter.label()
         );
         let style = Style::new().fg(CLR_MID_GRAY);
@@ -966,7 +1704,7 @@ impl WerkApp {
     fn render_detail_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
         let verbose_label = if self.verbose { "v-" } else { "v+" };
         let hints = format!(
-            " Esc back  j/k scroll  {} verbose  1 dashboard  t tree  q quit  ? help",
+            " Esc back  j/k  {}  r/d edit  n note  h horizon  a add  R resolve  X release  Del delete  m move  q/?",
             verbose_label,
         );
         let style = Style::new().fg(CLR_MID_GRAY);
@@ -1072,7 +1810,7 @@ impl WerkApp {
 
     fn render_help_overlay(&self, area: Rect, frame: &mut Frame<'_>) {
         let help_width = 60u16.min(area.width.saturating_sub(4));
-        let help_height = 18u16.min(area.height.saturating_sub(4));
+        let help_height = 24u16.min(area.height.saturating_sub(4));
         let x = (area.width.saturating_sub(help_width)) / 2;
         let y = (area.height.saturating_sub(help_height)) / 2;
         let help_area = Rect::new(x, y, help_width, help_height);
@@ -1083,24 +1821,172 @@ impl WerkApp {
                 Style::new().bold(),
             )]),
             Line::from(""),
-            Line::from("  j / Down    Move down"),
-            Line::from("  k / Up      Move up"),
+            Line::from("  Navigation"),
+            Line::from("  j/k         Move up/down"),
             Line::from("  Enter       Open detail view"),
             Line::from("  Esc         Go back"),
-            Line::from("  1           Dashboard view"),
-            Line::from("  2 / t       Tree view"),
-            Line::from("  f           Cycle filter (Active/All/Resolved/Released)"),
-            Line::from("  v           Toggle verbose dynamics"),
-            Line::from("  R           Toggle resolved tensions"),
-            Line::from("  ?           Toggle this help"),
-            Line::from("  q / Ctrl+C  Quit"),
+            Line::from("  1           Dashboard     2/t  Tree view"),
+            Line::from("  f           Cycle filter   v   Toggle verbose"),
             Line::from(""),
-            Line::from_spans([Span::styled("  Press ? to close", Style::new().dim())]),
+            Line::from("  Editing"),
+            Line::from("  r           Update reality (actual state)"),
+            Line::from("  d           Update desire"),
+            Line::from("  n           Add note"),
+            Line::from("  h           Set horizon"),
+            Line::from("  a           Add new tension"),
+            Line::from("  R           Resolve tension"),
+            Line::from("  X           Release tension"),
+            Line::from("  Del         Delete tension (detail view)"),
+            Line::from("  m           Move/reparent tension"),
+            Line::from(""),
+            Line::from("  q / Ctrl+C  Quit          ?  Toggle this help"),
         ];
 
         let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
         let paragraph = Paragraph::new(Text::from_lines(help_lines)).style(bg_style);
         paragraph.render(help_area, frame);
+    }
+
+    // ── Input overlay rendering ──────────────────────────────────
+
+    fn render_input_overlay(&self, area: Rect, frame: &mut Frame<'_>) {
+        match &self.input_mode {
+            InputMode::Normal => {
+                // Show toast if present
+                if let Some(toast) = &self.status_toast {
+                    let toast_area = Rect::new(0, area.height.saturating_sub(1), area.width, 1);
+                    let style = Style::new().fg(CLR_YELLOW).bold();
+                    let paragraph =
+                        Paragraph::new(Text::from_spans([Span::styled(
+                            format!(" {} ", toast),
+                            style,
+                        )]));
+                    paragraph.render(toast_area, frame);
+                }
+            }
+            InputMode::TextInput(_) => {
+                if let Some(overlay) = &self.input_overlay {
+                    let overlay_height = 3u16;
+                    let y = area.height.saturating_sub(overlay_height);
+                    let overlay_area = Rect::new(0, y, area.width, overlay_height);
+
+                    let separator = "\u{2500}"
+                        .repeat(area.width as usize);
+
+                    let (before_cursor, after_cursor) =
+                        overlay.buffer.split_at(overlay.cursor.min(overlay.buffer.len()));
+                    let input_display = format!(
+                        "  > {}{}",
+                        before_cursor,
+                        if after_cursor.is_empty() {
+                            "\u{2588}".to_string()
+                        } else {
+                            let mut chars = after_cursor.chars();
+                            let cursor_char = chars.next().unwrap_or(' ');
+                            format!("{}{}", cursor_char, chars.as_str())
+                        },
+                    );
+
+                    let lines = vec![
+                        Line::from_spans([Span::styled(
+                            &separator,
+                            Style::new().fg(CLR_DIM_GRAY),
+                        )]),
+                        Line::from_spans([Span::styled(
+                            format!("  {}", overlay.prompt),
+                            Style::new().fg(CLR_CYAN).bold(),
+                        )]),
+                        Line::from_spans([Span::styled(
+                            input_display,
+                            Style::new().fg(CLR_WHITE),
+                        )]),
+                    ];
+
+                    let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
+                    let paragraph =
+                        Paragraph::new(Text::from_lines(lines)).style(bg_style);
+                    paragraph.render(overlay_area, frame);
+                }
+            }
+            InputMode::Confirm(_) => {
+                if let Some(overlay) = &self.input_overlay {
+                    let overlay_height = 2u16;
+                    let y = area.height.saturating_sub(overlay_height);
+                    let overlay_area = Rect::new(0, y, area.width, overlay_height);
+
+                    let separator = "\u{2500}"
+                        .repeat(area.width as usize);
+
+                    let lines = vec![
+                        Line::from_spans([Span::styled(
+                            &separator,
+                            Style::new().fg(CLR_DIM_GRAY),
+                        )]),
+                        Line::from_spans([Span::styled(
+                            format!("  {}", overlay.prompt),
+                            Style::new().fg(CLR_YELLOW).bold(),
+                        )]),
+                    ];
+
+                    let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
+                    let paragraph =
+                        Paragraph::new(Text::from_lines(lines)).style(bg_style);
+                    paragraph.render(overlay_area, frame);
+                }
+            }
+            InputMode::MovePicker(state) => {
+                // Show at most 10 candidates
+                let visible_count = state.candidates.len().min(10);
+                let overlay_height = (visible_count as u16) + 2; // +2 for separator + prompt
+                let y = area.height.saturating_sub(overlay_height);
+                let overlay_area = Rect::new(0, y, area.width, overlay_height);
+
+                let separator = "\u{2500}".repeat(area.width as usize);
+                let mut lines = vec![Line::from_spans([Span::styled(
+                    &separator,
+                    Style::new().fg(CLR_DIM_GRAY),
+                )])];
+
+                if let Some(overlay) = &self.input_overlay {
+                    lines.push(Line::from_spans([Span::styled(
+                        format!("  {}", overlay.prompt),
+                        Style::new().fg(CLR_CYAN).bold(),
+                    )]));
+                }
+
+                // Scroll the candidate list if needed
+                let scroll_offset = if state.selected >= visible_count {
+                    state.selected - visible_count + 1
+                } else {
+                    0
+                };
+
+                for (i, (_, label)) in state
+                    .candidates
+                    .iter()
+                    .enumerate()
+                    .skip(scroll_offset)
+                    .take(visible_count)
+                {
+                    let is_selected = i == state.selected;
+                    let marker = if is_selected { ">" } else { " " };
+                    let style = if is_selected {
+                        Style::new().fg(CLR_WHITE).bold()
+                    } else {
+                        Style::new().fg(CLR_LIGHT_GRAY)
+                    };
+                    lines.push(Line::from_spans([Span::styled(
+                        format!("  {} {}", marker, truncate(label, area.width.saturating_sub(6) as usize)),
+                        style,
+                    )]));
+                }
+
+                let bg_style = Style::new().fg(CLR_LIGHT_GRAY).bg(CLR_BG_DARK);
+                let paragraph =
+                    Paragraph::new(Text::from_lines(lines)).style(bg_style);
+                paragraph.render(overlay_area, frame);
+            }
+        }
     }
 }
 
