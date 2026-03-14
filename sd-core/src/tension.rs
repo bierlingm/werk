@@ -194,6 +194,20 @@ impl Tension {
         Ok(())
     }
 
+    /// Transition this tension back to Active status (reopen).
+    ///
+    /// Only valid from Resolved or Released status.
+    pub fn reopen(&mut self) -> Result<(), SdError> {
+        if self.status == TensionStatus::Active {
+            return Err(SdError::InvalidStatusTransition {
+                from: self.status,
+                to: TensionStatus::Active,
+            });
+        }
+        self.status = TensionStatus::Active;
+        Ok(())
+    }
+
     /// Update the temporal horizon.
     ///
     /// Returns an error if the tension is not active.

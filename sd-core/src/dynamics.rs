@@ -755,7 +755,7 @@ const JACCARD_WEIGHT: f64 = 0.4;
 ///
 /// Handled correctly via Rust's native `char`-based string operations and
 /// `strsim`'s Unicode-aware Levenshtein implementation.
-fn compute_gap_magnitude(desired: &str, actual: &str) -> f64 {
+pub(crate) fn compute_gap_magnitude(desired: &str, actual: &str) -> f64 {
     // Fast path: identical strings (including both empty)
     if desired == actual {
         return 0.0;

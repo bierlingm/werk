@@ -13,6 +13,7 @@ use crate::app::WerkApp;
 use crate::theme::*;
 use crate::types::UrgencyTier;
 
+#[allow(dead_code)]
 impl WerkApp {
     pub(crate) fn render_dynamics_title(&self, area: &Rect, frame: &mut Frame<'_>) {
         let count = self.tensions.iter().filter(|t| t.tier != UrgencyTier::Resolved).count();
@@ -153,6 +154,7 @@ impl WerkApp {
 
 /// Render distribution rows using MiniBar widgets for each entry.
 /// Each row: "  Label  [===bar===] count"
+#[allow(dead_code)]
 fn render_distribution_rows(
     data: &[(&str, usize, PackedRgba)],
     total: f64,
@@ -205,6 +207,7 @@ fn render_distribution_rows(
     }
 }
 
+#[allow(dead_code)]
 fn mini_sparkline(data: &[f64], width: usize) -> String {
     let blocks = ['\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}'];
     let max = data.iter().cloned().fold(0.0f64, f64::max).max(1.0);

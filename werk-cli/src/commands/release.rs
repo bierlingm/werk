@@ -7,6 +7,7 @@ use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::Mutation;
 use serde::Serialize;
+use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for release command.
 #[derive(Serialize)]
@@ -39,10 +40,21 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
         )));
     }
 
+    // Hook infrastructure
+    let hooks = Config::load(&workspace)
+        .map(|c| HookRunner::from_config(&c))
+        .unwrap_or_else(|_| HookRunner::noop());
+    let event = HookEvent::status_change(&tension.id, &tension.desired, "Released");
+    if !hooks.pre_mutation(&event) {
+        return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+    }
+
     // Update status via store (handles validation and mutation recording)
     store
         .update_status(&tension.id, sd_core::TensionStatus::Released)
         .map_err(WerkError::SdError)?;
+
+    hooks.post_mutation(&event);
 
     // Record the release reason as a mutation
     store

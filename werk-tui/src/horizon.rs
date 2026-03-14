@@ -12,8 +12,9 @@ use sd_core::Horizon;
 ///
 /// Natural language formats:
 /// - Relative words: `today`, `tomorrow`, `next week`, `next month`, `next friday`
-/// - Relative durations: `in 3 days`, `in 2 weeks`, `in 1 month`, `3 days`, `2 weeks`, `3d`, `2w`, `1m`
-/// - End-of-period: `eom`, `end of month`, `eoq`, `end of quarter`, `eoy`, `end of year`
+/// - Relative durations: `in 3 days`, `in 2 weeks`, `in 1 month`, `3 days`, `2 weeks`, `3d`, `2w`, `1m`, `1y`
+/// - Plus-prefixed relative: `+3d`, `+2w`, `+3m`, `+1y`
+/// - End-of-period: `eow`, `friday`, `eom`, `end of month`, `eoq`, `end of quarter`, `eoy`, `end of year`
 pub fn parse_horizon(input: &str) -> Result<Horizon, String> {
     let trimmed = input.trim();
 
@@ -46,6 +47,14 @@ fn parse_natural(input: &str, today: NaiveDate) -> Result<Horizon, String> {
             let (y, m) = next_month(today.year(), today.month());
             return Horizon::new_month(y, m).map_err(|e| e.to_string());
         }
+        "eow" | "friday" => {
+            // End of this week = Friday (today if already Friday)
+            let today_wd = today.weekday().num_days_from_monday(); // Mon=0 .. Sun=6
+            let friday_wd = Weekday::Fri.num_days_from_monday(); // 4
+            let days_ahead = (friday_wd as i64 - today_wd as i64 + 7) % 7;
+            // If today is already Friday, days_ahead == 0 means today
+            return horizon_day(today + Duration::days(days_ahead));
+        }
         "eom" | "end of month" => {
             return horizon_end_of_month(today);
         }
@@ -63,6 +72,13 @@ fn parse_natural(input: &str, today: NaiveDate) -> Result<Horizon, String> {
         if let Some(wd) = parse_weekday(rest.trim()) {
             let target = next_occurrence(today, wd);
             return horizon_day(target);
+        }
+    }
+
+    // "+Nd", "+Nw", "+Nm", "+Ny" compact relative format
+    if let Some(rest) = input.strip_prefix('+') {
+        if let Some(date) = parse_duration_expr(rest, today) {
+            return horizon_from_duration(date, rest);
         }
     }
 
@@ -91,6 +107,7 @@ fn parse_duration_expr(input: &str, today: NaiveDate) -> Option<NaiveDate> {
                 "d" => return Some(today + Duration::days(n)),
                 "w" => return Some(today + Duration::weeks(n)),
                 "m" => return Some(add_months(today, n as u32)),
+                "y" => return Some(add_months(today, n as u32 * 12)),
                 _ => {}
             }
         }
@@ -113,9 +130,20 @@ fn parse_duration_expr(input: &str, today: NaiveDate) -> Option<NaiveDate> {
     None
 }
 
-/// Choose Day or Month precision depending on the unit used.
+/// Choose Day, Month, or Year precision depending on the unit used.
 fn horizon_from_duration(date: NaiveDate, expr: &str) -> Result<Horizon, String> {
     let unit = expr.split_whitespace().last().unwrap_or(expr);
+
+    // Year precision for year-based durations
+    {
+        let is_compact_year = unit.len() >= 2
+            && unit.ends_with('y')
+            && unit[..unit.len() - 1].parse::<i64>().is_ok();
+        if unit == "year" || unit == "years" || is_compact_year {
+            return Horizon::new_year(date.year()).map_err(|e| e.to_string());
+        }
+    }
+
     // Month precision for month-based durations
     if unit == "month" || unit == "months" || unit.ends_with('m') && !unit.ends_with("dm") {
         // Only use month precision if the compact form is just digits + 'm'
@@ -243,6 +271,101 @@ mod tests {
         assert!(parse_horizon("NEXT WEEK").is_ok());
         assert!(parse_horizon("EOM").is_ok());
         assert!(parse_horizon("In 3 Days").is_ok());
+    }
+
+    #[test]
+    fn plus_prefixed_relative() {
+        assert!(parse_horizon("+1d").is_ok());
+        assert!(parse_horizon("+3d").is_ok());
+        assert!(parse_horizon("+14d").is_ok());
+        assert!(parse_horizon("+2w").is_ok());
+        assert!(parse_horizon("+3m").is_ok());
+        assert!(parse_horizon("+6m").is_ok());
+        assert!(parse_horizon("+1y").is_ok());
+    }
+
+    #[test]
+    fn named_shortcuts() {
+        assert!(parse_horizon("eow").is_ok());
+        assert!(parse_horizon("friday").is_ok());
+        assert!(parse_horizon("eom").is_ok());
+        assert!(parse_horizon("eoq").is_ok());
+        assert!(parse_horizon("eoy").is_ok());
+    }
+
+    #[test]
+    fn zero_offset_edge_cases() {
+        assert!(parse_horizon("+0d").is_ok());
+        assert!(parse_horizon("+0w").is_ok());
+    }
+
+    #[test]
+    fn plus_prefixed_relative_with_known_date() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 14).unwrap(); // Saturday
+
+        // +1d => 2026-03-15
+        let h = parse_natural("+1d", today).unwrap();
+        assert_eq!(h.to_string(), "2026-03-15");
+
+        // +2w => 2026-03-28
+        let h = parse_natural("+2w", today).unwrap();
+        assert_eq!(h.to_string(), "2026-03-28");
+
+        // +3m => 2026-06 (month precision)
+        let h = parse_natural("+3m", today).unwrap();
+        assert_eq!(h.to_string(), "2026-06");
+
+        // +1y => 2027 (year precision)
+        let h = parse_natural("+1y", today).unwrap();
+        assert_eq!(h.to_string(), "2027");
+
+        // +0d => today
+        let h = parse_natural("+0d", today).unwrap();
+        assert_eq!(h.to_string(), "2026-03-14");
+
+        // +0w => today
+        let h = parse_natural("+0w", today).unwrap();
+        assert_eq!(h.to_string(), "2026-03-14");
+    }
+
+    #[test]
+    fn eow_on_different_weekdays() {
+        // On a Monday, eow => that Friday
+        let monday = NaiveDate::from_ymd_opt(2026, 3, 9).unwrap();
+        let h = parse_natural("eow", monday).unwrap();
+        assert_eq!(h.to_string(), "2026-03-13"); // Friday
+
+        // On a Friday, eow => today (that Friday)
+        let friday = NaiveDate::from_ymd_opt(2026, 3, 13).unwrap();
+        let h = parse_natural("eow", friday).unwrap();
+        assert_eq!(h.to_string(), "2026-03-13");
+
+        // On a Saturday, eow => next Friday
+        let saturday = NaiveDate::from_ymd_opt(2026, 3, 14).unwrap();
+        let h = parse_natural("eow", saturday).unwrap();
+        assert_eq!(h.to_string(), "2026-03-20");
+
+        // "friday" should behave the same as "eow"
+        let h = parse_natural("friday", monday).unwrap();
+        assert_eq!(h.to_string(), "2026-03-13");
+    }
+
+    #[test]
+    fn eoq_quarters() {
+        // Q1: Jan => end of March
+        let jan = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
+        let h = parse_natural("eoq", jan).unwrap();
+        assert_eq!(h.to_string(), "2026-03");
+
+        // Q2: Apr => end of June
+        let apr = NaiveDate::from_ymd_opt(2026, 4, 1).unwrap();
+        let h = parse_natural("eoq", apr).unwrap();
+        assert_eq!(h.to_string(), "2026-06");
+
+        // Q4: Dec => end of December
+        let dec = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+        let h = parse_natural("eoq", dec).unwrap();
+        assert_eq!(h.to_string(), "2026-12");
     }
 
     #[test]

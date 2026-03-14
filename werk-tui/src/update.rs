@@ -106,7 +106,38 @@ impl WerkApp {
             .map(|t| build_tension_row(&mut self.engine, t, now))
             .collect();
 
-        let detail_dynamics = computed.map(|cd| build_detail_dynamics(&cd));
+        let detail_dynamics = computed.map(|cd| {
+            let mut dd = build_detail_dynamics(&cd);
+            // Build forecast from resolution data
+            dd.forecast_line = if let Some(ref resolution) = cd.resolution {
+                if let (Some(required_vel), Some(is_sufficient)) = (resolution.required_velocity, resolution.is_sufficient) {
+                    let ratio = if required_vel > 0.0 { resolution.velocity / required_vel } else { 0.0 };
+                    if is_sufficient {
+                        let magnitude = cd.structural_tension.as_ref().map(|st| st.magnitude).unwrap_or(0.0);
+                        if resolution.velocity > 0.0 && magnitude > 0.0 {
+                            let secs_remaining = (magnitude / resolution.velocity) as i64;
+                            let forecast_date = chrono::Utc::now() + chrono::Duration::seconds(secs_remaining);
+                            Some((
+                                format!("On track \u{2014} resolving ~{}", forecast_date.format("%b %d")),
+                                crate::theme::CLR_GREEN,
+                            ))
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some((
+                            format!("Behind \u{2014} {:.0}% of required pace", ratio * 100.0),
+                            crate::theme::CLR_RED_SOFT,
+                        ))
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            dd
+        });
 
         // Load parent tension
         let parent = tension.parent_id.as_ref().and_then(|pid| {
@@ -128,13 +159,14 @@ impl WerkApp {
         }
         ancestors.reverse();  // root-first order
 
-        self.detail_tension = Some(tension);
-        self.detail_scroll = 0;
-        self.detail_mutations = mutation_displays;
-        self.detail_children = children;
-        self.detail_dynamics = detail_dynamics;
-        self.detail_parent = parent;
-        self.detail_ancestors = ancestors;
+        self.detail.tension = Some(tension);
+        self.detail.scroll = 0;
+        self.detail.cursor = 0;
+        self.detail.mutations = mutation_displays;
+        self.detail.children = children;
+        self.detail.dynamics = detail_dynamics;
+        self.detail.parent = parent;
+        self.detail.ancestors = ancestors;
     }
 
     /// Build the flat list of navigable tensions for the neighborhood view.
@@ -332,19 +364,103 @@ impl WerkApp {
                 let visible = self.visible_tensions();
                 visible.get(self.selected()).map(|r| r.id.clone())
             }
-            View::Detail => self.detail_tension.as_ref().map(|t| t.id.clone()),
+            View::Detail => self.detail.tension.as_ref().map(|t| t.id.clone()),
             View::TreeView => self
                 .tree_items
                 .get(self.tree_selected())
                 .map(|i| i.tension_id.clone()),
             View::Agent(id) => Some(id.clone()),
-            View::Focus => self.detail_tension.as_ref().map(|t| t.id.clone()),
+            View::Focus => self.detail.tension.as_ref().map(|t| t.id.clone()),
             View::Neighborhood => {
                 let cursor = self.neighborhood_state.borrow().selected().unwrap_or(0);
                 self.neighborhood_items.get(cursor).map(|(id, _)| id.clone())
                     .or_else(|| self.neighborhood_tension_id.clone())
             }
             View::Timeline | View::DynamicsSummary | View::Welcome => None,
+        }
+    }
+
+    /// When all children of a composite tension are resolved or released,
+    /// auto-resolve the parent and recurse upward.
+    fn check_parent_auto_resolution(&mut self, tension_id: &str) {
+        let tension = self.engine.store().get_tension(tension_id).ok().flatten();
+        let parent_id = tension.and_then(|t| t.parent_id.clone());
+
+        if let Some(pid) = parent_id {
+            let all_tensions = self.engine.store().list_tensions().unwrap_or_default();
+            let children: Vec<_> = all_tensions
+                .iter()
+                .filter(|t| t.parent_id.as_deref() == Some(&pid))
+                .collect();
+            let all_done = !children.is_empty()
+                && children.iter().all(|c| {
+                    c.status == TensionStatus::Resolved
+                        || c.status == TensionStatus::Released
+                });
+            if all_done {
+                if self.engine.store().update_status(&pid, TensionStatus::Resolved).is_ok() {
+                    if let Ok(Some(p)) = self.engine.store().get_tension(&pid) {
+                        self.push_toast(
+                            format!(
+                                "All children done \u{2014} '{}' auto-resolved",
+                                truncate(&p.desired, 30)
+                            ),
+                            ToastSeverity::Info,
+                        );
+                    }
+                    // Recurse: parent resolution might cascade further
+                    self.check_parent_auto_resolution(&pid);
+                }
+            }
+        }
+    }
+
+    /// Compute a what-if preview of cascading effects for resolving/releasing a tension.
+    fn compute_what_if_preview(
+        &self,
+        id: &str,
+        tension: &sd_core::Tension,
+        action: crate::app::WhatIfAction,
+    ) -> crate::app::WhatIfPreview {
+        // Find active children that would continue without this parent resolved
+        let children = self.engine.store().get_children(id).unwrap_or_default();
+        let active_children: Vec<String> = children
+            .iter()
+            .filter(|c| c.status == TensionStatus::Active)
+            .map(|c| truncate(&c.desired, 40).to_string())
+            .collect();
+        let children_count = active_children.len();
+
+        // Check if resolving/releasing would auto-resolve the parent
+        let mut auto_resolved = Vec::new();
+        if let Some(ref pid) = tension.parent_id {
+            let all_tensions = self.engine.store().list_tensions().unwrap_or_default();
+            let siblings: Vec<_> = all_tensions
+                .iter()
+                .filter(|t| t.parent_id.as_deref() == Some(pid))
+                .collect();
+            let all_would_be_done = !siblings.is_empty()
+                && siblings.iter().all(|s| {
+                    s.id == id
+                        || s.status == TensionStatus::Resolved
+                        || s.status == TensionStatus::Released
+                });
+            if all_would_be_done {
+                if let Ok(Some(parent)) = self.engine.store().get_tension(pid) {
+                    if parent.status == TensionStatus::Active {
+                        auto_resolved.push(truncate(&parent.desired, 40).to_string());
+                    }
+                }
+            }
+        }
+
+        crate::app::WhatIfPreview {
+            tension_id: id.to_string(),
+            tension_desired: tension.desired.clone(),
+            action,
+            orphaned_children: active_children,
+            auto_resolved_parents: auto_resolved,
+            children_count,
         }
     }
 
@@ -512,14 +628,50 @@ impl WerkApp {
         self.total_urgent = rows.iter().filter(|t| t.tier == UrgencyTier::Urgent).count();
         self.tensions = rows;
 
+        // Projection caching: recompute every 5 minutes
+        let should_recompute = self.last_projection_time
+            .map(|t| (now - t).num_seconds() > 300)
+            .unwrap_or(true);
+
+        if should_recompute {
+            let all_tensions = self.engine.store().list_tensions().unwrap_or_default();
+            let all_mutations = self.engine.store().all_mutations().unwrap_or_default();
+            let thresholds = sd_core::ProjectionThresholds::default();
+            let projection = sd_core::project_field(&all_tensions, &all_mutations, &thresholds, now);
+
+            // Populate trajectory on each TensionRow from 1-month projection
+            for row in &mut self.tensions {
+                if let Some((_, projs)) = projection.tension_projections.iter()
+                    .find(|(id, _)| *id == row.id)
+                {
+                    // Use 1-month projection's trajectory (index 1)
+                    if let Some(proj) = projs.get(1) {
+                        row.trajectory = Some(proj.trajectory);
+                    }
+                }
+            }
+
+            self.field_projection = Some(projection);
+            self.last_projection_time = Some(now);
+        }
+
         let visible = self.visible_tensions().len();
         if visible > 0 && self.selected() >= visible {
             self.set_selected(visible - 1);
         }
 
         if self.active_view == View::Detail {
-            if let Some(t) = &self.detail_tension {
+            if let Some(t) = &self.detail.tension {
                 let id = t.id.clone();
+                self.load_detail(&id);
+            }
+        }
+
+        // Auto-load detail for the selected tension (used by split-pane dashboard)
+        if self.active_view == View::Dashboard {
+            let visible = self.visible_tensions();
+            if let Some(row) = visible.get(self.selected()) {
+                let id = row.id.clone();
                 self.load_detail(&id);
             }
         }
@@ -530,6 +682,68 @@ impl WerkApp {
 
         // Recompute the lever
         self.lever = crate::lever::compute_lever(&mut self.engine);
+    }
+
+    /// Spawn a background task that watches the database file for external modifications.
+    /// Returns a `Cmd` that will produce `Msg::ExternalChange` when the file changes.
+    pub(crate) fn setup_file_watcher(&self) -> Cmd<Msg> {
+        let db_path = match self.engine.store().path() {
+            Some(p) => p.to_path_buf(),
+            None => return Cmd::None, // in-memory store, nothing to watch
+        };
+
+        // Watch the parent directory (.werk/) since some editors do atomic
+        // writes (rename) which can confuse per-file watches.
+        let watch_dir = match db_path.parent() {
+            Some(d) => d.to_path_buf(),
+            None => return Cmd::None,
+        };
+        let db_file_name = match db_path.file_name() {
+            Some(n) => n.to_os_string(),
+            None => return Cmd::None,
+        };
+
+        Cmd::task_named("file_watcher", move || {
+            use notify::{Watcher, RecursiveMode, Event as NotifyEvent};
+            use std::sync::mpsc;
+            use std::time::Duration;
+
+            let (tx, rx) = mpsc::channel();
+            let target_name = db_file_name.clone();
+            let mut watcher = match notify::recommended_watcher(
+                move |res: Result<NotifyEvent, notify::Error>| {
+                    if let Ok(event) = res {
+                        // Only trigger on modifications/creates that touch the db file
+                        if event.kind.is_modify() || event.kind.is_create() {
+                            let dominated = event.paths.iter().any(|p| {
+                                p.file_name().map_or(false, |n| n == target_name)
+                            });
+                            if dominated {
+                                tx.send(()).ok();
+                            }
+                        }
+                    }
+                },
+            ) {
+                Ok(w) => w,
+                Err(_) => return Msg::Noop,
+            };
+
+            if watcher.watch(&watch_dir, RecursiveMode::NonRecursive).is_err() {
+                return Msg::Noop;
+            }
+
+            // Block until a change arrives
+            if rx.recv().is_err() {
+                return Msg::Noop;
+            }
+
+            // Debounce: wait 200ms then drain any queued notifications
+            std::thread::sleep(Duration::from_millis(200));
+            while rx.try_recv().is_ok() {}
+
+            Msg::ExternalChange
+        })
     }
 
     fn enter_text_input(&mut self, context: InputContext, prompt: String, prefill: String) {
@@ -596,13 +810,13 @@ impl WerkApp {
 
     fn dispatch_text_submit(&mut self, ctx: InputContext, buffer: String) -> Cmd<Msg> {
         // Horizon steps allow empty input (skip = no horizon)
-        let is_horizon_step = matches!(
+        let allows_empty = matches!(
             ctx,
-            InputContext::AddTensionHorizon { .. }
-            | InputContext::CreateChildHorizon(..)
+            InputContext::CreateChildHorizon(..)
             | InputContext::CreateParentHorizon(..)
+            | InputContext::SetRecurrence(..)
         );
-        if buffer.trim().is_empty() && !is_horizon_step {
+        if buffer.trim().is_empty() && !allows_empty {
             self.status_toast = Some("Input cannot be empty".to_string());
             return Cmd::None;
         }
@@ -675,45 +889,20 @@ impl WerkApp {
                 }
             }
             InputContext::AddTensionDesired { parent_id } => {
-                let desired = buffer.trim().to_owned();
-                self.enter_text_input(
-                    InputContext::AddTensionHorizon {
-                        desired,
-                        parent_id,
-                    },
-                    "Horizon (when? e.g. 2026-06, next month, or empty to skip):".to_string(),
-                    String::new(),
-                );
-            }
-            InputContext::AddTensionHorizon { desired, parent_id } => {
-                let trimmed = buffer.trim();
-                let horizon = if trimmed.is_empty() {
-                    None
-                } else {
-                    match parse_horizon(trimmed) {
-                        Ok(h) => Some(h.to_string()),
+                let (desired, horizon_str, actual) = parse_quick_add(&buffer);
+                let horizon_parsed = horizon_str.and_then(|h| {
+                    match parse_horizon(&h) {
+                        Ok(v) => Some(v),
                         Err(e) => {
                             self.status_toast = Some(format!(
-                                "Invalid horizon: {}. Use: 2026, 2026-03, next month, etc.",
+                                "Invalid horizon: {}. Use: 2026, 2026-03, +2w, etc.",
                                 e
                             ));
-                            return Cmd::None;
+                            None
                         }
                     }
-                };
-                self.enter_text_input(
-                    InputContext::AddTensionActual {
-                        desired,
-                        parent_id,
-                        horizon,
-                    },
-                    "Actual state (current reality):".to_string(),
-                    String::new(),
-                );
-            }
-            InputContext::AddTensionActual { desired, parent_id, horizon } => {
-                let actual = buffer.trim().to_owned();
-                let horizon_parsed = horizon.as_deref().and_then(|h| parse_horizon(h).ok());
+                });
+                let actual = actual.unwrap_or_default();
                 match self
                     .engine
                     .store()
@@ -751,7 +940,10 @@ impl WerkApp {
             InputContext::CreateChildHorizon(parent_id, desired) => {
                 let trimmed = buffer.trim();
                 let horizon = if trimmed.is_empty() {
-                    None
+                    // Inherit parent horizon when child has none
+                    self.engine.store().get_tension(&parent_id)
+                        .ok().flatten()
+                        .and_then(|p| p.horizon.map(|h| h.to_string()))
                 } else {
                     match parse_horizon(trimmed) {
                         Ok(h) => Some(h.to_string()),
@@ -867,20 +1059,109 @@ impl WerkApp {
                 }
             }
 
+            InputContext::SetSnooze(tension_id) => {
+                let input = buffer.trim().to_string();
+                match parse_horizon(&input) {
+                    Ok(horizon) => {
+                        let date_str = horizon.to_string();
+                        // For month/year precision, use range_start to get a concrete date.
+                        let snooze_date = horizon.range_start().format("%Y-%m-%d").to_string();
+                        let mutation = Mutation::new(
+                            tension_id,
+                            Utc::now(),
+                            "snoozed_until".to_string(),
+                            None,
+                            snooze_date.clone(),
+                        );
+                        match self.engine.store().record_mutation(&mutation) {
+                            Ok(()) => {
+                                self.reload_data();
+                                self.push_toast(
+                                    format!("Snoozed until {}", date_str),
+                                    ToastSeverity::Info,
+                                );
+                            }
+                            Err(e) => {
+                                self.status_toast = Some(format!("Error: {}", e));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        self.status_toast = Some(format!(
+                            "Invalid date: {}. Use: +3d, friday, 2026-04-01, etc.",
+                            e
+                        ));
+                    }
+                }
+            }
+
             InputContext::AgentPrompt(tension_id) => {
                 let prompt = buffer.trim().to_owned();
-                self.agent_running = true;
-                self.agent_output = vec!["Running agent...".to_string()];
-                self.agent_scroll = 0;
-                self.agent_mutations = Vec::new();
-                self.agent_mutation_selected = Vec::new();
-                self.agent_mutation_cursor = 0;
-                self.agent_response_text = None;
+                self.agent.running = true;
+                self.agent.output = vec!["Running agent...".to_string()];
+                self.agent.scroll = 0;
+                self.agent.mutations = Vec::new();
+                self.agent.mutation_selected = Vec::new();
+                self.agent.mutation_cursor = 0;
+                self.agent.response_text = None;
 
                 return self.spawn_agent_task(tension_id, prompt);
             }
+
+            InputContext::SetRecurrence(tension_id) => {
+                let input = buffer.trim().to_string();
+                if input.is_empty() {
+                    // Clear recurrence
+                    self.engine.store().record_mutation(&Mutation::new(
+                        tension_id, Utc::now(), "recurrence".to_string(), None, "none".to_string(),
+                    )).ok();
+                    self.status_toast = Some("Recurrence cleared".to_string());
+                } else {
+                    // Validate it parses as a horizon
+                    if crate::horizon::parse_horizon(&input).is_ok() {
+                        self.engine.store().record_mutation(&Mutation::new(
+                            tension_id, Utc::now(), "recurrence".to_string(), None, input,
+                        )).ok();
+                        self.status_toast = Some("Recurrence set".to_string());
+                    } else {
+                        self.status_toast = Some(format!(
+                            "Invalid interval: use +1w, +2w, +1m, etc."
+                        ));
+                    }
+                }
+                self.reload_data();
+            }
+
+            // SetSnooze is handled above
         }
         Cmd::None
+    }
+
+    fn handle_recurrence(&mut self, tension_id: &str) {
+        let mutations = self.engine.store().get_mutations(tension_id).unwrap_or_default();
+        let recurrence = mutations.iter().rev()
+            .find(|m| m.field() == "recurrence" && m.new_value() != "none")
+            .map(|m| m.new_value().to_string());
+
+        if let Some(interval) = recurrence {
+            let tension = self.engine.store().get_tension(tension_id).ok().flatten();
+            if let Some(t) = tension {
+                let new_horizon = crate::horizon::parse_horizon(&interval).ok();
+                let new_id = self.engine.store().create_tension_full(
+                    &t.desired, "", t.parent_id.clone(), new_horizon,
+                ).ok();
+                if let Some(new_t) = new_id {
+                    // Copy recurrence to new tension
+                    self.engine.store().record_mutation(&Mutation::new(
+                        new_t.id.clone(), Utc::now(), "recurrence".to_string(), None, interval.clone(),
+                    )).ok();
+                    self.toasts.push(Toast::new(
+                        format!("Recurring: new '{}' created", truncate(&t.desired, 25)),
+                        ToastSeverity::Info,
+                    ));
+                }
+            }
+        }
     }
 
     fn handle_confirm(&mut self, yes: bool) {
@@ -894,43 +1175,13 @@ impl WerkApp {
 
         if let InputMode::Confirm(action) = mode {
             match action {
-                ConfirmAction::Resolve(id) => {
-                    match self
-                        .engine
-                        .store()
-                        .update_status(&id, TensionStatus::Resolved)
-                    {
-                        Ok(()) => {
-                            self.status_toast = Some("Tension resolved".to_string());
-                            self.reload_data();
-                        }
-                        Err(e) => {
-                            self.status_toast = Some(format!("Error: {}", e));
-                        }
-                    }
-                }
-                ConfirmAction::Release(id) => {
-                    match self
-                        .engine
-                        .store()
-                        .update_status(&id, TensionStatus::Released)
-                    {
-                        Ok(()) => {
-                            self.status_toast = Some("Tension released".to_string());
-                            self.reload_data();
-                        }
-                        Err(e) => {
-                            self.status_toast = Some(format!("Error: {}", e));
-                        }
-                    }
-                }
                 ConfirmAction::Delete { id, desired: _ } => {
                     match self.engine.store().delete_tension(&id) {
                         Ok(()) => {
                             self.status_toast = Some("Tension deleted".to_string());
                             if self.active_view == View::Detail {
-                                self.detail_tension = None;
-                                self.detail_nav_stack.clear();
+                                self.detail.tension = None;
+                                self.detail.nav_stack.clear();
                                 self.active_view = View::Dashboard;
                             }
                             self.reload_data();
@@ -1124,10 +1375,10 @@ impl WerkApp {
     fn apply_agent_mutations(&mut self) -> usize {
         let mut applied = 0;
         let mutations: Vec<_> = self
-            .agent_mutations
+            .agent.mutations
             .iter()
             .enumerate()
-            .filter(|(i, _)| self.agent_mutation_selected.get(*i).copied().unwrap_or(false))
+            .filter(|(i, _)| self.agent.mutation_selected.get(*i).copied().unwrap_or(false))
             .map(|(_, m)| m.clone())
             .collect();
 
@@ -1166,7 +1417,13 @@ impl WerkApp {
             } => {
                 self.engine
                     .store()
-                    .create_tension_with_parent(desired, actual, Some(parent_id.clone()))
+                    .create_tension_full(desired, actual, Some(parent_id.clone()), {
+                    // Inherit parent horizon if available
+                    let parent_horizon = self.engine.store().get_tension(parent_id)
+                        .ok().flatten()
+                        .and_then(|p| p.horizon);
+                    parent_horizon
+                })
                     .map_err(|e| e.to_string())?;
             }
             werk_shared::AgentMutation::AddNote {
@@ -1203,6 +1460,9 @@ impl WerkApp {
                     .store()
                     .update_status(tension_id, status)
                     .map_err(|e| e.to_string())?;
+                if status == TensionStatus::Resolved || status == TensionStatus::Released {
+                    self.check_parent_auto_resolution(tension_id);
+                }
             }
             werk_shared::AgentMutation::UpdateDesired {
                 tension_id,
@@ -1223,7 +1483,7 @@ impl WerkApp {
             return match code {
                 KeyCode::Char('j') | KeyCode::Down => Msg::MoveDown,
                 KeyCode::Char('k') | KeyCode::Up => Msg::MoveUp,
-                KeyCode::Enter => Msg::AgentToggleMutation(self.agent_mutation_cursor),
+                KeyCode::Enter => Msg::AgentToggleMutation(self.agent.mutation_cursor),
                 KeyCode::Char('a') => Msg::AgentApplySelected,
                 KeyCode::Char('1') => Msg::AgentToggleMutation(0),
                 KeyCode::Char('2') => Msg::AgentToggleMutation(1),
@@ -1248,10 +1508,14 @@ impl WerkApp {
             KeyCode::Char('q') => Msg::Quit,
             KeyCode::Enter => Msg::OpenDetail,
             KeyCode::Escape => Msg::Back,
-            KeyCode::Char('1') => Msg::SwitchDashboard,
-            KeyCode::Char('2') | KeyCode::Char('t') => Msg::SwitchTree,
+            KeyCode::Tab | KeyCode::BackTab => {
+                match self.active_view {
+                    View::Dashboard => Msg::SwitchTree,
+                    View::TreeView => Msg::SwitchDashboard,
+                    _ => Msg::SwitchDashboard,
+                }
+            }
             KeyCode::Char('f') => Msg::CycleFilter,
-            KeyCode::Char('v') => Msg::ToggleVerbose,
             KeyCode::Char('r') => Msg::StartUpdateReality,
             KeyCode::Char('d') => Msg::StartUpdateDesire,
             KeyCode::Char('n') => Msg::StartAddNote,
@@ -1260,20 +1524,21 @@ impl WerkApp {
             KeyCode::Char('c') => Msg::CreateChild,
             KeyCode::Char('p') => Msg::CreateParent,
             KeyCode::Char('R') if shift => Msg::StartResolve,
-            KeyCode::Char('R') => Msg::ToggleResolved,
             KeyCode::Char('X') if shift => Msg::StartRelease,
             KeyCode::Char('m') => Msg::StartMove,
-            KeyCode::Char('N') if shift && matches!(self.active_view, View::Dashboard | View::Detail) => Msg::ViewNeighborhood,
-            KeyCode::Char('T') if shift && matches!(self.active_view, View::Dashboard | View::Detail | View::TreeView) => Msg::ViewTimeline,
-            KeyCode::Char('F') if shift && matches!(self.active_view, View::Dashboard | View::Detail) => Msg::ViewFocus,
+            KeyCode::Char('T') if shift && matches!(self.active_view, View::Dashboard | View::Detail | View::TreeView) => Msg::ToggleTimeline,
             KeyCode::Char('g') if self.active_view == View::Detail => Msg::StartAgent,
             KeyCode::Delete | KeyCode::Backspace
                 if self.active_view == View::Detail =>
             {
                 Msg::StartDelete
             }
-            KeyCode::Char('D') if shift && matches!(self.active_view, View::Dashboard) => Msg::ViewDynamics,
+            KeyCode::Char('D') if shift && matches!(self.active_view, View::Dashboard | View::Detail | View::TreeView) => Msg::ToggleHealthOverlay,
             KeyCode::Char('w') if matches!(self.active_view, View::Dashboard | View::Detail) => Msg::StartReflect,
+            KeyCode::Char('Y') if shift && self.active_view == View::Detail => Msg::StartSetRecurrence,
+            KeyCode::Char('u') => Msg::Undo,
+            KeyCode::Char('z') => Msg::StartSnooze,
+            KeyCode::Char('Z') if shift => Msg::ToggleShowSnoozed,
             KeyCode::Char('L') if shift => Msg::ShowLever,
             KeyCode::Char(':') => Msg::OpenCommandPalette,
             KeyCode::Char('/') => Msg::OpenSearch,
@@ -1287,12 +1552,12 @@ impl WerkApp {
     fn handle_reflect_key(&mut self, code: KeyCode, mods: Modifiers) -> Cmd<Msg> {
         match code {
             KeyCode::Escape => {
-                self.reflect_textarea = None;
-                self.reflect_tension_id = None;
+                self.reflect.textarea = None;
+                self.reflect.tension_id = None;
                 self.input_mode = InputMode::Normal;
             }
             _ => {
-                if let Some(ref mut textarea) = self.reflect_textarea {
+                if let Some(ref mut textarea) = self.reflect.textarea {
                     let alt = mods.contains(Modifiers::ALT);
                     let super_key = mods.contains(Modifiers::SUPER);
 
@@ -1340,6 +1605,10 @@ impl WerkApp {
 
 impl Model for WerkApp {
     type Message = Msg;
+
+    fn init(&mut self) -> Cmd<Msg> {
+        self.setup_file_watcher()
+    }
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         self.expire_toasts();
@@ -1398,34 +1667,110 @@ impl Model for WerkApp {
                 return Cmd::None;
             }
 
-            if self.search_active {
+            if self.show_health_overlay {
+                match code {
+                    KeyCode::Escape | KeyCode::Char('D') => {
+                        self.show_health_overlay = false;
+                    }
+                    KeyCode::Char('q') => return Cmd::Quit,
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
+            if self.show_insights_overlay {
                 match code {
                     KeyCode::Escape => {
-                        self.search_active = false;
-                        self.search_query = None;
-                        self.search_buffer.clear();
-                        self.search_cursor = 0;
-                        self.search_input_widget.clear();
+                        self.show_insights_overlay = false;
+                    }
+                    KeyCode::Char('q') => return Cmd::Quit,
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
+            if self.show_trajectory_overlay {
+                match code {
+                    KeyCode::Escape => {
+                        self.show_trajectory_overlay = false;
+                    }
+                    KeyCode::Char('q') => return Cmd::Quit,
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
+            if self.what_if_preview.is_some() {
+                match code {
+                    KeyCode::Char('R') if shift => {
+                        if matches!(self.what_if_preview.as_ref().map(|p| &p.action), Some(crate::app::WhatIfAction::Resolve)) {
+                            let preview = self.what_if_preview.take().unwrap();
+                            if self.engine.store().update_status(&preview.tension_id, TensionStatus::Resolved).is_ok() {
+                                self.handle_recurrence(&preview.tension_id);
+                                self.check_parent_auto_resolution(&preview.tension_id);
+                                self.pending_undo = Some(crate::app::UndoAction {
+                                    description: format!("Resolved '{}'", truncate(&preview.tension_desired, 30)),
+                                    tension_id: preview.tension_id.clone(),
+                                    previous_status: "Active".to_string(),
+                                    expires_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
+                                });
+                                self.push_toast(
+                                    format!("Resolved '{}' \u{2014} press u to undo", truncate(&preview.tension_desired, 25)),
+                                    ToastSeverity::Info,
+                                );
+                                self.reload_data();
+                            }
+                        }
+                    }
+                    KeyCode::Char('X') if shift => {
+                        if matches!(self.what_if_preview.as_ref().map(|p| &p.action), Some(crate::app::WhatIfAction::Release)) {
+                            let preview = self.what_if_preview.take().unwrap();
+                            if self.engine.store().update_status(&preview.tension_id, TensionStatus::Released).is_ok() {
+                                self.check_parent_auto_resolution(&preview.tension_id);
+                                self.pending_undo = Some(crate::app::UndoAction {
+                                    description: format!("Released '{}'", truncate(&preview.tension_desired, 30)),
+                                    tension_id: preview.tension_id.clone(),
+                                    previous_status: "Active".to_string(),
+                                    expires_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
+                                });
+                                self.push_toast(
+                                    format!("Released '{}' \u{2014} press u to undo", truncate(&preview.tension_desired, 25)),
+                                    ToastSeverity::Info,
+                                );
+                                self.reload_data();
+                            }
+                        }
+                    }
+                    KeyCode::Escape => {
+                        self.what_if_preview = None;
+                    }
+                    KeyCode::Char('q') => return Cmd::Quit,
+                    _ => {}
+                }
+                return Cmd::None;
+            }
+
+            if self.search.active {
+                match code {
+                    KeyCode::Escape => {
+                        self.search.active = false;
+                        self.search.query = None;
+                        self.search.buffer.clear();
+                        self.search.cursor = 0;
+                        self.search.input_widget.clear();
                         let visible = self.visible_tensions().len();
                         if visible > 0 && self.selected() >= visible {
                             self.set_selected(visible - 1);
                         }
                     }
                     KeyCode::Enter => {
-                        self.search_active = false;
-                        let first_id = {
-                            let visible = self.visible_tensions();
-                            visible.first().map(|r| r.id.clone())
-                        };
-                        if let Some(id) = first_id {
-                            self.set_selected(0);
-                            self.load_detail(&id);
-                            self.active_view = View::Detail;
+                        // Dismiss the search overlay but keep the filter active
+                        self.search.active = false;
+                        // Ensure selection is valid within filtered results
+                        let visible = self.visible_tensions().len();
+                        if visible > 0 && self.selected() >= visible {
+                            self.set_selected(visible.saturating_sub(1));
                         }
-                        self.search_query = None;
-                        self.search_buffer.clear();
-                        self.search_cursor = 0;
-                        self.search_input_widget.clear();
                     }
                     other => {
                         // Delegate to the search TextInput widget
@@ -1434,15 +1779,15 @@ impl Model for WerkApp {
                             kind: KeyEventKind::Press,
                             modifiers: mods,
                         });
-                        self.search_input_widget.handle_event(&event);
+                        self.search.input_widget.handle_event(&event);
 
                         // Sync widget value back to search state
-                        self.search_buffer = self.search_input_widget.value().to_string();
-                        self.search_cursor = self.search_buffer.len();
-                        self.search_query = if self.search_buffer.is_empty() {
+                        self.search.buffer = self.search.input_widget.value().to_string();
+                        self.search.cursor = self.search.buffer.len();
+                        self.search.query = if self.search.buffer.is_empty() {
                             None
                         } else {
-                            Some(self.search_buffer.clone())
+                            Some(self.search.buffer.clone())
                         };
                         self.set_selected(0);
                     }
@@ -1491,6 +1836,12 @@ impl Model for WerkApp {
                         if visible > 0 && self.selected() < visible - 1 {
                             self.set_selected(self.selected() + 1);
                         }
+                        // Auto-load detail for split-pane preview
+                        let vis = self.visible_tensions();
+                        if let Some(row) = vis.get(self.selected()) {
+                            let id = row.id.clone();
+                            self.load_detail(&id);
+                        }
                     }
                     View::TreeView => {
                         let count = self.tree_items.len();
@@ -1499,19 +1850,20 @@ impl Model for WerkApp {
                         }
                     }
                     View::Detail => {
-                        self.detail_scroll = self.detail_scroll.saturating_add(1);
+                        let max = self.detail_item_count().saturating_sub(1);
+                        self.detail.cursor = self.detail.cursor.saturating_add(1).min(max);
                     }
                     View::Agent(_) => {
-                        if !self.agent_mutations.is_empty()
-                            && self.agent_mutation_cursor < self.agent_mutations.len() - 1
+                        if !self.agent.mutations.is_empty()
+                            && self.agent.mutation_cursor < self.agent.mutations.len() - 1
                         {
-                            self.agent_mutation_cursor += 1;
+                            self.agent.mutation_cursor += 1;
                         }
                     }
                     View::Focus => {
                         // Cycle to next active tension
                         let visible = self.visible_tensions();
-                        if let Some(current_id) = self.detail_tension.as_ref().map(|t| t.id.clone()) {
+                        if let Some(current_id) = self.detail.tension.as_ref().map(|t| t.id.clone()) {
                             let current_idx = visible.iter().position(|r| r.id == current_id).unwrap_or(0);
                             if current_idx + 1 < visible.len() {
                                 let next_id = visible[current_idx + 1].id.clone();
@@ -1539,6 +1891,12 @@ impl Model for WerkApp {
                         if self.selected() > 0 {
                             self.set_selected(self.selected() - 1);
                         }
+                        // Auto-load detail for split-pane preview
+                        let vis = self.visible_tensions();
+                        if let Some(row) = vis.get(self.selected()) {
+                            let id = row.id.clone();
+                            self.load_detail(&id);
+                        }
                     }
                     View::TreeView => {
                         if self.tree_selected() > 0 {
@@ -1546,17 +1904,17 @@ impl Model for WerkApp {
                         }
                     }
                     View::Detail => {
-                        self.detail_scroll = self.detail_scroll.saturating_sub(1);
+                        self.detail.cursor = self.detail.cursor.saturating_sub(1);
                     }
                     View::Agent(_) => {
-                        if self.agent_mutation_cursor > 0 {
-                            self.agent_mutation_cursor -= 1;
+                        if self.agent.mutation_cursor > 0 {
+                            self.agent.mutation_cursor -= 1;
                         }
                     }
                     View::Focus => {
                         // Cycle to previous active tension
                         let visible = self.visible_tensions();
-                        if let Some(current_id) = self.detail_tension.as_ref().map(|t| t.id.clone()) {
+                        if let Some(current_id) = self.detail.tension.as_ref().map(|t| t.id.clone()) {
                             let current_idx = visible.iter().position(|r| r.id == current_id).unwrap_or(0);
                             if current_idx > 0 {
                                 let prev_id = visible[current_idx - 1].id.clone();
@@ -1577,21 +1935,13 @@ impl Model for WerkApp {
             }
             Msg::ScrollDetailDown => {
                 if self.active_view == View::Detail {
-                    self.detail_scroll = self.detail_scroll.saturating_add(1);
+                    self.detail.scroll = self.detail.scroll.saturating_add(1);
                 }
                 Cmd::None
             }
             Msg::ScrollDetailUp => {
                 if self.active_view == View::Detail {
-                    self.detail_scroll = self.detail_scroll.saturating_sub(1);
-                }
-                Cmd::None
-            }
-            Msg::ToggleResolved => {
-                self.show_resolved = !self.show_resolved;
-                let visible = self.visible_tensions().len();
-                if visible > 0 && self.selected() >= visible {
-                    self.set_selected(visible - 1);
+                    self.detail.scroll = self.detail.scroll.saturating_sub(1);
                 }
                 Cmd::None
             }
@@ -1605,7 +1955,7 @@ impl Model for WerkApp {
                         let visible = self.visible_tensions();
                         if let Some(row) = visible.get(self.selected()) {
                             let id = row.id.clone();
-                            self.detail_nav_stack.clear();
+                            self.detail.nav_stack.clear();
                             self.load_detail(&id);
                             self.active_view = View::Detail;
                         }
@@ -1613,20 +1963,24 @@ impl Model for WerkApp {
                     View::TreeView => {
                         if let Some(item) = self.tree_items.get(self.tree_selected()) {
                             let id = item.tension_id.clone();
-                            self.detail_nav_stack.clear();
+                            self.detail.nav_stack.clear();
                             self.load_detail(&id);
                             self.active_view = View::Detail;
                         }
                     }
                     View::Detail => {
-                        // Navigate into first child if any
-                        if let Some(child) = self.detail_children.first() {
-                            let child_id = child.id.clone();
-                            // Push current tension to nav stack before loading child
-                            if let Some(ref current) = self.detail_tension {
-                                self.detail_nav_stack.push(current.id.clone());
+                        // Navigate into child at cursor, if cursor is on a child item
+                        let mutations_count = self.detail.mutations.len();
+                        let children_start = 2 + mutations_count;
+                        if self.detail.cursor >= children_start {
+                            let child_idx = self.detail.cursor - children_start;
+                            if let Some(child) = self.detail.children.get(child_idx) {
+                                let child_id = child.id.clone();
+                                if let Some(ref current) = self.detail.tension {
+                                    self.detail.nav_stack.push(current.id.clone());
+                                }
+                                self.load_detail(&child_id);
                             }
-                            self.load_detail(&child_id);
                         }
                     }
                     View::Neighborhood => {
@@ -1634,7 +1988,7 @@ impl Model for WerkApp {
                         if let Some((id, role)) = self.neighborhood_items.get(cursor).cloned() {
                             if role == "SELECTED" {
                                 // Enter on the center tension opens detail
-                                self.detail_nav_stack.clear();
+                                self.detail.nav_stack.clear();
                                 self.load_detail(&id);
                                 self.active_view = View::Detail;
                             } else {
@@ -1649,6 +2003,19 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::Back => {
+                // If search filter is active (overlay closed), clear it first
+                if self.search.query.is_some() && !self.search.active {
+                    self.search.query = None;
+                    self.search.buffer.clear();
+                    self.search.cursor = 0;
+                    self.search.input_widget.clear();
+                    // Revalidate selection within unfiltered list
+                    let visible = self.visible_tensions().len();
+                    if visible > 0 && self.selected() >= visible {
+                        self.set_selected(visible.saturating_sub(1));
+                    }
+                    return Cmd::None;
+                }
                 match &self.active_view {
                     View::Agent(tid) => {
                         let id = tid.clone();
@@ -1656,7 +2023,7 @@ impl Model for WerkApp {
                         self.active_view = View::Detail;
                     }
                     View::Detail => {
-                        if let Some(prev_id) = self.detail_nav_stack.pop() {
+                        if let Some(prev_id) = self.detail.nav_stack.pop() {
                             self.load_detail(&prev_id);
                             // stay in Detail view
                         } else {
@@ -1686,23 +2053,231 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::ViewNeighborhood => {
+                // Legacy: redirect to Detail view (neighborhood absorbed into detail)
                 if let Some(id) = self.selected_tension_id() {
-                    self.neighborhood_tension_id = Some(id.clone());
-                    self.build_neighborhood_items(&id);
-                    self.active_view = View::Neighborhood;
+                    self.load_detail(&id);
+                    self.active_view = View::Detail;
                 }
                 Cmd::None
             }
             Msg::ViewTimeline => {
-                self.active_view = View::Timeline;
+                // Legacy: redirect to Dashboard with timeline panel visible
+                self.show_timeline = true;
+                self.active_view = View::Dashboard;
                 Cmd::None
             }
             Msg::ViewFocus => {
-                // Load detail for selected tension, then switch to Focus view
+                // Legacy: redirect to Detail view (focus absorbed into detail)
                 if let Some(id) = self.selected_tension_id() {
                     self.load_detail(&id);
-                    self.active_view = View::Focus;
+                    self.active_view = View::Detail;
                 }
+                Cmd::None
+            }
+            Msg::ToggleTimeline => {
+                self.show_timeline = !self.show_timeline;
+                Cmd::None
+            }
+            Msg::ToggleHealthOverlay => {
+                self.show_health_overlay = !self.show_health_overlay;
+                Cmd::None
+            }
+            Msg::ShowInsights => {
+                let now = Utc::now();
+                let since = now - chrono::Duration::days(30);
+                let all_mutations = self.engine.store().all_mutations().unwrap_or_default();
+                let recent: Vec<_> = all_mutations.iter()
+                    .filter(|m| m.timestamp() >= since)
+                    .collect();
+
+                use ftui::text::{Line, Span};
+                use ftui::style::Style;
+                use crate::theme::*;
+
+                let mut lines: Vec<Line> = vec![
+                    Line::from_spans([Span::styled(
+                        " Behavioral Insights (30 days)".to_string(),
+                        Style::new().fg(CLR_CYAN).bold(),
+                    )]),
+                    Line::from("".to_string()),
+                ];
+
+                // 1. Attention distribution
+                let mut per_tension: HashMap<String, usize> = HashMap::new();
+                for m in &recent {
+                    *per_tension.entry(m.tension_id().to_string()).or_insert(0) += 1;
+                }
+                if !per_tension.is_empty() {
+                    lines.push(Line::from_spans([Span::styled(
+                        " Attention".to_string(),
+                        Style::new().fg(CLR_CYAN).bold(),
+                    )]));
+                    let mut sorted: Vec<_> = per_tension.iter().collect();
+                    sorted.sort_by(|a, b| b.1.cmp(a.1));
+                    for (id, count) in sorted.iter().take(3) {
+                        let desired = self.engine.store().get_tension(id).ok().flatten()
+                            .map(|t| truncate(&t.desired, 25).to_string())
+                            .unwrap_or_else(|| id[..8.min(id.len())].to_string());
+                        lines.push(Line::from(format!("   {} — {} updates", desired, count)));
+                    }
+                    if let Some((id, count)) = sorted.last() {
+                        if sorted.len() > 3 {
+                            let desired = self.engine.store().get_tension(id).ok().flatten()
+                                .map(|t| truncate(&t.desired, 25).to_string())
+                                .unwrap_or_default();
+                            lines.push(Line::from(format!("   {} — {} update (least)", desired, count)));
+                        }
+                    }
+                    lines.push(Line::from("".to_string()));
+                }
+
+                // 2. Oscillation patterns
+                let tensions = self.engine.store().list_tensions().unwrap_or_default();
+                let oscillating_count = tensions.iter()
+                    .filter(|t| t.status != TensionStatus::Resolved && t.status != TensionStatus::Released)
+                    .filter(|t| {
+                        self.engine.compute_full_dynamics_for_tension(&t.id)
+                            .map(|cd| cd.oscillation.is_some())
+                            .unwrap_or(false)
+                    })
+                    .count();
+                if oscillating_count > 0 {
+                    lines.push(Line::from_spans([Span::styled(
+                        " Patterns".to_string(),
+                        Style::new().fg(CLR_CYAN).bold(),
+                    )]));
+                    lines.push(Line::from(format!("   {} tensions show oscillation", oscillating_count)));
+                    lines.push(Line::from("".to_string()));
+                }
+
+                // 3. Day-of-week activity
+                use chrono::Datelike;
+                let mut day_counts = [0u32; 7];
+                for m in &recent {
+                    let weekday = m.timestamp().weekday().num_days_from_monday() as usize;
+                    day_counts[weekday] += 1;
+                }
+                let max_day = *day_counts.iter().max().unwrap_or(&1).max(&1);
+                lines.push(Line::from_spans([Span::styled(
+                    " Activity by Day".to_string(),
+                    Style::new().fg(CLR_CYAN).bold(),
+                )]));
+                let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                let mut day_spans: Vec<Span<'static>> = vec![Span::styled("   ".to_string(), Style::new())];
+                for (i, day) in days.iter().enumerate() {
+                    let bar_len = ((day_counts[i] as f64 / max_day as f64) * 5.0).round() as usize;
+                    let bar: String = "\u{2588}".repeat(bar_len);
+                    let pad: String = " ".repeat(5 - bar_len);
+                    day_spans.push(Span::styled(
+                        format!("{} {}{} ", day, bar, pad),
+                        Style::new().fg(CLR_CYAN),
+                    ));
+                }
+                lines.push(Line::from_spans(day_spans));
+
+                lines.push(Line::from("".to_string()));
+                lines.push(Line::from_spans([Span::styled(
+                    "  Press Esc to close".to_string(),
+                    Style::new().fg(CLR_DIM_GRAY),
+                )]));
+
+                self.insights_lines = lines;
+                self.show_insights_overlay = true;
+                Cmd::None
+            }
+            Msg::ShowTrajectory => {
+                use ftui::text::{Line, Span};
+                use ftui::style::Style;
+                use crate::theme::*;
+
+                let now = Utc::now();
+
+                // Ensure projection is fresh
+                if self.field_projection.is_none() {
+                    let all_tensions = self.engine.store().list_tensions().unwrap_or_default();
+                    let all_mutations = self.engine.store().all_mutations().unwrap_or_default();
+                    let thresholds = sd_core::ProjectionThresholds::default();
+                    let projection = sd_core::project_field(&all_tensions, &all_mutations, &thresholds, now);
+                    self.field_projection = Some(projection);
+                    self.last_projection_time = Some(now);
+                }
+
+                let mut lines: Vec<Line> = vec![
+                    Line::from_spans([Span::styled(
+                        " Field Trajectory Overview".to_string(),
+                        Style::new().fg(CLR_CYAN).bold(),
+                    )]),
+                    Line::from("".to_string()),
+                ];
+
+                if let Some(ref fp) = self.field_projection {
+                    // Structural funnel per horizon
+                    let horizon_labels = [
+                        (sd_core::ProjectionHorizon::OneWeek, "+1 week"),
+                        (sd_core::ProjectionHorizon::OneMonth, "+1 month"),
+                        (sd_core::ProjectionHorizon::ThreeMonths, "+3 months"),
+                    ];
+                    for (horizon, label) in &horizon_labels {
+                        if let Some(buckets) = fp.funnel.get(horizon) {
+                            lines.push(Line::from_spans([Span::styled(
+                                format!(" {} ({})", label, buckets.total),
+                                Style::new().fg(CLR_CYAN).bold(),
+                            )]));
+                            if buckets.total > 0 {
+                                lines.push(Line::from_spans([
+                                    Span::styled("   \u{2193} Resolving  ", Style::new().fg(CLR_MID_GRAY)),
+                                    Span::styled(format!("{}", buckets.resolving), Style::new().fg(CLR_GREEN)),
+                                ]));
+                                lines.push(Line::from_spans([
+                                    Span::styled("   \u{2014} Stalling   ", Style::new().fg(CLR_MID_GRAY)),
+                                    Span::styled(format!("{}", buckets.stalling), Style::new().fg(CLR_DIM_GRAY)),
+                                ]));
+                                lines.push(Line::from_spans([
+                                    Span::styled("   ~ Drifting   ", Style::new().fg(CLR_MID_GRAY)),
+                                    Span::styled(format!("{}", buckets.drifting), Style::new().fg(CLR_YELLOW)),
+                                ]));
+                                lines.push(Line::from_spans([
+                                    Span::styled("   \u{21cc} Oscillating", Style::new().fg(CLR_MID_GRAY)),
+                                    Span::styled(format!(" {}", buckets.oscillating), Style::new().fg(CLR_RED_SOFT)),
+                                ]));
+                            }
+                            lines.push(Line::from("".to_string()));
+                        }
+                    }
+
+                    // Urgency collisions
+                    if !fp.urgency_collisions.is_empty() {
+                        lines.push(Line::from_spans([Span::styled(
+                            " Urgency Collisions".to_string(),
+                            Style::new().fg(CLR_RED_SOFT).bold(),
+                        )]));
+                        for collision in fp.urgency_collisions.iter().take(3) {
+                            let ids: Vec<String> = collision.tension_ids.iter()
+                                .map(|id| {
+                                    self.engine.store().get_tension(id).ok().flatten()
+                                        .map(|t| truncate(&t.desired, 18).to_string())
+                                        .unwrap_or_else(|| id[..6.min(id.len())].to_string())
+                                })
+                                .collect();
+                            lines.push(Line::from_spans([
+                                Span::styled(
+                                    format!("   peak {:.0}%  ", collision.peak_combined_urgency * 100.0),
+                                    Style::new().fg(CLR_RED_SOFT),
+                                ),
+                                Span::styled(ids.join(", "), Style::new().fg(CLR_LIGHT_GRAY)),
+                            ]));
+                        }
+                        lines.push(Line::from("".to_string()));
+                    }
+                }
+
+                lines.push(Line::from_spans([Span::styled(
+                    "  Press Esc to close".to_string(),
+                    Style::new().fg(CLR_DIM_GRAY),
+                )]));
+
+                self.trajectory_lines = lines;
+                self.show_trajectory_overlay = true;
                 Cmd::None
             }
             Msg::CycleFilter => {
@@ -1715,11 +2290,6 @@ impl Model for WerkApp {
                 }
                 Cmd::None
             }
-            Msg::ToggleVerbose => {
-                self.verbose = !self.verbose;
-                Cmd::None
-            }
-
             Msg::StartUpdateReality => {
                 if let Some(id) = self.selected_tension_id() {
                     if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
@@ -1793,14 +2363,14 @@ impl Model for WerkApp {
             }
             Msg::StartAddTension => {
                 let parent_id = if self.active_view == View::Detail {
-                    self.detail_tension.as_ref().map(|t| t.id.clone())
+                    self.detail.tension.as_ref().map(|t| t.id.clone())
                 } else {
                     None
                 };
                 let prompt = if parent_id.is_some() {
-                    "New sub-tension - desired state:".to_string()
+                    "Add sub-tension: desired [+2w] [| actual]".to_string()
                 } else {
-                    "New tension - desired state:".to_string()
+                    "Add: desired [+2w] [| actual]".to_string()
                 };
                 self.enter_text_input(
                     InputContext::AddTensionDesired { parent_id },
@@ -1845,11 +2415,10 @@ impl Model for WerkApp {
                 if let Some(id) = self.selected_tension_id() {
                     if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
                         if t.status == TensionStatus::Active {
-                            let prompt = format!(
-                                "Resolve \"{}\"? (y/n)",
-                                truncate(&t.desired, 40)
+                            let preview = self.compute_what_if_preview(
+                                &id, &t, crate::app::WhatIfAction::Resolve,
                             );
-                            self.enter_confirm(ConfirmAction::Resolve(id), prompt);
+                            self.what_if_preview = Some(preview);
                         }
                     }
                 }
@@ -1859,11 +2428,10 @@ impl Model for WerkApp {
                 if let Some(id) = self.selected_tension_id() {
                     if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
                         if t.status == TensionStatus::Active {
-                            let prompt = format!(
-                                "Release \"{}\"? (y/n)",
-                                truncate(&t.desired, 40)
+                            let preview = self.compute_what_if_preview(
+                                &id, &t, crate::app::WhatIfAction::Release,
                             );
-                            self.enter_confirm(ConfirmAction::Release(id), prompt);
+                            self.what_if_preview = Some(preview);
                         }
                     }
                 }
@@ -1885,6 +2453,39 @@ impl Model for WerkApp {
                         );
                     }
                 }
+                Cmd::None
+            }
+            Msg::StartSetRecurrence => {
+                if let Some(ref t) = self.detail.tension {
+                    let id = t.id.clone();
+                    self.enter_text_input(
+                        InputContext::SetRecurrence(id),
+                        "Recurrence interval (e.g. +1w, +2w, +1m, or empty to clear):".into(),
+                        String::new(),
+                    );
+                }
+                Cmd::None
+            }
+            Msg::StartSnooze => {
+                if let Some(id) = self.selected_tension_id() {
+                    if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
+                        let prompt = format!(
+                            "Snooze \"{}\" until (e.g. +3d, friday, 2026-04-01):",
+                            truncate(&t.desired, 30)
+                        );
+                        self.enter_text_input(
+                            InputContext::SetSnooze(id),
+                            prompt,
+                            String::new(),
+                        );
+                    }
+                }
+                Cmd::None
+            }
+            Msg::ToggleShowSnoozed => {
+                self.show_snoozed = !self.show_snoozed;
+                let label = if self.show_snoozed { "Showing snoozed tensions" } else { "Hiding snoozed tensions" };
+                self.push_toast(label.to_string(), ToastSeverity::Info);
                 Cmd::None
             }
             Msg::StartMove => {
@@ -1928,13 +2529,13 @@ impl Model for WerkApp {
                 if let Some(id) = self.selected_tension_id() {
                     if let Ok(Some(t)) = self.engine.store().get_tension(&id) {
                         self.active_view = View::Agent(id.clone());
-                        self.agent_output = Vec::new();
-                        self.agent_scroll = 0;
-                        self.agent_mutations = Vec::new();
-                        self.agent_mutation_selected = Vec::new();
-                        self.agent_mutation_cursor = 0;
-                        self.agent_running = false;
-                        self.agent_response_text = None;
+                        self.agent.output = Vec::new();
+                        self.agent.scroll = 0;
+                        self.agent.mutations = Vec::new();
+                        self.agent.mutation_selected = Vec::new();
+                        self.agent.mutation_cursor = 0;
+                        self.agent.running = false;
+                        self.agent.response_text = None;
 
                         let prompt = format!(
                             "Enter prompt for agent ({}):",
@@ -1950,20 +2551,20 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::AgentResponseReceived(result) => {
-                self.agent_running = false;
+                self.agent.running = false;
                 match result {
                     Ok(response_text) => {
-                        self.agent_output = response_text.lines().map(|l| l.to_string()).collect();
-                        self.agent_scroll = 0;
+                        self.agent.output = response_text.lines().map(|l| l.to_string()).collect();
+                        self.agent.scroll = 0;
 
                         if let Some(structured) = StructuredResponse::from_response(&response_text) {
-                            self.agent_response_text = Some(structured.response.clone());
-                            self.agent_mutations = structured.mutations;
-                            self.agent_mutation_selected =
-                                vec![true; self.agent_mutations.len()];
-                            self.agent_mutation_cursor = 0;
+                            self.agent.response_text = Some(structured.response.clone());
+                            self.agent.mutations = structured.mutations;
+                            self.agent.mutation_selected =
+                                vec![true; self.agent.mutations.len()];
+                            self.agent.mutation_cursor = 0;
 
-                            if self.agent_mutations.is_empty() {
+                            if self.agent.mutations.is_empty() {
                                 self.push_toast(
                                     "Agent responded (no mutations suggested)".to_string(),
                                     ToastSeverity::Info,
@@ -1972,13 +2573,13 @@ impl Model for WerkApp {
                                 self.push_toast(
                                     format!(
                                         "Agent suggested {} change(s)",
-                                        self.agent_mutations.len()
+                                        self.agent.mutations.len()
                                     ),
                                     ToastSeverity::Info,
                                 );
                             }
                         } else {
-                            self.agent_response_text = Some(response_text);
+                            self.agent.response_text = Some(response_text);
                             self.push_toast(
                                 "Agent responded (plain text)".to_string(),
                                 ToastSeverity::Info,
@@ -1986,7 +2587,7 @@ impl Model for WerkApp {
                         }
                     }
                     Err(e) => {
-                        self.agent_output = vec![format!("Error: {}", e)];
+                        self.agent.output = vec![format!("Error: {}", e)];
                         self.push_toast(
                             format!("Agent error: {}", truncate(&e, 40)),
                             ToastSeverity::Alert,
@@ -1996,13 +2597,13 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::AgentToggleMutation(idx) => {
-                if idx < self.agent_mutation_selected.len() {
-                    self.agent_mutation_selected[idx] = !self.agent_mutation_selected[idx];
+                if idx < self.agent.mutation_selected.len() {
+                    self.agent.mutation_selected[idx] = !self.agent.mutation_selected[idx];
                 }
                 Cmd::None
             }
             Msg::AgentApplySelected => {
-                if self.agent_mutations.is_empty() {
+                if self.agent.mutations.is_empty() {
                     return Cmd::None;
                 }
                 let count = self.apply_agent_mutations();
@@ -2023,17 +2624,50 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::AgentScrollUp => {
-                self.agent_scroll = self.agent_scroll.saturating_sub(1);
+                self.agent.scroll = self.agent.scroll.saturating_sub(1);
                 Cmd::None
             }
             Msg::AgentScrollDown => {
-                self.agent_scroll = self.agent_scroll.saturating_add(1);
+                self.agent.scroll = self.agent.scroll.saturating_add(1);
                 Cmd::None
             }
 
             Msg::Tick => {
+                // Expire pending undo after deadline
+                if let Some(ref undo) = self.pending_undo {
+                    if undo.expires_at <= std::time::Instant::now() {
+                        self.pending_undo = None;
+                    }
+                }
+                // Check for expired snoozes and notify
+                let today = Utc::now().date_naive();
+                let expired_names: Vec<String> = self.tensions.iter()
+                    .filter_map(|t| {
+                        let mutations = self.engine.store().get_mutations(&t.id).unwrap_or_default();
+                        mutations.iter().rev()
+                            .find(|m| m.field() == "snoozed_until")
+                            .and_then(|m| chrono::NaiveDate::parse_from_str(m.new_value(), "%Y-%m-%d").ok())
+                            .filter(|&d| d == today)
+                            .map(|_| truncate(&t.desired, 30).to_string())
+                    })
+                    .collect();
+                for name in expired_names {
+                    self.push_toast(
+                        format!("Snooze expired: {}", name),
+                        ToastSeverity::Info,
+                    );
+                }
                 self.reload_data();
                 Cmd::None
+            }
+            Msg::ExternalChange => {
+                self.reload_data();
+                self.push_toast(
+                    "External change detected — reloaded".to_string(),
+                    ToastSeverity::Info,
+                );
+                // Re-arm the watcher
+                self.setup_file_watcher()
             }
             Msg::DynamicsEvent(message, severity) => {
                 self.push_toast(message, severity);
@@ -2047,11 +2681,11 @@ impl Model for WerkApp {
                 Cmd::None
             }
             Msg::OpenSearch => {
-                self.search_active = true;
-                self.search_buffer.clear();
-                self.search_cursor = 0;
-                self.search_query = None;
-                self.search_input_widget.clear();
+                self.search.active = true;
+                self.search.buffer.clear();
+                self.search.cursor = 0;
+                self.search.query = None;
+                self.search.input_widget.clear();
                 Cmd::None
             }
 
@@ -2060,41 +2694,57 @@ impl Model for WerkApp {
                 Cmd::None
             }
 
+            Msg::Undo => {
+                if let Some(undo) = self.pending_undo.take() {
+                    if undo.expires_at > std::time::Instant::now() {
+                        if self.engine.store().update_status(&undo.tension_id, TensionStatus::Active).is_ok() {
+                            self.push_toast(
+                                format!("Undone: {}", undo.description),
+                                ToastSeverity::Info,
+                            );
+                            self.reload_data();
+                        }
+                    }
+                }
+                Cmd::None
+            }
+
             Msg::ViewDynamics => {
-                self.active_view = View::DynamicsSummary;
+                // Legacy: redirect to health overlay on current view
+                self.show_health_overlay = true;
                 Cmd::None
             }
             Msg::StartReflect => {
                 if let Some(id) = self.selected_tension_id() {
                     if let Ok(Some(_t)) = self.engine.store().get_tension(&id) {
                         self.load_detail(&id);
-                        self.reflect_textarea = Some(
+                        self.reflect.textarea = Some(
                             TextArea::new()
                                 .with_placeholder("Write your reflections...")
                                 .with_focus(true)
                                 .with_soft_wrap(true)
                         );
-                        self.reflect_tension_id = Some(id);
+                        self.reflect.tension_id = Some(id);
                         self.input_mode = InputMode::Reflect;
                     }
                 }
                 Cmd::None
             }
             Msg::ReflectSubmit => {
-                let buffer_text = self.reflect_textarea.as_ref().map(|ta| ta.text());
-                if let (Some(buffer), Some(tid)) = (buffer_text, self.reflect_tension_id.take()) {
-                    self.reflect_textarea = None;
+                let buffer_text = self.reflect.textarea.as_ref().map(|ta| ta.text());
+                if let (Some(buffer), Some(tid)) = (buffer_text, self.reflect.tension_id.take()) {
+                    self.reflect.textarea = None;
                     let reflect_text = buffer.trim().to_owned();
                     if !reflect_text.is_empty() {
                         self.input_mode = InputMode::Normal;
                         self.active_view = View::Agent(tid.clone());
-                        self.agent_output = vec!["Running agent with reflect...".to_string()];
-                        self.agent_scroll = 0;
-                        self.agent_mutations = Vec::new();
-                        self.agent_mutation_selected = Vec::new();
-                        self.agent_mutation_cursor = 0;
-                        self.agent_running = true;
-                        self.agent_response_text = None;
+                        self.agent.output = vec!["Running agent with reflect...".to_string()];
+                        self.agent.scroll = 0;
+                        self.agent.mutations = Vec::new();
+                        self.agent.mutation_selected = Vec::new();
+                        self.agent.mutation_cursor = 0;
+                        self.agent.running = true;
+                        self.agent.response_text = None;
                         return self.spawn_agent_task(tid, reflect_text);
                     } else {
                         self.input_mode = InputMode::Normal;
@@ -2120,7 +2770,7 @@ impl Model for WerkApp {
                 });
                 if let Some(row) = urgent.get(n) {
                     let id = row.id.clone();
-                    self.detail_nav_stack.clear();
+                    self.detail.nav_stack.clear();
                     self.load_detail(&id);
                     self.active_view = View::Detail;
                 }
@@ -2143,7 +2793,6 @@ impl Model for WerkApp {
 
         let area = Rect::new(0, 0, frame.width(), frame.height());
         let hide_hints = area.height < 10 || !matches!(self.input_mode, InputMode::Normal);
-        let show_ticker = area.height >= 15;
         let show_lever = area.height >= 10 && self.lever.is_some();
 
         match &self.active_view {
@@ -2152,25 +2801,62 @@ impl Model for WerkApp {
                 return;
             }
             View::Dashboard => {
-                let mut constraints: Vec<Constraint> = Vec::new();
-                if show_ticker { constraints.push(Constraint::Fixed(1)); }
-                constraints.push(Constraint::Fixed(1)); // title bar
-                constraints.push(Constraint::Fill);     // content
-                if show_lever { constraints.push(Constraint::Fixed(1)); }
-                if !hide_hints { constraints.push(Constraint::Fixed(1)); }
+                let use_split = area.width >= 120;
 
-                let layout = Flex::vertical().constraints(constraints);
-                let rects = layout.split(area);
-                let mut idx = 0;
-                if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
-                self.render_title_bar(&rects[idx], frame); idx += 1;
-                self.render_tension_list(&rects[idx], frame); idx += 1;
-                if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
-                if !hide_hints { self.render_dashboard_hints(&rects[idx], frame); }
+                if use_split {
+                    // Split layout: dashboard left (40%), detail right (60%)
+                    let left_width = (area.width as f64 * 0.4) as u16;
+                    let right_width = area.width - left_width;
+
+                    let left_area = Rect::new(area.x, area.y, left_width, area.height);
+                    let right_area = Rect::new(area.x + left_width, area.y, right_width, area.height);
+
+                    // Left side: status bar + tension list + hints
+                    let mut left_constraints: Vec<Constraint> = Vec::new();
+                    left_constraints.push(Constraint::Fixed(1)); // status bar
+                    left_constraints.push(Constraint::Fill);     // list
+                    if show_lever { left_constraints.push(Constraint::Fixed(1)); }
+                    if !hide_hints { left_constraints.push(Constraint::Fixed(1)); }
+
+                    let left_layout = Flex::vertical().constraints(left_constraints);
+                    let left_rects = left_layout.split(left_area);
+                    let mut idx = 0;
+                    self.render_status_bar(&left_rects[idx], frame); idx += 1;
+                    self.render_tension_list(&left_rects[idx], frame); idx += 1;
+                    if show_lever { self.render_lever_bar(&left_rects[idx], frame); idx += 1; }
+                    if !hide_hints { self.render_dashboard_hints(&left_rects[idx], frame); }
+
+                    // Right side: detail title + detail body
+                    if self.detail.tension.is_some() {
+                        let right_layout = Flex::vertical().constraints([
+                            Constraint::Fixed(1), // title
+                            Constraint::Fill,     // body
+                        ]);
+                        let right_rects = right_layout.split(right_area);
+                        self.render_detail_title(&right_rects[0], frame);
+                        self.render_detail_body_responsive(&right_rects[1], frame);
+                    }
+                } else {
+                    // Single-pane layout (existing behavior)
+                    let mut constraints: Vec<Constraint> = Vec::new();
+                    constraints.push(Constraint::Fixed(1)); // merged status bar
+                    constraints.push(Constraint::Fill);     // content
+                    if self.show_timeline { constraints.push(Constraint::Fixed(7)); } // timeline panel
+                    if show_lever { constraints.push(Constraint::Fixed(1)); }
+                    if !hide_hints { constraints.push(Constraint::Fixed(1)); }
+
+                    let layout = Flex::vertical().constraints(constraints);
+                    let rects = layout.split(area);
+                    let mut idx = 0;
+                    self.render_status_bar(&rects[idx], frame); idx += 1;
+                    self.render_tension_list(&rects[idx], frame); idx += 1;
+                    if self.show_timeline { self.render_timeline_body(&rects[idx], frame); idx += 1; }
+                    if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
+                    if !hide_hints { self.render_dashboard_hints(&rects[idx], frame); }
+                }
             }
             View::Detail => {
                 let mut constraints: Vec<Constraint> = Vec::new();
-                if show_ticker { constraints.push(Constraint::Fixed(1)); }
                 constraints.push(Constraint::Fixed(1)); // title bar
                 constraints.push(Constraint::Fill);     // content
                 if show_lever { constraints.push(Constraint::Fixed(1)); }
@@ -2179,7 +2865,6 @@ impl Model for WerkApp {
                 let layout = Flex::vertical().constraints(constraints);
                 let rects = layout.split(area);
                 let mut idx = 0;
-                if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
                 self.render_detail_title(&rects[idx], frame); idx += 1;
                 self.render_detail_body_responsive(&rects[idx], frame); idx += 1;
                 if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
@@ -2187,7 +2872,6 @@ impl Model for WerkApp {
             }
             View::TreeView => {
                 let mut constraints: Vec<Constraint> = Vec::new();
-                if show_ticker { constraints.push(Constraint::Fixed(1)); }
                 constraints.push(Constraint::Fixed(1)); // title bar
                 constraints.push(Constraint::Fill);     // content
                 if show_lever { constraints.push(Constraint::Fixed(1)); }
@@ -2196,16 +2880,17 @@ impl Model for WerkApp {
                 let layout = Flex::vertical().constraints(constraints);
                 let rects = layout.split(area);
                 let mut idx = 0;
-                if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
                 self.render_tree_title(&rects[idx], frame); idx += 1;
                 self.render_tree_body(&rects[idx], frame); idx += 1;
                 if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
                 if !hide_hints { self.render_tree_hints(&rects[idx], frame); }
             }
-            View::Neighborhood => {
+            // Legacy views: redirect rendering to Dashboard fallback
+            View::Neighborhood | View::Timeline | View::Focus | View::DynamicsSummary => {
+                // These views have been absorbed into the primary views.
+                // If reached (e.g. stale state), render as Dashboard.
                 let mut constraints: Vec<Constraint> = Vec::new();
-                if show_ticker { constraints.push(Constraint::Fixed(1)); }
-                constraints.push(Constraint::Fixed(1)); // title bar
+                constraints.push(Constraint::Fixed(1)); // merged status bar
                 constraints.push(Constraint::Fill);     // content
                 if show_lever { constraints.push(Constraint::Fixed(1)); }
                 if !hide_hints { constraints.push(Constraint::Fixed(1)); }
@@ -2213,48 +2898,10 @@ impl Model for WerkApp {
                 let layout = Flex::vertical().constraints(constraints);
                 let rects = layout.split(area);
                 let mut idx = 0;
-                if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
-                self.render_neighborhood_title(&rects[idx], frame); idx += 1;
-                self.render_neighborhood(&rects[idx], frame); idx += 1;
+                self.render_status_bar(&rects[idx], frame); idx += 1;
+                self.render_tension_list(&rects[idx], frame); idx += 1;
                 if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
-                if !hide_hints { self.render_neighborhood_hints(&rects[idx], frame); }
-            }
-            View::Timeline => {
-                let mut constraints: Vec<Constraint> = Vec::new();
-                if show_ticker { constraints.push(Constraint::Fixed(1)); }
-                constraints.push(Constraint::Fixed(1)); // title bar
-                constraints.push(Constraint::Fill);     // content
-                if show_lever { constraints.push(Constraint::Fixed(1)); }
-                if !hide_hints { constraints.push(Constraint::Fixed(1)); }
-
-                let layout = Flex::vertical().constraints(constraints);
-                let rects = layout.split(area);
-                let mut idx = 0;
-                if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
-                self.render_timeline_title(&rects[idx], frame); idx += 1;
-                self.render_timeline_body(&rects[idx], frame); idx += 1;
-                if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
-                if !hide_hints { self.render_timeline_hints(&rects[idx], frame); }
-            }
-            View::Focus => {
-                self.render_focus(area, frame);
-            }
-            View::DynamicsSummary => {
-                let mut constraints: Vec<Constraint> = Vec::new();
-                if show_ticker { constraints.push(Constraint::Fixed(1)); }
-                constraints.push(Constraint::Fixed(1)); // title bar
-                constraints.push(Constraint::Fill);     // content
-                if show_lever { constraints.push(Constraint::Fixed(1)); }
-                if !hide_hints { constraints.push(Constraint::Fixed(1)); }
-
-                let layout = Flex::vertical().constraints(constraints);
-                let rects = layout.split(area);
-                let mut idx = 0;
-                if show_ticker { self.render_urgency_ticker(&rects[idx], frame); idx += 1; }
-                self.render_dynamics_title(&rects[idx], frame); idx += 1;
-                self.render_dynamics_body(&rects[idx], frame); idx += 1;
-                if show_lever { self.render_lever_bar(&rects[idx], frame); idx += 1; }
-                if !hide_hints { self.render_dynamics_hints(&rects[idx], frame); }
+                if !hide_hints { self.render_dashboard_hints(&rects[idx], frame); }
             }
             View::Agent(tension_id) => {
                 let layout = Flex::vertical().constraints([
@@ -2278,6 +2925,22 @@ impl Model for WerkApp {
             self.render_lever_detail_overlay(area, frame);
         }
 
+        if self.show_health_overlay {
+            self.render_health_overlay(area, frame);
+        }
+
+        if self.show_insights_overlay {
+            self.render_insights_overlay(area, frame);
+        }
+
+        if self.show_trajectory_overlay {
+            self.render_trajectory_overlay(area, frame);
+        }
+
+        if self.what_if_preview.is_some() {
+            self.render_what_if_overlay(area, frame);
+        }
+
         if self.show_help {
             self.render_help_overlay(area, frame);
         }
@@ -2286,7 +2949,7 @@ impl Model for WerkApp {
             self.render_command_palette(area, frame);
         }
 
-        if self.search_active {
+        if self.search.active {
             self.render_search_overlay(area, frame);
         }
 
@@ -2302,4 +2965,40 @@ impl Model for WerkApp {
         }
         self.render_toasts(area, frame);
     }
+}
+
+/// Parse a quick-add input line into (desired, optional_horizon_str, optional_actual).
+///
+/// Format: `desired state [horizon] [| actual state]`
+///
+/// Examples:
+///   "Ship v2"                       -> ("Ship v2", None, None)
+///   "Ship v2 +2w"                   -> ("Ship v2", Some("+2w"), None)
+///   "Ship v2 | still drafting"      -> ("Ship v2", None, Some("still drafting"))
+///   "Ship v2 +2w | still drafting"  -> ("Ship v2", Some("+2w"), Some("still drafting"))
+fn parse_quick_add(input: &str) -> (String, Option<String>, Option<String>) {
+    use crate::horizon::parse_horizon;
+
+    // Split on | for actual state
+    let parts: Vec<&str> = input.splitn(2, '|').collect();
+    let before_pipe = parts[0].trim();
+    let actual = parts
+        .get(1)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    // Try to extract horizon from the end of the desired portion.
+    // Only match if the last word parses as a valid horizon.
+    let words: Vec<&str> = before_pipe.rsplitn(2, ' ').collect();
+    if words.len() == 2 {
+        let candidate = words[0]; // last word
+        if parse_horizon(candidate).is_ok() {
+            let desired = words[1].trim().to_string();
+            if !desired.is_empty() {
+                return (desired, Some(candidate.to_string()), actual);
+            }
+        }
+    }
+
+    (before_pipe.to_string(), None, actual)
 }

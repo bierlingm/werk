@@ -198,6 +198,7 @@ pub fn build_detail_dynamics(cd: &ComputedDynamics) -> DetailDynamics {
         compensating_strategy,
         assimilation_depth,
         horizon_drift,
+        forecast_line: None,
     }
 }
 
@@ -247,5 +248,6 @@ pub fn build_tension_row_from_computed(
         horizon_display,
         tier,
         activity,
+        trajectory: None,
     }
 }

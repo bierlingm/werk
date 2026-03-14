@@ -6,6 +6,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use sd_core::Horizon;
 use serde::Serialize;
+use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for add command.
 #[derive(Serialize)]
@@ -76,6 +77,13 @@ pub fn cmd_add(
     // Create the tension with horizon
     let tension =
         store.create_tension_full(&desired, &actual, parent_id.clone(), horizon_parsed.clone())?;
+
+    // Hook infrastructure (post_create — tension must exist first)
+    let hooks = Config::load(&workspace)
+        .map(|c| HookRunner::from_config(&c))
+        .unwrap_or_else(|_| HookRunner::noop());
+    let event = HookEvent::create(&tension.id, &tension.desired);
+    hooks.post_create(&event);
 
     let result = AddResult {
         id: tension.id.clone(),

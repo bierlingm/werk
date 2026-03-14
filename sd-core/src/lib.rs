@@ -15,6 +15,7 @@ pub mod engine;
 pub mod events;
 pub mod horizon;
 pub mod mutation;
+pub mod projection;
 pub mod store;
 pub mod tension;
 pub mod tree;
@@ -81,6 +82,11 @@ pub use engine::{
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
+pub use projection::{
+    FieldProjection, MutationPattern, ProjectionHorizon, ProjectionThresholds, TensionProjection,
+    Trajectory, TrajectoryBuckets, UrgencyCollision, estimate_time_to_resolution,
+    extract_mutation_pattern, project_field, project_frequency_at, project_gap_at, project_tension,
+};
 pub use store::{Store, StoreError};
 pub use tension::{SdError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};

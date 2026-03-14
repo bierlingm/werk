@@ -11,9 +11,10 @@ use crate::app::WerkApp;
 use crate::theme::*;
 use crate::helpers::render_bar;
 
+#[allow(dead_code)]
 impl WerkApp {
     pub(crate) fn render_focus(&self, area: Rect, frame: &mut Frame<'_>) {
-        let Some(tension) = &self.detail_tension else {
+        let Some(tension) = &self.detail.tension else {
             Paragraph::new("  No tension selected. Press Esc to go back.")
                 .render(area, frame);
             return;
@@ -39,7 +40,7 @@ impl WerkApp {
         lines.push(Line::from(""));
 
         // Gap visualization
-        if let Some(dyn_display) = &self.detail_dynamics {
+        if let Some(dyn_display) = &self.detail.dynamics {
             if let Some(mag) = dyn_display.magnitude {
                 let bar = render_bar(mag, 20);
                 let gap_line = format!("  {} gap (magnitude: {:.2}) {}", "\u{2500}".repeat(3), mag, "\u{2500}".repeat(3));

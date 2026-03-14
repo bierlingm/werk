@@ -29,7 +29,7 @@ impl WerkApp {
             .unwrap_or_else(|| tension_id.chars().take(8).collect());
 
         let left_text = format!(" Agent: {}", desired);
-        let right_text = if self.agent_running { "[running...]" } else { "" };
+        let right_text = if self.agent.running { "[running...]" } else { "" };
         let mut status = StatusLine::new()
             .left(StatusItem::text(&left_text))
             .style(Style::new().fg(CLR_CYAN).bold());
@@ -42,9 +42,9 @@ impl WerkApp {
     pub(crate) fn render_agent_body(&self, area: &Rect, frame: &mut Frame<'_>) {
         let border_style = Style::new().fg(CLR_DIM_GRAY);
 
-        if !self.agent_mutations.is_empty() {
+        if !self.agent.mutations.is_empty() {
             // Split area: top ~60% for response, bottom for mutations
-            let mutations_height = (self.agent_mutations.len() as u16).saturating_add(2)
+            let mutations_height = (self.agent.mutations.len() as u16).saturating_add(2)
                 .min(area.height.saturating_sub(4));
             let layout = Flex::vertical().constraints([
                 Constraint::Fill,
@@ -70,20 +70,20 @@ impl WerkApp {
 
         let mut lines: Vec<Line> = Vec::new();
 
-        if self.agent_running {
+        if self.agent.running {
             lines.push(Line::from_spans([Span::styled(
                 "Running agent...",
                 Style::new().fg(CLR_YELLOW),
             )]));
-        } else if let Some(response_text) = &self.agent_response_text {
+        } else if let Some(response_text) = &self.agent.response_text {
             for line in response_text.lines() {
                 lines.push(Line::from_spans([Span::styled(
                     line.to_string(),
                     Style::new().fg(CLR_LIGHT_GRAY),
                 )]));
             }
-        } else if !self.agent_output.is_empty() {
-            for line in &self.agent_output {
+        } else if !self.agent.output.is_empty() {
+            for line in &self.agent.output {
                 lines.push(Line::from_spans([Span::styled(
                     line.clone(),
                     Style::new().fg(CLR_LIGHT_GRAY),
@@ -99,21 +99,21 @@ impl WerkApp {
         let text = Text::from_lines(lines);
         let paragraph = Paragraph::new(text)
             .wrap(WrapMode::Word)
-            .scroll((self.agent_scroll, 0));
+            .scroll((self.agent.scroll, 0));
         paragraph.render(inner, frame);
     }
 
     fn render_mutations_block(&self, area: &Rect, frame: &mut Frame<'_>, border_style: Style) {
-        let title = format!(" Suggested Changes ({}) ", self.agent_mutations.len());
+        let title = format!(" Suggested Changes ({}) ", self.agent.mutations.len());
         let block = Block::bordered()
             .title(title.as_str())
             .border_type(BorderType::Rounded)
             .border_style(border_style);
         let inner = block.inner(*area);
 
-        let items: Vec<ListItem> = self.agent_mutations.iter().enumerate().map(|(i, mutation)| {
+        let items: Vec<ListItem> = self.agent.mutations.iter().enumerate().map(|(i, mutation)| {
             let is_selected = self
-                .agent_mutation_selected
+                .agent.mutation_selected
                 .get(i)
                 .copied()
                 .unwrap_or(false);
@@ -143,8 +143,8 @@ impl WerkApp {
             .highlight_symbol("> ");
 
         let mut state = ftui::widgets::list::ListState::default();
-        if !self.agent_mutations.is_empty() {
-            state.select(Some(self.agent_mutation_cursor));
+        if !self.agent.mutations.is_empty() {
+            state.select(Some(self.agent.mutation_cursor));
         }
         StatefulWidget::render(&list, *area, frame, &mut state);
     }
@@ -205,7 +205,7 @@ impl WerkApp {
     }
 
     pub(crate) fn render_agent_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = if self.agent_mutations.is_empty() {
+        let hints = if self.agent.mutations.is_empty() {
             StatusLine::new()
                 .separator("  ")
                 .left(StatusItem::key_hint("Esc", "back"))

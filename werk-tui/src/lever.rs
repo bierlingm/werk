@@ -3,8 +3,10 @@
 //! The lever is the tension where a single action would produce the most
 //! structural movement across the entire system.
 
+use chrono::Utc;
 use sd_core::{
-    ComputedDynamics, ConflictPattern, DynamicsEngine, Forest, StructuralTendency, TensionStatus,
+    ComputedDynamics, ConflictPattern, DynamicsEngine, Forest, ProjectionHorizon,
+    ProjectionThresholds, StructuralTendency, Tension, TensionStatus, Trajectory,
 };
 
 /// The result of lever computation.
@@ -73,6 +75,7 @@ pub struct LeverBreakdown {
     pub falling_behind: f64,
     pub systemic_blocker: f64,
     pub horizon_integrity: f64,
+    pub trajectory_urgency: f64,
 }
 
 /// Compute the single highest-leverage structural move.
@@ -105,7 +108,7 @@ pub fn compute_lever(engine: &mut DynamicsEngine) -> Option<LeverResult> {
             None => continue,
         };
 
-        let breakdown = compute_breakdown(cd, &tension.id, &forest);
+        let breakdown = compute_breakdown(cd, tension, &forest, engine);
         let score = weighted_score(&breakdown);
 
         // Get descendants for cascade info
@@ -145,7 +148,13 @@ pub fn compute_lever(engine: &mut DynamicsEngine) -> Option<LeverResult> {
     best.map(|(_, result)| result)
 }
 
-fn compute_breakdown(cd: &ComputedDynamics, tension_id: &str, forest: &Forest) -> LeverBreakdown {
+fn compute_breakdown(
+    cd: &ComputedDynamics,
+    tension: &Tension,
+    forest: &Forest,
+    engine: &DynamicsEngine,
+) -> LeverBreakdown {
+    let tension_id = &tension.id;
     // temporal_pressure: urgency value capped at 1.0
     let temporal_pressure = cd
         .urgency
@@ -231,6 +240,31 @@ fn compute_breakdown(cd: &ComputedDynamics, tension_id: &str, forest: &Forest) -
     // horizon_integrity: 1.0 if no horizon set (urgency is None)
     let horizon_integrity = if cd.urgency.is_none() { 1.0 } else { 0.0 };
 
+    // trajectory_urgency: how structurally concerning the tension's trajectory is
+    let now = Utc::now();
+    let tension_mutations = engine.store().get_mutations(tension_id).unwrap_or_default();
+    let thresholds = ProjectionThresholds::default();
+    let projections = sd_core::project_tension(tension, &tension_mutations, &thresholds, now);
+
+    let trajectory_urgency =
+        if let Some(proj_1m) = projections.iter().find(|p| p.horizon == ProjectionHorizon::OneMonth)
+        {
+            match proj_1m.trajectory {
+                Trajectory::Stalling | Trajectory::Oscillating => {
+                    // Worse if tension has approaching horizon
+                    if temporal_pressure > 0.5 {
+                        1.0
+                    } else {
+                        0.7
+                    }
+                }
+                Trajectory::Drifting => 0.5,
+                Trajectory::Resolving => 0.0,
+            }
+        } else {
+            0.0
+        };
+
     LeverBreakdown {
         temporal_pressure,
         gap_magnitude,
@@ -243,25 +277,27 @@ fn compute_breakdown(cd: &ComputedDynamics, tension_id: &str, forest: &Forest) -
         falling_behind,
         systemic_blocker,
         horizon_integrity,
+        trajectory_urgency,
     }
 }
 
 fn weighted_score(b: &LeverBreakdown) -> f64 {
-    b.temporal_pressure * 0.15
-        + b.gap_magnitude * 0.15
+    b.temporal_pressure * 0.13
+        + b.gap_magnitude * 0.13
         + b.combined_pressure * 0.10
         + b.stuck_energy * 0.10
-        + b.sibling_imbalance * 0.10
+        + b.sibling_imbalance * 0.08
         + b.workaround_duration * 0.05
-        + b.stalled_potential * 0.10
+        + b.stalled_potential * 0.08
         + b.cascade_potential * 0.10
         + b.falling_behind * 0.05
         + b.systemic_blocker * 0.05
         + b.horizon_integrity * 0.05
+        + b.trajectory_urgency * 0.08
 }
 
 fn determine_action(b: &LeverBreakdown) -> LeverAction {
-    let components: [(f64, LeverAction); 9] = [
+    let components: [(f64, LeverAction); 10] = [
         (b.stalled_potential, LeverAction::UpdateReality),
         (b.stuck_energy, LeverAction::BreakOscillation),
         (b.sibling_imbalance, LeverAction::RedirectAttention),
@@ -271,6 +307,7 @@ fn determine_action(b: &LeverBreakdown) -> LeverAction {
         (b.horizon_integrity, LeverAction::SetHorizon),
         (b.workaround_duration, LeverAction::AddressCompensation),
         (b.falling_behind, LeverAction::DeepenAssimilation),
+        (b.trajectory_urgency, LeverAction::UpdateReality), // trajectory concern → check reality
     ];
 
     components
@@ -303,6 +340,9 @@ fn generate_reasoning(b: &LeverBreakdown, action: &LeverAction, cascade_count: u
     }
     if b.horizon_integrity > 0.0 {
         parts.push("no horizon set".to_string());
+    }
+    if b.trajectory_urgency > 0.3 {
+        parts.push("trajectory at risk".to_string());
     }
 
     let context = if parts.is_empty() {

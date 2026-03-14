@@ -7,7 +7,6 @@ pub enum Msg {
     // Existing
     MoveUp,
     MoveDown,
-    ToggleResolved,
     ToggleHelp,
     Quit,
     Noop,
@@ -25,9 +24,6 @@ pub enum Msg {
     // Filtering
     CycleFilter,
 
-    // Verbose toggle
-    ToggleVerbose,
-
     // Phase 3: CRUD operations
     StartUpdateReality,
     StartUpdateDesire,
@@ -38,6 +34,7 @@ pub enum Msg {
     StartRelease,
     StartDelete,
     StartMove,
+    StartSetRecurrence,
 
     // Input overlay events
     InputChar(char),
@@ -96,6 +93,10 @@ pub enum Msg {
     // Phase 14: Dynamics summary dashboard
     ViewDynamics,
 
+    // View consolidation: toggleable panels
+    ToggleTimeline,
+    ToggleHealthOverlay,
+
     // Phase 15A: Reflect
     StartReflect,
     ReflectSubmit,
@@ -103,8 +104,24 @@ pub enum Msg {
     // Ticker jump: jump to Nth most urgent tension (0-indexed)
     TickerJump(usize),
 
+    // Snooze
+    StartSnooze,
+    ToggleShowSnoozed,
+
     // Phase 9: Lever
     ShowLever,
+
+    // Undo last resolve/release
+    Undo,
+
+    // Behavioral pattern insights
+    ShowInsights,
+
+    // Trajectory overlay
+    ShowTrajectory,
+
+    // Filesystem watcher detected external db change
+    ExternalChange,
 
     // Raw key event for mode-based routing (carries full modifiers)
     RawKey(KeyCode, Modifiers),

@@ -11,6 +11,7 @@ use crate::app::WerkApp;
 use crate::theme::*;
 use crate::types::UrgencyTier;
 
+#[allow(dead_code)]
 impl WerkApp {
     pub(crate) fn render_urgency_ticker(&self, area: &Rect, frame: &mut Frame<'_>) {
         // Get top 3 most urgent tensions

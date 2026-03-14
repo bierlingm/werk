@@ -13,6 +13,7 @@ use werk_shared::truncate;
 use crate::app::WerkApp;
 use crate::theme::*;
 
+#[allow(dead_code)]
 impl WerkApp {
     pub(crate) fn render_neighborhood_title(&self, area: &Rect, frame: &mut Frame<'_>) {
         let title = match &self.neighborhood_tension_id {

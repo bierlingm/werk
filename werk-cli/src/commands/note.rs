@@ -7,6 +7,7 @@ use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::Mutation;
 use serde::Serialize;
+use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for note command.
 #[derive(Serialize)]
@@ -45,12 +46,22 @@ pub fn cmd_note(
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
+    // Hook infrastructure
+    let hooks = Config::load(&workspace)
+        .map(|c| HookRunner::from_config(&c))
+        .unwrap_or_else(|_| HookRunner::noop());
+
     let result = match id {
         Some(id_prefix) => {
             // Note on specific tension
             let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
             let resolver = PrefixResolver::new(tensions);
             let tension = resolver.resolve(&id_prefix)?;
+
+            let event = HookEvent::mutation(&tension.id, &tension.desired, "note", None, &text);
+            if !hooks.pre_mutation(&event) {
+                return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+            }
 
             // Record note mutation (notes work on any status, no validation needed)
             store
@@ -63,6 +74,8 @@ pub fn cmd_note(
                 ))
                 .map_err(WerkError::SdError)?;
 
+            hooks.post_mutation(&event);
+
             NoteResult {
                 id: Some(tension.id.clone()),
                 note: text.clone(),
@@ -72,6 +85,11 @@ pub fn cmd_note(
             // General workspace note - store as mutation on a sentinel ID
             // The sentinel is not a real tension but serves as an anchor for workspace-level notes
             const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
+
+            let event = HookEvent::mutation(WORKSPACE_NOTE_TENSION_ID, "workspace", "note", None, &text);
+            if !hooks.pre_mutation(&event) {
+                return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+            }
 
             // Record note mutation on the sentinel
             store
@@ -83,6 +101,8 @@ pub fn cmd_note(
                     text.clone(),
                 ))
                 .map_err(WerkError::SdError)?;
+
+            hooks.post_mutation(&event);
 
             NoteResult {
                 id: None,

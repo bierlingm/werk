@@ -22,7 +22,7 @@ impl WerkApp {
         // Render TextInput widget for the search field
         let input_area = Rect::new(3, 0, area.width.saturating_sub(3), 1);
         let input_widget = TextInput::new()
-            .with_value(self.search_input_widget.value())
+            .with_value(self.search.input_widget.value())
             .with_style(Style::new().fg(CLR_CYAN).bold().bg(CLR_BG_DARK))
             .with_cursor_style(Style::new().fg(CLR_CYAN).bg(CLR_BG_DARK).reverse())
             .with_focused(true);

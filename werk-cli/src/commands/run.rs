@@ -18,7 +18,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use werk_shared::truncate;
 use chrono::Utc;
-use sd_core::{DynamicsEngine, Mutation, Tension, TensionStatus};
+use sd_core::{compute_urgency, project_tension, DynamicsEngine, Mutation, ProjectionThresholds, Tension, TensionStatus};
 use std::io::Write;
 use std::process::Stdio;
 
@@ -26,10 +26,13 @@ use crate::agent_response::StructuredResponse;
 
 pub fn cmd_run(
     output: &Output,
-    id: String,
+    id: Option<String>,
     prompt: Option<String>,
     no_suggest: bool,
     command: Vec<String>,
+    system: bool,
+    decompose: bool,
+    dry_run: bool,
 ) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
@@ -43,14 +46,31 @@ pub fn cmd_run(
         .store()
         .list_tensions()
         .map_err(WerkError::StoreError)?;
-    let resolver = PrefixResolver::new(all_tensions.clone());
 
-    // Resolve the ID/prefix
+    // --system mode: system-wide context, no specific tension required
+    if system {
+        let prompt_text = prompt.ok_or_else(|| {
+            WerkError::InvalidInput("--system mode requires a prompt".to_string())
+        })?;
+        return run_system(output, &workspace, &mut engine, &all_tensions, &prompt_text, no_suggest, dry_run);
+    }
+
+    // All other modes require an ID
+    let id = id.ok_or_else(|| {
+        WerkError::InvalidInput("tension ID is required (use --system for system-wide mode)".to_string())
+    })?;
+
+    let resolver = PrefixResolver::new(all_tensions.clone());
     let tension = resolver.resolve(&id)?;
+
+    // --decompose mode: auto-decompose tension into sub-tensions
+    if decompose {
+        return run_decompose(output, &workspace, &mut engine, tension, &all_tensions, no_suggest, dry_run);
+    }
 
     // Route to one-shot or interactive mode
     if let Some(prompt_text) = prompt {
-        run_one_shot(output, &workspace, &mut engine, tension, &all_tensions, &prompt_text, no_suggest)
+        run_one_shot(output, &workspace, &mut engine, tension, &all_tensions, &prompt_text, no_suggest, dry_run)
     } else {
         run_interactive(&workspace, &mut engine, tension, &all_tensions, &command)
     }
@@ -65,6 +85,7 @@ fn run_one_shot(
     all_tensions: &[Tension],
     prompt: &str,
     no_suggest: bool,
+    dry_run: bool,
 ) -> Result<(), WerkError> {
     // Build context
     let context_md = build_context_markdown(engine, tension, all_tensions);
@@ -134,7 +155,7 @@ fn run_one_shot(
 
     // Try structured YAML parsing first, fall back to simple text
     if let Some(structured) = StructuredResponse::from_response(&response_text) {
-        handle_structured_response(output, engine, tension, structured, no_suggest)?;
+        handle_structured_response(output, engine, tension, structured, no_suggest, dry_run)?;
     } else {
         // Fallback: display as plain text
         println!("Agent Response:");
@@ -143,11 +164,221 @@ fn run_one_shot(
         println!("{}", "\u{2500}".repeat(60));
 
         // Parse for simple suggested reality update
-        if !no_suggest {
+        if !no_suggest && !dry_run {
             if let Some(suggestion) = extract_update_suggestion(&response_text) {
                 handle_update_suggestion(output, engine, tension, &suggestion)?;
             }
         }
+    }
+
+    Ok(())
+}
+
+/// System-wide mode: send all active tensions as context to agent.
+fn run_system(
+    output: &Output,
+    workspace: &Workspace,
+    engine: &mut DynamicsEngine,
+    all_tensions: &[Tension],
+    prompt: &str,
+    no_suggest: bool,
+    dry_run: bool,
+) -> Result<(), WerkError> {
+    let now = Utc::now();
+
+    // Filter active tensions
+    let active: Vec<_> = all_tensions
+        .iter()
+        .filter(|t| t.status != TensionStatus::Resolved && t.status != TensionStatus::Released)
+        .collect();
+
+    if active.is_empty() {
+        return Err(WerkError::InvalidInput(
+            "no active tensions found in workspace".to_string(),
+        ));
+    }
+
+    println!("\nSystem-wide context: {} active tensions", active.len());
+    println!();
+
+    // Build system context with all active tensions + dynamics
+    let mut context_parts = vec!["System-wide tension context:\n".to_string()];
+    for t in &active {
+        let dynamics = compute_all_dynamics(engine, &t.id);
+        let urgency = compute_urgency(t, now);
+        let urgency_str = match urgency {
+            Some(u) => format!("{:.2}", u.value),
+            None => "none".to_string(),
+        };
+        context_parts.push(format!(
+            "- {} ({}): desired=\"{}\", actual=\"{}\", phase={}, tendency={}, urgency={}\n",
+            &t.id[..8.min(t.id.len())],
+            t.status,
+            t.desired,
+            t.actual,
+            dynamics.phase.phase,
+            dynamics.structural_tendency.tendency,
+            urgency_str,
+        ));
+    }
+
+    // Resolve agent command
+    let config = Config::load(workspace)?;
+    let agent_cmd = match config.get("agent.command") {
+        Some(cmd) => cmd.clone(),
+        None => {
+            return Err(WerkError::InvalidInput(
+                "no agent command configured. Set agent.command in config".to_string(),
+            ));
+        }
+    };
+
+    let full_prompt = format!(
+        "You are analyzing a system of structural tensions.\n\n\
+         {}\n\n\
+         User message: {}\n\n\
+         IMPORTANT: Respond in YAML format with two sections:\n\
+         1. 'mutations' array: suggested changes to the tension forest\n\
+         2. 'response' string: your analysis in prose\n\n\
+         Supported mutation actions:\n\
+         - update_actual: {{tension_id, new_value, reasoning}}\n\
+         - create_child: {{parent_id, desired, actual, reasoning}}\n\
+         - add_note: {{tension_id, text}}\n\
+         - update_status: {{tension_id, new_status, reasoning}}\n\
+         - update_desired: {{tension_id, new_value, reasoning}}\n\n\
+         Only suggest mutations you're confident about. \
+         If nothing should change, return empty mutations: [].\n\n\
+         Wrap your YAML in --- markers.\n\n\
+         If you cannot produce YAML, respond in plain text.",
+        context_parts.join(""),
+        prompt,
+    );
+
+    // Execute agent and capture response
+    let response_text = execute_agent_capture(&agent_cmd, &full_prompt)?;
+
+    // For system mode, use first active tension as fallback for mutation recording
+    let first_tension = active[0];
+
+    // Record the system-wide session as a mutation
+    engine
+        .store()
+        .record_mutation(&sd_core::Mutation::new(
+            first_tension.id.clone(),
+            Utc::now(),
+            "agent_system".to_owned(),
+            None,
+            format!("system-wide prompt: {}", truncate(prompt, 100)),
+        ))
+        .map_err(WerkError::SdError)?;
+
+    // Try structured YAML parsing first, fall back to simple text
+    if let Some(structured) = StructuredResponse::from_response(&response_text) {
+        handle_structured_response(output, engine, first_tension, structured, no_suggest, dry_run)?;
+    } else {
+        println!("Agent Response:");
+        println!("{}", "\u{2500}".repeat(60));
+        println!("{}", response_text.trim());
+        println!("{}", "\u{2500}".repeat(60));
+    }
+
+    Ok(())
+}
+
+/// Decompose mode: ask agent to break tension into sub-tensions.
+fn run_decompose(
+    output: &Output,
+    workspace: &Workspace,
+    engine: &mut DynamicsEngine,
+    tension: &Tension,
+    all_tensions: &[Tension],
+    no_suggest: bool,
+    dry_run: bool,
+) -> Result<(), WerkError> {
+    // Build context
+    let context_md = build_context_markdown(engine, tension, all_tensions);
+
+    let horizon_str = match &tension.horizon {
+        Some(h) => format!("{}", h),
+        None => "none".to_string(),
+    };
+
+    println!("\nDecomposing tension: {}", tension.id);
+    println!("Desired: {}", tension.desired);
+    println!("Current: {}", tension.actual);
+    println!();
+
+    // Resolve agent command
+    let config = Config::load(workspace)?;
+    let agent_cmd = match config.get("agent.command") {
+        Some(cmd) => cmd.clone(),
+        None => {
+            return Err(WerkError::InvalidInput(
+                "no agent command configured. Set agent.command in config".to_string(),
+            ));
+        }
+    };
+
+    let decompose_prompt = format!(
+        "You are helping decompose a structural tension into sub-tensions.\n\n\
+         Context:\n{}\n\n\
+         The parent tension is:\n  \
+         ID: {}\n  \
+         Desired: {}\n  \
+         Actual: {}\n  \
+         Horizon: {}\n\n\
+         Break this into 3-7 concrete sub-tensions. Each should be:\n\
+         - A specific gap between desired and actual state\n\
+         - Small enough to make progress on within days\n\
+         - Together they should cover the full scope of the parent\n\n\
+         IMPORTANT: Respond in YAML format with two sections:\n\
+         1. 'mutations' array: use create_child actions with parent_id: \"{tid}\"\n\
+         2. 'response' string: your reasoning in prose\n\n\
+         Supported mutation actions:\n\
+         - create_child: {{parent_id, desired, actual, reasoning}}\n\
+         - add_note: {{tension_id, text}}\n\n\
+         Wrap your YAML in --- markers. Example:\n\
+         ---\n\
+         mutations:\n\
+           - action: create_child\n\
+             parent_id: {tid}\n\
+             desired: \"Sub-goal achieved\"\n\
+             actual: \"Not started\"\n\
+             reasoning: \"First step toward parent goal\"\n\
+         response: |\n\
+           Decomposition rationale here.\n\
+         ---",
+        context_md,
+        tension.id,
+        tension.desired,
+        tension.actual,
+        horizon_str,
+        tid = tension.id,
+    );
+
+    // Execute agent and capture response
+    let response_text = execute_agent_capture(&agent_cmd, &decompose_prompt)?;
+
+    // Record the decompose session as a mutation
+    engine
+        .store()
+        .record_mutation(&sd_core::Mutation::new(
+            tension.id.clone(),
+            Utc::now(),
+            "agent_decompose".to_owned(),
+            None,
+            format!("decompose: {}", truncate(&tension.desired, 80)),
+        ))
+        .map_err(WerkError::SdError)?;
+
+    // Try structured YAML parsing first, fall back to simple text
+    if let Some(structured) = StructuredResponse::from_response(&response_text) {
+        handle_structured_response(output, engine, tension, structured, no_suggest, dry_run)?;
+    } else {
+        println!("Agent Response:");
+        println!("{}", "\u{2500}".repeat(60));
+        println!("{}", response_text.trim());
+        println!("{}", "\u{2500}".repeat(60));
     }
 
     Ok(())
@@ -196,6 +427,10 @@ fn run_interactive(
     let dynamics_json = compute_all_dynamics(engine, &tension.id);
     let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
+    let thresholds = ProjectionThresholds::default();
+    let projections = project_tension(tension, &mutations, &thresholds, now);
+    let projection_json = crate::commands::context::build_projection_json(&projections);
+
     let context = ContextResult {
         tension: tension_info,
         ancestors,
@@ -203,6 +438,7 @@ fn run_interactive(
         children,
         dynamics: dynamics_json.into(),
         mutations: mutation_infos,
+        projection: projection_json,
     };
 
     let context_json = serde_json::to_string(&context)
@@ -431,6 +667,7 @@ fn handle_structured_response(
     tension: &Tension,
     response: StructuredResponse,
     no_suggest: bool,
+    dry_run: bool,
 ) -> Result<(), WerkError> {
     // Show the prose response
     println!("Agent Response:");
@@ -455,6 +692,15 @@ fn handle_structured_response(
         println!();
     }
     println!();
+
+    // Dry run: show what would be applied without applying
+    if dry_run {
+        println!("Dry run -- showing what would be applied:");
+        for m in &response.mutations {
+            println!("  {}", m.summary());
+        }
+        return Ok(());
+    }
 
     // Non-interactive CLI mode: auto-apply all suggested mutations
     println!("Applying all suggested changes...");

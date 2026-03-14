@@ -60,14 +60,16 @@ impl WerkApp {
                 lines.push(Line::from("  j/k         Move up/down"));
                 lines.push(Line::from("  Enter       Open detail view"));
                 lines.push(Line::from("  Esc         (no-op at top level)"));
-                lines.push(Line::from("  1           Dashboard     2/t  Tree view"));
-                lines.push(Line::from("  f           Cycle filter   v   Toggle verbose"));
+                lines.push(Line::from("  Tab         Switch view (Dashboard/Tree)"));
+                lines.push(Line::from("  f           Cycle filter"));
                 lines.push(Line::from("  /           Search tensions"));
                 lines.push(Line::from("  :           Command palette"));
+                lines.push(Line::from("  T           Toggle timeline panel"));
+                lines.push(Line::from("  D           Toggle health overlay"));
                 lines.push(Line::from("  L           Show lever detail"));
                 lines.push(Line::from(""));
                 lines.push(Line::from_spans([Span::styled("  Editing", Style::new().fg(CLR_CYAN).bold())]));
-                lines.push(Line::from("  a           Add new tension"));
+                lines.push(Line::from("  a           Quick-add tension (desired [+2w] [| actual])"));
                 lines.push(Line::from("  c           Create child of selected"));
                 lines.push(Line::from("  p           Create parent of selected"));
                 lines.push(Line::from("  r           Update reality (actual state)"));
@@ -82,7 +84,10 @@ impl WerkApp {
                 lines.push(Line::from_spans([Span::styled("  Detail View", Style::new().fg(CLR_CYAN).bold())]));
                 lines.push(Line::from("  j/k         Scroll up/down"));
                 lines.push(Line::from("  Esc         Back to dashboard"));
-                lines.push(Line::from("  v           Toggle verbose dynamics"));
+                lines.push(Line::from("  T           Toggle timeline panel"));
+                lines.push(Line::from("  D           Toggle health overlay"));
+                lines.push(Line::from("  L           Show lever detail"));
+                lines.push(Line::from(""));
                 lines.push(Line::from("  /           Search tensions"));
                 lines.push(Line::from("  :           Command palette"));
                 lines.push(Line::from(""));
@@ -91,7 +96,7 @@ impl WerkApp {
                 lines.push(Line::from("  d           Update desire"));
                 lines.push(Line::from("  n           Add note"));
                 lines.push(Line::from("  h           Set horizon"));
-                lines.push(Line::from("  a           Add sub-tension"));
+                lines.push(Line::from("  a           Quick-add sub-tension (desired [+2w] [| actual])"));
                 lines.push(Line::from("  c           Create child of current"));
                 lines.push(Line::from("  p           Create parent of current"));
                 lines.push(Line::from("  R           Resolve"));
@@ -104,39 +109,21 @@ impl WerkApp {
                 lines.push(Line::from_spans([Span::styled("  Tree View", Style::new().fg(CLR_CYAN).bold())]));
                 lines.push(Line::from("  j/k         Navigate tree"));
                 lines.push(Line::from("  Enter       Open detail view"));
-                lines.push(Line::from("  Esc/1       Back to dashboard"));
+                lines.push(Line::from("  Tab/Esc     Back to dashboard"));
                 lines.push(Line::from("  f           Cycle filter"));
                 lines.push(Line::from("  /           Search tensions"));
                 lines.push(Line::from("  :           Command palette"));
                 lines.push(Line::from(""));
                 lines.push(Line::from_spans([Span::styled("  Editing", Style::new().fg(CLR_CYAN).bold())]));
-                lines.push(Line::from("  a           Add tension"));
+                lines.push(Line::from("  a           Quick-add tension (desired [+2w] [| actual])"));
                 lines.push(Line::from("  c           Create child of selected"));
                 lines.push(Line::from("  p           Create parent of selected"));
                 lines.push(Line::from("  r/d/n/h     Edit selected tension"));
                 lines.push(Line::from("  R/X/m       Resolve/Release/Move"));
             }
-            View::Neighborhood => {
-                lines.push(Line::from_spans([Span::styled("  Neighborhood View", Style::new().fg(CLR_CYAN).bold())]));
-                lines.push(Line::from("  Esc         Back to dashboard"));
-                lines.push(Line::from("  :           Command palette"));
-            }
-            View::Timeline => {
-                lines.push(Line::from_spans([Span::styled("  Timeline View", Style::new().fg(CLR_CYAN).bold())]));
-                lines.push(Line::from("  Esc         Back to dashboard"));
-                lines.push(Line::from("  1           Dashboard"));
-                lines.push(Line::from("  :           Command palette"));
-            }
-            View::Focus => {
-                lines.push(Line::from_spans([Span::styled("  Focus Mode", Style::new().fg(CLR_CYAN).bold())]));
-                lines.push(Line::from("  j/k         Cycle through tensions"));
-                lines.push(Line::from("  r           Update reality"));
-                lines.push(Line::from("  d           Update desire"));
-                lines.push(Line::from("  h           Set horizon"));
-                lines.push(Line::from("  Esc         Back to dashboard"));
-            }
-            View::DynamicsSummary => {
-                lines.push(Line::from_spans([Span::styled("  Dynamics Summary", Style::new().fg(CLR_CYAN).bold())]));
+            // Legacy views (absorbed into primary views)
+            View::Neighborhood | View::Timeline | View::Focus | View::DynamicsSummary => {
+                lines.push(Line::from_spans([Span::styled("  Dashboard", Style::new().fg(CLR_CYAN).bold())]));
                 lines.push(Line::from("  Esc         Back to dashboard"));
                 lines.push(Line::from("  :           Command palette"));
             }

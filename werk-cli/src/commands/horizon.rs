@@ -7,6 +7,7 @@ use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::{compute_urgency, Horizon, HorizonKind, TensionStatus};
 use serde::Serialize;
+use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for horizon set.
 #[derive(Serialize)]
@@ -62,10 +63,28 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             // Record old horizon
             let old_horizon = tension.horizon.as_ref().map(|h| h.to_string());
 
+            // Hook infrastructure
+            let hooks = Config::load(&workspace)
+                .map(|c| HookRunner::from_config(&c))
+                .unwrap_or_else(|_| HookRunner::noop());
+            let new_horizon_str = horizon_parsed.as_ref().map(|h| h.to_string()).unwrap_or_else(|| "none".to_string());
+            let event = HookEvent::mutation(
+                &tension.id,
+                &tension.desired,
+                "horizon",
+                old_horizon.as_deref(),
+                &new_horizon_str,
+            );
+            if !hooks.pre_mutation(&event) {
+                return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+            }
+
             // Update horizon
             store
                 .update_horizon(&tension.id, horizon_parsed.clone())
                 .map_err(WerkError::SdError)?;
+
+            hooks.post_mutation(&event);
 
             let result = HorizonResult {
                 id: tension.id.clone(),

@@ -25,6 +25,7 @@ pub struct TensionRow {
     pub horizon_display: String,
     pub tier: UrgencyTier,
     pub activity: Vec<f64>,  // 7 buckets, one per day, most recent last
+    pub trajectory: Option<sd_core::Trajectory>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,4 +143,5 @@ pub struct DetailDynamics {
     pub compensating_strategy: Option<String>,
     pub assimilation_depth: Option<String>,
     pub horizon_drift: Option<String>,
+    pub forecast_line: Option<(String, PackedRgba)>,
 }

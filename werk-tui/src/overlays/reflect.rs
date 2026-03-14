@@ -12,8 +12,8 @@ use crate::theme::*;
 
 impl WerkApp {
     pub(crate) fn render_reflect_overlay(&self, area: Rect, frame: &mut Frame<'_>) {
-        let Some(ref tension) = self.detail_tension else { return };
-        let Some(ref textarea) = self.reflect_textarea else { return };
+        let Some(ref tension) = self.detail.tension else { return };
+        let Some(ref textarea) = self.reflect.textarea else { return };
 
         // Centered overlay: 80% width, 60% height
         let w = (area.width as f64 * 0.8) as u16;

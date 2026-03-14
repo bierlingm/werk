@@ -770,6 +770,8 @@ impl Store {
         match (&old_status, &new_status) {
             (TensionStatus::Active, TensionStatus::Resolved) => {}
             (TensionStatus::Active, TensionStatus::Released) => {}
+            (TensionStatus::Resolved, TensionStatus::Active) => {}
+            (TensionStatus::Released, TensionStatus::Active) => {}
             _ => {
                 return Err(SdError::InvalidStatusTransition {
                     from: old_status,

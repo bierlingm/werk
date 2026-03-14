@@ -10,6 +10,7 @@ use crate::app::WerkApp;
 use crate::theme::*;
 use crate::types::UrgencyTier;
 
+#[allow(dead_code)]
 impl WerkApp {
     pub(crate) fn render_timeline_title(&self, area: &Rect, frame: &mut Frame<'_>) {
         let count = self.tensions.iter()

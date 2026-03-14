@@ -5,6 +5,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
+use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for reality command.
 #[derive(Serialize)]
@@ -66,10 +67,21 @@ pub fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result
     // Record old value for output
     let old_actual = tension.actual.clone();
 
+    // Hook infrastructure
+    let hooks = Config::load(&workspace)
+        .map(|c| HookRunner::from_config(&c))
+        .unwrap_or_else(|_| HookRunner::noop());
+    let event = HookEvent::mutation(&tension.id, &tension.desired, "actual", Some(&old_actual), &new_value);
+    if !hooks.pre_mutation(&event) {
+        return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+    }
+
     // Update via store (this handles status validation and mutation recording)
     store
         .update_actual(&tension.id, &new_value)
         .map_err(WerkError::SdError)?;
+
+    hooks.post_mutation(&event);
 
     let result = RealityResult {
         id: tension.id.clone(),

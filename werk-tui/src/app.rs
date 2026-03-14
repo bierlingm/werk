@@ -16,16 +16,78 @@ use crate::types::{
 };
 use sd_core::Tension;
 
+/// The kind of action previewed in the what-if overlay.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WhatIfAction {
+    Resolve,
+    Release,
+}
+
+/// A what-if counterfactual preview shown before resolving or releasing.
+pub struct WhatIfPreview {
+    pub tension_id: String,
+    pub tension_desired: String,
+    pub action: WhatIfAction,
+    pub orphaned_children: Vec<String>,
+    pub auto_resolved_parents: Vec<String>,
+    pub children_count: usize,
+}
+
+/// A pending undo action for resolve/release that expires after a timeout.
+pub struct UndoAction {
+    pub description: String,
+    pub tension_id: String,
+    pub previous_status: String,
+    pub expires_at: std::time::Instant,
+}
+
+/// View-specific state for the Detail view.
+pub struct DetailState {
+    pub(crate) tension: Option<Tension>,
+    pub(crate) scroll: u16,
+    pub(crate) cursor: usize,  // index into the flat list of navigable items
+    pub(crate) mutations: Vec<MutationDisplay>,
+    pub(crate) children: Vec<TensionRow>,
+    pub(crate) dynamics: Option<DetailDynamics>,
+    pub(crate) parent: Option<Tension>,
+    pub(crate) ancestors: Vec<(String, String)>,  // (id, desired), root-first
+    pub(crate) nav_stack: Vec<String>,            // for back-navigation
+}
+
+/// View-specific state for the Agent view.
+pub struct AgentState {
+    pub(crate) output: Vec<String>,
+    pub(crate) scroll: u16,
+    pub(crate) mutations: Vec<AgentMutation>,
+    pub(crate) mutation_selected: Vec<bool>,
+    pub(crate) mutation_cursor: usize,
+    pub(crate) running: bool,
+    pub(crate) response_text: Option<String>,
+}
+
+/// View-specific state for search.
+pub struct SearchState {
+    pub(crate) query: Option<String>,
+    pub(crate) buffer: String,
+    pub(crate) cursor: usize,
+    pub(crate) active: bool,
+    pub(crate) input_widget: TextInput,
+}
+
+/// View-specific state for the Reflect overlay.
+pub struct ReflectState {
+    pub(crate) textarea: Option<TextArea>,
+    pub(crate) tension_id: Option<String>,
+}
+
 /// The main TUI application.
 pub struct WerkApp {
     pub(crate) engine: DynamicsEngine,
     pub(crate) tensions: Vec<TensionRow>,
     pub(crate) dashboard_state: RefCell<TableState>,
     pub(crate) active_view: View,
-    pub(crate) show_resolved: bool,
     pub(crate) show_help: bool,
     pub(crate) filter: Filter,
-    pub(crate) verbose: bool,
     #[allow(dead_code)]
     pub(crate) status_message: Option<String>,
     pub(crate) total_active: usize,
@@ -34,15 +96,11 @@ pub struct WerkApp {
     pub(crate) total_neglected: usize,
     pub(crate) total_urgent: usize,
 
-    // Detail view state
-    pub(crate) detail_tension: Option<Tension>,
-    pub(crate) detail_scroll: u16,
-    pub(crate) detail_mutations: Vec<MutationDisplay>,
-    pub(crate) detail_children: Vec<TensionRow>,
-    pub(crate) detail_dynamics: Option<DetailDynamics>,
-    pub(crate) detail_parent: Option<Tension>,
-    pub(crate) detail_ancestors: Vec<(String, String)>,  // (id, desired), root-first
-    pub(crate) detail_nav_stack: Vec<String>,            // for back-navigation
+    // View-specific state
+    pub(crate) detail: DetailState,
+    pub(crate) agent: AgentState,
+    pub(crate) search: SearchState,
+    pub(crate) reflect: ReflectState,
 
     // Neighborhood view state
     pub(crate) neighborhood_tension_id: Option<String>,
@@ -62,39 +120,44 @@ pub struct WerkApp {
     pub(crate) toasts: Vec<Toast>,
     pub(crate) previous_urgencies: HashMap<String, f64>,
 
-    // Phase 5: Agent integration
-    pub(crate) agent_output: Vec<String>,
-    pub(crate) agent_scroll: u16,
-    pub(crate) agent_mutations: Vec<AgentMutation>,
-    pub(crate) agent_mutation_selected: Vec<bool>,
-    pub(crate) agent_mutation_cursor: usize,
-    pub(crate) agent_running: bool,
-    pub(crate) agent_response_text: Option<String>,
-
     // Phase 6: Welcome screen
     pub(crate) welcome_selected: usize,
 
     // Phase 6: Command palette (native ftui widget)
     pub(crate) command_palette: CommandPalette,
 
-    // Phase 6: Search
-    pub(crate) search_query: Option<String>,
-    pub(crate) search_buffer: String,
-    pub(crate) search_cursor: usize,
-    pub(crate) search_active: bool,
-
     // Phase 9/11: Lever
     pub(crate) lever: Option<LeverResult>,
     pub(crate) show_lever_overlay: bool,
 
-    // Phase 15A: Reflect (native ftui TextArea widget)
-    pub(crate) reflect_textarea: Option<TextArea>,
-    pub(crate) reflect_tension_id: Option<String>,
+    // View consolidation: toggleable panels/overlays
+    pub(crate) show_timeline: bool,
+    pub(crate) show_health_overlay: bool,
 
     // Native ftui widget state for input overlay migration
     pub(crate) text_input_widget: TextInput,
     pub(crate) move_picker_state: RefCell<ListState>,
-    pub(crate) search_input_widget: TextInput,
+
+    // Undo support for resolve/release
+    pub(crate) pending_undo: Option<UndoAction>,
+
+    // Snooze: hide snoozed tensions from dashboard
+    pub(crate) show_snoozed: bool,
+
+    // What-if counterfactual preview before resolve/release
+    pub(crate) what_if_preview: Option<WhatIfPreview>,
+
+    // Behavioral pattern insights overlay
+    pub(crate) show_insights_overlay: bool,
+    pub(crate) insights_lines: Vec<ftui::text::Line>,
+
+    // Trajectory overlay
+    pub(crate) show_trajectory_overlay: bool,
+    pub(crate) trajectory_lines: Vec<ftui::text::Line>,
+
+    // Projection cache (recomputed every 5 minutes)
+    pub(crate) field_projection: Option<sd_core::FieldProjection>,
+    pub(crate) last_projection_time: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl WerkApp {
@@ -121,10 +184,8 @@ impl WerkApp {
                 s
             }),
             active_view: View::Dashboard,
-            show_resolved: false,
             show_help: false,
             filter: Filter::Active,
-            verbose: false,
             status_message: None,
             total_active,
             total_resolved,
@@ -132,14 +193,40 @@ impl WerkApp {
             total_neglected,
             total_urgent,
 
-            detail_tension: None,
-            detail_scroll: 0,
-            detail_mutations: Vec::new(),
-            detail_children: Vec::new(),
-            detail_dynamics: None,
-            detail_parent: None,
-            detail_ancestors: Vec::new(),
-            detail_nav_stack: Vec::new(),
+            detail: DetailState {
+                tension: None,
+                scroll: 0,
+                cursor: 0,
+                mutations: Vec::new(),
+                children: Vec::new(),
+                dynamics: None,
+                parent: None,
+                ancestors: Vec::new(),
+                nav_stack: Vec::new(),
+            },
+
+            agent: AgentState {
+                output: Vec::new(),
+                scroll: 0,
+                mutations: Vec::new(),
+                mutation_selected: Vec::new(),
+                mutation_cursor: 0,
+                running: false,
+                response_text: None,
+            },
+
+            search: SearchState {
+                query: None,
+                buffer: String::new(),
+                cursor: 0,
+                active: false,
+                input_widget: TextInput::new(),
+            },
+
+            reflect: ReflectState {
+                textarea: None,
+                tension_id: None,
+            },
 
             neighborhood_tension_id: None,
             neighborhood_items: Vec::new(),
@@ -159,30 +246,32 @@ impl WerkApp {
             toasts: Vec::new(),
             previous_urgencies: HashMap::new(),
 
-            agent_output: Vec::new(),
-            agent_scroll: 0,
-            agent_mutations: Vec::new(),
-            agent_mutation_selected: Vec::new(),
-            agent_mutation_cursor: 0,
-            agent_running: false,
-            agent_response_text: None,
-
             welcome_selected: 0,
             command_palette: Self::build_command_palette(),
-            search_query: None,
-            search_buffer: String::new(),
-            search_cursor: 0,
-            search_active: false,
 
             lever: None,
             show_lever_overlay: false,
 
-            reflect_textarea: None,
-            reflect_tension_id: None,
+            show_timeline: false,
+            show_health_overlay: false,
 
             text_input_widget: TextInput::new(),
             move_picker_state: RefCell::new(ListState::default()),
-            search_input_widget: TextInput::new(),
+
+            pending_undo: None,
+
+            show_snoozed: false,
+
+            show_insights_overlay: false,
+            insights_lines: Vec::new(),
+
+            show_trajectory_overlay: false,
+            trajectory_lines: Vec::new(),
+
+            field_projection: None,
+            last_projection_time: None,
+
+            what_if_preview: None,
         }
     }
 
@@ -225,11 +314,12 @@ impl WerkApp {
             "tree" => Some(Msg::SwitchTree),
             "dashboard" => Some(Msg::SwitchDashboard),
             "agent" => Some(Msg::StartAgent),
-            "neighborhood" => Some(Msg::ViewNeighborhood),
-            "timeline" => Some(Msg::ViewTimeline),
-            "focus" => Some(Msg::ViewFocus),
-            "health" => Some(Msg::ViewDynamics),
+            "timeline" => Some(Msg::ToggleTimeline),
+            "health" => Some(Msg::ToggleHealthOverlay),
             "reflect" => Some(Msg::StartReflect),
+            "snooze" => Some(Msg::StartSnooze),
+            "insights" => Some(Msg::ShowInsights),
+            "trajectory" => Some(Msg::ShowTrajectory),
             "help" => Some(Msg::ToggleHelp),
             "quit" => Some(Msg::Quit),
             _ => None,
@@ -256,24 +346,44 @@ impl WerkApp {
         self.tree_state.borrow_mut().select(Some(index));
     }
 
-    /// Visible tensions based on current filter and search query.
+    /// Count of navigable items in the Detail view.
+    /// cursor 0 = Info, cursor 1 = Dynamics, then mutations, then children.
+    pub(crate) fn detail_item_count(&self) -> usize {
+        let mut count = 2; // Info section + Dynamics section
+        count += self.detail.mutations.len();
+        count += self.detail.children.len();
+        count.max(1)
+    }
+
+    /// Check whether a tension is currently snoozed (snooze date in the future).
+    pub(crate) fn is_snoozed(&self, tension_id: &str) -> bool {
+        let mutations = self.engine.store().get_mutations(tension_id).unwrap_or_default();
+        let today = chrono::Utc::now().date_naive();
+        mutations.iter().rev()
+            .find(|m| m.field() == "snoozed_until")
+            .and_then(|m| chrono::NaiveDate::parse_from_str(m.new_value(), "%Y-%m-%d").ok())
+            .map(|d| d > today)
+            .unwrap_or(false)
+    }
+
+    /// Count of currently snoozed tensions.
+    pub(crate) fn snoozed_count(&self) -> usize {
+        self.tensions.iter().filter(|t| self.is_snoozed(&t.id)).count()
+    }
+
+    /// Visible tensions based on current filter, search query, and snooze state.
     pub(crate) fn visible_tensions(&self) -> Vec<&TensionRow> {
         self.tensions
             .iter()
+            .filter(|t| self.show_snoozed || !self.is_snoozed(&t.id))
             .filter(|t| match self.filter {
-                Filter::Active => {
-                    if self.show_resolved {
-                        true
-                    } else {
-                        t.tier != UrgencyTier::Resolved
-                    }
-                }
+                Filter::Active => t.tier != UrgencyTier::Resolved,
                 Filter::All => true,
                 Filter::Resolved => t.status == "Resolved",
                 Filter::Released => t.status == "Released",
             })
             .filter(|t| {
-                if let Some(ref q) = self.search_query {
+                if let Some(ref q) = self.search.query {
                     let q_lower = q.to_lowercase();
                     t.desired.to_lowercase().contains(&q_lower)
                         || t.actual.to_lowercase().contains(&q_lower)

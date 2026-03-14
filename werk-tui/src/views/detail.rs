@@ -18,7 +18,7 @@ use crate::types::MutationKind;
 
 impl WerkApp {
     pub(crate) fn render_detail_title(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let (left_text, right_text) = match &self.detail_tension {
+        let (left_text, right_text) = match &self.detail.tension {
             Some(t) => {
                 let short_id: String = t.id.chars().take(8).collect();
                 let desired = truncate(&t.desired, area.width.saturating_sub(12) as usize).to_string();
@@ -46,13 +46,13 @@ impl WerkApp {
     /// Build the info section lines (desired, actual, status, horizon).
     fn build_info_lines(&self) -> Vec<Line> {
         let mut lines = Vec::new();
-        if let Some(tension) = &self.detail_tension {
+        if let Some(tension) = &self.detail.tension {
             let now = Utc::now();
 
             // Breadcrumb (ancestor chain)
-            if !self.detail_ancestors.is_empty() {
+            if !self.detail.ancestors.is_empty() {
                 let mut crumbs: Vec<Span> = Vec::new();
-                for (i, (_, desired)) in self.detail_ancestors.iter().enumerate() {
+                for (i, (_, desired)) in self.detail.ancestors.iter().enumerate() {
                     if i > 0 {
                         crumbs.push(Span::styled(" > ", Style::new().fg(CLR_DIM_GRAY)));
                     }
@@ -65,7 +65,7 @@ impl WerkApp {
             }
 
             // Parent line
-            if let Some(parent) = &self.detail_parent {
+            if let Some(parent) = &self.detail.parent {
                 lines.push(Line::from_spans([
                     Span::styled("Parent   ", Style::new().fg(CLR_MID_GRAY)),
                     Span::styled(
@@ -114,9 +114,9 @@ impl WerkApp {
     }
 
     /// Build the dynamics section lines.
-    fn build_dynamics_lines(&self, suppress_verbose: bool) -> Vec<Line> {
+    fn build_dynamics_lines(&self) -> Vec<Line> {
         let mut lines = Vec::new();
-        if let Some(dyn_display) = &self.detail_dynamics {
+        if let Some(dyn_display) = &self.detail.dynamics {
             lines.push(Line::from_spans([
                 Span::styled("Phase       ", Style::new().fg(CLR_MID_GRAY)),
                 Span::styled(&dyn_display.phase, Style::new().fg(CLR_LIGHT_GRAY)),
@@ -144,6 +144,13 @@ impl WerkApp {
                 ]));
             }
 
+            if let Some((ref text, color)) = dyn_display.forecast_line {
+                lines.push(Line::from_spans([
+                    Span::styled("Forecast    ", Style::new().fg(CLR_MID_GRAY)),
+                    Span::styled(text, Style::new().fg(color)),
+                ]));
+            }
+
             if let Some(conflict) = &dyn_display.conflict {
                 lines.push(Line::from_spans([
                     Span::styled("Conflict    ", Style::new().fg(CLR_MID_GRAY)),
@@ -158,7 +165,7 @@ impl WerkApp {
                 ]));
             }
 
-            if self.verbose && !suppress_verbose {
+            {
                 lines.push(Line::from(""));
                 lines.push(Line::from_spans([Span::styled(
                     "Verbose Dynamics",
@@ -211,12 +218,69 @@ impl WerkApp {
         lines
     }
 
+    /// Build the trajectory section lines from cached field projection.
+    fn build_trajectory_lines(&self) -> Vec<Line> {
+        let mut lines = Vec::new();
+        let tension_id = match &self.detail.tension {
+            Some(t) => &t.id,
+            None => return lines,
+        };
+
+        if let Some(ref fp) = self.field_projection {
+            if let Some((_, projs)) = fp.tension_projections.iter().find(|(id, _)| id == tension_id) {
+                if let Some(proj) = projs.first() {
+                    let traj_label = match proj.trajectory {
+                        sd_core::Trajectory::Resolving => "\u{2193} Resolving",
+                        sd_core::Trajectory::Stalling => "\u{2014} Stalling",
+                        sd_core::Trajectory::Drifting => "~ Drifting",
+                        sd_core::Trajectory::Oscillating => "\u{21cc} Oscillating",
+                    };
+                    lines.push(Line::from_spans([
+                        Span::styled("Trajectory  ", Style::new().fg(CLR_MID_GRAY)),
+                        Span::styled(traj_label, Style::new().fg(match proj.trajectory {
+                            sd_core::Trajectory::Resolving => CLR_GREEN,
+                            sd_core::Trajectory::Stalling => CLR_DIM_GRAY,
+                            sd_core::Trajectory::Drifting => CLR_YELLOW,
+                            sd_core::Trajectory::Oscillating => CLR_RED_SOFT,
+                        })),
+                    ]));
+
+                    // Gap progression bars
+                    for (i, p) in projs.iter().enumerate() {
+                        let label = match i { 0 => "Gap +1w ", 1 => "Gap +1m ", _ => "Gap +3m " };
+                        let bar = render_bar(p.projected_gap, 10);
+                        lines.push(Line::from_spans([
+                            Span::styled(format!("{}    ", label), Style::new().fg(CLR_MID_GRAY)),
+                            Span::styled(bar, Style::new().fg(CLR_CYAN)),
+                            Span::styled(format!(" {:.2}", p.projected_gap), Style::new().fg(CLR_LIGHT_GRAY)),
+                        ]));
+                    }
+
+                    // Risk flags
+                    if proj.oscillation_risk {
+                        lines.push(Line::from_spans([Span::styled(
+                            "  \u{26a0} Oscillation risk",
+                            Style::new().fg(CLR_YELLOW),
+                        )]));
+                    }
+                    if proj.neglect_risk {
+                        lines.push(Line::from_spans([Span::styled(
+                            "  \u{26a0} Neglect risk",
+                            Style::new().fg(CLR_YELLOW),
+                        )]));
+                    }
+                }
+            }
+        }
+        lines
+    }
+
     /// Build the history section lines.
     fn build_history_lines(&self, width: usize) -> Vec<Line> {
         let mut lines = Vec::new();
         // Reserve space for time(14) + spacing
         let budget = width.saturating_sub(16).max(10);
-        for m in &self.detail_mutations {
+        for m in &self.detail.mutations {
             let old_or_dash = m
                 .old_value
                 .as_deref()
@@ -294,7 +358,7 @@ impl WerkApp {
         let mut lines = Vec::new();
         // Reserve space for short_id(8) + phase/movement(8) + padding
         let desired_budget = width.saturating_sub(18).max(10);
-        for child in &self.detail_children {
+        for child in &self.detail.children {
             let desired_trunc = truncate(&child.desired, desired_budget);
             lines.push(Line::from_spans([
                 Span::styled(
@@ -311,17 +375,21 @@ impl WerkApp {
         lines
     }
 
-    pub(crate) fn render_detail_body_inner(&self, area: &Rect, frame: &mut Frame<'_>, suppress_verbose: bool) {
-        if self.detail_tension.is_none() {
+    pub(crate) fn render_detail_body_inner(&self, area: &Rect, frame: &mut Frame<'_>) {
+        if self.detail.tension.is_none() {
             let text = Text::from_lines(vec![Line::from("  No tension selected")]);
             let paragraph = Paragraph::new(text);
             paragraph.render(*area, frame);
             return;
         }
 
+        let cursor = self.detail.cursor;
+        let highlight_style = Style::new().fg(CLR_WHITE).bold();
+
         // Build section content
         let info_lines = self.build_info_lines();
-        let dynamics_lines = self.build_dynamics_lines(suppress_verbose);
+        let dynamics_lines = self.build_dynamics_lines();
+        let trajectory_lines = self.build_trajectory_lines();
         let content_width = area.width.saturating_sub(4) as usize; // subtract block chrome
         let history_lines = self.build_history_lines(content_width);
         let children_lines = self.build_children_lines(content_width);
@@ -334,12 +402,17 @@ impl WerkApp {
         // Calculate section heights (content lines + block chrome)
         let info_h = (info_lines.len() as u16).saturating_add(chrome_v);
         let dynamics_h = (dynamics_lines.len() as u16).saturating_add(chrome_v);
+        let trajectory_h = if trajectory_lines.is_empty() {
+            0u16
+        } else {
+            (trajectory_lines.len() as u16).saturating_add(chrome_v)
+        };
 
-        let has_history = !self.detail_mutations.is_empty();
-        let has_children = !self.detail_children.is_empty();
+        let has_history = !self.detail.mutations.is_empty();
+        let has_children = !self.detail.children.is_empty();
 
         // Calculate total fixed height needed
-        let fixed_h = info_h.saturating_add(dynamics_h);
+        let fixed_h = info_h.saturating_add(dynamics_h).saturating_add(trajectory_h);
         let remaining = area.height.saturating_sub(fixed_h);
 
         // Distribute remaining space between history and children
@@ -356,9 +429,17 @@ impl WerkApp {
             (0u16, 0u16)
         };
 
-        // Apply scroll to determine which section areas are visible.
-        // We scroll the entire layout vertically using detail_scroll.
-        let scroll = self.detail_scroll;
+        // Cursor-to-section mapping:
+        // cursor 0 = Info section
+        // cursor 1 = Dynamics section
+        // cursor 2..2+mutations.len() = individual mutation lines
+        // cursor 2+mutations.len()..end = individual children
+        let mutations_count = self.detail.mutations.len();
+        let children_start = 2 + mutations_count;
+
+        // Determine which section block should be highlighted based on cursor
+        let info_selected = cursor == 0;
+        let dynamics_selected = cursor == 1;
 
         // Stack sections vertically
         let mut y = area.y;
@@ -369,10 +450,14 @@ impl WerkApp {
         if info_h > 0 && y.saturating_add(info_h) > area.y {
             let section_area = Rect::new(x, y, w, info_h.min(area.bottom().saturating_sub(y)));
             if section_area.height >= chrome_v {
-                let block = Self::section_block(" Info ");
+                let block = if info_selected {
+                    Self::section_block(" Info ").border_style(Style::new().fg(CLR_CYAN))
+                } else {
+                    Self::section_block(" Info ")
+                };
                 let inner = block.inner(section_area);
                 block.render(section_area, frame);
-                let para = Paragraph::new(Text::from_lines(info_lines)).scroll((scroll, 0));
+                let para = Paragraph::new(Text::from_lines(info_lines));
                 para.render(inner, frame);
             }
             y = y.saturating_add(info_h);
@@ -387,16 +472,35 @@ impl WerkApp {
             let avail_h = area.bottom().saturating_sub(y);
             let section_area = Rect::new(x, y, w, dynamics_h.min(avail_h));
             if section_area.height >= chrome_v {
-                let block = Self::section_block(" Dynamics ");
+                let block = if dynamics_selected {
+                    Self::section_block(" Dynamics ").border_style(Style::new().fg(CLR_CYAN))
+                } else {
+                    Self::section_block(" Dynamics ")
+                };
                 let inner = block.inner(section_area);
                 block.render(section_area, frame);
-                // Scroll: subtract info section lines from scroll offset
-                let info_content_lines = self.build_info_lines().len() as u16;
-                let dyn_scroll = scroll.saturating_sub(info_content_lines);
-                let para = Paragraph::new(Text::from_lines(dynamics_lines)).scroll((dyn_scroll, 0));
+                let para = Paragraph::new(Text::from_lines(dynamics_lines));
                 para.render(inner, frame);
             }
             y = y.saturating_add(dynamics_h);
+        }
+
+        if y >= area.bottom() {
+            return;
+        }
+
+        // --- Trajectory section ---
+        if trajectory_h > 0 {
+            let avail_h = area.bottom().saturating_sub(y);
+            let section_area = Rect::new(x, y, w, trajectory_h.min(avail_h));
+            if section_area.height >= chrome_v {
+                let block = Self::section_block(" Trajectory ");
+                let inner = block.inner(section_area);
+                block.render(section_area, frame);
+                let para = Paragraph::new(Text::from_lines(trajectory_lines));
+                para.render(inner, frame);
+            }
+            y = y.saturating_add(trajectory_h);
         }
 
         if y >= area.bottom() {
@@ -409,17 +513,56 @@ impl WerkApp {
             let section_h = history_h.min(avail_h);
             let section_area = Rect::new(x, y, w, section_h);
             if section_area.height >= chrome_v {
-                let title = format!(" History ({}) ", self.detail_mutations.len());
-                let block = Self::section_block(&title);
+                let title = format!(" History ({}) ", self.detail.mutations.len());
+                // Highlight the block border if any mutation item is selected
+                let any_mutation_selected = cursor >= 2 && cursor < children_start;
+                let block = if any_mutation_selected {
+                    Self::section_block(&title).border_style(Style::new().fg(CLR_CYAN))
+                } else {
+                    Self::section_block(&title)
+                };
                 let inner = block.inner(section_area);
                 block.render(section_area, frame);
-                // History gets the bulk of scrolling
-                let info_content_lines = self.build_info_lines().len() as u16;
-                let dyn_content_lines = self.build_dynamics_lines(suppress_verbose).len() as u16;
-                let hist_scroll = scroll
-                    .saturating_sub(info_content_lines)
-                    .saturating_sub(dyn_content_lines);
-                let para = Paragraph::new(Text::from_lines(history_lines)).scroll((hist_scroll, 0));
+
+                // Highlight the specific mutation line that the cursor is on
+                let selected_mutation_idx = if any_mutation_selected {
+                    Some(cursor - 2)
+                } else {
+                    None
+                };
+                let highlighted_lines: Vec<Line> = history_lines
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, line)| {
+                        if Some(i) == selected_mutation_idx {
+                            Line::from_spans(
+                                std::iter::once(Span::styled("\u{25b6} ", highlight_style))
+                                    .chain(line.spans().iter().cloned())
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            Line::from_spans(
+                                std::iter::once(Span::styled("  ", Style::new()))
+                                    .chain(line.spans().iter().cloned())
+                                    .collect::<Vec<_>>(),
+                            )
+                        }
+                    })
+                    .collect();
+
+                // Auto-scroll history to keep selected mutation visible
+                let hist_scroll = if let Some(sel) = selected_mutation_idx {
+                    let visible_h = inner.height as usize;
+                    if sel >= visible_h {
+                        (sel - visible_h + 1) as u16
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+
+                let para = Paragraph::new(Text::from_lines(highlighted_lines)).scroll((hist_scroll, 0));
                 para.render(inner, frame);
             }
             y = y.saturating_add(section_h);
@@ -435,28 +578,70 @@ impl WerkApp {
             let section_h = children_h.min(avail_h);
             let section_area = Rect::new(x, y, w, section_h);
             if section_area.height >= chrome_v {
-                let title = format!(" Children ({}) ", self.detail_children.len());
-                let block = Self::section_block(&title);
+                let title = format!(" Children ({}) ", self.detail.children.len());
+                let any_child_selected = cursor >= children_start;
+                let block = if any_child_selected {
+                    Self::section_block(&title).border_style(Style::new().fg(CLR_CYAN))
+                } else {
+                    Self::section_block(&title)
+                };
                 let inner = block.inner(section_area);
                 block.render(section_area, frame);
-                let para = Paragraph::new(Text::from_lines(children_lines));
+
+                // Highlight the specific child line that the cursor is on
+                let selected_child_idx = if any_child_selected {
+                    Some(cursor - children_start)
+                } else {
+                    None
+                };
+                let highlighted_lines: Vec<Line> = children_lines
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, line)| {
+                        if Some(i) == selected_child_idx {
+                            Line::from_spans(
+                                std::iter::once(Span::styled("\u{25b6} ", highlight_style))
+                                    .chain(line.spans().iter().cloned())
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            Line::from_spans(
+                                std::iter::once(Span::styled("  ", Style::new()))
+                                    .chain(line.spans().iter().cloned())
+                                    .collect::<Vec<_>>(),
+                            )
+                        }
+                    })
+                    .collect();
+
+                // Auto-scroll children to keep selected child visible
+                let child_scroll = if let Some(sel) = selected_child_idx {
+                    let visible_h = inner.height as usize;
+                    if sel >= visible_h {
+                        (sel - visible_h + 1) as u16
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+
+                let para = Paragraph::new(Text::from_lines(highlighted_lines)).scroll((child_scroll, 0));
                 para.render(inner, frame);
             }
         }
     }
 
     pub(crate) fn render_detail_body_responsive(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let suppress_verbose = area.height < 20;
-        self.render_detail_body_inner(area, frame, suppress_verbose);
+        self.render_detail_body_inner(area, frame);
     }
 
     pub(crate) fn render_detail_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let verbose_hint = if self.verbose { "v-" } else { "v+" };
         let hints = StatusLine::new()
             .separator("  ")
             .left(StatusItem::key_hint("Esc", "back"))
-            .left(StatusItem::key_hint("j/k", ""))
-            .left(StatusItem::text(verbose_hint))
+            .left(StatusItem::key_hint("j/k", "nav"))
+            .left(StatusItem::key_hint("Enter", "open"))
             .left(StatusItem::key_hint("r/d", "edit"))
             .left(StatusItem::key_hint("n", "note"))
             .left(StatusItem::key_hint("h", "horizon"))
@@ -467,8 +652,8 @@ impl WerkApp {
             .left(StatusItem::key_hint("m", "move"))
             .left(StatusItem::key_hint("g", "agent"))
             .left(StatusItem::key_hint("w", "reflect"))
-            .left(StatusItem::key_hint("F", "focus"))
-            .left(StatusItem::key_hint("N", "graph"))
+            .left(StatusItem::key_hint("T", "timeline"))
+            .left(StatusItem::key_hint("D", "health"))
             .left(StatusItem::key_hint("L", "lever"))
             .left(StatusItem::key_hint("q/?", ""))
             .style(Style::new().fg(CLR_MID_GRAY));

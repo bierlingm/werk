@@ -5,6 +5,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
+use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for rm command.
 #[derive(Serialize)]
@@ -29,10 +30,21 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     let tension_id = tension.id.clone();
     let tension_desired = tension.desired.clone();
 
+    // Hook infrastructure
+    let hooks = Config::load(&workspace)
+        .map(|c| HookRunner::from_config(&c))
+        .unwrap_or_else(|_| HookRunner::noop());
+    let event = HookEvent::mutation(&tension_id, &tension_desired, "deleted", None, "true");
+    if !hooks.pre_mutation(&event) {
+        return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+    }
+
     // Delete via store (handles reparenting children to grandparent)
     store
         .delete_tension(&tension_id)
         .map_err(WerkError::SdError)?;
+
+    hooks.post_mutation(&event);
 
     let result = RmResult {
         id: tension_id.clone(),

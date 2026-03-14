@@ -4,24 +4,34 @@
 //! in its own module file.
 
 pub mod add;
+pub mod batch;
 pub mod config;
 pub mod context;
 pub mod desire;
+pub mod diff;
+pub mod health;
 pub mod horizon;
 pub mod init;
+pub mod insights;
+pub mod list;
 pub mod move_cmd;
 pub mod note;
 pub mod notes;
 pub mod nuke;
 pub mod reality;
+pub mod recur;
 pub mod release;
+pub mod reopen;
 pub mod resolve;
 pub mod rm;
 pub mod run;
 pub mod show;
+pub mod snooze;
+pub mod trajectory;
 pub mod tree;
 
 use clap::Subcommand;
+use batch::BatchCommand;
 
 /// CLI subcommands.
 #[derive(Debug, Subcommand)]
@@ -107,6 +117,38 @@ pub enum Commands {
         reason: String,
     },
 
+    /// Reopen a resolved or released tension (set status back to Active).
+    Reopen {
+        /// Tension ID or prefix.
+        id: String,
+    },
+
+    /// Snooze a tension until a future date.
+    Snooze {
+        /// Tension ID or prefix.
+        id: String,
+
+        /// Date to snooze until (+3d, +2w, +1m, or YYYY-MM-DD).
+        date: Option<String>,
+
+        /// Clear the snooze (unhide the tension).
+        #[arg(long)]
+        clear: bool,
+    },
+
+    /// Set or clear a recurrence interval on a tension.
+    Recur {
+        /// Tension ID or prefix.
+        id: String,
+
+        /// Recurrence interval (+1d, +1w, +2w, +1m).
+        interval: Option<String>,
+
+        /// Clear the recurrence.
+        #[arg(long)]
+        clear: bool,
+    },
+
     /// Delete a tension (reparents children to grandparent).
     Rm {
         /// Tension ID or prefix.
@@ -136,6 +178,50 @@ pub enum Commands {
     /// List all workspace-level notes.
     Notes,
 
+    /// Show system health summary (phase distribution, movement ratios, alerts).
+    Health,
+
+    /// Show behavioral pattern insights from mutation history.
+    Insights {
+        /// Analysis window in days.
+        #[arg(long, default_value = "30")]
+        days: i64,
+    },
+
+    /// Show what changed in a time window.
+    Diff {
+        /// Show changes since (e.g., "today", "yesterday", "3 days ago", "2026-03-10", "monday")
+        #[arg(long, default_value = "today")]
+        since: String,
+    },
+
+    /// List tensions with filtering and sorting.
+    List {
+        /// Show all tensions (including resolved/released).
+        #[arg(long)]
+        all: bool,
+
+        /// Show only urgent tensions.
+        #[arg(long)]
+        urgent: bool,
+
+        /// Show only neglected tensions.
+        #[arg(long)]
+        neglected: bool,
+
+        /// Show only stagnant tensions (no movement).
+        #[arg(long)]
+        stagnant: bool,
+
+        /// Filter by phase (G, A, C, M).
+        #[arg(long)]
+        phase: Option<String>,
+
+        /// Sort by field (urgency, phase, name, horizon).
+        #[arg(long, default_value = "urgency")]
+        sort: String,
+    },
+
     /// Display the tension forest as a tree.
     Tree {
         /// Show only active tensions (default).
@@ -155,20 +241,44 @@ pub enum Commands {
         released: bool,
     },
 
+    /// Show structural trajectory projections.
+    ///
+    /// Without arguments: field-wide structural funnel.
+    /// With a tension ID: per-tension trajectory projection.
+    /// With --collisions: upcoming urgency collision windows.
+    Trajectory {
+        /// Tension ID or prefix (omit for field-wide projection).
+        id: Option<String>,
+
+        /// Show urgency collision windows.
+        #[arg(long)]
+        collisions: bool,
+    },
+
     /// Output structural context for agent consumption (JSON only).
     Context {
-        /// Tension ID or prefix.
-        id: String,
+        /// Tension ID or prefix (omit for bulk modes).
+        id: Option<String>,
+
+        /// Output context for all active tensions.
+        #[arg(long)]
+        all: bool,
+
+        /// Output context for urgent tensions only.
+        #[arg(long)]
+        urgent: bool,
     },
 
     /// Launch an agent with structural context.
     ///
-    /// Two modes:
+    /// Three modes:
     ///   werk run <id> "prompt"       One-shot: send prompt with tension context, get response
     ///   werk run <id> -- <command>   Interactive: launch agent with context piped to stdin
+    ///   werk run --system "prompt"   System-wide: all active tensions as context
+    ///   werk run <id> --decompose    Decompose: break tension into sub-tensions
     Run {
-        /// Tension ID or prefix.
-        id: String,
+        /// Tension ID or prefix (optional with --system).
+        id: Option<String>,
 
         /// User prompt for one-shot mode.
         #[arg(value_name = "PROMPT")]
@@ -181,6 +291,24 @@ pub enum Commands {
         /// Agent command to run (overrides config default, for interactive mode).
         #[arg(last = true)]
         command: Vec<String>,
+
+        /// System-wide context (all active tensions, no specific ID needed).
+        #[arg(long)]
+        system: bool,
+
+        /// Auto-decompose: ask agent to break tension into sub-tensions.
+        #[arg(long)]
+        decompose: bool,
+
+        /// Dry run: show what would be applied without applying.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Batch operations (apply/validate mutations from YAML).
+    Batch {
+        #[command(subcommand)]
+        command: BatchCommand,
     },
 
     /// Destroy the current workspace (deletes the .werk/ directory).

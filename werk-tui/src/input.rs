@@ -31,8 +31,6 @@ pub enum InputContext {
     AddNote(String),
     SetHorizon(String),
     AddTensionDesired { parent_id: Option<String> },
-    AddTensionHorizon { desired: String, parent_id: Option<String> },
-    AddTensionActual { desired: String, parent_id: Option<String>, horizon: Option<String> },
     /// Create child: desired state step (carries parent_id)
     CreateChildDesired(String),
     /// Create child: horizon step (carries parent_id, desired)
@@ -46,11 +44,11 @@ pub enum InputContext {
     /// Create parent: actual state step (carries child_id, desired, horizon)
     CreateParentActual { child_id: String, desired: String, horizon: Option<String> },
     AgentPrompt(String),
+    SetRecurrence(String),
+    SetSnooze(String),
 }
 
 pub enum ConfirmAction {
-    Resolve(String),
-    Release(String),
     Delete { id: String, desired: String },
 }
 
@@ -127,11 +125,12 @@ pub fn all_palette_actions() -> Vec<PaletteAction> {
         PaletteAction { name: "tree", description: "Switch to tree view", msg: Some(Msg::SwitchTree) },
         PaletteAction { name: "dashboard", description: "Switch to dashboard", msg: Some(Msg::SwitchDashboard) },
         PaletteAction { name: "agent", description: "Open agent view", msg: Some(Msg::StartAgent) },
-        PaletteAction { name: "neighborhood", description: "Neighborhood graph view", msg: Some(Msg::ViewNeighborhood) },
-        PaletteAction { name: "timeline", description: "Timeline / Gantt view", msg: Some(Msg::ViewTimeline) },
-        PaletteAction { name: "focus", description: "Focus mode (single tension)", msg: Some(Msg::ViewFocus) },
-        PaletteAction { name: "health", description: "Dynamics summary dashboard", msg: Some(Msg::ViewDynamics) },
+        PaletteAction { name: "timeline", description: "Toggle timeline panel", msg: Some(Msg::ToggleTimeline) },
+        PaletteAction { name: "health", description: "Toggle health overlay", msg: Some(Msg::ToggleHealthOverlay) },
         PaletteAction { name: "reflect", description: "Free-form writing about a tension", msg: Some(Msg::StartReflect) },
+        PaletteAction { name: "snooze", description: "Snooze tension until a date", msg: Some(Msg::StartSnooze) },
+        PaletteAction { name: "insights", description: "Behavioral pattern analysis", msg: Some(Msg::ShowInsights) },
+        PaletteAction { name: "trajectory", description: "Field trajectory overview", msg: Some(Msg::ShowTrajectory) },
         PaletteAction { name: "help", description: "Show help", msg: Some(Msg::ToggleHelp) },
         PaletteAction { name: "quit", description: "Exit werk", msg: Some(Msg::Quit) },
     ]
