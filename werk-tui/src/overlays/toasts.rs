@@ -26,12 +26,15 @@ impl WerkApp {
             .rev()
             .collect();
 
+        // 1-char margin from edges (Phase 6c)
+        let margin = 1u16;
         for (i, toast) in visible_toasts.iter().enumerate() {
-            let toast_width = (toast.message.len() as u16 + 6).min(area.width.saturating_sub(2));
-            let x = area.width.saturating_sub(toast_width + 1);
-            let y = 1 + (i as u16);
+            let toast_width = (toast.message.len() as u16 + 6).min(area.width.saturating_sub(margin * 2));
+            let x = area.width.saturating_sub(toast_width + margin);
+            // Position from bottom, above any input overlays
+            let y = area.height.saturating_sub(3 + (i as u16));
 
-            if y >= area.height.saturating_sub(2) {
+            if y <= 1 || y >= area.height {
                 break;
             }
 

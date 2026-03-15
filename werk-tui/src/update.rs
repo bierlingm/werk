@@ -1640,6 +1640,8 @@ impl WerkApp {
             KeyCode::Char('z') => Msg::StartSnooze,
             KeyCode::Char('Z') if shift => Msg::ToggleShowSnoozed,
             KeyCode::Char('L') if shift => Msg::ShowLever,
+            KeyCode::Char(',') if matches!(self.active_view, View::Dashboard) => Msg::SplitNarrower,
+            KeyCode::Char('.') if matches!(self.active_view, View::Dashboard) => Msg::SplitWider,
             KeyCode::Char(':') => Msg::OpenCommandPalette,
             KeyCode::Char('/') => Msg::OpenSearch,
             KeyCode::Char('!') => Msg::TickerJump(0),
@@ -2877,6 +2879,14 @@ impl Model for WerkApp {
                 Cmd::None
             }
 
+            Msg::SplitWider => {
+                self.split_ratio = (self.split_ratio + 0.05).min(0.75);
+                Cmd::None
+            }
+            Msg::SplitNarrower => {
+                self.split_ratio = (self.split_ratio - 0.05).max(0.25);
+                Cmd::None
+            }
             Msg::RawKey(_, _) => Cmd::None,
             Msg::Quit => Cmd::Quit,
             Msg::Noop => Cmd::None,
@@ -2904,12 +2914,14 @@ impl Model for WerkApp {
                 let use_split = area.width >= 120;
 
                 if use_split {
-                    // Split layout: dashboard left (40%), detail right (60%)
-                    let left_width = (area.width as f64 * 0.4) as u16;
-                    let right_width = area.width - left_width;
+                    // Split layout: dashboard left, border, detail right
+                    let left_width = (area.width as f64 * self.split_ratio) as u16;
+                    let border_width = 1u16;
+                    let right_width = area.width.saturating_sub(left_width + border_width);
 
                     let left_area = Rect::new(area.x, area.y, left_width, area.height);
-                    let right_area = Rect::new(area.x + left_width, area.y, right_width, area.height);
+                    let border_area = Rect::new(area.x + left_width, area.y, border_width, area.height);
+                    let right_area = Rect::new(area.x + left_width + border_width, area.y, right_width, area.height);
 
                     // Left side: status bar + tension list + hints
                     let mut left_constraints: Vec<Constraint> = Vec::new();
@@ -2925,6 +2937,19 @@ impl Model for WerkApp {
                     self.render_tension_list(&left_rects[idx], frame); idx += 1;
                     if show_lever { self.render_lever_bar(&left_rects[idx], frame); idx += 1; }
                     if !hide_hints { self.render_dashboard_hints(&left_rects[idx], frame); }
+
+                    // Vertical border between panes (Phase 4b)
+                    for row in 0..border_area.height {
+                        let cell_area = Rect::new(border_area.x, border_area.y + row, 1, 1);
+                        let span = ftui::text::Span::styled(
+                            "\u{2502}",
+                            ftui::style::Style::new().fg(crate::theme::WERK_THEME.border),
+                        );
+                        let para = ftui::widgets::paragraph::Paragraph::new(
+                            ftui::text::Text::from_spans([span]),
+                        );
+                        ftui::widgets::Widget::render(&para, cell_area, frame);
+                    }
 
                     // Right side: detail title + detail body
                     if self.detail.tension.is_some() {

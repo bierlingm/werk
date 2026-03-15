@@ -120,6 +120,10 @@ pub enum Msg {
     // Trajectory overlay
     ShowTrajectory,
 
+    // Adjustable split pane ratio
+    SplitWider,
+    SplitNarrower,
+
     // Filesystem watcher detected external db change
     ExternalChange,
 

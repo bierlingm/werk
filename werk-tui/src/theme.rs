@@ -1,6 +1,7 @@
 // Color constants and semantic theme system for the TUI.
 
 use ftui::PackedRgba;
+use ftui::style::Style;
 use sd_core::CreativeCyclePhase;
 use sd_core::StructuralTendency;
 
@@ -55,6 +56,17 @@ pub struct WerkTheme {
     // Chrome
     pub border: PackedRgba,
 
+    // Selection & focus
+    pub highlight: PackedRgba,
+    pub surface_selected: PackedRgba,
+    pub text_accent: PackedRgba,
+    pub border_active: PackedRgba,
+
+    // Movement-specific colors
+    pub advancing: PackedRgba,
+    pub oscillating: PackedRgba,
+    pub stagnant: PackedRgba,
+
     // Creative-cycle phase colors
     pub phase_germination: PackedRgba,
     pub phase_assimilation: PackedRgba,
@@ -82,11 +94,57 @@ pub const WERK_THEME: WerkTheme = WerkTheme {
 
     border: CLR_DIM_GRAY,
 
+    highlight: PackedRgba::rgb(45, 45, 55),
+    surface_selected: PackedRgba::rgb(50, 50, 60),
+    text_accent: PackedRgba::rgb(140, 180, 220),
+    border_active: CLR_CYAN,
+
+    advancing: CLR_GREEN,
+    oscillating: CLR_YELLOW,
+    stagnant: CLR_MID_GRAY,
+
     phase_germination: PackedRgba::rgb(0, 180, 180),
     phase_assimilation: PackedRgba::rgb(80, 140, 220),
     phase_completion: CLR_GREEN,
     phase_momentum: PackedRgba::rgb(160, 120, 220),
 };
+
+// ---------------------------------------------------------------------------
+// Pre-computed composite styles
+// ---------------------------------------------------------------------------
+
+/// Pre-computed styles to avoid per-frame `Style::new().fg().bold()` chains.
+pub struct WerkStyles {
+    pub label: Style,
+    pub value: Style,
+    pub value_bold: Style,
+    pub muted: Style,
+    pub accent: Style,
+    pub accent_bold: Style,
+    pub danger: Style,
+    pub warn: Style,
+    pub success: Style,
+    pub status_bar: Style,
+    pub hint_key: Style,
+    pub hint_desc: Style,
+}
+
+use std::sync::LazyLock;
+
+pub static STYLES: LazyLock<WerkStyles> = LazyLock::new(|| WerkStyles {
+    label: Style::new().fg(CLR_MID_GRAY),
+    value: Style::new().fg(CLR_LIGHT_GRAY),
+    value_bold: Style::new().fg(CLR_WHITE).bold(),
+    muted: Style::new().fg(CLR_DIM_GRAY),
+    accent: Style::new().fg(CLR_CYAN),
+    accent_bold: Style::new().fg(CLR_CYAN).bold(),
+    danger: Style::new().fg(CLR_RED_SOFT),
+    warn: Style::new().fg(CLR_YELLOW_SOFT),
+    success: Style::new().fg(CLR_GREEN),
+    status_bar: Style::new().fg(CLR_LIGHT_GRAY).bold(),
+    hint_key: Style::new().fg(CLR_CYAN),
+    hint_desc: Style::new().fg(CLR_DIM_GRAY),
+});
 
 // ---------------------------------------------------------------------------
 // Semantic style helpers
@@ -115,8 +173,8 @@ pub fn tier_color(tier: UrgencyTier) -> PackedRgba {
 /// Return the color associated with a structural tendency.
 pub fn movement_color(tendency: StructuralTendency) -> PackedRgba {
     match tendency {
-        StructuralTendency::Advancing => WERK_THEME.success,
-        StructuralTendency::Oscillating => WERK_THEME.warning_bright,
-        StructuralTendency::Stagnant => WERK_THEME.text_subtle,
+        StructuralTendency::Advancing => WERK_THEME.advancing,
+        StructuralTendency::Oscillating => WERK_THEME.oscillating,
+        StructuralTendency::Stagnant => WERK_THEME.stagnant,
     }
 }

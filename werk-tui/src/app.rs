@@ -147,6 +147,9 @@ pub struct WerkApp {
     // What-if counterfactual preview before resolve/release
     pub(crate) what_if_preview: Option<WhatIfPreview>,
 
+    // Adjustable split pane ratio (Phase 4)
+    pub(crate) split_ratio: f64,
+
     // Behavioral pattern insights overlay
     pub(crate) show_insights_overlay: bool,
     pub(crate) insights_lines: Vec<ftui::text::Line>,
@@ -272,6 +275,8 @@ impl WerkApp {
             last_projection_time: None,
 
             what_if_preview: None,
+
+            split_ratio: 0.4,
         }
     }
 

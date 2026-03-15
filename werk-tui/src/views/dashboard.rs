@@ -11,6 +11,7 @@ use ftui::widgets::status_line::{StatusLine, StatusItem};
 use werk_shared::truncate;
 
 use crate::app::WerkApp;
+use crate::helpers::sparkline_block_color;
 use crate::theme::*;
 use crate::types::UrgencyTier;
 
@@ -24,7 +25,7 @@ fn trajectory_char(trajectory: &Option<sd_core::Trajectory>) -> &'static str {
     }
 }
 
-fn mini_sparkline(data: &[f64], width: usize) -> String {
+pub fn mini_sparkline(data: &[f64], width: usize) -> String {
     let blocks = [' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}'];
     if data.is_empty() {
         return " ".repeat(width);
@@ -43,6 +44,29 @@ fn mini_sparkline(data: &[f64], width: usize) -> String {
     format!("{}{}", " ".repeat(pad), s)
 }
 
+#[allow(dead_code)]
+fn colored_sparkline_spans(data: &[f64], width: usize) -> Vec<Span<'_>> {
+    let blocks = [' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}'];
+    if data.is_empty() {
+        return vec![Span::styled(" ".repeat(width), Style::new())];
+    }
+    let max = data.iter().cloned().fold(0.0f64, f64::max).max(1.0);
+    let pad = width.saturating_sub(data.len());
+    let mut spans = Vec::new();
+    if pad > 0 {
+        spans.push(Span::styled(" ".repeat(pad), Style::new()));
+    }
+    for &v in data.iter().take(width) {
+        let idx = ((v / max) * 8.0).round().min(8.0) as usize;
+        let color = sparkline_block_color(v, max);
+        spans.push(Span::styled(
+            blocks[idx].to_string(),
+            Style::new().fg(color),
+        ));
+    }
+    spans
+}
+
 impl WerkApp {
     pub(crate) fn render_status_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
         let filter_label = if self.filter != crate::types::Filter::Active {
@@ -52,25 +76,47 @@ impl WerkApp {
         };
 
         // Left side: app name + counts (only non-zero)
-        let mut left = format!(" werk  {} active", self.total_active);
+        let mut left_spans: Vec<Span> = vec![
+            Span::styled(
+                format!(" werk  {} active", self.total_active),
+                STYLES.status_bar,
+            ),
+        ];
         if self.total_urgent > 0 {
-            left.push_str(&format!("  {}\u{25b2}", self.total_urgent));
+            left_spans.push(Span::styled(
+                format!("  {}\u{25b2}", self.total_urgent),
+                Style::new().fg(CLR_RED_SOFT).bold(),
+            ));
         }
         if self.total_neglected > 0 {
-            left.push_str(&format!("  {}\u{26a0}", self.total_neglected));
+            left_spans.push(Span::styled(
+                format!("  {}\u{26a0}", self.total_neglected),
+                Style::new().fg(CLR_YELLOW_SOFT).bold(),
+            ));
         }
         let snoozed = self.snoozed_count();
         if snoozed > 0 {
-            left.push_str(&format!("  {} snoozed", snoozed));
+            left_spans.push(Span::styled(
+                format!("  {} snoozed", snoozed),
+                STYLES.status_bar,
+            ));
         }
-        left.push_str(&filter_label);
+        if !filter_label.is_empty() {
+            left_spans.push(Span::styled(filter_label, STYLES.status_bar));
+        }
 
         // Show active search filter indicator
         if let Some(ref q) = self.search.query {
             let visible = self.visible_tensions().len();
             let total = self.tensions.len();
-            left.push_str(&format!("  /\"{}\" ({}/{})", q, visible, total));
+            left_spans.push(Span::styled(
+                format!("  /\"{}\" ({}/{})", q, visible, total),
+                STYLES.status_bar,
+            ));
         }
+
+        // Flatten spans into a single string for StatusItem (StatusLine takes &str)
+        let left: String = left_spans.iter().map(|s| s.content.to_string()).collect();
 
         // Right side: top 2 urgent tensions
         let mut urgent: Vec<_> = self.tensions.iter()
@@ -90,7 +136,7 @@ impl WerkApp {
         let status = StatusLine::new()
             .left(StatusItem::text(&left))
             .right(StatusItem::text(&right_text))
-            .style(Style::new().fg(CLR_LIGHT_GRAY).bold());
+            .style(STYLES.status_bar);
         status.render(*area, frame);
     }
 
@@ -106,7 +152,7 @@ impl WerkApp {
             };
             let msg = Paragraph::new(Text::from_spans([Span::styled(
                 message,
-                Style::new().fg(CLR_MID_GRAY),
+                STYLES.label,
             )]));
             msg.render(*area, frame);
             return;
@@ -115,43 +161,52 @@ impl WerkApp {
         let width = area.width as usize;
 
         // Build rows with tier section headers inserted when the tier changes.
-        // Track how many header rows appear before each tension so we can map
-        // the logical selection index (tension-based) to a table row index.
         let mut rows: Vec<Row> = Vec::new();
         let mut current_tier: Option<UrgencyTier> = None;
         let mut headers_before_selected: usize = 0;
         let selected_tension_idx = self.selected();
 
+        // Progressive disclosure breakpoints (Phase 2a)
         let num_cols = if width < 40 {
-            2
+            3  // selector + phase + desired
         } else if width < 60 {
-            6
-        } else if width >= 80 {
-            8
+            7  // + movement, traj, horizon, urgency%
+        } else if width < 80 {
+            8  // + urgency bar
+        } else if width < 100 {
+            9  // + sparkline
         } else {
-            7
+            10 // + urgency bar (wider)
         };
 
         let mut tension_idx: usize = 0;
         for row in &visible {
-            // Insert a header row when the tier changes
+            // Insert tier header with badge styling (Phase 1c)
             if current_tier != Some(row.tier) {
                 current_tier = Some(row.tier);
-                let header_text = match row.tier {
-                    UrgencyTier::Urgent => "\u{25b2} URGENT",
-                    UrgencyTier::Active => "\u{25cf} ACTIVE",
-                    UrgencyTier::Neglected => "\u{26a0} NEGLECTED",
-                    UrgencyTier::Resolved => "\u{2713} RESOLVED",
+                let (header_text, header_style) = match row.tier {
+                    UrgencyTier::Urgent => (
+                        "\u{25b2} URGENT",
+                        Style::new().fg(CLR_WHITE).bg(CLR_RED_SOFT).bold(),
+                    ),
+                    UrgencyTier::Active => (
+                        "\u{25cf} ACTIVE",
+                        Style::new().fg(CLR_LIGHT_GRAY).bold(),
+                    ),
+                    UrgencyTier::Neglected => (
+                        "\u{26a0} NEGLECTED",
+                        Style::new().fg(CLR_BG_DARK).bg(CLR_YELLOW_SOFT).bold(),
+                    ),
+                    UrgencyTier::Resolved => (
+                        "\u{2713} RESOLVED",
+                        Style::new().fg(CLR_DIM_GRAY).bold(),
+                    ),
                 };
-                let header_style = match row.tier {
-                    UrgencyTier::Urgent => Style::new().fg(CLR_RED_SOFT).bold(),
-                    UrgencyTier::Active => Style::new().fg(CLR_LIGHT_GRAY).bold(),
-                    UrgencyTier::Neglected => Style::new().fg(CLR_YELLOW_SOFT).bold(),
-                    UrgencyTier::Resolved => Style::new().fg(CLR_DIM_GRAY).bold(),
-                };
-                // Build a row with the correct number of columns; header text in second column
                 let mut cells = vec![String::new(); num_cols];
-                if num_cols >= 2 {
+                if num_cols >= 3 {
+                    cells[1] = String::new(); // selector column
+                    cells[2] = header_text.to_string();
+                } else if num_cols >= 2 {
                     cells[1] = header_text.to_string();
                 } else {
                     cells[0] = header_text.to_string();
@@ -162,12 +217,19 @@ impl WerkApp {
                 }
             }
 
-            // Build the tension data row (same logic as before)
+            // Build the tension data row
             let tier_style = match row.tier {
                 UrgencyTier::Urgent => Style::new().fg(CLR_RED_SOFT),
                 UrgencyTier::Active => Style::new().fg(CLR_LIGHT_GRAY),
                 UrgencyTier::Neglected => Style::new().fg(CLR_YELLOW_SOFT),
                 UrgencyTier::Resolved => Style::new().fg(CLR_DIM_GRAY),
+            };
+
+            // Selection indicator (Phase 2b)
+            let selector = if tension_idx == selected_tension_idx {
+                "\u{25b8} "
+            } else {
+                "  "
             };
 
             let phase_str = format!("[{}]", row.phase);
@@ -177,10 +239,11 @@ impl WerkApp {
             };
 
             if width < 40 {
-                let desired_width = width.saturating_sub(8).max(5);
+                let desired_width = width.saturating_sub(10).max(5);
                 let desired_trunc = truncate(&row.desired, desired_width);
                 rows.push(
                     Row::new(vec![
+                        selector.to_string(),
                         phase_str,
                         desired_trunc.to_string(),
                     ])
@@ -188,11 +251,12 @@ impl WerkApp {
                 );
             } else if width < 60 {
                 let traj = trajectory_char(&row.trajectory);
-                let fixed_width = 4 + 2 + 2 + 12 + 5;
+                let fixed_width = 2 + 4 + 2 + 2 + 12 + 5;
                 let desired_width = width.saturating_sub(fixed_width).max(10);
                 let desired_trunc = truncate(&row.desired, desired_width);
                 rows.push(
                     Row::new(vec![
+                        selector.to_string(),
                         phase_str,
                         row.movement.clone(),
                         traj.to_string(),
@@ -220,6 +284,7 @@ impl WerkApp {
                     let spark = mini_sparkline(&row.activity, 7);
                     rows.push(
                         Row::new(vec![
+                            selector.to_string(),
                             phase_str,
                             row.movement.clone(),
                             traj.to_string(),
@@ -234,6 +299,7 @@ impl WerkApp {
                 } else {
                     rows.push(
                         Row::new(vec![
+                            selector.to_string(),
                             phase_str,
                             row.movement.clone(),
                             traj.to_string(),
@@ -251,11 +317,13 @@ impl WerkApp {
 
         let widths: Vec<Constraint> = if width < 40 {
             vec![
+                Constraint::Fixed(2),  // selector
                 Constraint::Fixed(4),
                 Constraint::Fill,
             ]
         } else if width < 60 {
             vec![
+                Constraint::Fixed(2),  // selector
                 Constraint::Fixed(4),
                 Constraint::Fixed(2),
                 Constraint::Fixed(2),
@@ -265,6 +333,7 @@ impl WerkApp {
             ]
         } else if width >= 80 {
             vec![
+                Constraint::Fixed(2),  // selector
                 Constraint::Fixed(4),
                 Constraint::Fixed(2),
                 Constraint::Fixed(2),
@@ -276,6 +345,7 @@ impl WerkApp {
             ]
         } else {
             vec![
+                Constraint::Fixed(2),  // selector
                 Constraint::Fixed(4),
                 Constraint::Fixed(2),
                 Constraint::Fixed(2),
@@ -286,12 +356,11 @@ impl WerkApp {
             ]
         };
 
+        // Selection highlight with subtle background (Phase 2b)
         let table = Table::new(rows, widths)
-            .highlight_style(Style::new().fg(CLR_WHITE).bold())
+            .highlight_style(Style::new().fg(CLR_WHITE).bg(WERK_THEME.highlight).bold())
             .column_spacing(1);
 
-        // Use a temporary table state with the adjusted row index (tension index + header count)
-        // so the highlight lands on the correct data row, not a header.
         let adjusted_index = selected_tension_idx + headers_before_selected;
         let mut state = self.dashboard_state.borrow().clone();
         state.select(Some(adjusted_index));
@@ -301,22 +370,35 @@ impl WerkApp {
     }
 
     pub(crate) fn render_dashboard_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
+        let width = area.width as usize;
         let filter_hint = format!("f[{}]", self.filter.label());
-        let hints = StatusLine::new()
-            .separator("  ")
+
+        // Adaptive hints based on width (Phase 5a)
+        let mut hints = StatusLine::new().separator("  ");
+
+        // Essential hints (always shown)
+        hints = hints
             .left(StatusItem::key_hint("j/k", ""))
             .left(StatusItem::key_hint("Enter", "detail"))
             .left(StatusItem::key_hint("Tab", "tree"))
             .left(StatusItem::text(&filter_hint))
-            .left(StatusItem::key_hint("a", "add"))
-            .left(StatusItem::key_hint("c/p", "child/parent"))
-            .left(StatusItem::key_hint("r/d", "edit"))
-            .left(StatusItem::key_hint("w", "reflect"))
-            .left(StatusItem::key_hint("T", "timeline"))
-            .left(StatusItem::key_hint("D", "health"))
-            .left(StatusItem::key_hint("L", "lever"))
-            .left(StatusItem::key_hint("q/?", ""))
-            .style(Style::new().fg(CLR_MID_GRAY));
+            .left(StatusItem::key_hint("a", "add"));
+
+        if width >= 60 {
+            hints = hints
+                .left(StatusItem::key_hint("c/p", "child/parent"))
+                .left(StatusItem::key_hint("r/d", "edit"))
+                .left(StatusItem::key_hint("w", "reflect"));
+        }
+        if width >= 100 {
+            hints = hints
+                .left(StatusItem::key_hint("</>", "split"))
+                .left(StatusItem::key_hint("T", "timeline"))
+                .left(StatusItem::key_hint("D", "health"))
+                .left(StatusItem::key_hint("L", "lever"));
+        }
+        hints = hints.left(StatusItem::key_hint("q/?", ""));
+        hints = hints.style(STYLES.label);
         hints.render(*area, frame);
     }
 }

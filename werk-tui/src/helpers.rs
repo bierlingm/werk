@@ -1,9 +1,13 @@
 use chrono::Utc;
 
+use ftui::PackedRgba;
+use ftui::text::{Line, Span};
+
 use sd_core::{
     compute_urgency, ComputedDynamics, CreativeCyclePhase, DynamicsEngine,
     StructuralTendency, Tension, TensionStatus,
 };
+use crate::theme::{WERK_THEME, STYLES};
 use crate::types::{DetailDynamics, TensionRow, UrgencyTier};
 
 pub fn render_bar(value: f64, width: usize) -> String {
@@ -250,5 +254,44 @@ pub fn build_tension_row_from_computed(
         activity,
         trajectory: None,
         snoozed: false,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Divider helpers
+// ---------------------------------------------------------------------------
+
+pub fn render_divider(width: usize) -> Line {
+    Line::from(Span::styled("\u{2500}".repeat(width), STYLES.muted))
+}
+
+pub fn render_subtle_divider(width: usize) -> Line {
+    Line::from(Span::styled("\u{00B7} ".repeat(width / 2), STYLES.muted))
+}
+
+// ---------------------------------------------------------------------------
+// Color-coded urgency bar
+// ---------------------------------------------------------------------------
+
+pub fn urgency_bar_color(value: f64) -> PackedRgba {
+    if value > 0.75 {
+        WERK_THEME.error_soft
+    } else if value > 0.50 {
+        WERK_THEME.warning
+    } else if value > 0.25 {
+        WERK_THEME.accent
+    } else {
+        WERK_THEME.text_subtle
+    }
+}
+
+pub fn sparkline_block_color(value: f64, max: f64) -> PackedRgba {
+    let ratio = if max > 0.0 { value / max } else { 0.0 };
+    if ratio > 0.75 {
+        WERK_THEME.warning
+    } else if ratio > 0.4 {
+        WERK_THEME.accent
+    } else {
+        WERK_THEME.text_subtle
     }
 }

@@ -23,7 +23,7 @@ impl WerkApp {
         );
         let status = StatusLine::new()
             .left(StatusItem::text(&left_text))
-            .style(Style::new().fg(CLR_LIGHT_GRAY).bold());
+            .style(STYLES.status_bar);
         status.render(*area, frame);
     }
 
@@ -31,7 +31,7 @@ impl WerkApp {
         if self.tree_items.is_empty() {
             let msg = Paragraph::new(Text::from_spans([Span::styled(
                 "  No tensions yet. Press `a` to create your first.",
-                Style::new().fg(CLR_MID_GRAY),
+                STYLES.label,
             )]));
             msg.render(*area, frame);
             return;
@@ -59,7 +59,7 @@ impl WerkApp {
 
                 let text = Text::from_spans([
                     Span::styled("  ", item_style),
-                    Span::styled(&item.connector, Style::new().fg(CLR_DIM_GRAY)),
+                    Span::styled(&item.connector, STYLES.muted),
                     Span::styled(format!("[{}] {} ", item.phase, item.movement), item_style),
                     Span::styled(
                         format!("{:<width$} ", desired_trunc, width = desired_width),
@@ -74,23 +74,37 @@ impl WerkApp {
             .collect();
 
         let list = List::new(items)
-            .highlight_style(Style::new().fg(CLR_WHITE).bold())
-;
+            .highlight_style(Style::new().fg(CLR_WHITE).bg(WERK_THEME.highlight).bold());
 
         let mut state = self.tree_state.borrow_mut();
         StatefulWidget::render(&list, *area, frame, &mut state);
     }
 
     pub(crate) fn render_tree_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = StatusLine::new()
-            .separator("  ")
+        let width = area.width as usize;
+        let mut hints = StatusLine::new().separator("  ");
+
+        hints = hints
             .left(StatusItem::key_hint("j/k", "navigate"))
             .left(StatusItem::key_hint("Enter", "detail"))
             .left(StatusItem::key_hint("Tab", "dashboard"))
-            .left(StatusItem::key_hint("f", "filter"))
+            .left(StatusItem::key_hint("f", "filter"));
+
+        if width >= 60 {
+            hints = hints
+                .left(StatusItem::key_hint("a", "add"))
+                .left(StatusItem::key_hint("c/p", "child/parent"))
+                .left(StatusItem::key_hint("r/d", "edit"));
+        }
+        if width >= 100 {
+            hints = hints
+                .left(StatusItem::key_hint("R/X/m", "resolve/release/move"));
+        }
+        hints = hints
             .left(StatusItem::key_hint("q", "quit"))
-            .left(StatusItem::key_hint("?", "help"))
-            .style(Style::new().fg(CLR_MID_GRAY));
+            .left(StatusItem::key_hint("?", "help"));
+
+        hints = hints.style(STYLES.label);
         hints.render(*area, frame);
     }
 }

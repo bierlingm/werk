@@ -67,6 +67,7 @@ impl WerkApp {
                 lines.push(Line::from("  T           Toggle timeline panel"));
                 lines.push(Line::from("  D           Toggle health overlay"));
                 lines.push(Line::from("  L           Show lever detail"));
+                lines.push(Line::from("  ,/.         Adjust split pane ratio (wide terminals)"));
                 lines.push(Line::from(""));
                 lines.push(Line::from_spans([Span::styled("  Editing", Style::new().fg(CLR_CYAN).bold())]));
                 lines.push(Line::from("  a           Quick-add tension (desired [+2w] [| actual])"));
