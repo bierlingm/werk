@@ -1709,6 +1709,14 @@ impl Model for WerkApp {
     type Message = Msg;
 
     fn init(&mut self) -> Cmd<Msg> {
+        // Load detail for the initially selected tension so split-pane preview is immediate
+        if self.active_view == View::Dashboard && !self.tensions.is_empty() {
+            let visible = self.visible_tensions();
+            if let Some(row) = visible.get(self.selected()) {
+                let id = row.id.clone();
+                self.load_detail_light(&id);
+            }
+        }
         self.setup_file_watcher()
     }
 
@@ -2914,31 +2922,34 @@ impl Model for WerkApp {
                 let use_split = area.width >= 120;
 
                 if use_split {
-                    // Split layout: dashboard left, border, detail right
-                    let left_width = (area.width as f64 * self.split_ratio) as u16;
+                    // Split layout: full-width top status + split content + full-width bottom bars
+                    let mut outer_constraints: Vec<Constraint> = Vec::new();
+                    outer_constraints.push(Constraint::Fixed(1)); // status bar (full width)
+                    outer_constraints.push(Constraint::Fill);     // split content area
+                    if show_lever { outer_constraints.push(Constraint::Fixed(1)); }
+                    if !hide_hints { outer_constraints.push(Constraint::Fixed(1)); }
+
+                    let outer_layout = Flex::vertical().constraints(outer_constraints);
+                    let outer_rects = outer_layout.split(area);
+                    let mut outer_idx = 0;
+                    self.render_status_bar(&outer_rects[outer_idx], frame); outer_idx += 1;
+                    let content_area = outer_rects[outer_idx]; outer_idx += 1;
+                    if show_lever { self.render_lever_bar(&outer_rects[outer_idx], frame); outer_idx += 1; }
+                    if !hide_hints { self.render_dashboard_hints(&outer_rects[outer_idx], frame); }
+
+                    // Split the content area into left (list) | border | right (detail)
+                    let left_width = (content_area.width as f64 * self.split_ratio) as u16;
                     let border_width = 1u16;
-                    let right_width = area.width.saturating_sub(left_width + border_width);
+                    let right_width = content_area.width.saturating_sub(left_width + border_width);
 
-                    let left_area = Rect::new(area.x, area.y, left_width, area.height);
-                    let border_area = Rect::new(area.x + left_width, area.y, border_width, area.height);
-                    let right_area = Rect::new(area.x + left_width + border_width, area.y, right_width, area.height);
+                    let left_area = Rect::new(content_area.x, content_area.y, left_width, content_area.height);
+                    let border_area = Rect::new(content_area.x + left_width, content_area.y, border_width, content_area.height);
+                    let right_area = Rect::new(content_area.x + left_width + border_width, content_area.y, right_width, content_area.height);
 
-                    // Left side: status bar + tension list + hints
-                    let mut left_constraints: Vec<Constraint> = Vec::new();
-                    left_constraints.push(Constraint::Fixed(1)); // status bar
-                    left_constraints.push(Constraint::Fill);     // list
-                    if show_lever { left_constraints.push(Constraint::Fixed(1)); }
-                    if !hide_hints { left_constraints.push(Constraint::Fixed(1)); }
+                    // Left side: tension list only
+                    self.render_tension_list(&left_area, frame);
 
-                    let left_layout = Flex::vertical().constraints(left_constraints);
-                    let left_rects = left_layout.split(left_area);
-                    let mut idx = 0;
-                    self.render_status_bar(&left_rects[idx], frame); idx += 1;
-                    self.render_tension_list(&left_rects[idx], frame); idx += 1;
-                    if show_lever { self.render_lever_bar(&left_rects[idx], frame); idx += 1; }
-                    if !hide_hints { self.render_dashboard_hints(&left_rects[idx], frame); }
-
-                    // Vertical border between panes (Phase 4b)
+                    // Vertical border between panes
                     for row in 0..border_area.height {
                         let cell_area = Rect::new(border_area.x, border_area.y + row, 1, 1);
                         let span = ftui::text::Span::styled(

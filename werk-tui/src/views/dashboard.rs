@@ -179,6 +179,28 @@ impl WerkApp {
             10 // + urgency bar (wider)
         };
 
+        // Column header row
+        {
+            let header_style = Style::new().fg(CLR_MID_GRAY).bold();
+            let header_cells: Vec<String> = if width < 40 {
+                vec!["".to_string(), "".to_string(), "Tension".to_string()]
+            } else if width < 60 {
+                vec!["".to_string(), "".to_string(), "".to_string(), "".to_string(),
+                     "Tension".to_string(), "Horizon".to_string(), "Urg".to_string()]
+            } else if width >= 80 {
+                vec!["".to_string(), "".to_string(), "".to_string(), "".to_string(),
+                     "Tension".to_string(), "Activity".to_string(), "Horizon".to_string(),
+                     "Urgency".to_string(), "".to_string()]
+            } else {
+                vec!["".to_string(), "".to_string(), "".to_string(), "".to_string(),
+                     "Tension".to_string(), "Horizon".to_string(),
+                     "Urgency".to_string(), "".to_string()]
+            };
+            rows.push(Row::new(header_cells).style(header_style));
+            // Header counts toward offset before selected
+            headers_before_selected += 1;
+        }
+
         let mut tension_idx: usize = 0;
         for row in &visible {
             // Insert tier header with badge styling (Phase 1c)
@@ -219,8 +241,8 @@ impl WerkApp {
 
             // Build the tension data row
             let tier_style = match row.tier {
-                UrgencyTier::Urgent => Style::new().fg(CLR_RED_SOFT),
-                UrgencyTier::Active => Style::new().fg(CLR_LIGHT_GRAY),
+                UrgencyTier::Urgent => Style::new().fg(CLR_RED_SOFT).bold(),
+                UrgencyTier::Active => Style::new().fg(CLR_WHITE),
                 UrgencyTier::Neglected => Style::new().fg(CLR_YELLOW_SOFT),
                 UrgencyTier::Resolved => Style::new().fg(CLR_DIM_GRAY),
             };
@@ -251,7 +273,7 @@ impl WerkApp {
                 );
             } else if width < 60 {
                 let traj = trajectory_char(&row.trajectory);
-                let fixed_width = 2 + 4 + 2 + 2 + 12 + 5;
+                let fixed_width = 2 + 4 + 2 + 2 + 11 + 5;
                 let desired_width = width.saturating_sub(fixed_width).max(10);
                 let desired_trunc = truncate(&row.desired, desired_width);
                 rows.push(
@@ -261,7 +283,7 @@ impl WerkApp {
                         row.movement.clone(),
                         traj.to_string(),
                         desired_trunc.to_string(),
-                        format!("{:>11}", row.horizon_display),
+                        format!("{:>10}", row.horizon_display),
                         urgency_pct,
                     ])
                     .style(tier_style),
@@ -328,7 +350,7 @@ impl WerkApp {
                 Constraint::Fixed(2),
                 Constraint::Fixed(2),
                 Constraint::Fill,
-                Constraint::Fixed(12),
+                Constraint::Fixed(11),
                 Constraint::Fixed(5),
             ]
         } else if width >= 80 {

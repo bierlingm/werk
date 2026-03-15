@@ -5,8 +5,6 @@ use ftui::text::{Line, Span, Text};
 use ftui::style::Style;
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
-use ftui::widgets::block::Block;
-use ftui::widgets::borders::BorderType;
 use ftui::widgets::status_line::{StatusLine, StatusItem};
 
 use werk_shared::truncate;
@@ -34,14 +32,6 @@ impl WerkApp {
             status = status.right(StatusItem::text(&right_text));
         }
         status.render(*area, frame);
-    }
-
-    /// Build a Block with rounded borders and a title.
-    fn section_block(title: &str) -> Block<'_> {
-        Block::bordered()
-            .title(title)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(WERK_THEME.border))
     }
 
     /// Build the info section lines (desired, actual, status, horizon).
@@ -342,13 +332,26 @@ impl WerkApp {
                 .unwrap_or_else(|| "\u{2014}".to_string());
 
             let (description, value_color) = match m.kind {
-                MutationKind::Created => (
-                    format!(
-                        "Created \u{2014} Desired: \"{}\"",
-                        truncate(&m.new_value, budget.saturating_sub(22))
-                    ),
-                    CLR_GREEN,
-                ),
+                MutationKind::Created => {
+                    // Parse "desired='...';actual='...'" format to show just the desired value
+                    let desired_display = if let Some(start) = m.new_value.find("desired='") {
+                        let val_start = start + 9;
+                        if let Some(end) = m.new_value[val_start..].find('\'') {
+                            &m.new_value[val_start..val_start + end]
+                        } else {
+                            &m.new_value
+                        }
+                    } else {
+                        &m.new_value
+                    };
+                    (
+                        format!(
+                            "Created \"{}\"",
+                            truncate(desired_display, budget.saturating_sub(12))
+                        ),
+                        CLR_GREEN,
+                    )
+                }
                 MutationKind::StatusChange => (
                     format!("Status: {} \u{2192} {}", old_or_dash, &m.new_value),
                     CLR_CYAN,
@@ -447,223 +450,130 @@ impl WerkApp {
         }
 
         let cursor = self.detail.cursor;
-        // Build section content
-        let info_lines = self.build_info_lines();
-        let dynamics_lines = self.build_dynamics_lines();
-        let trajectory_lines = self.build_trajectory_lines();
-        let content_width = area.width.saturating_sub(4) as usize;
-        let history_lines = self.build_history_lines(content_width);
-        let children_lines = self.build_children_lines(content_width);
-
-        let chrome_v: u16 = 4;
-
-        let info_h = (info_lines.len() as u16).saturating_add(chrome_v);
-        let dynamics_h = (dynamics_lines.len() as u16).saturating_add(chrome_v);
-        let trajectory_h = if trajectory_lines.is_empty() {
-            0u16
-        } else {
-            (trajectory_lines.len() as u16).saturating_add(chrome_v)
-        };
-
-        let has_history = !self.detail.mutations.is_empty();
-        let has_children = !self.detail.children.is_empty();
-
-        let fixed_h = info_h.saturating_add(dynamics_h).saturating_add(trajectory_h);
-        let remaining = area.height.saturating_sub(fixed_h);
-
-        let (history_h, children_h) = if has_history && has_children {
-            let hist = remaining.saturating_mul(2) / 3;
-            let chld = remaining.saturating_sub(hist);
-            (hist, chld)
-        } else if has_history {
-            (remaining, 0u16)
-        } else if has_children {
-            (0u16, remaining)
-        } else {
-            (0u16, 0u16)
-        };
-
+        let content_width = area.width.saturating_sub(2) as usize;
         let mutations_count = self.detail.mutations.len();
         let children_start = 2 + mutations_count;
 
-        let info_selected = cursor == 0;
-        let dynamics_selected = cursor == 1;
+        // Build all lines into one scrollable list with section headers
+        let mut all_lines: Vec<Line> = Vec::new();
 
-        let mut y = area.y;
-        let x = area.x;
-        let w = area.width;
-
-        // --- Info section ---
-        if info_h > 0 && y.saturating_add(info_h) > area.y {
-            let section_area = Rect::new(x, y, w, info_h.min(area.bottom().saturating_sub(y)));
-            if section_area.height >= chrome_v {
-                let block = if info_selected {
-                    Self::section_block(" Info ").border_style(Style::new().fg(WERK_THEME.border_active))
-                } else {
-                    Self::section_block(" Info ")
-                };
-                let inner = block.inner(section_area);
-                block.render(section_area, frame);
-                let para = Paragraph::new(Text::from_lines(info_lines));
-                para.render(inner, frame);
-            }
-            y = y.saturating_add(info_h);
+        // --- Info section header ---
+        let info_marker = if cursor == 0 { "\u{25b8}" } else { " " };
+        let info_style = if cursor == 0 {
+            Style::new().fg(WERK_THEME.border_active).bold()
+        } else {
+            Style::new().fg(WERK_THEME.border).bold()
+        };
+        all_lines.push(Line::from_spans([
+            Span::styled(format!("{} ", info_marker), info_style),
+            Span::styled("Info", info_style),
+        ]));
+        for line in self.build_info_lines() {
+            // Indent content by 2 spaces
+            let mut spans = vec![Span::styled("  ", Style::new())];
+            spans.extend(line.spans().iter().cloned());
+            all_lines.push(Line::from_spans(spans));
         }
+        all_lines.push(Line::from(""));
 
-        if y >= area.bottom() { return; }
-
-        // --- Dynamics section ---
-        if dynamics_h > 0 {
-            let avail_h = area.bottom().saturating_sub(y);
-            let section_area = Rect::new(x, y, w, dynamics_h.min(avail_h));
-            if section_area.height >= chrome_v {
-                let block = if dynamics_selected {
-                    Self::section_block(" Dynamics ").border_style(Style::new().fg(WERK_THEME.border_active))
-                } else {
-                    Self::section_block(" Dynamics ")
-                };
-                let inner = block.inner(section_area);
-                block.render(section_area, frame);
-                let para = Paragraph::new(Text::from_lines(dynamics_lines));
-                para.render(inner, frame);
-            }
-            y = y.saturating_add(dynamics_h);
+        // --- Dynamics section header ---
+        let dyn_marker = if cursor == 1 { "\u{25b8}" } else { " " };
+        let dyn_style = if cursor == 1 {
+            Style::new().fg(WERK_THEME.border_active).bold()
+        } else {
+            Style::new().fg(WERK_THEME.border).bold()
+        };
+        all_lines.push(Line::from_spans([
+            Span::styled(format!("{} ", dyn_marker), dyn_style),
+            Span::styled("Dynamics", dyn_style),
+        ]));
+        for line in self.build_dynamics_lines() {
+            let mut spans = vec![Span::styled("  ", Style::new())];
+            spans.extend(line.spans().iter().cloned());
+            all_lines.push(Line::from_spans(spans));
         }
-
-        if y >= area.bottom() { return; }
+        all_lines.push(Line::from(""));
 
         // --- Trajectory section ---
-        if trajectory_h > 0 {
-            let avail_h = area.bottom().saturating_sub(y);
-            let section_area = Rect::new(x, y, w, trajectory_h.min(avail_h));
-            if section_area.height >= chrome_v {
-                let block = Self::section_block(" Trajectory ");
-                let inner = block.inner(section_area);
-                block.render(section_area, frame);
-                let para = Paragraph::new(Text::from_lines(trajectory_lines));
-                para.render(inner, frame);
+        let trajectory_lines = self.build_trajectory_lines();
+        if !trajectory_lines.is_empty() {
+            all_lines.push(Line::from_spans([
+                Span::styled("  ", Style::new()),
+                Span::styled("Trajectory", Style::new().fg(WERK_THEME.border).bold()),
+            ]));
+            for line in trajectory_lines {
+                let mut spans = vec![Span::styled("  ", Style::new())];
+                spans.extend(line.spans().iter().cloned());
+                all_lines.push(Line::from_spans(spans));
             }
-            y = y.saturating_add(trajectory_h);
+            all_lines.push(Line::from(""));
         }
-
-        if y >= area.bottom() { return; }
 
         // --- History section ---
-        if has_history && history_h > 0 {
-            let avail_h = area.bottom().saturating_sub(y);
-            let section_h = history_h.min(avail_h);
-            let section_area = Rect::new(x, y, w, section_h);
-            if section_area.height >= chrome_v {
-                let title = format!(" History ({}) ", self.detail.mutations.len());
-                let any_mutation_selected = cursor >= 2 && cursor < children_start;
-                let block = if any_mutation_selected {
-                    Self::section_block(&title).border_style(Style::new().fg(WERK_THEME.border_active))
-                } else {
-                    Self::section_block(&title)
-                };
-                let inner = block.inner(section_area);
-                block.render(section_area, frame);
-
-                let selected_mutation_idx = if any_mutation_selected {
-                    Some(cursor - 2)
-                } else {
-                    None
-                };
-                let highlighted_lines: Vec<Line> = history_lines
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, line)| {
-                        if Some(i) == selected_mutation_idx {
-                            Line::from_spans(
-                                std::iter::once(Span::styled("\u{25b8} ", STYLES.accent_bold))
-                                    .chain(line.spans().iter().cloned())
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            Line::from_spans(
-                                std::iter::once(Span::styled("  ", Style::new()))
-                                    .chain(line.spans().iter().cloned())
-                                    .collect::<Vec<_>>(),
-                            )
-                        }
-                    })
-                    .collect();
-
-                let hist_scroll = if let Some(sel) = selected_mutation_idx {
-                    let visible_h = inner.height as usize;
-                    if sel >= visible_h {
-                        (sel - visible_h + 1) as u16
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-
-                let para = Paragraph::new(Text::from_lines(highlighted_lines)).scroll((hist_scroll, 0));
-                para.render(inner, frame);
+        let has_history = !self.detail.mutations.is_empty();
+        if has_history {
+            let any_mutation_selected = cursor >= 2 && cursor < children_start;
+            let hist_style = if any_mutation_selected {
+                Style::new().fg(WERK_THEME.border_active).bold()
+            } else {
+                Style::new().fg(WERK_THEME.border).bold()
+            };
+            all_lines.push(Line::from_spans([
+                Span::styled("  ", Style::new()),
+                Span::styled(
+                    format!("History ({})", self.detail.mutations.len()),
+                    hist_style,
+                ),
+            ]));
+            let history_lines = self.build_history_lines(content_width.saturating_sub(4));
+            for (i, line) in history_lines.into_iter().enumerate() {
+                let selected = any_mutation_selected && Some(i) == Some(cursor - 2);
+                let marker = if selected { "\u{25b8} " } else { "  " };
+                let marker_style = if selected { STYLES.accent_bold } else { Style::new() };
+                let mut spans = vec![
+                    Span::styled("  ", Style::new()),
+                    Span::styled(marker, marker_style),
+                ];
+                spans.extend(line.spans().iter().cloned());
+                all_lines.push(Line::from_spans(spans));
             }
-            y = y.saturating_add(section_h);
+            all_lines.push(Line::from(""));
         }
-
-        if y >= area.bottom() { return; }
 
         // --- Children section ---
-        if has_children && children_h > 0 {
-            let avail_h = area.bottom().saturating_sub(y);
-            let section_h = children_h.min(avail_h);
-            let section_area = Rect::new(x, y, w, section_h);
-            if section_area.height >= chrome_v {
-                let title = format!(" Children ({}) ", self.detail.children.len());
-                let any_child_selected = cursor >= children_start;
-                let block = if any_child_selected {
-                    Self::section_block(&title).border_style(Style::new().fg(WERK_THEME.border_active))
-                } else {
-                    Self::section_block(&title)
-                };
-                let inner = block.inner(section_area);
-                block.render(section_area, frame);
-
-                let selected_child_idx = if any_child_selected {
-                    Some(cursor - children_start)
-                } else {
-                    None
-                };
-                let highlighted_lines: Vec<Line> = children_lines
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, line)| {
-                        if Some(i) == selected_child_idx {
-                            Line::from_spans(
-                                std::iter::once(Span::styled("\u{25b8} ", STYLES.accent_bold))
-                                    .chain(line.spans().iter().cloned())
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            Line::from_spans(
-                                std::iter::once(Span::styled("  ", Style::new()))
-                                    .chain(line.spans().iter().cloned())
-                                    .collect::<Vec<_>>(),
-                            )
-                        }
-                    })
-                    .collect();
-
-                let child_scroll = if let Some(sel) = selected_child_idx {
-                    let visible_h = inner.height as usize;
-                    if sel >= visible_h {
-                        (sel - visible_h + 1) as u16
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-
-                let para = Paragraph::new(Text::from_lines(highlighted_lines)).scroll((child_scroll, 0));
-                para.render(inner, frame);
+        let has_children = !self.detail.children.is_empty();
+        if has_children {
+            let any_child_selected = cursor >= children_start;
+            let child_style = if any_child_selected {
+                Style::new().fg(WERK_THEME.border_active).bold()
+            } else {
+                Style::new().fg(WERK_THEME.border).bold()
+            };
+            all_lines.push(Line::from_spans([
+                Span::styled("  ", Style::new()),
+                Span::styled(
+                    format!("Children ({})", self.detail.children.len()),
+                    child_style,
+                ),
+            ]));
+            let children_lines = self.build_children_lines(content_width.saturating_sub(4));
+            for (i, line) in children_lines.into_iter().enumerate() {
+                let selected = any_child_selected && Some(i) == cursor.checked_sub(children_start);
+                let marker = if selected { "\u{25b8} " } else { "  " };
+                let marker_style = if selected { STYLES.accent_bold } else { Style::new() };
+                let mut spans = vec![
+                    Span::styled("  ", Style::new()),
+                    Span::styled(marker, marker_style),
+                ];
+                spans.extend(line.spans().iter().cloned());
+                all_lines.push(Line::from_spans(spans));
             }
         }
+
+        // Calculate scroll offset to keep cursor-related content visible
+        let scroll = self.detail.scroll as u16;
+        let para = Paragraph::new(Text::from_lines(all_lines)).scroll((scroll, 0));
+        para.render(*area, frame);
     }
 
     pub(crate) fn render_detail_body_responsive(&self, area: &Rect, frame: &mut Frame<'_>) {
