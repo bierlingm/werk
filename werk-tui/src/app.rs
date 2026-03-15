@@ -355,27 +355,17 @@ impl WerkApp {
         count.max(1)
     }
 
-    /// Check whether a tension is currently snoozed (snooze date in the future).
-    pub(crate) fn is_snoozed(&self, tension_id: &str) -> bool {
-        let mutations = self.engine.store().get_mutations(tension_id).unwrap_or_default();
-        let today = chrono::Utc::now().date_naive();
-        mutations.iter().rev()
-            .find(|m| m.field() == "snoozed_until")
-            .and_then(|m| chrono::NaiveDate::parse_from_str(m.new_value(), "%Y-%m-%d").ok())
-            .map(|d| d > today)
-            .unwrap_or(false)
-    }
-
-    /// Count of currently snoozed tensions.
+    /// Count of currently snoozed tensions (uses cached flag on TensionRow).
     pub(crate) fn snoozed_count(&self) -> usize {
-        self.tensions.iter().filter(|t| self.is_snoozed(&t.id)).count()
+        self.tensions.iter().filter(|t| t.snoozed).count()
     }
 
     /// Visible tensions based on current filter, search query, and snooze state.
+    /// Snooze state is cached on TensionRow during reload_data() to avoid per-call SQLite queries.
     pub(crate) fn visible_tensions(&self) -> Vec<&TensionRow> {
         self.tensions
             .iter()
-            .filter(|t| self.show_snoozed || !self.is_snoozed(&t.id))
+            .filter(|t| self.show_snoozed || !t.snoozed)
             .filter(|t| match self.filter {
                 Filter::Active => t.tier != UrgencyTier::Resolved,
                 Filter::All => true,

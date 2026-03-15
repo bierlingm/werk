@@ -26,6 +26,7 @@ pub struct TensionRow {
     pub tier: UrgencyTier,
     pub activity: Vec<f64>,  // 7 buckets, one per day, most recent last
     pub trajectory: Option<sd_core::Trajectory>,
+    pub snoozed: bool,  // cached snooze state, computed during reload_data()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

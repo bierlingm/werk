@@ -249,5 +249,6 @@ pub fn build_tension_row_from_computed(
         tier,
         activity,
         trajectory: None,
+        snoozed: false,
     }
 }

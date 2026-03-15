@@ -169,6 +169,95 @@ impl WerkApp {
         self.detail.ancestors = ancestors;
     }
 
+    /// Lightweight detail load for split-pane preview.
+    /// Skips expensive child dynamics computation — uses cached TensionRow data instead.
+    pub(crate) fn load_detail_light(&mut self, tension_id: &str) {
+        let now = Utc::now();
+
+        let tension = match self.engine.store().get_tension(tension_id) {
+            Ok(Some(t)) => t,
+            _ => return,
+        };
+
+        let computed = self.engine.compute_full_dynamics_for_tension(tension_id);
+
+        let mutations = self.engine.store().get_mutations(tension_id).unwrap_or_default();
+        let mut mutation_displays: Vec<MutationDisplay> = mutations
+            .iter()
+            .rev()
+            .take(5)  // fewer mutations for preview
+            .map(|m| {
+                let field = m.field().to_string();
+                let kind = match field.as_str() {
+                    "created" => MutationKind::Created,
+                    "status" => MutationKind::StatusChange,
+                    "parent_id" => MutationKind::ParentChange,
+                    "horizon" => MutationKind::HorizonChange,
+                    "note" => MutationKind::Note,
+                    _ => MutationKind::FieldUpdate,
+                };
+                MutationDisplay {
+                    relative_time: relative_time(m.timestamp(), now),
+                    field,
+                    kind,
+                    old_value: m.old_value().map(|s| s.to_string()),
+                    new_value: m.new_value().to_string(),
+                    resolved_label: None,
+                }
+            })
+            .collect();
+        mutation_displays.reverse();
+
+        // Use cached tension rows for children — check parent_id from store once
+        let child_ids: Vec<String> = self.engine.store().get_children(tension_id)
+            .unwrap_or_default()
+            .iter()
+            .map(|c| c.id.clone())
+            .collect();
+        let children: Vec<_> = self.tensions.iter()
+            .filter(|t| child_ids.contains(&t.id))
+            .cloned()
+            .collect();
+
+        let detail_dynamics = computed.map(|cd| {
+            let mut dd = build_detail_dynamics(&cd);
+            dd.forecast_line = if let Some(ref resolution) = cd.resolution {
+                if let (Some(required_vel), Some(is_sufficient)) = (resolution.required_velocity, resolution.is_sufficient) {
+                    let ratio = if required_vel > 0.0 { resolution.velocity / required_vel } else { 0.0 };
+                    if is_sufficient {
+                        let magnitude = cd.structural_tension.as_ref().map(|st| st.magnitude).unwrap_or(0.0);
+                        if resolution.velocity > 0.0 && magnitude > 0.0 {
+                            let secs_remaining = (magnitude / resolution.velocity) as i64;
+                            let forecast_date = chrono::Utc::now() + chrono::Duration::seconds(secs_remaining);
+                            Some((
+                                format!("On track \u{2014} resolving ~{}", forecast_date.format("%b %d")),
+                                crate::theme::CLR_GREEN,
+                            ))
+                        } else { None }
+                    } else {
+                        Some((
+                            format!("Behind \u{2014} {:.0}% of required pace", ratio * 100.0),
+                            crate::theme::CLR_RED_SOFT,
+                        ))
+                    }
+                } else { None }
+            } else { None };
+            dd
+        });
+
+        let parent = tension.parent_id.as_ref().and_then(|pid| {
+            self.engine.store().get_tension(pid).ok().flatten()
+        });
+
+        self.detail.tension = Some(tension);
+        self.detail.cursor = 0;
+        self.detail.mutations = mutation_displays;
+        self.detail.children = children;
+        self.detail.dynamics = detail_dynamics;
+        self.detail.parent = parent;
+        self.detail.ancestors = Vec::new();  // skip ancestor chain for preview
+    }
+
     /// Build the flat list of navigable tensions for the neighborhood view.
     /// Order: parent, SELECTED, siblings, children.
     pub(crate) fn build_neighborhood_items(&mut self, center_id: &str) {
@@ -653,6 +742,17 @@ impl WerkApp {
 
             self.field_projection = Some(projection);
             self.last_projection_time = Some(now);
+        }
+
+        // Cache snooze state on each TensionRow (avoids per-call SQLite queries)
+        let today = now.date_naive();
+        for row in &mut self.tensions {
+            let mutations = self.engine.store().get_mutations(&row.id).unwrap_or_default();
+            row.snoozed = mutations.iter().rev()
+                .find(|m| m.field() == "snoozed_until")
+                .and_then(|m| chrono::NaiveDate::parse_from_str(m.new_value(), "%Y-%m-%d").ok())
+                .map(|d| d > today)
+                .unwrap_or(false);
         }
 
         let visible = self.visible_tensions().len();
@@ -1836,11 +1936,11 @@ impl Model for WerkApp {
                         if visible > 0 && self.selected() < visible - 1 {
                             self.set_selected(self.selected() + 1);
                         }
-                        // Auto-load detail for split-pane preview
+                        // Lightweight detail load for split-pane preview
                         let vis = self.visible_tensions();
                         if let Some(row) = vis.get(self.selected()) {
                             let id = row.id.clone();
-                            self.load_detail(&id);
+                            self.load_detail_light(&id);
                         }
                     }
                     View::TreeView => {
@@ -1891,11 +1991,11 @@ impl Model for WerkApp {
                         if self.selected() > 0 {
                             self.set_selected(self.selected() - 1);
                         }
-                        // Auto-load detail for split-pane preview
+                        // Lightweight detail load for split-pane preview
                         let vis = self.visible_tensions();
                         if let Some(row) = vis.get(self.selected()) {
                             let id = row.id.clone();
-                            self.load_detail(&id);
+                            self.load_detail_light(&id);
                         }
                     }
                     View::TreeView => {
