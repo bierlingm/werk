@@ -2,6 +2,8 @@
 
 A structural dynamics engine for the gap between desire and reality.
 
+[Website](https://statecraft.systems/werk) · [Release](https://github.com/bierlingm/werk/releases/tag/v1.0.0) · [Hermes Agent Skill](#hermes-agent-skill)
+
 ```
   ◇ Ship a tool that 1000 people use weekly              ○○●●○●●
   ◆ Complete a 50-mile ultramarathon                      ○○○○●●●
@@ -14,13 +16,13 @@ A structural dynamics engine for the gap between desire and reality.
 
 You want things. You have a reality. The gap between them is a **tension** — and tensions, when held honestly, drive resolution.
 
-werk computes **13 structural dynamics** from the history of your declared tensions. Not vibes. Not sentiment analysis. Structural truth, computed from your own recorded actions over time.
+werk computes **13 structural dynamics** from the history of your declared tensions. Not vibes. Not sentiment analysis. Structural truth, computed from your own recorded actions over time. The theoretical foundation is [Robert Fritz's structural dynamics](https://www.robertfritz.com/resources/) — the idea that the gap between desire and reality creates a force that, when held structurally, drives genuine resolution.
 
 Then it hands those dynamics to an AI agent — and the agent serves your declared intentions. Not the reverse.
 
 ## Install
 
-Requires Rust nightly (edition 2024):
+Requires [Rust nightly](https://rustup.rs/) (edition 2024):
 
 ```bash
 git clone https://github.com/bierlingm/werk && cargo install --path werk/werk-cli
@@ -82,7 +84,7 @@ Run `werk` with no arguments to open the Operative Instrument.
 | `@` | **Agent** — one-shot, tension-scoped |
 | `y` | Copy tension ID to clipboard |
 | `/` | Search across all tensions |
-| `i` | Review watch insights |
+| `i` | Review [watch](#the-daimon-werk-watch) insights |
 | `?` | Help |
 
 ### Phase glyphs
@@ -100,7 +102,7 @@ The `○●` dots show weekly mutation activity. `●` = something changed that 
 
 ## The 13 Dynamics
 
-All computed from mutation history. No self-reporting. No vibes.
+All computed from mutation history. No self-reporting. No vibes. Based on [Robert Fritz's structural dynamics theory](https://www.robertfritz.com/resources/).
 
 | Dynamic | What it reveals |
 |---------|----------------|
@@ -131,7 +133,7 @@ werk run <id> "What pattern do you see in my oscillation?"
 
 ### Clipboard handoff (`@!` in TUI)
 
-Copies tension context + CLI reference to clipboard. Paste into any agent terminal. The agent can interact with werk directly:
+Copies tension context + CLI reference to clipboard. Paste into any agent terminal — [Hermes](https://github.com/NousResearch/hermes-agent), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), or any tool with terminal access. The agent can interact with werk directly:
 
 ```bash
 werk show <id>                    # full details
@@ -142,6 +144,8 @@ werk note <id> "observation"      # annotate
 
 ### Hermes Agent skill
 
+A full [Hermes Agent](https://github.com/NousResearch/hermes-agent) skill for onboarding, help, and working with werk:
+
 ```bash
 cp -r skills/werk ~/.hermes/skills/
 hermes chat -s werk
@@ -149,7 +153,7 @@ hermes chat -s werk
 
 ## The Daimon (`werk watch`)
 
-A background daemon that monitors your dynamics and invokes the agent when structurally significant thresholds cross.
+A background daemon that monitors your dynamics and invokes the agent when structurally significant thresholds cross. Named after the [Socratic daimon](https://en.wikipedia.org/wiki/Daemon_(classical_mythology)) — the inner voice that constrains rather than commands.
 
 ```bash
 werk watch              # foreground
@@ -166,7 +170,7 @@ The daimon doesn't interrupt. It watches while you're away, and waits for you to
 
 ## The Philosophy
 
-The alchemist creates gold — his works in the world, and his soul refined by the process. The Great Work is bringing every part of your life into coherence. werk is the operative instrument for that process.
+The alchemist creates gold — his works in the world, and his soul refined by the process. The [Great Work](https://en.wikipedia.org/wiki/Magnum_opus_(alchemy)) is bringing every part of your life into coherence with every other. A [Gesamtkunstwerk](https://en.wikipedia.org/wiki/Gesamtkunstwerk) — a total work of art made from the raw material of a human life. werk is the operative instrument for that process.
 
 AI should be subordinate to what you've declared you want. Your tensions are alignment data. The agent serves them, not the reverse. This is individual alignment — not through fine-tuning or system prompts, but through structure.
 
@@ -207,7 +211,7 @@ cargo test                  # 1066 tests
 cargo install --path werk-cli   # install to PATH
 ```
 
-Requires Rust nightly. Pinned via `rust-toolchain.toml`.
+Requires [Rust nightly](https://rustup.rs/). Pinned via `rust-toolchain.toml`.
 
 ## License
 
@@ -215,5 +219,5 @@ MIT OR Apache-2.0
 
 ---
 
-*Built for the [Nous Research](https://nousresearch.com) Hermes Agent Hackathon.*
+*Built for the [Nous Research](https://nousresearch.com) [Hermes Agent Hackathon](https://github.com/NousResearch/hermes-agent).*
 *The agent serves your declared intentions. Not the reverse.*
