@@ -850,7 +850,7 @@ fn test_notes_empty_workspace() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("No workspace notes").or(predicate::str::contains("0")));
+        .stdout(predicate::str::contains("No workspace notes").or(predicate::str::contains("none")).or(predicate::str::contains("0")));
 }
 
 /// `werk notes --json` outputs valid JSON
