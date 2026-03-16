@@ -196,7 +196,7 @@ werk-cli         30+ commands — the practitioner's toolkit
   ├── run        One-shot agent invocation
   └── watch      The Daimon — background dynamic monitoring
 
-werk-tui         The Operative Instrument — terminal interface
+werk-tui         The Operative Instrument — terminal interface (built on ftui)
   ├── descent    Navigate by going deeper, not wider
   ├── gaze       Progressive inline expansion
   ├── agent      Tension-scoped AI interaction
@@ -213,7 +213,7 @@ cargo test                  # 1066 tests
 cargo install --path werk-cli   # install to PATH
 ```
 
-Requires [Rust nightly](https://rustup.rs/). Pinned via `rust-toolchain.toml`.
+Requires [Rust nightly](https://rustup.rs/). Pinned via `rust-toolchain.toml`. TUI built on [ftui (FrankenTUI)](https://crates.io/crates/ftui).
 
 ## License
 
