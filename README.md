@@ -23,8 +23,7 @@ Then it hands those dynamics to an AI agent — and the agent serves your declar
 Requires Rust nightly (edition 2024):
 
 ```bash
-git clone https://github.com/bierlingm/werk-public && cd werk-public
-cargo install --path werk-cli
+git clone https://github.com/bierlingm/werk && cargo install --path werk/werk-cli
 ```
 
 ## Quick start
