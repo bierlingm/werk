@@ -150,7 +150,7 @@ A full [Hermes Agent](https://github.com/NousResearch/hermes-agent) skill for on
 
 ```bash
 cp -r skills/werk ~/.hermes/skills/
-hermes chat -s werk
+hermes chat --skills werk
 ```
 
 ## The Daimon (`werk watch`)
