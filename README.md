@@ -1,4 +1,4 @@
-# werk — The Operative Instrument
+# ◇ werk — The Operative Instrument
 
 A structural dynamics engine for the gap between desire and reality.
 
