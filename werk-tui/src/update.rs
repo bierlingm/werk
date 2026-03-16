@@ -38,16 +38,6 @@ impl Model for InstrumentApp {
             InputMode::AgentPrompt { .. } => self.update_agent_prompt(msg),
             InputMode::ReviewingMutations => self.update_mutation_review(msg),
             InputMode::ReviewingInsights => self.update_insight_review(msg),
-            _ => {
-                match msg {
-                    Msg::Cancel => {
-                        self.input_mode = InputMode::Normal;
-                        Cmd::none()
-                    }
-                    Msg::Quit => Cmd::quit(),
-                    _ => Cmd::none(),
-                }
-            }
         }
     }
 

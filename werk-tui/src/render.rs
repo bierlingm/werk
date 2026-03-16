@@ -109,7 +109,7 @@ impl InstrumentApp {
             lines.push(Line::from(""));
         }
 
-        let header_lines = lines.len();
+        let _header_lines = lines.len();
 
         // Build tension lines with Gaze expansion
         for (i, entry) in self.siblings.iter().enumerate() {

@@ -222,27 +222,6 @@ impl InstrumentApp {
         // Rebuild vlist — preserve cursor position and gaze
         let old_cursor = self.vlist.cursor;
         let old_gaze = self.gaze.clone();
-        let old_gaze_id = old_gaze.as_ref()
-            .and_then(|g| {
-                // Look up ID from the OLD siblings list before it was replaced
-                // (siblings was already replaced above, so this won't work — use saved ID)
-                None::<String>
-            });
-
-        // Save gazed tension ID before siblings are replaced (they already were above)
-        // We need to find the old gaze ID from the NEW siblings if possible
-        // Actually — the gaze index may be stale. Clone the gaze state and try to restore by ID.
-        let saved_gaze_info: Option<(String, bool)> = self.gaze.as_ref().and_then(|g| {
-            // The siblings were ALREADY rebuilt above, so g.index may be wrong.
-            // But the gaze_data still has the tension info if present.
-            self.gaze_data.as_ref().map(|gd| {
-                // Find the ID from the old data — use the desired text as fallback
-                // Actually, we stored the tension ID nowhere in GazeData.
-                // Let's just use the old sibling list... which is gone.
-                // Simplest fix: check if cursor is still valid and just keep it.
-                (String::new(), g.full)
-            })
-        });
 
         self.vlist.rebuild(self.siblings.len());
         self.vlist.cursor = old_cursor.min(self.siblings.len().saturating_sub(1));
@@ -545,7 +524,7 @@ impl InstrumentApp {
 
     /// Build agent context string for a tension.
     pub fn build_agent_context(&mut self, tension_id: &str) -> String {
-        let short_id = &tension_id[..12.min(tension_id.len())];
+        let _short_id = &tension_id[..12.min(tension_id.len())];
         let mut ctx = String::new();
         if let Ok(Some(t)) = self.engine.store().get_tension(tension_id) {
             ctx.push_str(&format!("Tension ID: {}\n", tension_id));
