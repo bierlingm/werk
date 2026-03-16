@@ -27,7 +27,7 @@ Then it hands those dynamics to an AI agent — and the agent serves your declar
 git clone https://github.com/bierlingm/werk && cargo install --path werk/werk-cli
 
 # If you don't have Rust yet:
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain nightly -y && source ~/.cargo/env && git clone https://github.com/bierlingm/werk && cargo install --path werk/werk-cli
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain nightly -y && . "$HOME/.cargo/env" && git clone https://github.com/bierlingm/werk && cargo install --path werk/werk-cli
 ```
 
 ## Quick start
