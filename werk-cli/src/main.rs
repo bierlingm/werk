@@ -72,7 +72,7 @@ fn main() {
         Commands::Rm { id } => werk::commands::rm::cmd_rm(&output, id),
         Commands::Move { id, parent } => werk::commands::move_cmd::cmd_move(&output, id, parent),
         Commands::Note { arg1, arg2 } => werk::commands::note::cmd_note(&output, arg1, arg2),
-        Commands::Notes => werk::commands::notes::cmd_notes(&output),
+        Commands::Notes { id } => werk::commands::notes::cmd_notes(&output, id),
         Commands::List {
             all,
             urgent,
@@ -103,6 +103,13 @@ fn main() {
             decompose,
             dry_run,
         } => werk::commands::run::cmd_run(&output, id, prompt, no_suggest, command, system, decompose, dry_run),
+        Commands::Watch {
+            daemon,
+            stop,
+            status,
+            pending,
+            history,
+        } => werk::commands::watch::cmd_watch(&output, daemon, stop, status, pending, history),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)

@@ -1019,9 +1019,25 @@ Full implementation plan in `calm-wandering-crab.md`. Summary:
 43. Write CLAUDE.md template for project integration
 44. Test with Claude Code hooks
 
-### Phase 7: Polish (ongoing)
+### Phase 7: Field Resonance — sd-core + TUI + CLI (3-5 days)
 
-45. Tree expand/collapse with persisted state
-46. Keyboard macro recording (if ftui supports it)
-47. Inline mode for "always-on" dashboard
-48. MCP server (if demand warrants)
+Full design in `j-field-resonance.md`. This is the qualitative leap: computing dynamics *between* tensions, not just within them. Turns werk from N independent tension meters into a field dynamics instrument.
+
+45. **Coupling analysis in sd-core** — `compute_resonance()` and `compute_resonance_field()`: cross-correlate mutation timelines to detect constructive resonance (co-advancing), destructive interference (competing), harmonic resonance (phase-locked oscillation), and competitive suppression. O(n² × m), cached on 5-minute cycle alongside FieldProjection.
+46. **Resonance groups** — connected components of mutual constructive resonance. These are the *actual* creative fronts, discovered from behavior rather than declared hierarchy.
+47. **Net field effect** — per-tension aggregate: positive = field-aligned (advancing this helps the field), negative = field-disruptive (advancing this hurts other work).
+48. **Lever cascade multiplier** — replace the current `cascade_potential` (child-count heuristic) with empirical coupling evidence. "Advancing this tension has historically advanced 3 others" beats "this tension has 3 children."
+49. **TUI: Resonance section in Detail** — between Dynamics and Forecast. Shows co-advancing partners (`◈`), competing tensions (`◇`), net field effect. Each listed tension is navigable.
+50. **TUI: Field Resonance overlay** — `Ctrl+F` or command palette. Shows resonance groups as clusters, interference edges, isolated tensions, field coherence score.
+51. **TUI: Dashboard Res column** — optional in wide terminals (140+ cols). Compact: `◈2` / `◇1` / `—`.
+52. **CLI: `werk resonance`** — field summary (human), per-tension (`werk resonance 01KK`), `--groups`, `--json`.
+53. **Agent context** — include resonance in `werk context` output so agents can reason about field structure.
+
+**Depends on:** Phase 2 (projection engine, for cache infrastructure) and Phase 4 (TUI projection integration, for field-level overlay patterns).
+
+### Phase 8: Polish (ongoing)
+
+54. Tree expand/collapse with persisted state
+55. Keyboard macro recording (if ftui supports it)
+56. Inline mode for "always-on" dashboard
+57. MCP server (if demand warrants)

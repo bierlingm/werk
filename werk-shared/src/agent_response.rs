@@ -58,6 +58,29 @@ pub enum AgentMutation {
         #[serde(default)]
         reasoning: String,
     },
+    /// Set or update a tension's horizon.
+    SetHorizon {
+        tension_id: String,
+        horizon: String,
+        #[serde(default)]
+        reasoning: String,
+    },
+    /// Move a tension to a new parent (reparent).
+    MoveTension {
+        tension_id: String,
+        #[serde(default)]
+        new_parent_id: Option<String>,
+        #[serde(default)]
+        reasoning: String,
+    },
+    /// Create a parent tension and reparent this tension under it.
+    CreateParent {
+        child_id: String,
+        desired: String,
+        actual: String,
+        #[serde(default)]
+        reasoning: String,
+    },
 }
 
 impl AgentMutation {
@@ -79,6 +102,18 @@ impl AgentMutation {
             AgentMutation::UpdateDesired { new_value, .. } => {
                 format!("Update desired: \"{}\"", truncate(new_value, 60))
             }
+            AgentMutation::SetHorizon { horizon, .. } => {
+                format!("Set horizon: {}", horizon)
+            }
+            AgentMutation::MoveTension { new_parent_id, .. } => {
+                match new_parent_id {
+                    Some(pid) => format!("Move to parent: {}", &pid[..12.min(pid.len())]),
+                    None => "Move to root".to_string(),
+                }
+            }
+            AgentMutation::CreateParent { desired, .. } => {
+                format!("Create parent: \"{}\"", truncate(desired, 60))
+            }
         }
     }
 
@@ -88,7 +123,10 @@ impl AgentMutation {
             AgentMutation::UpdateActual { reasoning, .. }
             | AgentMutation::CreateChild { reasoning, .. }
             | AgentMutation::UpdateStatus { reasoning, .. }
-            | AgentMutation::UpdateDesired { reasoning, .. } => {
+            | AgentMutation::UpdateDesired { reasoning, .. }
+            | AgentMutation::SetHorizon { reasoning, .. }
+            | AgentMutation::MoveTension { reasoning, .. }
+            | AgentMutation::CreateParent { reasoning, .. } => {
                 if reasoning.is_empty() {
                     None
                 } else {
@@ -110,44 +148,85 @@ impl StructuredResponse {
         // Only try to parse YAML from between --- markers
         let yaml_text = extract_yaml_block(text)?;
 
-        // Must contain both expected keys to be considered structured
-        if !yaml_text.contains("mutations") || !yaml_text.contains("response") {
+        // Must contain mutations key to be considered structured
+        if !yaml_text.contains("mutations") {
             return None;
         }
 
-        // Try parsing as StructuredResponse
-        let parsed: Self = serde_yaml::from_str(yaml_text).ok()?;
-
-        // Require non-empty response text
-        if parsed.response.trim().is_empty() {
-            return None;
+        // Try parsing as StructuredResponse (response field defaults to empty string)
+        if let Ok(parsed) = serde_yaml::from_str::<Self>(yaml_text) {
+            return Some(parsed);
         }
 
-        Some(parsed)
+        // Fallback: try parsing just the mutations array
+        #[derive(serde::Deserialize)]
+        struct MutationsOnly {
+            #[serde(default)]
+            mutations: Vec<AgentMutation>,
+        }
+        if let Ok(parsed) = serde_yaml::from_str::<MutationsOnly>(yaml_text) {
+            if !parsed.mutations.is_empty() {
+                return Some(Self {
+                    mutations: parsed.mutations,
+                    response: String::new(),
+                });
+            }
+        }
+
+        None
     }
 }
 
 /// Extract YAML content between `---` markers.
+///
+/// Searches for the LAST `---` delimited block that contains `mutations:`
+/// to avoid being tripped up by markdown horizontal rules (`---`) in the
+/// agent's prose response.
 fn extract_yaml_block(text: &str) -> Option<&str> {
     let trimmed = text.trim();
 
-    // Look for content between --- markers
-    if let Some(start) = trimmed.find("---") {
-        let after_start = &trimmed[start + 3..];
-        if let Some(end) = after_start.find("---") {
-            let yaml = after_start[..end].trim();
-            if !yaml.is_empty() {
-                return Some(yaml);
-            }
+    // Collect all --- delimited blocks, then find the one with mutations:
+    let mut blocks: Vec<&str> = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(start) = trimmed[search_from..].find("---") {
+        let abs_start = search_from + start + 3;
+        if abs_start >= trimmed.len() {
+            break;
         }
-        // If no closing ---, treat the rest as YAML
-        let yaml = after_start.trim();
-        if !yaml.is_empty() {
-            return Some(yaml);
+        let after_start = &trimmed[abs_start..];
+        if let Some(end) = after_start.find("---") {
+            let block = after_start[..end].trim();
+            if !block.is_empty() {
+                blocks.push(block);
+            }
+            search_from = abs_start + end + 3;
+        } else {
+            // No closing --- — treat rest as potential block
+            let block = after_start.trim();
+            if !block.is_empty() {
+                blocks.push(block);
+            }
+            break;
         }
     }
 
-    None
+    // Prefer the block that contains both 'mutations' and 'response' keys
+    for block in blocks.iter().rev() {
+        if block.contains("mutations") && block.contains("response") {
+            return Some(block);
+        }
+    }
+
+    // Fallback: any block with 'mutations'
+    for block in blocks.iter().rev() {
+        if block.contains("mutations") {
+            return Some(block);
+        }
+    }
+
+    // Last resort: first non-empty block
+    blocks.into_iter().next()
 }
 
 #[cfg(test)]

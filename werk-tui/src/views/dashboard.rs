@@ -11,19 +11,9 @@ use ftui::widgets::status_line::{StatusLine, StatusItem};
 use werk_shared::truncate;
 
 use crate::app::WerkApp;
-use crate::helpers::sparkline_block_color;
+use crate::helpers::activity_trail;
 use crate::theme::*;
 use crate::types::UrgencyTier;
-
-fn trajectory_char(trajectory: &Option<sd_core::Trajectory>) -> &'static str {
-    match trajectory {
-        Some(sd_core::Trajectory::Resolving) => "\u{2193}",
-        Some(sd_core::Trajectory::Stalling) => "\u{2014}",
-        Some(sd_core::Trajectory::Drifting) => "~",
-        Some(sd_core::Trajectory::Oscillating) => "\u{21cc}",
-        None => " ",
-    }
-}
 
 pub fn mini_sparkline(data: &[f64], width: usize) -> String {
     let blocks = [' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}'];
@@ -39,32 +29,8 @@ pub fn mini_sparkline(data: &[f64], width: usize) -> String {
             blocks[idx]
         })
         .collect();
-    // Pad if data is shorter than width
     let pad = width.saturating_sub(s.chars().count());
     format!("{}{}", " ".repeat(pad), s)
-}
-
-#[allow(dead_code)]
-fn colored_sparkline_spans(data: &[f64], width: usize) -> Vec<Span<'_>> {
-    let blocks = [' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}'];
-    if data.is_empty() {
-        return vec![Span::styled(" ".repeat(width), Style::new())];
-    }
-    let max = data.iter().cloned().fold(0.0f64, f64::max).max(1.0);
-    let pad = width.saturating_sub(data.len());
-    let mut spans = Vec::new();
-    if pad > 0 {
-        spans.push(Span::styled(" ".repeat(pad), Style::new()));
-    }
-    for &v in data.iter().take(width) {
-        let idx = ((v / max) * 8.0).round().min(8.0) as usize;
-        let color = sparkline_block_color(v, max);
-        spans.push(Span::styled(
-            blocks[idx].to_string(),
-            Style::new().fg(color),
-        ));
-    }
-    spans
 }
 
 impl WerkApp {
@@ -159,6 +125,7 @@ impl WerkApp {
         }
 
         let width = area.width as usize;
+        let show_trail = width >= 50;
 
         // Build rows with tier section headers inserted when the tier changes.
         let mut rows: Vec<Row> = Vec::new();
@@ -166,45 +133,19 @@ impl WerkApp {
         let mut headers_before_selected: usize = 0;
         let selected_tension_idx = self.selected();
 
-        // Progressive disclosure breakpoints (Phase 2a)
-        let num_cols = if width < 40 {
-            3  // selector + phase + desired
-        } else if width < 60 {
-            7  // + movement, traj, horizon, urgency%
-        } else if width < 80 {
-            8  // + urgency bar
-        } else if width < 100 {
-            9  // + sparkline
-        } else {
-            10 // + urgency bar (wider)
-        };
-
-        // Column header row
-        {
-            let header_style = Style::new().fg(CLR_MID_GRAY).bold();
-            let header_cells: Vec<String> = if width < 40 {
-                vec!["".to_string(), "".to_string(), "Tension".to_string()]
-            } else if width < 60 {
-                vec!["".to_string(), "".to_string(), "".to_string(), "".to_string(),
-                     "Tension".to_string(), "Horizon".to_string(), "Urg".to_string()]
-            } else if width >= 80 {
-                vec!["".to_string(), "".to_string(), "".to_string(), "".to_string(),
-                     "Tension".to_string(), "Activity".to_string(), "Horizon".to_string(),
-                     "Urgency".to_string(), "".to_string()]
-            } else {
-                vec!["".to_string(), "".to_string(), "".to_string(), "".to_string(),
-                     "Tension".to_string(), "Horizon".to_string(),
-                     "Urgency".to_string(), "".to_string()]
-            };
-            rows.push(Row::new(header_cells).style(header_style));
-            // Header counts toward offset before selected
-            headers_before_selected += 1;
-        }
+        let num_cols = if show_trail { 4 } else { 3 };
 
         let mut tension_idx: usize = 0;
         for row in &visible {
-            // Insert tier header with badge styling (Phase 1c)
+            // Insert tier header when tier changes — with blank line before for breathing room
             if current_tier != Some(row.tier) {
+                // Add blank separator between tiers (not before the first one)
+                if current_tier.is_some() {
+                    rows.push(Row::new(vec![String::new(); num_cols]));
+                    if tension_idx <= selected_tension_idx {
+                        headers_before_selected += 1;
+                    }
+                }
                 current_tier = Some(row.tier);
                 let (header_text, header_style) = match row.tier {
                     UrgencyTier::Urgent => (
@@ -225,21 +166,14 @@ impl WerkApp {
                     ),
                 };
                 let mut cells = vec![String::new(); num_cols];
-                if num_cols >= 3 {
-                    cells[1] = String::new(); // selector column
-                    cells[2] = header_text.to_string();
-                } else if num_cols >= 2 {
-                    cells[1] = header_text.to_string();
-                } else {
-                    cells[0] = header_text.to_string();
-                }
+                cells[1] = header_text.to_string();
                 rows.push(Row::new(cells).style(header_style));
                 if tension_idx <= selected_tension_idx {
                     headers_before_selected += 1;
                 }
             }
 
-            // Build the tension data row
+            // Build the tension data row — clean: selector, phase+movement, desired, horizon
             let tier_style = match row.tier {
                 UrgencyTier::Urgent => Style::new().fg(CLR_RED_SOFT).bold(),
                 UrgencyTier::Active => Style::new().fg(CLR_WHITE),
@@ -247,138 +181,54 @@ impl WerkApp {
                 UrgencyTier::Resolved => Style::new().fg(CLR_DIM_GRAY),
             };
 
-            // Selection indicator (Phase 2b)
             let selector = if tension_idx == selected_tension_idx {
-                "\u{25b8} "
+                "\u{25b8}"
             } else {
-                "  "
+                " "
             };
 
-            let phase_str = format!("[{}]", row.phase);
-            let urgency_pct = match row.urgency {
-                Some(u) => format!("{:>3.0}%", (u * 100.0).min(999.0)),
-                None => "  --".to_string(),
-            };
+            // Phase glyph + movement: e.g. "◇→" or "◆↔"
+            let indicator = format!("{}{}", row.phase, row.movement);
 
-            if width < 40 {
-                let desired_width = width.saturating_sub(10).max(5);
-                let desired_trunc = truncate(&row.desired, desired_width);
+            if show_trail {
+                let trail = activity_trail(&row.activity, 8);
                 rows.push(
                     Row::new(vec![
                         selector.to_string(),
-                        phase_str,
-                        desired_trunc.to_string(),
-                    ])
-                    .style(tier_style),
-                );
-            } else if width < 60 {
-                let traj = trajectory_char(&row.trajectory);
-                let fixed_width = 2 + 4 + 2 + 2 + 11 + 5;
-                let desired_width = width.saturating_sub(fixed_width).max(10);
-                let desired_trunc = truncate(&row.desired, desired_width);
-                rows.push(
-                    Row::new(vec![
-                        selector.to_string(),
-                        phase_str,
-                        row.movement.clone(),
-                        traj.to_string(),
-                        desired_trunc.to_string(),
-                        format!("{:>10}", row.horizon_display),
-                        urgency_pct,
+                        indicator,
+                        row.desired.clone(),
+                        trail,
                     ])
                     .style(tier_style),
                 );
             } else {
-                let urgency_bar = match row.urgency {
-                    Some(u) => {
-                        let filled = ((u * 6.0).round() as usize).min(6);
-                        let empty = 6 - filled;
-                        format!(
-                            "{}{}",
-                            "\u{2588}".repeat(filled),
-                            "\u{2591}".repeat(empty),
-                        )
-                    }
-                    None => "------".to_string(),
-                };
-                let traj = trajectory_char(&row.trajectory);
-                if width >= 80 {
-                    let spark = mini_sparkline(&row.activity, 7);
-                    rows.push(
-                        Row::new(vec![
-                            selector.to_string(),
-                            phase_str,
-                            row.movement.clone(),
-                            traj.to_string(),
-                            row.desired.clone(),
-                            spark,
-                            format!("{:>11}", row.horizon_display),
-                            urgency_bar,
-                            urgency_pct,
-                        ])
-                        .style(tier_style),
-                    );
-                } else {
-                    rows.push(
-                        Row::new(vec![
-                            selector.to_string(),
-                            phase_str,
-                            row.movement.clone(),
-                            traj.to_string(),
-                            row.desired.clone(),
-                            format!("{:>11}", row.horizon_display),
-                            urgency_bar,
-                            urgency_pct,
-                        ])
-                        .style(tier_style),
-                    );
-                }
+                rows.push(
+                    Row::new(vec![
+                        selector.to_string(),
+                        indicator,
+                        row.desired.clone(),
+                    ])
+                    .style(tier_style),
+                );
             }
             tension_idx += 1;
         }
 
-        let widths: Vec<Constraint> = if width < 40 {
+        let widths: Vec<Constraint> = if show_trail {
             vec![
                 Constraint::Fixed(2),  // selector
-                Constraint::Fixed(4),
-                Constraint::Fill,
-            ]
-        } else if width < 60 {
-            vec![
-                Constraint::Fixed(2),  // selector
-                Constraint::Fixed(4),
-                Constraint::Fixed(2),
-                Constraint::Fixed(2),
-                Constraint::Fill,
-                Constraint::Fixed(11),
-                Constraint::Fixed(5),
-            ]
-        } else if width >= 80 {
-            vec![
-                Constraint::Fixed(2),  // selector
-                Constraint::Fixed(4),
-                Constraint::Fixed(2),
-                Constraint::Fixed(2),
-                Constraint::Fill,
-                Constraint::Fixed(8),
-                Constraint::Fixed(12),
-                Constraint::Fixed(7),
-                Constraint::Fixed(5),
+                Constraint::Fixed(3),  // phase glyph + movement
+                Constraint::Fill,      // desired — gets ALL remaining space
+                Constraint::Fixed(9),  // activity trail (8 dots + padding)
             ]
         } else {
             vec![
                 Constraint::Fixed(2),  // selector
-                Constraint::Fixed(4),
-                Constraint::Fixed(2),
-                Constraint::Fixed(2),
-                Constraint::Fill,
-                Constraint::Fixed(12),
-                Constraint::Fixed(7),
-                Constraint::Fixed(5),
+                Constraint::Fixed(3),  // phase glyph + movement
+                Constraint::Fill,      // desired
             ]
         };
 
-        // Selection highlight with subtle background (Phase 2b)
         let table = Table::new(rows, widths)
             .highlight_style(Style::new().fg(CLR_WHITE).bg(WERK_THEME.highlight).bold())
             .column_spacing(1);
@@ -387,40 +237,15 @@ impl WerkApp {
         let mut state = self.dashboard_state.borrow().clone();
         state.select(Some(adjusted_index));
         StatefulWidget::render(&table, *area, frame, &mut state);
-        // Write back offset so scrolling works correctly
         self.dashboard_state.borrow_mut().offset = state.offset;
     }
 
     pub(crate) fn render_dashboard_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let width = area.width as usize;
-        let filter_hint = format!("f[{}]", self.filter.label());
-
-        // Adaptive hints based on width (Phase 5a)
-        let mut hints = StatusLine::new().separator("  ");
-
-        // Essential hints (always shown)
-        hints = hints
-            .left(StatusItem::key_hint("j/k", ""))
-            .left(StatusItem::key_hint("Enter", "detail"))
-            .left(StatusItem::key_hint("Tab", "tree"))
-            .left(StatusItem::text(&filter_hint))
-            .left(StatusItem::key_hint("a", "add"));
-
-        if width >= 60 {
-            hints = hints
-                .left(StatusItem::key_hint("c/p", "child/parent"))
-                .left(StatusItem::key_hint("r/d", "edit"))
-                .left(StatusItem::key_hint("w", "reflect"));
-        }
-        if width >= 100 {
-            hints = hints
-                .left(StatusItem::key_hint("</>", "split"))
-                .left(StatusItem::key_hint("T", "timeline"))
-                .left(StatusItem::key_hint("D", "health"))
-                .left(StatusItem::key_hint("L", "lever"));
-        }
-        hints = hints.left(StatusItem::key_hint("q/?", ""));
-        hints = hints.style(STYLES.label);
+        let hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("?", "help"))
+            .left(StatusItem::key_hint("Ctrl-/", "commands"))
+            .style(STYLES.muted);
         hints.render(*area, frame);
     }
 }

@@ -1,33 +1,30 @@
 #![forbid(unsafe_code)]
 
-//! werk-tui: FrankenTUI dashboard for structural dynamics.
+//! werk-tui: The Operative Instrument.
 
+pub mod state;
+pub mod glyphs;
+pub mod vlist;
 pub mod theme;
-pub mod types;
-pub mod input;
 pub mod msg;
 pub mod app;
-pub mod helpers;
-pub mod agent;
-pub mod lever;
+pub mod render;
 pub mod update;
-pub mod views;
-pub mod overlays;
+pub mod helpers;
 pub mod horizon;
+pub mod search;
+pub mod agent;
 
-// Re-exports for the public API
-pub use app::WerkApp;
-pub use types::{TensionRow, UrgencyTier};
+pub use app::InstrumentApp;
 
 use std::collections::HashMap;
 use sd_core::DynamicsEngine;
 use werk_shared::Workspace;
 
-use crate::helpers::build_tension_row_from_computed;
+use crate::state::FieldEntry;
 
-/// Load all tensions from the workspace and compute dynamics.
-/// Returns (engine, rows) so the engine persists in WerkApp.
-pub fn load_tensions() -> Result<(DynamicsEngine, Vec<TensionRow>), String> {
+/// Load all tensions from the workspace and compute dynamics + activity.
+pub fn load_field() -> Result<(DynamicsEngine, Vec<FieldEntry>), String> {
     let workspace = Workspace::discover().map_err(|e| e.to_string())?;
     let store = workspace.open_store().map_err(|e| e.to_string())?;
     let mut engine = DynamicsEngine::with_store(store);
@@ -38,9 +35,9 @@ pub fn load_tensions() -> Result<(DynamicsEngine, Vec<TensionRow>), String> {
         .map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now();
-
-    // Compute per-tension activity from mutations (7-day window)
     let window = chrono::Duration::days(7);
+
+    // Compute per-tension activity from mutations (7-day window, 7 buckets)
     let mut activity_map: HashMap<String, Vec<f64>> = HashMap::new();
     for t in &tensions {
         for m in engine.store().get_mutations(&t.id).unwrap_or_default() {
@@ -53,38 +50,41 @@ pub fn load_tensions() -> Result<(DynamicsEngine, Vec<TensionRow>), String> {
         }
     }
 
-    let mut rows: Vec<TensionRow> = Vec::with_capacity(tensions.len());
+    // Check which tensions have children
+    let child_counts: HashMap<String, usize> = {
+        let mut counts = HashMap::new();
+        for t in &tensions {
+            if let Some(ref pid) = t.parent_id {
+                *counts.entry(pid.clone()).or_insert(0) += 1;
+            }
+        }
+        counts
+    };
 
-    for tension in &tensions {
-        let computed = engine.compute_full_dynamics_for_tension(&tension.id);
-        let activity = activity_map.remove(&tension.id).unwrap_or_default();
-        rows.push(build_tension_row_from_computed(&computed, tension, now, activity));
-    }
-
-    rows.sort_by(|a, b| {
-        a.tier.cmp(&b.tier).then_with(|| {
-            let ua = a.urgency.unwrap_or(-1.0);
-            let ub = b.urgency.unwrap_or(-1.0);
-            ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
+    let entries: Vec<FieldEntry> = tensions
+        .iter()
+        .map(|t| {
+            let computed = engine.compute_full_dynamics_for_tension(&t.id);
+            let activity = activity_map.remove(&t.id).unwrap_or_default();
+            let has_children = child_counts.get(&t.id).copied().unwrap_or(0) > 0;
+            FieldEntry::from_tension(t, &computed, activity, has_children)
         })
-    });
+        .collect();
 
-    Ok((engine, rows))
+    Ok((engine, entries))
 }
 
-/// Launch the TUI dashboard.
+/// Launch the Operative Instrument TUI.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     use ftui::App;
 
-    match load_tensions() {
-        Ok((mut engine, tensions)) => {
-            let lever_result = lever::compute_lever(&mut engine);
-            let mut app = WerkApp::new(engine, tensions);
-            app.lever = lever_result;
+    match load_field() {
+        Ok((engine, entries)) => {
+            let app = InstrumentApp::new(engine, entries);
             App::fullscreen(app).run()?;
         }
         Err(_) => {
-            let app = WerkApp::new_welcome();
+            let app = InstrumentApp::new_empty();
             App::fullscreen(app).run()?;
         }
     }

@@ -5,7 +5,6 @@ use ftui::style::Style;
 use ftui::widgets::Widget;
 use ftui::widgets::StatefulWidget;
 use ftui::widgets::paragraph::Paragraph;
-use ftui::widgets::input::TextInput;
 use ftui::widgets::list::{List, ListItem};
 use werk_shared::truncate;
 
@@ -71,12 +70,7 @@ impl WerkApp {
                     let prefix_area = Rect::new(0, y + 2, 2, 1);
                     prefix_paragraph.render(prefix_area, frame);
 
-                    let input_widget = TextInput::new()
-                        .with_value(self.text_input_widget.value())
-                        .with_style(Style::new().fg(CLR_WHITE).bg(CLR_BG_DARK))
-                        .with_cursor_style(Style::new().fg(CLR_CYAN).bg(CLR_BG_DARK).reverse())
-                        .with_focused(true);
-                    input_widget.render(input_area, frame);
+                    self.text_input_widget.render(input_area, frame);
                 }
             }
             InputMode::Confirm(_) => {

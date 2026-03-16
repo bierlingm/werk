@@ -29,6 +29,7 @@ pub mod show;
 pub mod snooze;
 pub mod trajectory;
 pub mod tree;
+pub mod watch;
 
 use clap::Subcommand;
 use batch::BatchCommand;
@@ -175,8 +176,11 @@ pub enum Commands {
         arg2: Option<String>,
     },
 
-    /// List all workspace-level notes.
-    Notes,
+    /// List notes. Without an ID, shows workspace notes. With an ID, shows notes for that tension.
+    Notes {
+        /// Optional tension ID to show notes for a specific tension.
+        id: Option<String>,
+    },
 
     /// Show system health summary (phase distribution, movement ratios, alerts).
     Health,
@@ -303,6 +307,29 @@ pub enum Commands {
         /// Dry run: show what would be applied without applying.
         #[arg(long)]
         dry_run: bool,
+    },
+
+    /// Monitor tension dynamics and invoke agent on threshold crossings.
+    Watch {
+        /// Start as background daemon.
+        #[arg(long)]
+        daemon: bool,
+
+        /// Stop the background daemon.
+        #[arg(long)]
+        stop: bool,
+
+        /// Show watch status (daemon, last check, pending insights).
+        #[arg(long)]
+        status: bool,
+
+        /// List pending insights.
+        #[arg(long)]
+        pending: bool,
+
+        /// Show recent watch activity.
+        #[arg(long)]
+        history: bool,
     },
 
     /// Batch operations (apply/validate mutations from YAML).

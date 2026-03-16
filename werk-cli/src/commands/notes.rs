@@ -2,12 +2,14 @@
 
 use crate::error::WerkError;
 use crate::output::Output;
+use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
 
 /// JSON output structure for notes command.
 #[derive(Serialize)]
 struct NotesResult {
+    tension_id: Option<String>,
     notes: Vec<NoteInfo>,
 }
 
@@ -18,18 +20,28 @@ struct NoteInfo {
     text: String,
 }
 
-pub fn cmd_notes(output: &Output) -> Result<(), WerkError> {
-    // Discover workspace
+pub fn cmd_notes(output: &Output, id: Option<String>) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
-    // Get workspace-level notes (mutations on the WORKSPACE_NOTES sentinel)
-    const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
+    let (tension_id, label) = match id {
+        Some(id_prefix) => {
+            // Notes for a specific tension
+            let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+            let resolver = PrefixResolver::new(tensions);
+            let tension = resolver.resolve(&id_prefix)?;
+            (tension.id.clone(), format!("Notes for \"{}\"", tension.desired))
+        }
+        None => {
+            // Workspace-level notes
+            ("WORKSPACE_NOTES".to_string(), "Workspace notes".to_string())
+        }
+    };
+
     let mutations = store
-        .get_mutations(WORKSPACE_NOTE_TENSION_ID)
+        .get_mutations(&tension_id)
         .map_err(WerkError::StoreError)?;
 
-    // Filter for note mutations only
     let notes: Vec<NoteInfo> = mutations
         .into_iter()
         .filter(|m| m.field() == "note")
@@ -40,19 +52,21 @@ pub fn cmd_notes(output: &Output) -> Result<(), WerkError> {
         .collect();
 
     if output.is_structured() {
-        let result = NotesResult { notes };
+        let result = NotesResult {
+            tension_id: if tension_id == "WORKSPACE_NOTES" { None } else { Some(tension_id) },
+            notes,
+        };
         output
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
-        // Human-readable output
         if notes.is_empty() {
             output
-                .info("No workspace notes")
+                .info(&format!("{} (none)", label))
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
         } else {
             output
-                .success(&format!("Workspace notes ({})", notes.len()))
+                .success(&format!("{} ({})", label, notes.len()))
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
             for (i, note) in notes.iter().enumerate() {
                 println!(

@@ -24,9 +24,46 @@ pub fn parse_horizon(input: &str) -> Result<Horizon, String> {
     }
 
     let lower = trimmed.to_lowercase();
-    let today = Utc::now().date_naive();
+    let now = Utc::now();
+    let today = now.date_naive();
+
+    // Try hour/minute expressions first (these need DateTime precision)
+    if let Some(dt) = parse_time_duration(&lower, now) {
+        return Ok(Horizon::new_datetime(dt));
+    }
 
     parse_natural(&lower, today)
+}
+
+/// Parse hour/minute duration expressions: "2h", "30min", "1h30m", "in 2 hours", etc.
+fn parse_time_duration(input: &str, now: chrono::DateTime<Utc>) -> Option<chrono::DateTime<Utc>> {
+    let input = input.strip_prefix("in ").unwrap_or(input).trim();
+    let input = input.strip_prefix('+').unwrap_or(input);
+
+    // Compact: "2h", "30min", "90m"
+    if input.ends_with("min") {
+        let num = input.strip_suffix("min")?.parse::<i64>().ok()?;
+        return Some(now + Duration::minutes(num));
+    }
+    if input.ends_with('h') && !input.ends_with("th") {
+        let num = input.strip_suffix('h')?.parse::<i64>().ok()?;
+        return Some(now + Duration::hours(num));
+    }
+
+    // Word form: "2 hours", "30 minutes"
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.len() == 2 {
+        if let Ok(n) = parts[0].parse::<i64>() {
+            let unit = parts[1].trim_end_matches('s');
+            match unit {
+                "hour" => return Some(now + Duration::hours(n)),
+                "minute" | "min" => return Some(now + Duration::minutes(n)),
+                _ => {}
+            }
+        }
+    }
+
+    None
 }
 
 fn parse_natural(input: &str, today: NaiveDate) -> Result<Horizon, String> {

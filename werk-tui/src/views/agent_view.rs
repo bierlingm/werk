@@ -205,24 +205,15 @@ impl WerkApp {
     }
 
     pub(crate) fn render_agent_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = if self.agent.mutations.is_empty() {
-            StatusLine::new()
-                .separator("  ")
-                .left(StatusItem::key_hint("Esc", "back"))
-                .left(StatusItem::key_hint("q", "quit"))
-                .left(StatusItem::key_hint("?", "help"))
-                .style(Style::new().fg(CLR_MID_GRAY))
-        } else {
-            StatusLine::new()
-                .separator("  ")
-                .left(StatusItem::key_hint("j/k", "nav"))
-                .left(StatusItem::key_hint("Enter", "toggle"))
-                .left(StatusItem::key_hint("1-9", "toggle"))
-                .left(StatusItem::key_hint("a", "apply selected"))
-                .left(StatusItem::key_hint("Esc", "back"))
-                .left(StatusItem::key_hint("q", "quit"))
-                .style(Style::new().fg(CLR_MID_GRAY))
-        };
+        let mut hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("Esc", "back"));
+        if !self.agent.mutations.is_empty() {
+            hints = hints
+                .left(StatusItem::key_hint("Space", "toggle"))
+                .left(StatusItem::key_hint("a", "apply"));
+        }
+        hints = hints.style(STYLES.muted);
         hints.render(*area, frame);
     }
 }

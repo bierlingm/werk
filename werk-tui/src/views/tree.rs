@@ -41,13 +41,9 @@ impl WerkApp {
             .tree_items
             .iter()
             .map(|item| {
-                let urgency_str = match item.urgency {
-                    Some(u) => format!("{:>3.0}%", (u * 100.0).min(999.0)),
-                    None => "  --".to_string(),
-                };
-
+                let connector_width = item.connector.chars().count();
                 let desired_width = (area.width as usize)
-                    .saturating_sub(item.connector.chars().count() + 2 + 4 + 4 + 12 + 5);
+                    .saturating_sub(connector_width + 2 + 4);
                 let desired_trunc = truncate(&item.desired, desired_width.max(10));
 
                 let item_style = match item.tier {
@@ -57,16 +53,13 @@ impl WerkApp {
                     UrgencyTier::Resolved => Style::new().fg(CLR_DIM_GRAY),
                 };
 
+                let indicator = format!("{}{} ", item.phase, item.movement);
+
                 let text = Text::from_spans([
                     Span::styled("  ", item_style),
                     Span::styled(&item.connector, STYLES.muted),
-                    Span::styled(format!("[{}] {} ", item.phase, item.movement), item_style),
-                    Span::styled(
-                        format!("{:<width$} ", desired_trunc, width = desired_width),
-                        item_style,
-                    ),
-                    Span::styled(format!("{:>11} ", item.horizon_display), item_style),
-                    Span::styled(urgency_str, item_style),
+                    Span::styled(indicator, item_style),
+                    Span::styled(desired_trunc.to_string(), item_style),
                 ]);
 
                 ListItem::new(text).style(item_style)
@@ -81,30 +74,12 @@ impl WerkApp {
     }
 
     pub(crate) fn render_tree_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let width = area.width as usize;
-        let mut hints = StatusLine::new().separator("  ");
-
-        hints = hints
-            .left(StatusItem::key_hint("j/k", "navigate"))
-            .left(StatusItem::key_hint("Enter", "detail"))
-            .left(StatusItem::key_hint("Tab", "dashboard"))
-            .left(StatusItem::key_hint("f", "filter"));
-
-        if width >= 60 {
-            hints = hints
-                .left(StatusItem::key_hint("a", "add"))
-                .left(StatusItem::key_hint("c/p", "child/parent"))
-                .left(StatusItem::key_hint("r/d", "edit"));
-        }
-        if width >= 100 {
-            hints = hints
-                .left(StatusItem::key_hint("R/X/m", "resolve/release/move"));
-        }
-        hints = hints
-            .left(StatusItem::key_hint("q", "quit"))
-            .left(StatusItem::key_hint("?", "help"));
-
-        hints = hints.style(STYLES.label);
+        let hints = StatusLine::new()
+            .separator("  ")
+            .left(StatusItem::key_hint("Esc/Tab", "back"))
+            .left(StatusItem::key_hint("?", "help"))
+            .left(StatusItem::key_hint("Ctrl-/", "commands"))
+            .style(STYLES.muted);
         hints.render(*area, frame);
     }
 }

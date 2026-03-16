@@ -18,13 +18,17 @@ pub fn relative_time(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
     if secs < 60 {
         "just now".to_string()
     } else if secs < 3600 {
-        format!("{} min ago", secs / 60)
+        let n = secs / 60;
+        format!("{} min ago", n)
     } else if secs < 86400 {
-        format!("{} hours ago", secs / 3600)
+        let n = secs / 3600;
+        if n == 1 { "1 hour ago".to_string() } else { format!("{} hours ago", n) }
     } else if secs < 604800 {
-        format!("{} days ago", secs / 86400)
+        let n = secs / 86400;
+        if n == 1 { "1 day ago".to_string() } else { format!("{} days ago", n) }
     } else {
-        format!("{} weeks ago", secs / 604800)
+        let n = secs / 604800;
+        if n == 1 { "1 week ago".to_string() } else { format!("{} weeks ago", n) }
     }
 }
 
@@ -88,22 +92,22 @@ mod tests {
     #[test]
     fn test_relative_time_hours_ago() {
         let now = Utc::now();
-        let dt = now - Duration::hours(3);
-        assert_eq!(relative_time(dt, now), "3 hours ago");
+        assert_eq!(relative_time(now - Duration::hours(1), now), "1 hour ago");
+        assert_eq!(relative_time(now - Duration::hours(3), now), "3 hours ago");
     }
 
     #[test]
     fn test_relative_time_days_ago() {
         let now = Utc::now();
-        let dt = now - Duration::days(4);
-        assert_eq!(relative_time(dt, now), "4 days ago");
+        assert_eq!(relative_time(now - Duration::days(1), now), "1 day ago");
+        assert_eq!(relative_time(now - Duration::days(4), now), "4 days ago");
     }
 
     #[test]
     fn test_relative_time_weeks_ago() {
         let now = Utc::now();
-        let dt = now - Duration::weeks(2);
-        assert_eq!(relative_time(dt, now), "2 weeks ago");
+        assert_eq!(relative_time(now - Duration::weeks(1), now), "1 week ago");
+        assert_eq!(relative_time(now - Duration::weeks(2), now), "2 weeks ago");
     }
 
     #[test]

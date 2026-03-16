@@ -189,7 +189,9 @@ designs/
 ├── b-interactive-config.md            (2-3 hr, P2 polish)
 ├── c-id-collision-disambiguation.md   (1-2 hr, P0)
 ├── d-werk-run-inline-prompt.md        (1-2 hr, P0 core)
-└── e-one-shot-with-structured-suggestions.md  (2-3 hr, P1)
+├── e-one-shot-with-structured-suggestions.md  (2-3 hr, P1)
+├── i-time-travel-field-replay.md      (proposed, next major feature)
+└── j-field-resonance.md               (proposed → v0.5 Phase 7, 14th sd-core dynamic, field-level coupling detection)
 ```
 
 ---

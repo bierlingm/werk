@@ -1,134 +1,55 @@
-use ftui::{Event, KeyCode, Modifiers};
-use crate::types::ToastSeverity;
+//! Messages the Operative Instrument can process.
 
-/// Messages the app can process.
+use ftui::{Event, KeyCode, Modifiers};
+
 #[derive(Debug, Clone)]
 pub enum Msg {
-    // Existing
-    MoveUp,
-    MoveDown,
-    ToggleHelp,
-    Quit,
-    Noop,
+    // Navigation
+    Up,
+    Down,
+    Descend,
+    Ascend,
+    JumpTop,
+    JumpBottom,
 
-    // New navigation
-    OpenDetail,
-    Back,
-    SwitchDashboard,
-    SwitchTree,
+    // Depths
+    ToggleGaze,
+    ExpandGaze, // Tab inside gaze -> full dynamics
 
-    // Detail view
-    ScrollDetailUp,
-    ScrollDetailDown,
-
-    // Filtering
-    CycleFilter,
-
-    // Phase 3: CRUD operations
-    StartUpdateReality,
-    StartUpdateDesire,
-    StartAddNote,
-    StartSetHorizon,
-    StartAddTension,
+    // Acts
+    StartAdd,
+    StartEdit,
+    StartNote,
     StartResolve,
     StartRelease,
-    StartDelete,
     StartMove,
-    StartSetRecurrence,
 
-    // Input overlay events
-    InputChar(char),
-    InputBackspace,
-    InputDelete,
-    InputLeft,
-    InputRight,
-    InputHome,
-    InputEnd,
-    InputSubmit,
-    InputCancel,
+    // Text input (shared across all input modes)
+    Char(char),
+    Backspace,
+    Submit,
+    Cancel,
+    Tab, // switch fields in edit mode
 
-    // Confirm events
-    ConfirmYes,
-    ConfirmNo,
+    // Agent
+    InvokeAgent,
+    AgentClipboard,
+    AgentResponse(Result<String, String>),
 
-    // Move picker events
-    PickerUp,
-    PickerDown,
-    PickerSelect,
-    PickerCancel,
+    // Insights
+    OpenInsights,
 
-    // Phase 4: Dynamics events and periodic tick
-    Tick,
-    DynamicsEvent(String, ToastSeverity),
-
-    // Phase 5: Agent integration
-    StartAgent,
-    AgentResponseReceived(std::result::Result<String, String>),
-    AgentToggleMutation(usize),
-    AgentApplySelected,
-    AgentScrollUp,
-    AgentScrollDown,
-
-    // Phase 7: Quick Create + Adopt/Reparent
-    CreateChild,
-    CreateParent,
-
-    // Phase 10: Neighborhood view
-    ViewNeighborhood,
-
-    // Phase 12: Timeline view
-    ViewTimeline,
-
-    // Phase 13: Focus mode
-    ViewFocus,
-
-    // Phase 6: Welcome screen
-    WelcomeSelect,
-    WelcomeConfirm,
-
-    // Phase 6: Command palette & search
-    OpenCommandPalette,
-    OpenSearch,
-
-    // Phase 14: Dynamics summary dashboard
-    ViewDynamics,
-
-    // View consolidation: toggleable panels
-    ToggleTimeline,
-    ToggleHealthOverlay,
-
-    // Phase 15A: Reflect
-    StartReflect,
-    ReflectSubmit,
-
-    // Ticker jump: jump to Nth most urgent tension (0-indexed)
-    TickerJump(usize),
-
-    // Snooze
-    StartSnooze,
-    ToggleShowSnoozed,
-
-    // Phase 9: Lever
-    ShowLever,
-
-    // Undo last resolve/release
+    // Chrome
+    ToggleHelp,
+    Search,
+    CycleFilter,
     Undo,
 
-    // Behavioral pattern insights
-    ShowInsights,
-
-    // Trajectory overlay
-    ShowTrajectory,
-
-    // Adjustable split pane ratio
-    SplitWider,
-    SplitNarrower,
-
-    // Filesystem watcher detected external db change
-    ExternalChange,
-
-    // Raw key event for mode-based routing (carries full modifiers)
-    RawKey(KeyCode, Modifiers),
+    // System
+    DataChanged,
+    Tick,
+    Quit,
+    Noop,
 }
 
 impl From<Event> for Msg {
@@ -138,10 +59,24 @@ impl From<Event> for Msg {
                 if key.ctrl() && key.code == KeyCode::Char('c') {
                     return Msg::Quit;
                 }
-                if key.ctrl() && key.code == KeyCode::Char('s') {
-                    return Msg::ReflectSubmit;
+                // All other key routing happens in update() based on InputMode.
+                // We pass through as Char for printable keys in input modes,
+                // and dispatch specific Msg for navigation keys in Normal mode.
+                // This requires the update() function to handle RawKey routing.
+                match key.code {
+                    KeyCode::Char(c) if key.modifiers == Modifiers::NONE || key.modifiers == Modifiers::SHIFT => {
+                        Msg::Char(c)
+                    }
+                    KeyCode::Enter => Msg::Submit,
+                    KeyCode::Escape => Msg::Cancel,
+                    KeyCode::Backspace => Msg::Backspace,
+                    KeyCode::Tab => Msg::Tab,
+                    KeyCode::Up => Msg::Up,
+                    KeyCode::Down => Msg::Down,
+                    KeyCode::Left => Msg::Ascend,
+                    KeyCode::Right => Msg::Descend,
+                    _ => Msg::Noop,
                 }
-                Msg::RawKey(key.code, key.modifiers)
             }
             _ => Msg::Noop,
         }

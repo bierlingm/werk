@@ -520,7 +520,7 @@ fn run_interactive(
 }
 
 /// Build a markdown context string for agent consumption in one-shot mode.
-fn build_context_markdown(
+pub fn build_context_markdown(
     engine: &mut DynamicsEngine,
     tension: &Tension,
     all_tensions: &[Tension],
@@ -562,70 +562,54 @@ fn build_context_markdown(
 }
 
 /// Execute agent command and capture its stdout.
-fn execute_agent_capture(agent_cmd: &str, prompt: &str) -> Result<String, WerkError> {
-    let (program, mut args, _) = resolve_agent_command(agent_cmd)?;
+///
+/// The prompt is passed as a CLI argument (appended to the command), which is
+/// the standard pattern for one-shot agent invocations (e.g. `hermes chat -Q -q "prompt"`).
+/// The prompt is also piped to stdin as a fallback for agents that read from stdin.
+pub fn execute_agent_capture(agent_cmd: &str, prompt: &str) -> Result<String, WerkError> {
+    let (program, args, _) = resolve_agent_command(agent_cmd)?;
 
-    // Build the command: pipe prompt to agent via stdin
-    if program == "sh" && args.len() == 2 && args[0] == "-c" {
-        // Shell command — pipe prompt as stdin
-        let shell_cmd = args[1].clone();
-        args = vec!["-c".to_string(), shell_cmd];
-
-        let mut child = std::process::Command::new(&program)
-            .args(&args)
+    let mut child = if program == "sh" && args.len() == 2 && args[0] == "-c" {
+        // Shell command — append prompt as a positional arg: sh -c '$cmd "$1"' -- "$prompt"
+        let shell_cmd = format!("{} \"$1\"", args[1]);
+        std::process::Command::new(&program)
+            .args(["-c", &shell_cmd, "--", prompt])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|e| WerkError::IoError(format!("failed to spawn agent: {}", e)))?;
-
-        if let Some(stdin) = child.stdin.as_mut() {
-            let _ = stdin.write_all(prompt.as_bytes());
-        }
-
-        let output = child
-            .wait_with_output()
-            .map_err(|e| WerkError::IoError(format!("failed to read agent output: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(WerkError::IoError(format!(
-                "agent command failed (exit {}): {}",
-                output.status.code().unwrap_or(-1),
-                stderr.trim()
-            )));
-        }
-
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            .map_err(|e| WerkError::IoError(format!("failed to spawn agent: {}", e)))?
     } else {
-        // Direct command — pipe prompt to stdin
-        let mut child = std::process::Command::new(&program)
+        // Direct command — append prompt as last argument
+        std::process::Command::new(&program)
             .args(&args)
+            .arg(prompt)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|e| WerkError::IoError(format!("failed to spawn agent: {}", e)))?;
+            .map_err(|e| WerkError::IoError(format!("failed to spawn agent: {}", e)))?
+    };
 
-        if let Some(stdin) = child.stdin.as_mut() {
-            let _ = stdin.write_all(prompt.as_bytes());
-        }
-
-        let output = child
-            .wait_with_output()
-            .map_err(|e| WerkError::IoError(format!("failed to read agent output: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(WerkError::IoError(format!(
-                "agent command failed (exit {}): {}",
-                output.status.code().unwrap_or(-1),
-                stderr.trim()
-            )));
-        }
-
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    // Also pipe prompt to stdin as fallback
+    if let Some(stdin) = child.stdin.as_mut() {
+        let _ = stdin.write_all(prompt.as_bytes());
     }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| WerkError::IoError(format!("failed to read agent output: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(WerkError::IoError(format!(
+            "agent command failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// Extract a suggested reality update from agent response text.
@@ -796,6 +780,37 @@ fn apply_single_mutation(
             engine
                 .store()
                 .update_desired(tension_id, new_value)
+                .map_err(WerkError::SdError)?;
+        }
+        AgentMutation::SetHorizon {
+            tension_id,
+            horizon,
+            ..
+        } => {
+            if let Ok(h) = sd_core::Horizon::parse(horizon) {
+                engine.update_horizon(tension_id, Some(h))
+                    .map_err(WerkError::SdError)?;
+            }
+        }
+        AgentMutation::MoveTension {
+            tension_id,
+            new_parent_id,
+            ..
+        } => {
+            engine.update_parent(tension_id, new_parent_id.as_deref())
+                .map_err(WerkError::SdError)?;
+        }
+        AgentMutation::CreateParent {
+            child_id,
+            desired,
+            actual,
+            ..
+        } => {
+            let current_parent = engine.store().get_tension(child_id)
+                .ok().flatten().and_then(|t| t.parent_id.clone());
+            let parent = engine.create_tension_with_parent(desired, actual, current_parent)
+                .map_err(WerkError::SdError)?;
+            engine.update_parent(child_id, Some(&parent.id))
                 .map_err(WerkError::SdError)?;
         }
     }

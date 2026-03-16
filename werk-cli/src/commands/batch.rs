@@ -229,6 +229,31 @@ fn validate_mutation(engine: &DynamicsEngine, mutation: &AgentMutation) -> Resul
                 )));
             }
         }
+        AgentMutation::SetHorizon { tension_id, .. }
+        | AgentMutation::MoveTension { tension_id, .. } => {
+            let tensions = engine
+                .store()
+                .list_tensions()
+                .map_err(WerkError::StoreError)?;
+            if !tensions.iter().any(|t| t.id == *tension_id) {
+                return Err(WerkError::TensionNotFound(format!(
+                    "tension '{}' not found",
+                    tension_id
+                )));
+            }
+        }
+        AgentMutation::CreateParent { child_id, .. } => {
+            let tensions = engine
+                .store()
+                .list_tensions()
+                .map_err(WerkError::StoreError)?;
+            if !tensions.iter().any(|t| t.id == *child_id) {
+                return Err(WerkError::TensionNotFound(format!(
+                    "child tension '{}' not found",
+                    child_id
+                )));
+            }
+        }
     }
 
     // Validate status values for UpdateStatus
@@ -317,6 +342,24 @@ fn apply_single_mutation(
             engine
                 .store()
                 .update_desired(tension_id, new_value)
+                .map_err(WerkError::SdError)?;
+        }
+        AgentMutation::SetHorizon { tension_id, horizon, .. } => {
+            if let Ok(h) = sd_core::Horizon::parse(horizon) {
+                engine.update_horizon(tension_id, Some(h))
+                    .map_err(WerkError::SdError)?;
+            }
+        }
+        AgentMutation::MoveTension { tension_id, new_parent_id, .. } => {
+            engine.update_parent(tension_id, new_parent_id.as_deref())
+                .map_err(WerkError::SdError)?;
+        }
+        AgentMutation::CreateParent { child_id, desired, actual, .. } => {
+            let current_parent = engine.store().get_tension(child_id)
+                .ok().flatten().and_then(|t| t.parent_id.clone());
+            let parent = engine.create_tension_with_parent(desired, actual, current_parent)
+                .map_err(WerkError::SdError)?;
+            engine.update_parent(child_id, Some(&parent.id))
                 .map_err(WerkError::SdError)?;
         }
     }
