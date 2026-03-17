@@ -20,6 +20,16 @@ werk computes **13 structural dynamics** from the history of your declared tensi
 
 Then it hands those dynamics to an AI agent — and the agent serves your declared intentions. Not the reverse.
 
+### Why not a task list?
+
+Task lists track sequences of steps. werk tracks what you want and what's real. The difference matters.
+
+When you update a reality or refine a desire, that mutation is a record of how your thinking changed — not a checkbox toggled. Over time, the mutation history becomes a legible account of how you approached your work: what shifted, when it shifted, and what you chose to do about it. This is more honest than a narrative journal and more useful than a backlog.
+
+LLMs fit this model. They are actuation engines — given a declared tension and its structural context, they can propose and execute actions toward the desired outcome. The human holds the creative tension. The agent actuates toward it. The human doesn't need to specify the steps. They need to know what they want and what's true.
+
+This is **individual alignment** — not through fine-tuning or system prompts, but through structure. Your tensions are the alignment data. The agent is constrained by what you've declared, not by what it thinks you should want.
+
 ## Install
 
 ```bash
