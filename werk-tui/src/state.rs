@@ -11,25 +11,41 @@ pub struct FieldEntry {
     pub status: TensionStatus,
     pub phase: CreativeCyclePhase,
     pub tendency: StructuralTendency,
-    /// Weekly activity buckets (oldest first). Each value is mutation count for that week.
-    pub activity: Vec<f64>,
     pub has_children: bool,
     pub parent_id: Option<String>,
     /// Explicit ordering position among siblings. None means unpositioned.
     pub position: Option<i32>,
+    /// Compact horizon label (e.g. "Mar", "Mar 20", "2026"). None if no horizon.
+    pub horizon_label: Option<String>,
+    /// Temporal indicator string (six dots showing window position or staleness).
+    pub temporal_indicator: String,
+    /// Urgency level 0.0-1.0 for coloring the temporal indicator.
+    pub temporal_urgency: f64,
 }
 
 impl FieldEntry {
     pub fn from_tension(
         tension: &sd_core::Tension,
         computed: &Option<ComputedDynamics>,
-        activity: Vec<f64>,
+        last_reality_update: chrono::DateTime<chrono::Utc>,
         has_children: bool,
+        now: chrono::DateTime<chrono::Utc>,
     ) -> Self {
         let (phase, tendency) = match computed {
             Some(cd) => (cd.phase.phase, cd.tendency.tendency),
             None => (CreativeCyclePhase::Germination, StructuralTendency::Stagnant),
         };
+
+        let horizon_end = tension.horizon.as_ref().map(|h| h.range_end());
+        let (temporal_indicator, temporal_urgency) =
+            crate::glyphs::temporal_indicator(last_reality_update, horizon_end, now);
+
+        let now_year = chrono::Datelike::year(&now);
+        let horizon_label = tension
+            .horizon
+            .as_ref()
+            .map(|h| crate::glyphs::compact_horizon(h, now_year));
+
         Self {
             id: tension.id.clone(),
             desired: tension.desired.clone(),
@@ -37,10 +53,12 @@ impl FieldEntry {
             status: tension.status,
             phase,
             tendency,
-            activity,
             has_children,
             parent_id: tension.parent_id.clone(),
             position: tension.position,
+            horizon_label,
+            temporal_indicator,
+            temporal_urgency,
         }
     }
 }

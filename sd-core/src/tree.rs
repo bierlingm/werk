@@ -421,16 +421,20 @@ impl Forest {
 
     /// Get the children of a node, sorted by structural sequence.
     ///
-    /// Children are sorted by:
-    /// 1. Explicit position first (positioned before unpositioned)
-    /// 2. Within positioned: `position ASC`
+    /// The display order mirrors the tension chart: vision at top, reality at bottom.
+    /// Positioned children appear first, sorted by position DESC (highest position =
+    /// closest to vision = top of display, position 1 = closest to reality = bottom
+    /// of positioned group). Unpositioned children follow, sorted by deadline.
+    ///
+    /// Full ordering:
+    /// 1. Positioned before unpositioned
+    /// 2. Within positioned: `position DESC` (highest first = closest to vision)
     /// 3. Within unpositioned: earliest `range_end` first (soonest deadline)
     /// 4. Ties broken by precision (narrower first: DateTime < Day < Month < Year)
     /// 5. Nodes without horizons sort after those with horizons
     /// 6. Final tiebreaker: `created_at ASC`
     ///
     /// Returns an empty vector if the parent node doesn't exist or has no children.
-    /// This matches the contract API style of returning collections rather than Option.
     pub fn children_by_horizon(&self, parent_id: &str) -> Vec<&Node> {
         let Some(parent) = self.nodes.get(parent_id) else {
             return Vec::new();
@@ -448,7 +452,8 @@ impl Forest {
 
             // Positioned before unpositioned
             match (a_pos, b_pos) {
-                (Some(pa), Some(pb)) => return pa.cmp(&pb),
+                // DESC within positioned: higher position = closer to vision = top
+                (Some(pa), Some(pb)) => return pb.cmp(&pa),
                 (Some(_), None) => return std::cmp::Ordering::Less,
                 (None, Some(_)) => return std::cmp::Ordering::Greater,
                 (None, None) => {} // fall through to horizon ordering

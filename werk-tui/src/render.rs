@@ -22,7 +22,7 @@ const INDENT: &str = "  ";
 
 impl InstrumentApp {
     /// Constrain area to max content width, centered horizontally on wide terminals.
-    fn content_area(&self, area: Rect) -> Rect {
+    pub(crate) fn content_area(&self, area: Rect) -> Rect {
         let width = area.width.min(MAX_CONTENT_WIDTH);
         let x_offset = if area.width > MAX_CONTENT_WIDTH {
             (area.width - MAX_CONTENT_WIDTH) / 2
@@ -45,27 +45,27 @@ impl InstrumentApp {
 
     pub fn render_empty(&self, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.content_area(*area);
-        let cx = area.width / 2;
         let cy = area.height / 2;
 
         if area.height < 6 {
             return;
         }
 
+        let w = area.width as usize;
         let lines = vec![
             Line::from(""),
             Line::from(Span::styled(
-                format!("{:>width$}", "\u{25C7}", width = cx as usize), // ◇
+                format!("{:^width$}", "\u{25C7}", width = w), // ◇ centered
                 Style::new().fg(CLR_CYAN),
             )),
             Line::from(""),
             Line::from(Span::styled(
-                format!("{:>width$}", "nothing here yet.", width = cx as usize + 8),
+                format!("{:^width$}", "nothing here yet.", width = w),
                 STYLES.dim,
             )),
             Line::from(""),
             Line::from(Span::styled(
-                format!("{:>width$}", "press  a  to name what matters.", width = cx as usize + 15),
+                format!("{:^width$}", "press  a  to name what matters.", width = w),
                 STYLES.dim,
             )),
         ];
@@ -85,39 +85,76 @@ impl InstrumentApp {
         let area = self.content_area(*area);
         let mut lines: Vec<Line> = Vec::new();
 
-        // Parent header if descended
-        if let Some(ref parent) = self.parent_tension {
-            // Use cached phase from FieldEntry if available, else default
-            let phase = self.parent_phase;
-            let glyph = glyphs::status_glyph(parent.status, phase);
+        // Parent header if descended — desire + temporal annotations
+        if let Some(ref _parent) = self.parent_tension {
+            let w = (area.width as usize).saturating_sub(4);
 
-            lines.push(Line::from_spans([
-                Span::styled(INDENT, Style::new()),
-                Span::styled(
-                    format!("{} {}", glyph, &parent.desired),
-                    STYLES.text_bold,
-                ),
-            ]));
+            // Build right-side annotation: "Mar ◌◌◦◌●◌ · 3w ago"
+            let mut right_parts: Vec<String> = Vec::new();
+            if let Some(ref hl) = self.parent_horizon_label {
+                right_parts.push(hl.clone());
+            }
+            if !self.parent_temporal_indicator.is_empty() {
+                right_parts.push(self.parent_temporal_indicator.clone());
+            }
+            if let Some(ref age) = self.parent_desire_age {
+                right_parts.push(format!("· {}", age));
+            }
+            let right_text = right_parts.join(" ");
+            let right_w = right_text.chars().count();
+
+            // Word-wrap desire, leaving room for annotation on first line
+            let text_width = w.saturating_sub(right_w + 2);
+            let desired_lines = word_wrap(&_parent.desired, text_width);
+
+            for (i, line) in desired_lines.iter().enumerate() {
+                if i == 0 && !right_text.is_empty() {
+                    let padded = format!("{:<width$}", line, width = text_width);
+                    lines.push(Line::from_spans([
+                        Span::styled(format!("{}{}", INDENT, padded), STYLES.text_bold),
+                        Span::styled(format!("  {}", right_text), STYLES.dim),
+                    ]));
+                } else {
+                    lines.push(Line::from(Span::styled(
+                        format!("{}{}", INDENT, line),
+                        STYLES.text_bold,
+                    )));
+                }
+            }
+
+            // Heavy rule — firm, anchored
             lines.push(Line::from(Span::styled(
                 format!(
                     "{}{}",
                     INDENT,
-                    glyphs::RULE.to_string().repeat((area.width as usize).saturating_sub(4))
+                    glyphs::HEAVY_RULE.to_string().repeat(w)
                 ),
                 STYLES.dim,
             )));
-            lines.push(Line::from(""));
         }
 
-        let _header_lines = lines.len();
+        let is_descended = self.parent_tension.is_some();
 
-        // Build tension lines with Gaze expansion
+        // Build tension lines with trunk line (descended) and gaze expansion
         for (i, entry) in self.siblings.iter().enumerate() {
             let is_selected = i == self.vlist.cursor;
             let is_gazed = self.gaze.as_ref().map(|g| g.index == i).unwrap_or(false);
+            let is_positioned = entry.position.is_some();
+            let is_last_positioned = is_positioned && self.siblings.get(i + 1)
+                .map(|next| next.position.is_none()).unwrap_or(true);
 
-            // Tension line
-            lines.push(self.build_tension_line(entry, is_selected, is_gazed, area.width));
+            if is_descended && is_positioned {
+                // Trunk line segment above this child (connecting from previous or header)
+                if i == 0 || self.siblings.get(i.wrapping_sub(1)).map(|prev| prev.position.is_some()).unwrap_or(false) {
+                    lines.push(Line::from(Span::styled(
+                        format!("{}│", INDENT),
+                        STYLES.dim,
+                    )));
+                }
+            }
+
+            // Tension line(s)
+            lines.extend(self.build_tension_lines(entry, is_selected, is_gazed, area.width));
 
             // Gaze expansion (if this tension is gazed)
             if is_gazed {
@@ -125,7 +162,6 @@ impl InstrumentApp {
                     let gaze_lines = self.build_gaze_lines(gaze_data, area.width);
                     lines.extend(gaze_lines);
                 }
-                // Full gaze: dynamics + history (when Tab is pressed)
                 if self.gaze.as_ref().map(|g| g.full).unwrap_or(false) {
                     if let Some(ref full_data) = self.full_gaze_data {
                         let full_lines = self.build_full_gaze_lines(full_data, area.width);
@@ -133,25 +169,51 @@ impl InstrumentApp {
                     }
                 }
             }
+
+            // Dotted separator between positioned and unpositioned groups
+            if is_descended && is_last_positioned {
+                let has_unpositioned = self.siblings.iter().skip(i + 1).any(|s| s.position.is_none());
+                if has_unpositioned {
+                    let w = (area.width as usize).saturating_sub(4);
+                    lines.push(Line::from(Span::styled(
+                        format!("{}{}",INDENT, "· ".repeat(w / 2)),
+                        STYLES.dim,
+                    )));
+                }
+            }
         }
 
-        // Parent reality footer (tension chart: reality at the bottom)
+        // Parent reality footer with temporal annotation
         if let Some(ref parent) = self.parent_tension {
             if !parent.actual.is_empty() {
                 let w = (area.width as usize).saturating_sub(4);
-                let footer_rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+
+                // Light rule — fluid, shifting
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    format!("{}{}", INDENT, footer_rule),
+                    format!("{}{}", INDENT, glyphs::LIGHT_RULE.to_string().repeat(w)),
                     STYLES.dim,
                 )));
-                let text_width = w.saturating_sub(2);
+
+                // Reality text with temporal annotation on first line
+                let right_text = self.parent_reality_age.as_deref().unwrap_or("");
+                let right_w = right_text.chars().count();
+                let text_width = w.saturating_sub(right_w + 2);
                 let reality_lines = word_wrap(&parent.actual, text_width);
-                for line in &reality_lines {
-                    lines.push(Line::from(Span::styled(
-                        format!("{}{}", INDENT, line),
-                        STYLES.dim,
-                    )));
+
+                for (i, line) in reality_lines.iter().enumerate() {
+                    if i == 0 && !right_text.is_empty() {
+                        let padded = format!("{:<width$}", line, width = text_width);
+                        lines.push(Line::from_spans([
+                            Span::styled(format!("{}{}", INDENT, padded), STYLES.dim),
+                            Span::styled(format!("  {}", right_text), STYLES.dim),
+                        ]));
+                    } else {
+                        lines.push(Line::from(Span::styled(
+                            format!("{}{}", INDENT, line),
+                            STYLES.dim,
+                        )));
+                    }
                 }
             }
         }
@@ -162,25 +224,23 @@ impl InstrumentApp {
         para.render(area, frame);
     }
 
-    fn build_tension_line(
+    fn build_tension_lines(
         &self,
         entry: &FieldEntry,
         selected: bool,
         gazed: bool,
         width: u16,
-    ) -> Line {
+    ) -> Vec<Line> {
         let glyph = glyphs::status_glyph(entry.status, entry.phase);
-        let trail = glyphs::trail(&entry.activity, 8);
-        let trail_width = trail.chars().count();
+        let indicator = &entry.temporal_indicator;
+        let indicator_width = indicator.chars().count();
 
-        // Budget for the desired text
-        let fixed = 2 + 2 + 1 + trail_width + 2; // indent + glyph + space + trail + padding
-        let desired_budget = (width as usize).saturating_sub(fixed).max(10);
-        let desired_trunc = truncate(&entry.desired, desired_budget);
-
-        // Right-align the trail
-        let name_width = desired_budget;
-        let name_padded = format!("{:<width$}", desired_trunc, width = name_width);
+        // Glyph color based on tendency
+        let tendency_color = match entry.tendency {
+            sd_core::StructuralTendency::Advancing => CLR_CYAN,
+            sd_core::StructuralTendency::Stagnant => CLR_DEFAULT,
+            sd_core::StructuralTendency::Oscillating => CLR_AMBER,
+        };
 
         let base_style = if selected {
             STYLES.selected
@@ -199,60 +259,87 @@ impl InstrumentApp {
         {
             STYLES.dim
         } else {
-            base_style
+            Style::new().fg(tendency_color)
         };
 
-        // Children indicator: ▸ if has children, space if not (aligned)
-        let children_marker = if entry.has_children { "\u{25B8}" } else { " " };
+        // Temporal indicator color based on urgency
+        let indicator_color = if entry.temporal_urgency > 0.8 {
+            CLR_RED
+        } else if entry.temporal_urgency > 0.5 {
+            CLR_AMBER
+        } else {
+            CLR_CYAN
+        };
+        let indicator_style = if selected {
+            STYLES.selected
+        } else {
+            Style::new().fg(indicator_color)
+        };
 
-        // Extend selection background across the full line including trail
-        let trail_style = if selected { STYLES.selected } else { STYLES.dim };
+        // Right side: horizon label + temporal indicator
+        let horizon_str = entry.horizon_label.as_deref().unwrap_or("");
+        let horizon_w = if horizon_str.is_empty() { 0 } else { horizon_str.chars().count() + 1 };
+        let suffix_w = horizon_w + indicator_width + 1; // horizon + space + indicator
 
-        Line::from_spans([
-            Span::styled(INDENT, base_style),
-            Span::styled(format!("{} ", glyph), glyph_style),
-            Span::styled(name_padded, base_style),
-            Span::styled(format!("{} {} ", children_marker, trail), trail_style),
-        ])
+        // Layout: INDENT + glyph + " " + text + " " + horizon + " " + indicator
+        let prefix_w = INDENT.len() + 2 + 1; // indent + glyph + space
+        let desired_budget = (width as usize).saturating_sub(prefix_w + suffix_w).max(10);
+
+        let dim_style = if selected { STYLES.selected } else { STYLES.dim };
+
+        if selected && entry.desired.chars().count() > desired_budget {
+            // Focused + long text: word-wrap, first line gets glyph + suffix
+            let wrapped = word_wrap(&entry.desired, desired_budget);
+            let mut lines = Vec::new();
+            for (i, line_text) in wrapped.iter().enumerate() {
+                if i == 0 {
+                    let padded = format!("{:<width$}", line_text, width = desired_budget);
+                    let mut spans = vec![
+                        Span::styled(INDENT, Style::new()),
+                        Span::styled(format!("{} ", glyph), glyph_style),
+                        Span::styled(padded, base_style),
+                    ];
+                    if !horizon_str.is_empty() {
+                        spans.push(Span::styled(format!(" {}", horizon_str), dim_style));
+                    }
+                    spans.push(Span::styled(format!(" {}", indicator), indicator_style));
+                    lines.push(Line::from_spans(spans));
+                } else {
+                    let indent_pad = " ".repeat(prefix_w);
+                    lines.push(Line::from_spans([
+                        Span::styled(indent_pad, Style::new()),
+                        Span::styled(line_text.as_str(), base_style),
+                    ]));
+                }
+            }
+            lines
+        } else {
+            // Single line: truncate if needed
+            let desired_trunc = truncate(&entry.desired, desired_budget);
+            let name_padded = format!("{:<width$}", desired_trunc, width = desired_budget);
+
+            let mut spans = vec![
+                Span::styled(INDENT, Style::new()),
+                Span::styled(format!("{} ", glyph), glyph_style),
+                Span::styled(name_padded, base_style),
+            ];
+            if !horizon_str.is_empty() {
+                spans.push(Span::styled(format!(" {}", horizon_str), dim_style));
+            }
+            spans.push(Span::styled(format!(" {}", indicator), indicator_style));
+            vec![Line::from_spans(spans)]
+        }
     }
 
     fn build_gaze_lines(&self, data: &GazeData, width: u16) -> Vec<Line> {
         let mut lines = Vec::new();
         let w = (width as usize).saturating_sub(4);
-        let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
 
-        // Light separator
-        lines.push(Line::from(Span::styled(
-            format!("{}{}", INDENT, rule),
-            STYLES.dim,
-        )));
-
-        // Metadata header: horizon (left), ID (right-aligned, dim)
-        {
-            let horizon_str = data.horizon.as_deref().unwrap_or("");
-            let id_str = &data.id;
-            let created_str = format!("created {}", data.created_at);
-            // Build: "  horizon          created date    id"
-            let left = if horizon_str.is_empty() {
-                format!("{}{}", INDENT, created_str)
-            } else {
-                format!("{}{}  {}", INDENT, horizon_str, created_str)
-            };
-            let right_space = w.saturating_sub(left.chars().count() - INDENT.len() + id_str.len());
-            let padding = " ".repeat(right_space.max(1));
-            lines.push(Line::from_spans([
-                Span::styled(&left, STYLES.dim),
-                Span::styled(padding, STYLES.dim),
-                Span::styled(id_str.as_str(), STYLES.dim),
-            ]));
-        }
-
-        // Children preview
+        // Children preview — the action steps
         if !data.children.is_empty() {
-            lines.push(Line::from(""));
             for child in &data.children {
                 let glyph = glyphs::status_glyph(child.status, child.phase);
-                let child_budget = w.saturating_sub(8);
+                let child_budget = w.saturating_sub(6);
                 lines.push(Line::from_spans([
                     Span::styled(format!("{}  {} ", INDENT, glyph), STYLES.dim),
                     Span::styled(
@@ -263,32 +350,19 @@ impl InstrumentApp {
             }
         }
 
-        // Last event
-        if let Some(ref last) = data.last_event {
-            lines.push(Line::from(""));
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}last     ", INDENT), STYLES.label),
-                Span::styled(last, STYLES.dim),
-            ]));
-        }
-
-        // Reality — the structural ground, at the bottom
-        let label_width = 9;
-        let text_width = w.saturating_sub(label_width + 2);
-        let actual_lines = word_wrap(&data.actual, text_width);
-        for (i, line) in actual_lines.iter().enumerate() {
-            let label = if i == 0 { "reality  " } else { "         " };
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}{}", INDENT, label), STYLES.label),
-                Span::styled(line.as_str(), STYLES.text),
-            ]));
-        }
-
-        // Light separator
+        // Reality — the structural ground
+        let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
         lines.push(Line::from(Span::styled(
             format!("{}{}", INDENT, rule),
             STYLES.dim,
         )));
+        let actual_lines = word_wrap(&data.actual, w);
+        for line in &actual_lines {
+            lines.push(Line::from(Span::styled(
+                format!("{}{}", INDENT, line),
+                STYLES.dim,
+            )));
+        }
 
         lines
     }
@@ -296,93 +370,112 @@ impl InstrumentApp {
     fn build_full_gaze_lines(&self, data: &crate::state::FullGazeData, width: u16) -> Vec<Line> {
         let mut lines = Vec::new();
         let w = (width as usize).saturating_sub(4);
-        let rule_str: String = glyphs::RULE.to_string().repeat(w.min(20));
+        let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
 
-        // Dynamics section
-        lines.push(Line::from(""));
-        lines.push(Line::from_spans([
-            Span::styled(format!("{}", INDENT), Style::new()),
-            Span::styled(format!("{} dynamics {}", glyphs::RULE, rule_str), STYLES.dim),
-        ]));
+        // Dynamics + History side by side below reality
+        lines.push(Line::from(Span::styled(
+            format!("{}{}", INDENT, rule),
+            STYLES.dim,
+        )));
 
-        // Always show phase + tendency
-        lines.push(Line::from_spans([
-            Span::styled(format!("{}phase        ", INDENT), STYLES.label),
-            Span::styled(&data.phase, STYLES.text),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(format!("{}tendency     ", INDENT), STYLES.label),
-            Span::styled(&data.tendency, STYLES.text),
-        ]));
+        // Build dynamics column
+        let mut dyn_lines: Vec<(String, String, Style)> = Vec::new();
+        dyn_lines.push(("phase".to_string(), data.phase.clone(), STYLES.text));
+        dyn_lines.push(("tendency".to_string(), data.tendency.clone(), STYLES.text));
         if let Some(mag) = data.magnitude {
             let label = if mag > 0.7 { "large" } else if mag > 0.4 { "moderate" } else { "small" };
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}magnitude    ", INDENT), STYLES.label),
-                Span::styled(label, STYLES.text),
-            ]));
+            dyn_lines.push(("magnitude".to_string(), label.to_string(), STYLES.text));
         }
         if let Some(ref v) = data.orientation {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}orientation  ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.text),
-            ]));
+            dyn_lines.push(("orientation".to_string(), v.clone(), STYLES.text));
         }
         if let Some(ref v) = data.conflict {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}conflict     ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.red),
-            ]));
+            dyn_lines.push(("conflict".to_string(), v.clone(), STYLES.red));
         }
         if let Some(ref v) = data.neglect {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}neglect      ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.amber),
-            ]));
+            dyn_lines.push(("neglect".to_string(), v.clone(), STYLES.amber));
         }
         if let Some(ref v) = data.oscillation {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}oscillation  ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.amber),
-            ]));
+            dyn_lines.push(("oscillation".to_string(), v.clone(), STYLES.amber));
         }
         if let Some(ref v) = data.resolution {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}resolution   ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.text),
-            ]));
+            dyn_lines.push(("resolution".to_string(), v.clone(), STYLES.text));
         }
         if let Some(ref v) = data.compensating_strategy {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}strategy     ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.amber),
-            ]));
+            dyn_lines.push(("strategy".to_string(), v.clone(), STYLES.amber));
         }
         if let Some(ref v) = data.assimilation {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}assimilation ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.text),
-            ]));
+            dyn_lines.push(("assimilation".to_string(), v.clone(), STYLES.text));
         }
         if let Some(ref v) = data.horizon_drift {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}drift        ", INDENT), STYLES.label),
-                Span::styled(v, STYLES.text),
-            ]));
+            dyn_lines.push(("drift".to_string(), v.clone(), STYLES.text));
         }
 
-        // History section
-        if !data.history.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}", INDENT), Style::new()),
-                Span::styled(format!("{} history {}", glyphs::RULE, rule_str), STYLES.dim),
-            ]));
-            for entry in &data.history {
-                lines.push(Line::from_spans([
-                    Span::styled(format!("{}{:<14}", INDENT, entry.relative_time), STYLES.dim),
-                    Span::styled(&entry.description, STYLES.text),
-                ]));
-            }
+        // Build history column — show creation + most recent, cut middle if needed
+        let dyn_count = dyn_lines.len();
+        let max_history = dyn_count.max(3); // at least 3 history lines, match dynamics height
+        let history: Vec<&crate::state::HistoryEntry> = if data.history.len() <= max_history {
+            data.history.iter().collect()
+        } else {
+            // Keep first (creation) + most recent entries that fit
+            let mut selected = vec![&data.history[0]]; // creation event
+            let remaining = max_history.saturating_sub(2); // reserve 1 for creation, 1 for ellipsis
+            let recent_start = data.history.len().saturating_sub(remaining);
+            selected.push(&crate::state::HistoryEntry {
+                relative_time: String::new(),
+                description: String::new(),
+            });
+            // Can't push a temporary reference, so handle inline below
+            let recent: Vec<&crate::state::HistoryEntry> = data.history[recent_start..].iter().collect();
+            let mut result = vec![&data.history[0]];
+            result.extend(recent);
+            result
+        };
+
+        // Layout: dynamics left, │ divider, history right
+        let dyn_col_width = 30.min(w / 2);
+        let hist_col_width = w.saturating_sub(dyn_col_width + 3); // 3 = " │ "
+        let row_count = dyn_count.max(history.len());
+
+        for i in 0..row_count {
+            let left = if i < dyn_lines.len() {
+                let (ref label, ref value, style) = dyn_lines[i];
+                vec![
+                    Span::styled(format!("{}{:<13}", INDENT, label), STYLES.label),
+                    Span::styled(
+                        format!("{:<width$}", value, width = dyn_col_width.saturating_sub(13 + INDENT.len())),
+                        style,
+                    ),
+                ]
+            } else {
+                vec![Span::styled(
+                    " ".repeat(INDENT.len() + dyn_col_width.saturating_sub(INDENT.len())),
+                    Style::new(),
+                )]
+            };
+
+            let divider = Span::styled(" \u{2502} ", STYLES.dim); // │
+
+            let right = if i < history.len() {
+                let entry = history[i];
+                if entry.relative_time.is_empty() && entry.description.is_empty() {
+                    vec![Span::styled("\u{22EE}", STYLES.dim)] // ⋮ ellipsis
+                } else {
+                    let time_w = 12;
+                    let desc_w = hist_col_width.saturating_sub(time_w + 1);
+                    vec![
+                        Span::styled(format!("{:<width$}", entry.relative_time, width = time_w), STYLES.dim),
+                        Span::styled(truncate(&entry.description, desc_w).to_string(), STYLES.text),
+                    ]
+                }
+            } else {
+                vec![Span::styled("", Style::new())]
+            };
+
+            let mut spans = left;
+            spans.push(divider);
+            spans.extend(right);
+            lines.push(Line::from_spans(spans));
         }
 
         lines
@@ -420,25 +513,24 @@ impl InstrumentApp {
             format!(" {}", path)
         };
 
-        let right_text = if self.pending_insight_count > 0 {
-            format!(
-                "{} insight{} waiting ",
+        let mut right_parts: Vec<String> = Vec::new();
+
+        // Show filter state when not default
+        if !matches!(self.filter, crate::app::Filter::Active) {
+            right_parts.push(format!("filter: {}", self.filter.label()));
+        }
+
+        // Show insight count if any
+        if self.pending_insight_count > 0 {
+            right_parts.push(format!(
+                "{} insight{}",
                 self.pending_insight_count,
                 if self.pending_insight_count == 1 { "" } else { "s" },
-            )
-        } else if self.siblings.is_empty() {
-            if self.parent_id.is_none() {
-                format!("{} tensions ", self.total_count)
-            } else {
-                "no children ".to_string()
-            }
-        } else {
-            format!(
-                "{} of {} ",
-                self.vlist.cursor + 1,
-                self.siblings.len(),
-            )
-        };
+            ));
+        }
+
+        right_parts.push("? help".to_string());
+        let right_text = format!("{} ", right_parts.join("  "));
 
         let status = StatusLine::new()
             .left(StatusItem::text(&left_text))
@@ -451,12 +543,8 @@ impl InstrumentApp {
     // Hints (bottom-most line)
     // -----------------------------------------------------------------------
 
-    pub fn render_hints(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let hints = StatusLine::new()
-            .separator("  ")
-            .left(StatusItem::key_hint("?", "help"))
-            .style(STYLES.dim);
-        hints.render(*area, frame);
+    pub fn render_hints(&self, _area: &Rect, _frame: &mut Frame<'_>) {
+        // Help hint is now integrated into the lever bar
     }
 
     // -----------------------------------------------------------------------
@@ -526,21 +614,26 @@ impl InstrumentApp {
 
     pub fn render_add_prompt(&self, step: &crate::state::AddStep, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.content_area(*area);
-        let bottom_y = area.height.saturating_sub(5);
-        let prompt_area = Rect::new(area.x, area.y + bottom_y, area.width, 4);
+
+        // Position the prompt inline — after the parent header and siblings,
+        // right where the new tension will appear in the list.
+        let header_lines: u16 = if self.parent_tension.is_some() { 3 } else { 0 };
+        let sibling_lines = self.siblings.len() as u16;
+        let prompt_y = area.y + header_lines + sibling_lines;
+        let prompt_area = Rect::new(area.x, prompt_y, area.width, 4);
         crate::helpers::clear_area(frame, prompt_area);
 
         let (label, hint) = match step {
             crate::state::AddStep::Name => ("name", ""),
             crate::state::AddStep::Desire { .. } => ("desire", "  (Esc to skip)"),
-            crate::state::AddStep::Reality { .. } => ("reality", "  (Esc to skip)"),
-            crate::state::AddStep::Horizon { .. } => ("horizon", "  e.g. 2026-W13 or 2026-03-20  (Esc to skip)"),
+            crate::state::AddStep::Reality { .. } => ("reality", ""),
+            crate::state::AddStep::Horizon { .. } => ("horizon", "  e.g. 2026-W13 or tomorrow  (Esc to skip)"),
         };
 
         let lines = vec![
             Line::from(""),
             Line::from_spans([
-                Span::styled(format!("{}  \u{2514}\u{2500} {}: ", INDENT, label), STYLES.dim),
+                Span::styled(format!("{}{}: ", INDENT, label), STYLES.dim),
                 Span::styled(&self.input_buffer, STYLES.text_bold),
                 Span::styled("\u{2588}", STYLES.cyan), // cursor block
                 Span::styled(hint, STYLES.dim),
