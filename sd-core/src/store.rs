@@ -585,7 +585,7 @@ impl Store {
     pub fn get_roots(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id IS NULL ORDER BY position ASC NULLS LAST, created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id IS NULL ORDER BY position DESC NULLS LAST, created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -596,7 +596,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id = ?1 ORDER BY position ASC NULLS LAST, created_at ASC",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id = ?1 ORDER BY position DESC NULLS LAST, created_at ASC",
                 &[SqliteValue::Text(parent_id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -1491,19 +1491,11 @@ impl Store {
     /// Reorder siblings by assigning positions to all children of a parent.
     ///
     /// Takes a list of tension IDs in the desired order. Assigns sequential
-    /// positions starting from 1. IDs not in the list get position = NULL.
-    pub fn reorder_siblings(&self, _parent_id: Option<&str>, ordered_ids: &[String]) -> Result<(), SdError> {
+    /// positions starting from 1. Records a mutation for each position change.
+    pub fn reorder_siblings(&self, ordered_ids: &[String]) -> Result<(), SdError> {
         for (i, id) in ordered_ids.iter().enumerate() {
             let position = (i + 1) as i32;
-            let conn = self.conn.borrow();
-            conn.execute_with_params(
-                "UPDATE tensions SET position = ?1 WHERE id = ?2",
-                &[
-                    SqliteValue::Integer(position as i64),
-                    SqliteValue::Text(id.clone()),
-                ],
-            )
-            .map_err(|e| SdError::ValidationError(format!("failed to reorder: {:?}", e)))?;
+            self.update_position(id, Some(position))?;
         }
         Ok(())
     }

@@ -1,7 +1,5 @@
 //! The Operative Instrument application state.
 
-use std::collections::HashMap;
-
 use sd_core::{DynamicsEngine, Tension, TensionStatus};
 use werk_shared::truncate;
 
@@ -17,6 +15,14 @@ pub struct InstrumentApp {
     pub parent_id: Option<String>,
     pub parent_tension: Option<Tension>,
     pub parent_phase: sd_core::CreativeCyclePhase,
+    /// Parent's temporal indicator (six dots), computed on load_siblings
+    pub parent_temporal_indicator: String,
+    pub parent_temporal_urgency: f64,
+    pub parent_horizon_label: Option<String>,
+    /// How long ago the parent's desire was last articulated
+    pub parent_desire_age: Option<String>,
+    /// How long ago the parent's reality was last checked
+    pub parent_reality_age: Option<String>,
     pub siblings: Vec<FieldEntry>,
     pub vlist: VirtualList,
 
@@ -98,6 +104,11 @@ impl InstrumentApp {
             parent_id: None,
             parent_tension: None,
             parent_phase: sd_core::CreativeCyclePhase::Germination,
+            parent_temporal_indicator: String::new(),
+            parent_temporal_urgency: 0.0,
+            parent_horizon_label: None,
+            parent_desire_age: None,
+            parent_reality_age: None,
             siblings: Vec::new(),
             vlist: VirtualList::new(0),
             gaze: None,
@@ -136,6 +147,11 @@ impl InstrumentApp {
             parent_id: None,
             parent_tension: None,
             parent_phase: sd_core::CreativeCyclePhase::Germination,
+            parent_temporal_indicator: String::new(),
+            parent_temporal_urgency: 0.0,
+            parent_horizon_label: None,
+            parent_desire_age: None,
+            parent_reality_age: None,
             siblings: Vec::new(),
             vlist: VirtualList::new(0),
             gaze: None,
@@ -176,7 +192,7 @@ impl InstrumentApp {
             .as_ref()
             .and_then(|pid| self.engine.store().get_tension(pid).ok().flatten());
 
-        // Compute parent phase
+        // Compute parent phase and temporal data
         if let Some(ref pid) = self.parent_id {
             let cd = self.engine.compute_full_dynamics_for_tension(pid);
             self.parent_phase = cd
@@ -185,37 +201,91 @@ impl InstrumentApp {
         }
 
         let now = chrono::Utc::now();
-        let window = chrono::Duration::days(7);
 
-        // Compute activity per tension
-        let mut activity_map: HashMap<String, Vec<f64>> = HashMap::new();
-        for t in &tensions {
-            for m in self.engine.store().get_mutations(&t.id).unwrap_or_default() {
-                if m.timestamp() >= now - window {
-                    let bucket = (now - m.timestamp()).num_days().min(6) as usize;
-                    activity_map
-                        .entry(m.tension_id().to_string())
-                        .or_insert_with(|| vec![0.0; 7])[6 - bucket] += 1.0;
-                }
-            }
+        // Compute parent temporal data for descended view header/footer
+        if let Some(ref parent) = self.parent_tension {
+            let mutations = self.engine.store()
+                .get_mutations(&parent.id).unwrap_or_default();
+
+            let last_reality = mutations.iter().rev()
+                .find(|m| m.field() == "actual" || m.field() == "created")
+                .map(|m| m.timestamp().to_owned())
+                .unwrap_or(parent.created_at);
+
+            let last_desire = mutations.iter().rev()
+                .find(|m| m.field() == "desired" || m.field() == "created")
+                .map(|m| m.timestamp().to_owned())
+                .unwrap_or(parent.created_at);
+
+            let horizon_end = parent.horizon.as_ref().map(|h| h.range_end());
+            let (indicator, urgency) = crate::glyphs::temporal_indicator(last_reality, horizon_end, now);
+            self.parent_temporal_indicator = indicator;
+            self.parent_temporal_urgency = urgency;
+
+            let now_year = chrono::Datelike::year(&now);
+            self.parent_horizon_label = parent.horizon.as_ref()
+                .map(|h| crate::glyphs::compact_horizon(h, now_year));
+
+            self.parent_desire_age = Some(crate::glyphs::relative_time(last_desire, now));
+            self.parent_reality_age = Some(crate::glyphs::relative_time(last_reality, now));
+        } else {
+            self.parent_temporal_indicator = String::new();
+            self.parent_temporal_urgency = 0.0;
+            self.parent_horizon_label = None;
+            self.parent_desire_age = None;
+            self.parent_reality_age = None;
         }
 
-        self.siblings = tensions
+        // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end
+        let mut filtered: Vec<_> = tensions
             .iter()
             .filter(|t| match self.filter {
                 Filter::Active => t.status == TensionStatus::Active,
                 Filter::All => true,
             })
+            .cloned()
+            .collect();
+
+        // The SQL already gives us positioned DESC first, then unpositioned by created_at.
+        // Re-sort only the unpositioned group by horizon range_end (deadline).
+        let first_unpositioned = filtered.iter().position(|t| t.position.is_none());
+        if let Some(start) = first_unpositioned {
+            filtered[start..].sort_by(|a, b| {
+                match (&a.horizon, &b.horizon) {
+                    (Some(ha), Some(hb)) => {
+                        let end_ord = ha.range_end().cmp(&hb.range_end());
+                        if end_ord != std::cmp::Ordering::Equal {
+                            return end_ord;
+                        }
+                        ha.precision_level().cmp(&hb.precision_level())
+                    }
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.created_at.cmp(&b.created_at),
+                }
+            });
+        }
+
+        self.siblings = filtered
+            .iter()
             .map(|t| {
                 let computed = self.engine.compute_full_dynamics_for_tension(&t.id);
-                let activity = activity_map.remove(&t.id).unwrap_or_default();
                 let has_children = !self
                     .engine
                     .store()
                     .get_children(&t.id)
                     .unwrap_or_default()
                     .is_empty();
-                FieldEntry::from_tension(t, &computed, activity, has_children)
+                // Find last reality update from mutation history
+                let last_reality_update = self.engine.store()
+                    .get_mutations(&t.id)
+                    .unwrap_or_default()
+                    .iter()
+                    .rev()
+                    .find(|m| m.field() == "actual" || m.field() == "created")
+                    .map(|m| m.timestamp().to_owned())
+                    .unwrap_or(t.created_at);
+                FieldEntry::from_tension(t, &computed, last_reality_update, has_children, now)
             })
             .collect();
 
@@ -257,12 +327,20 @@ impl InstrumentApp {
     pub fn descend(&mut self, id: &str) {
         self.parent_id = Some(id.to_string());
         self.load_siblings();
+        self.gaze = None;
+        self.gaze_data = None;
+        self.full_gaze_data = None;
         self.vlist.cursor = 0;
     }
 
     /// Ascend to parent level. Cursor lands on the tension we just left.
     pub fn ascend(&mut self) {
         let old_parent_id = self.parent_id.take();
+
+        // Close gaze
+        self.gaze = None;
+        self.gaze_data = None;
+        self.full_gaze_data = None;
 
         // Find the grandparent
         if let Some(ref pid) = old_parent_id {
@@ -411,47 +489,84 @@ impl InstrumentApp {
 
     /// Move the currently selected sibling toward the vision (up in display).
     ///
-    /// In the tension chart model, moving up means moving toward the desired state.
-    /// This assigns/updates position values for the affected siblings.
+    /// Display order is position DESC: highest position = top = closest to vision.
+    /// Moving up = getting a higher position value (appears higher in DESC sort).
     pub fn move_sibling_up(&mut self) {
         if self.siblings.is_empty() || self.vlist.cursor == 0 {
             return;
         }
         let cursor = self.vlist.cursor;
         let current_id = self.siblings[cursor].id.clone();
+        let current_pos = self.siblings[cursor].position;
         let swap_id = self.siblings[cursor - 1].id.clone();
+        let swap_pos = self.siblings[cursor - 1].position;
 
-        // Ensure both have positions, then swap
-        let current_pos = self.siblings[cursor].position.unwrap_or((cursor + 1) as i32);
-        let swap_pos = self.siblings[cursor - 1].position.unwrap_or(cursor as i32);
+        match (current_pos, swap_pos) {
+            (Some(cp), Some(sp)) => {
+                // Both positioned: swap their positions
+                let _ = self.engine.update_position(&current_id, Some(sp));
+                let _ = self.engine.update_position(&swap_id, Some(cp));
+            }
+            (None, Some(sp)) => {
+                // Current is unpositioned, above is positioned: enter positioned group
+                // Take the position of the item above, shift that item down by 1
+                let _ = self.engine.update_position(&current_id, Some(sp));
+                let _ = self.engine.update_position(&swap_id, Some(sp.saturating_sub(1).max(1)));
+            }
+            (None, None) => {
+                // Both unpositioned: assign positions to establish order
+                // Give current a higher position so it appears above
+                let _ = self.engine.update_position(&current_id, Some(2));
+                let _ = self.engine.update_position(&swap_id, Some(1));
+            }
+            (Some(_), None) => {
+                // Current is positioned, above is unpositioned — shouldn't happen in DESC sort
+                return;
+            }
+        }
 
-        let _ = self.engine.update_position(&current_id, Some(swap_pos));
-        let _ = self.engine.update_position(&swap_id, Some(current_pos));
-
-        self.vlist.cursor -= 1;
         self.load_siblings();
-        // Restore cursor to the moved tension
         if let Some(idx) = self.siblings.iter().position(|s| s.id == current_id) {
             self.vlist.cursor = idx;
         }
     }
 
     /// Move the currently selected sibling toward reality (down in display).
+    ///
+    /// Moving down = getting a lower position value (appears lower in DESC sort).
+    /// Moving past position 1 removes the position (returns to unpositioned group).
     pub fn move_sibling_down(&mut self) {
         if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 {
             return;
         }
         let cursor = self.vlist.cursor;
         let current_id = self.siblings[cursor].id.clone();
+        let current_pos = self.siblings[cursor].position;
         let swap_id = self.siblings[cursor + 1].id.clone();
+        let swap_pos = self.siblings[cursor + 1].position;
 
-        let current_pos = self.siblings[cursor].position.unwrap_or((cursor + 1) as i32);
-        let swap_pos = self.siblings[cursor + 1].position.unwrap_or((cursor + 2) as i32);
+        match (current_pos, swap_pos) {
+            (Some(cp), Some(sp)) => {
+                // Both positioned: swap
+                let _ = self.engine.update_position(&current_id, Some(sp));
+                let _ = self.engine.update_position(&swap_id, Some(cp));
+            }
+            (Some(_cp), None) => {
+                // Moving from positioned into unpositioned: remove position
+                let _ = self.engine.update_position(&current_id, None);
+            }
+            (None, None) => {
+                // Both unpositioned: assign positions to establish order
+                // Give swap a higher position so it appears above current
+                let _ = self.engine.update_position(&swap_id, Some(2));
+                let _ = self.engine.update_position(&current_id, Some(1));
+            }
+            (None, Some(_)) => {
+                // Current unpositioned, below is positioned — shouldn't happen
+                return;
+            }
+        }
 
-        let _ = self.engine.update_position(&current_id, Some(swap_pos));
-        let _ = self.engine.update_position(&swap_id, Some(current_pos));
-
-        self.vlist.cursor += 1;
         self.load_siblings();
         if let Some(idx) = self.siblings.iter().position(|s| s.id == current_id) {
             self.vlist.cursor = idx;
@@ -818,19 +933,12 @@ The YAML block MUST be the last thing in your response.
 
     /// Quick gaze height estimate for refresh (doesn't conflict with borrows).
     fn quick_gaze_height_for_refresh(&self) -> usize {
-        // metadata header + children + last_event + reality + separators
-        let base = 3; // top separator + metadata line + bottom separator
+        // top separator + children + reality + bottom separator
+        let base = 3; // top separator + reality + bottom separator
         let children = self.gaze_data.as_ref()
-            .map(|g| if g.children.is_empty() { 0 } else { g.children.len() + 1 })
+            .map(|g| g.children.len())
             .unwrap_or(0);
-        let extras = self.gaze_data.as_ref()
-            .map(|g| {
-                let mut n = 1; // reality line (always present)
-                if g.last_event.is_some() { n += 2; } // blank line + event line
-                n
-            })
-            .unwrap_or(0);
-        base + children + extras
+        base + children
     }
 
     fn full_gaze_height_for_refresh(&self) -> usize {

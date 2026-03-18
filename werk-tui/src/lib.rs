@@ -35,20 +35,6 @@ pub fn load_field() -> Result<(DynamicsEngine, Vec<FieldEntry>), String> {
         .map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now();
-    let window = chrono::Duration::days(7);
-
-    // Compute per-tension activity from mutations (7-day window, 7 buckets)
-    let mut activity_map: HashMap<String, Vec<f64>> = HashMap::new();
-    for t in &tensions {
-        for m in engine.store().get_mutations(&t.id).unwrap_or_default() {
-            if m.timestamp() >= now - window {
-                let bucket = (now - m.timestamp()).num_days().min(6) as usize;
-                activity_map
-                    .entry(m.tension_id().to_string())
-                    .or_insert_with(|| vec![0.0; 7])[6 - bucket] += 1.0;
-            }
-        }
-    }
 
     // Check which tensions have children
     let child_counts: HashMap<String, usize> = {
@@ -65,9 +51,16 @@ pub fn load_field() -> Result<(DynamicsEngine, Vec<FieldEntry>), String> {
         .iter()
         .map(|t| {
             let computed = engine.compute_full_dynamics_for_tension(&t.id);
-            let activity = activity_map.remove(&t.id).unwrap_or_default();
             let has_children = child_counts.get(&t.id).copied().unwrap_or(0) > 0;
-            FieldEntry::from_tension(t, &computed, activity, has_children)
+            let last_reality_update = engine.store()
+                .get_mutations(&t.id)
+                .unwrap_or_default()
+                .iter()
+                .rev()
+                .find(|m| m.field() == "actual" || m.field() == "created")
+                .map(|m| m.timestamp().to_owned())
+                .unwrap_or(t.created_at);
+            FieldEntry::from_tension(t, &computed, last_reality_update, has_children, now)
         })
         .collect();
 

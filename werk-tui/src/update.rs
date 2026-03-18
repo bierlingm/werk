@@ -83,15 +83,17 @@ impl Model for InstrumentApp {
         {
             self.render_empty(&rects[0], frame);
         } else if self.siblings.is_empty() && self.parent_id.is_some() {
-            // Descended into a tension with no children — show parent header + hint
+            // Descended into a tension with no children — show parent header + centered hint
             self.render_field(&rects[0], frame); // renders parent header
-            // Overlay a hint below
-            let hint_area = Rect::new(rects[0].x, rects[0].y + 4, rects[0].width.min(100), 2);
+            let content = self.content_area(rects[0]);
+            let hint_y = content.y + 4;
+            let hint_area = Rect::new(content.x, hint_y, content.width, 2);
+            let w = content.width as usize;
             let hint = ftui::widgets::paragraph::Paragraph::new(
-                ftui::text::Text::from_spans([ftui::text::Span::styled(
-                    "  no children yet. press a to add one.",
+                ftui::text::Text::from(ftui::text::Line::from(ftui::text::Span::styled(
+                    format!("{:^width$}", "no children yet. press a to add one.", width = w),
                     STYLES.dim,
-                )]),
+                ))),
             );
             ftui::widgets::Widget::render(&hint, hint_area, frame);
         } else {
@@ -170,10 +172,12 @@ impl InstrumentApp {
             // Reorder siblings: Shift+K = toward vision (up), Shift+J = toward reality (down)
             Msg::Char('K') | Msg::MoveUp => {
                 self.move_sibling_up();
+                self.set_transient("moved up".to_string());
                 Cmd::none()
             }
             Msg::Char('J') | Msg::MoveDown => {
                 self.move_sibling_down();
+                self.set_transient("moved down".to_string());
                 Cmd::none()
             }
 
@@ -209,22 +213,28 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Tab | Msg::ExpandGaze => {
+                // Tab directly opens/toggles the full expanded view
+                let cursor = self.vlist.cursor;
                 if let Some(gaze) = self.gaze.clone() {
-                    let new_full = !gaze.full;
-                    // Compute full gaze data if expanding
-                    if new_full && self.full_gaze_data.is_none() {
+                    if gaze.full {
+                        // Already fully expanded — collapse entirely
+                        self.close_gaze();
+                    } else {
+                        // Basic gaze open — expand to full
                         let id = self.siblings.get(gaze.index).map(|e| e.id.clone());
                         if let Some(id) = id {
                             self.full_gaze_data = self.compute_full_gaze(&id);
                         }
+                        self.gaze = Some(GazeState { index: gaze.index, full: true });
+                        self.vlist.set_height(gaze.index, self.full_gaze_height());
                     }
-                    self.gaze = Some(GazeState { index: gaze.index, full: new_full });
-                    let height = if new_full {
-                        self.full_gaze_height()
-                    } else {
-                        self.quick_gaze_height()
-                    };
-                    self.vlist.set_height(gaze.index, height);
+                } else if let Some(entry) = self.siblings.get(cursor) {
+                    // No gaze open — open directly to full expanded
+                    let id = entry.id.clone();
+                    self.gaze_data = self.compute_gaze(&id);
+                    self.full_gaze_data = self.compute_full_gaze(&id);
+                    self.gaze = Some(GazeState { index: cursor, full: true });
+                    self.vlist.set_height(cursor, self.full_gaze_height());
                 }
                 Cmd::none()
             }
@@ -390,6 +400,7 @@ impl InstrumentApp {
             Msg::Char('f') | Msg::CycleFilter => {
                 self.filter = self.filter.cycle();
                 self.load_siblings();
+                self.set_transient(format!("filter: {}", self.filter.label()));
                 Cmd::none()
             }
 
@@ -1105,22 +1116,14 @@ impl InstrumentApp {
     }
 
     fn quick_gaze_height(&self) -> usize {
-        let base = 3; // top separator + metadata line + bottom separator
+        // top separator + children + reality + bottom separator
+        let base = 3; // top separator + reality + bottom separator
         let children = self
             .gaze_data
             .as_ref()
-            .map(|g| if g.children.is_empty() { 0 } else { g.children.len() + 1 })
+            .map(|g| g.children.len())
             .unwrap_or(0);
-        let extras = self
-            .gaze_data
-            .as_ref()
-            .map(|g| {
-                let mut n = 1; // reality line (always present)
-                if g.last_event.is_some() { n += 2; }
-                n
-            })
-            .unwrap_or(0);
-        base + children + extras
+        base + children
     }
 
     // -----------------------------------------------------------------------

@@ -205,6 +205,18 @@ impl DynamicsEngine {
         Ok(tension)
     }
 
+    /// Capture parent's current desired/actual state for snapshot storage.
+    fn parent_snapshots(&self, parent_id: &Option<String>) -> (Option<String>, Option<String>) {
+        if let Some(pid) = parent_id {
+            match self.store.get_tension(pid) {
+                Ok(Some(parent)) => (Some(parent.desired), Some(parent.actual)),
+                _ => (None, None),
+            }
+        } else {
+            (None, None)
+        }
+    }
+
     /// Create a tension with parent and emit TensionCreated event.
     ///
     /// If a parent_id is provided, automatically captures the parent's current
@@ -215,16 +227,8 @@ impl DynamicsEngine {
         actual: &str,
         parent_id: Option<String>,
     ) -> Result<Tension, crate::tension::SdError> {
-        // Capture parent snapshots if parent exists
         let (parent_desired_snapshot, parent_actual_snapshot) =
-            if let Some(ref pid) = parent_id {
-                match self.store.get_tension(pid) {
-                    Ok(Some(parent)) => (Some(parent.desired), Some(parent.actual)),
-                    _ => (None, None),
-                }
-            } else {
-                (None, None)
-            };
+            self.parent_snapshots(&parent_id);
 
         let tension = self.store.create_tension_full_with_snapshots(
             desired,
@@ -275,10 +279,9 @@ impl DynamicsEngine {
     /// Reorder siblings by assigning positions to all children of a parent.
     pub fn reorder_siblings(
         &mut self,
-        parent_id: Option<&str>,
         ordered_ids: &[String],
     ) -> Result<(), crate::tension::SdError> {
-        self.store.reorder_siblings(parent_id, ordered_ids)
+        self.store.reorder_siblings(ordered_ids)
     }
 
     /// Update parent and recompute dynamics.
@@ -314,16 +317,8 @@ impl DynamicsEngine {
         parent_id: Option<String>,
         horizon: Option<Horizon>,
     ) -> Result<Tension, crate::tension::SdError> {
-        // Capture parent snapshots if parent exists
         let (parent_desired_snapshot, parent_actual_snapshot) =
-            if let Some(ref pid) = parent_id {
-                match self.store.get_tension(pid) {
-                    Ok(Some(parent)) => (Some(parent.desired), Some(parent.actual)),
-                    _ => (None, None),
-                }
-            } else {
-                (None, None)
-            };
+            self.parent_snapshots(&parent_id);
 
         let tension = self.store.create_tension_full_with_snapshots(
             desired,

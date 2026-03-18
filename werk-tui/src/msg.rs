@@ -73,6 +73,8 @@ impl From<Event> for Msg {
                     KeyCode::Escape => Msg::Cancel,
                     KeyCode::Backspace => Msg::Backspace,
                     KeyCode::Tab => Msg::Tab,
+                    KeyCode::Up if key.shift() => Msg::MoveUp,
+                    KeyCode::Down if key.shift() => Msg::MoveDown,
                     KeyCode::Up => Msg::Up,
                     KeyCode::Down => Msg::Down,
                     KeyCode::Left => Msg::Ascend,
