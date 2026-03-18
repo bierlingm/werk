@@ -167,6 +167,16 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Reorder siblings: Shift+K = toward vision (up), Shift+J = toward reality (down)
+            Msg::Char('K') | Msg::MoveUp => {
+                self.move_sibling_up();
+                Cmd::none()
+            }
+            Msg::Char('J') | Msg::MoveDown => {
+                self.move_sibling_down();
+                Cmd::none()
+            }
+
             Msg::Char('l') | Msg::Submit | Msg::Descend => {
                 // Descend into any tension — gaze or not, with children or not
                 // (descending into a childless tension shows empty with "a" to add)
@@ -511,7 +521,11 @@ impl InstrumentApp {
                         self.input_mode = InputMode::Adding(AddStep::Desire { name: buf });
                     }
                     InputMode::Adding(AddStep::Desire { name }) => {
-                        self.input_buffer.clear();
+                        // Pre-fill reality with parent's actual if we're creating a child
+                        let prefill = self.parent_id.as_ref().and_then(|pid| {
+                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
+                        }).unwrap_or_default();
+                        self.input_buffer = prefill;
                         self.input_mode = InputMode::Adding(AddStep::Reality { name, desire: buf });
                     }
                     InputMode::Adding(AddStep::Reality { name, desire }) => {
@@ -528,23 +542,33 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Cancel | Msg::Tab => {
-                // Esc/Tab: create with what we have, skip remaining
+                // Esc/Tab: skip remaining optional steps, but reality is required
                 match self.input_mode.clone() {
                     InputMode::Adding(AddStep::Name) => {
+                        // Cancel entirely
                         self.input_mode = InputMode::Normal;
                         self.input_buffer.clear();
                     }
                     InputMode::Adding(AddStep::Desire { name }) => {
-                        self.create_tension(&name, "", "");
-                        self.input_mode = InputMode::Normal;
-                        self.input_buffer.clear();
+                        // Skip desire (use name as desire), advance to reality
+                        let prefill = self.parent_id.as_ref().and_then(|pid| {
+                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
+                        }).unwrap_or_default();
+                        self.input_buffer = prefill;
+                        self.input_mode = InputMode::Adding(AddStep::Reality { name, desire: String::new() });
                     }
                     InputMode::Adding(AddStep::Reality { name, desire }) => {
-                        self.create_tension(&name, &desire, "");
-                        self.input_mode = InputMode::Normal;
-                        self.input_buffer.clear();
+                        // Reality is required — if buffer has content, use it and skip horizon
+                        let buf = self.input_buffer.clone();
+                        if !buf.is_empty() {
+                            self.create_tension(&name, &desire, &buf);
+                            self.input_mode = InputMode::Normal;
+                            self.input_buffer.clear();
+                        }
+                        // If empty, stay on Reality step (don't skip)
                     }
                     InputMode::Adding(AddStep::Horizon { name, desire, reality }) => {
+                        // Skip horizon, create with what we have
                         self.create_tension(&name, &desire, &reality);
                         self.input_mode = InputMode::Normal;
                         self.input_buffer.clear();
@@ -1081,7 +1105,7 @@ impl InstrumentApp {
     }
 
     fn quick_gaze_height(&self) -> usize {
-        let base = 1 + 2 + 2; // tension + separator + desire + reality + separator
+        let base = 3; // top separator + metadata line + bottom separator
         let children = self
             .gaze_data
             .as_ref()
@@ -1091,11 +1115,8 @@ impl InstrumentApp {
             .gaze_data
             .as_ref()
             .map(|g| {
-                let mut n = 0;
-                if g.magnitude.is_some() { n += 2; }
-                if g.conflict.is_some() { n += 1; }
-                if g.neglect.is_some() { n += 1; }
-                if g.oscillation.is_some() { n += 1; }
+                let mut n = 1; // reality line (always present)
+                if g.last_event.is_some() { n += 2; }
                 n
             })
             .unwrap_or(0);

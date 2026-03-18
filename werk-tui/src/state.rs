@@ -15,6 +15,8 @@ pub struct FieldEntry {
     pub activity: Vec<f64>,
     pub has_children: bool,
     pub parent_id: Option<String>,
+    /// Explicit ordering position among siblings. None means unpositioned.
+    pub position: Option<i32>,
 }
 
 impl FieldEntry {
@@ -38,6 +40,7 @@ impl FieldEntry {
             activity,
             has_children,
             parent_id: tension.parent_id.clone(),
+            position: tension.position,
         }
     }
 }
@@ -50,15 +53,17 @@ pub struct GazeState {
 }
 
 /// Data for the quick Gaze (Depth 1).
+///
+/// The primary gaze card: minimal information to act on.
+/// Desire is not included — it's already visible in the tension line.
 pub struct GazeData {
-    pub desired: String,
+    pub id: String,
     pub actual: String,
     pub horizon: Option<String>,
+    pub created_at: String,
     pub children: Vec<ChildPreview>,
-    pub magnitude: Option<f64>,
-    pub conflict: Option<String>,
-    pub neglect: Option<String>,
-    pub oscillation: Option<String>,
+    /// The most recent event for this tension, stated concisely.
+    pub last_event: Option<String>,
 }
 
 /// Mini-line for children preview inside Gaze.

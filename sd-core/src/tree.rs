@@ -419,12 +419,15 @@ impl Forest {
         Some(depth)
     }
 
-    /// Get the children of a node, sorted by horizon.
+    /// Get the children of a node, sorted by structural sequence.
     ///
     /// Children are sorted by:
-    /// 1. Earliest `range_start` first
-    /// 2. Ties broken by precision (narrower first: DateTime < Day < Month < Year)
-    /// 3. Nodes without horizons sort last
+    /// 1. Explicit position first (positioned before unpositioned)
+    /// 2. Within positioned: `position ASC`
+    /// 3. Within unpositioned: earliest `range_end` first (soonest deadline)
+    /// 4. Ties broken by precision (narrower first: DateTime < Day < Month < Year)
+    /// 5. Nodes without horizons sort after those with horizons
+    /// 6. Final tiebreaker: `created_at ASC`
     ///
     /// Returns an empty vector if the parent node doesn't exist or has no children.
     /// This matches the contract API style of returning collections rather than Option.
@@ -439,12 +442,38 @@ impl Forest {
             .filter_map(|cid| self.nodes.get(cid))
             .collect();
 
-        // Sort by horizon: Some(horizon) < None, then by horizon ordering
-        children.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
-            (Some(ha), Some(hb)) => ha.cmp(hb),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
+        children.sort_by(|a, b| {
+            let a_pos = a.tension.position;
+            let b_pos = b.tension.position;
+
+            // Positioned before unpositioned
+            match (a_pos, b_pos) {
+                (Some(pa), Some(pb)) => return pa.cmp(&pb),
+                (Some(_), None) => return std::cmp::Ordering::Less,
+                (None, Some(_)) => return std::cmp::Ordering::Greater,
+                (None, None) => {} // fall through to horizon ordering
+            }
+
+            // Unpositioned: sort by range_end (earliest deadline first)
+            match (&a.tension.horizon, &b.tension.horizon) {
+                (Some(ha), Some(hb)) => {
+                    let end_order = ha.range_end().cmp(&hb.range_end());
+                    if end_order != std::cmp::Ordering::Equal {
+                        return end_order;
+                    }
+                    // Tie-break by precision (narrower first)
+                    let prec_order = ha.precision_level().cmp(&hb.precision_level());
+                    if prec_order != std::cmp::Ordering::Equal {
+                        return prec_order;
+                    }
+                }
+                (Some(_), None) => return std::cmp::Ordering::Less,
+                (None, Some(_)) => return std::cmp::Ordering::Greater,
+                (None, None) => {}
+            }
+
+            // Final tiebreaker: creation time
+            a.tension.created_at.cmp(&b.tension.created_at)
         });
 
         children

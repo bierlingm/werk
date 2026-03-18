@@ -44,6 +44,9 @@ impl ReconstructedTension {
             created_at: self.created_at,
             status: self.status,
             horizon: self.horizon.clone(),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         }
     }
 }

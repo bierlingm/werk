@@ -70,6 +70,12 @@ pub struct Tension {
     pub status: TensionStatus,
     /// Optional temporal horizon — when this tension is aimed at.
     pub horizon: Option<Horizon>,
+    /// Explicit ordering position among siblings. None means unpositioned.
+    pub position: Option<i32>,
+    /// Snapshot of parent's desired state at child creation time.
+    pub parent_desired_snapshot: Option<String>,
+    /// Snapshot of parent's actual state at child creation time.
+    pub parent_actual_snapshot: Option<String>,
 }
 
 impl Tension {
@@ -106,6 +112,25 @@ impl Tension {
         Self::new_inner(desired, actual, parent_id, horizon)
     }
 
+    /// Create a new tension with all fields including parent snapshots and position.
+    ///
+    /// Used when creating child tensions that need to capture parent state.
+    pub fn new_full_with_snapshots(
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+        position: Option<i32>,
+        parent_desired_snapshot: Option<String>,
+        parent_actual_snapshot: Option<String>,
+    ) -> Result<Self, SdError> {
+        let mut tension = Self::new_inner(desired, actual, parent_id, horizon)?;
+        tension.position = position;
+        tension.parent_desired_snapshot = parent_desired_snapshot;
+        tension.parent_actual_snapshot = parent_actual_snapshot;
+        Ok(tension)
+    }
+
     fn new_inner(
         desired: &str,
         actual: &str,
@@ -131,6 +156,9 @@ impl Tension {
             created_at: Utc::now(),
             status: TensionStatus::Active,
             horizon,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         })
     }
 
@@ -221,6 +249,13 @@ impl Tension {
         }
         let old = std::mem::replace(&mut self.horizon, new_horizon);
         Ok(old)
+    }
+
+    /// Update the position for sibling ordering.
+    ///
+    /// Unlike other updates, position changes are allowed regardless of status.
+    pub fn update_position(&mut self, new_position: Option<i32>) -> Option<i32> {
+        std::mem::replace(&mut self.position, new_position)
     }
 }
 

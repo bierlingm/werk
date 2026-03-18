@@ -23,6 +23,8 @@ pub enum Msg {
     StartResolve,
     StartRelease,
     StartMove,
+    MoveUp,    // Shift+K — move tension toward vision
+    MoveDown,  // Shift+J — move tension toward reality
 
     // Text input (shared across all input modes)
     Char(char),

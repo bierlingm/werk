@@ -102,6 +102,9 @@ mod tests {
             created_at: Utc::now(),
             status: TensionStatus::Active,
             horizon: None,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         }
     }
 

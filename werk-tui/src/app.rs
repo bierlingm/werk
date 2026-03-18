@@ -319,14 +319,13 @@ impl InstrumentApp {
     /// Compute quick Gaze data for a tension.
     pub fn compute_gaze(&mut self, id: &str) -> Option<GazeData> {
         let tension = self.engine.store().get_tension(id).ok()??;
-        let computed = self.engine.compute_full_dynamics_for_tension(id);
 
         // Children preview — collect IDs first to avoid borrow conflicts
         let children_tensions = self.engine.store().get_children(id).unwrap_or_default();
         let active_children: Vec<_> = children_tensions
             .iter()
             .filter(|c| c.status == TensionStatus::Active)
-            .take(5)
+            .take(8)
             .cloned()
             .collect();
 
@@ -348,27 +347,6 @@ impl InstrumentApp {
             });
         }
 
-        let magnitude = computed.as_ref().and_then(|cd| cd.structural_tension.as_ref().map(|st| st.magnitude));
-        let conflict = computed.as_ref().and_then(|cd| {
-            cd.conflict.as_ref().map(|c| {
-                match c.pattern {
-                    sd_core::ConflictPattern::CompetingTensions => "competing tensions".to_string(),
-                    sd_core::ConflictPattern::AsymmetricActivity => "asymmetric activity".to_string(),
-                }
-            })
-        });
-        let neglect = computed.as_ref().and_then(|cd| {
-            cd.neglect.as_ref().map(|n| {
-                match n.neglect_type {
-                    sd_core::NeglectType::ParentNeglectsChildren => "children neglected".to_string(),
-                    sd_core::NeglectType::ChildrenNeglected => "children neglected".to_string(),
-                }
-            })
-        });
-        let oscillation = computed.as_ref().and_then(|cd| {
-            cd.oscillation.as_ref().map(|o| format!("{} reversals", o.reversals))
-        });
-
         // Horizon display
         let now = chrono::Utc::now();
         let horizon = tension.horizon.as_ref().map(|h| {
@@ -382,15 +360,33 @@ impl InstrumentApp {
             }
         });
 
+        // Last event — most recent mutation for this tension
+        let last_event = self.engine.store().get_mutations(&tension.id).ok().and_then(|mutations| {
+            mutations.last().map(|m| {
+                let elapsed = now.signed_duration_since(m.timestamp().to_owned());
+                let time_str = if elapsed.num_minutes() < 1 {
+                    "just now".to_string()
+                } else if elapsed.num_hours() < 1 {
+                    format!("{}m ago", elapsed.num_minutes())
+                } else if elapsed.num_hours() < 24 {
+                    format!("{}h ago", elapsed.num_hours())
+                } else {
+                    format!("{}d ago", elapsed.num_days())
+                };
+                format!("{} {}", m.field(), time_str)
+            })
+        });
+
+        // Created date display
+        let created_at = tension.created_at.format("%Y-%m-%d").to_string();
+
         Some(GazeData {
-            desired: tension.desired.clone(),
+            id: tension.id.clone(),
             actual: tension.actual.clone(),
             horizon,
+            created_at,
             children,
-            magnitude,
-            conflict,
-            neglect,
-            oscillation,
+            last_event,
         })
     }
 
@@ -410,6 +406,55 @@ impl InstrumentApp {
             if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
                 self.vlist.cursor = idx;
             }
+        }
+    }
+
+    /// Move the currently selected sibling toward the vision (up in display).
+    ///
+    /// In the tension chart model, moving up means moving toward the desired state.
+    /// This assigns/updates position values for the affected siblings.
+    pub fn move_sibling_up(&mut self) {
+        if self.siblings.is_empty() || self.vlist.cursor == 0 {
+            return;
+        }
+        let cursor = self.vlist.cursor;
+        let current_id = self.siblings[cursor].id.clone();
+        let swap_id = self.siblings[cursor - 1].id.clone();
+
+        // Ensure both have positions, then swap
+        let current_pos = self.siblings[cursor].position.unwrap_or((cursor + 1) as i32);
+        let swap_pos = self.siblings[cursor - 1].position.unwrap_or(cursor as i32);
+
+        let _ = self.engine.update_position(&current_id, Some(swap_pos));
+        let _ = self.engine.update_position(&swap_id, Some(current_pos));
+
+        self.vlist.cursor -= 1;
+        self.load_siblings();
+        // Restore cursor to the moved tension
+        if let Some(idx) = self.siblings.iter().position(|s| s.id == current_id) {
+            self.vlist.cursor = idx;
+        }
+    }
+
+    /// Move the currently selected sibling toward reality (down in display).
+    pub fn move_sibling_down(&mut self) {
+        if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 {
+            return;
+        }
+        let cursor = self.vlist.cursor;
+        let current_id = self.siblings[cursor].id.clone();
+        let swap_id = self.siblings[cursor + 1].id.clone();
+
+        let current_pos = self.siblings[cursor].position.unwrap_or((cursor + 1) as i32);
+        let swap_pos = self.siblings[cursor + 1].position.unwrap_or((cursor + 2) as i32);
+
+        let _ = self.engine.update_position(&current_id, Some(swap_pos));
+        let _ = self.engine.update_position(&swap_id, Some(current_pos));
+
+        self.vlist.cursor += 1;
+        self.load_siblings();
+        if let Some(idx) = self.siblings.iter().position(|s| s.id == current_id) {
+            self.vlist.cursor = idx;
         }
     }
 
@@ -773,17 +818,15 @@ The YAML block MUST be the last thing in your response.
 
     /// Quick gaze height estimate for refresh (doesn't conflict with borrows).
     fn quick_gaze_height_for_refresh(&self) -> usize {
-        let base = 1 + 2 + 2;
+        // metadata header + children + last_event + reality + separators
+        let base = 3; // top separator + metadata line + bottom separator
         let children = self.gaze_data.as_ref()
             .map(|g| if g.children.is_empty() { 0 } else { g.children.len() + 1 })
             .unwrap_or(0);
         let extras = self.gaze_data.as_ref()
             .map(|g| {
-                let mut n = 0;
-                if g.magnitude.is_some() { n += 2; }
-                if g.conflict.is_some() { n += 1; }
-                if g.neglect.is_some() { n += 1; }
-                if g.oscillation.is_some() { n += 1; }
+                let mut n = 1; // reality line (always present)
+                if g.last_event.is_some() { n += 2; } // blank line + event line
                 n
             })
             .unwrap_or(0);

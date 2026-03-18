@@ -20,7 +20,10 @@
 //!     parent_id TEXT,
 //!     created_at TEXT NOT NULL,
 //!     status TEXT NOT NULL,
-//!     horizon TEXT
+//!     horizon TEXT,
+//!     position INTEGER,
+//!     parent_desired_snapshot TEXT,
+//!     parent_actual_snapshot TEXT
 //! );
 //!
 //! CREATE TABLE mutations (
@@ -181,7 +184,10 @@ impl Store {
                 parent_id TEXT,
                 created_at TEXT NOT NULL,
                 status TEXT NOT NULL,
-                horizon TEXT
+                horizon TEXT,
+                position INTEGER,
+                parent_desired_snapshot TEXT,
+                parent_actual_snapshot TEXT
             )",
         )
         .map_err(|e| {
@@ -223,6 +229,40 @@ impl Store {
             conn.execute("ALTER TABLE tensions ADD COLUMN horizon TEXT")
                 .map_err(|e| {
                     StoreError::DatabaseError(format!("failed to add horizon column: {:?}", e))
+                })?;
+        }
+
+        let has_position = columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "position"
+            } else {
+                false
+            }
+        });
+
+        if !has_position {
+            conn.execute("ALTER TABLE tensions ADD COLUMN position INTEGER")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add position column: {:?}", e))
+                })?;
+        }
+
+        let has_parent_desired_snapshot = columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "parent_desired_snapshot"
+            } else {
+                false
+            }
+        });
+
+        if !has_parent_desired_snapshot {
+            conn.execute("ALTER TABLE tensions ADD COLUMN parent_desired_snapshot TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add parent_desired_snapshot column: {:?}", e))
+                })?;
+            conn.execute("ALTER TABLE tensions ADD COLUMN parent_actual_snapshot TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add parent_actual_snapshot column: {:?}", e))
                 })?;
         }
 
@@ -292,10 +332,63 @@ impl Store {
         Ok(tension)
     }
 
+    /// Create a new tension with all fields including parent snapshots and position.
+    ///
+    /// Used when creating child tensions that need to capture parent state.
+    pub fn create_tension_full_with_snapshots(
+        &self,
+        desired: &str,
+        actual: &str,
+        parent_id: Option<String>,
+        horizon: Option<Horizon>,
+        position: Option<i32>,
+        parent_desired_snapshot: Option<String>,
+        parent_actual_snapshot: Option<String>,
+    ) -> Result<Tension, SdError> {
+        let tension = Tension::new_full_with_snapshots(
+            desired,
+            actual,
+            parent_id,
+            horizon,
+            position,
+            parent_desired_snapshot,
+            parent_actual_snapshot,
+        )?;
+        self.persist_tension(&tension)?;
+
+        // Build creation mutation value with optional horizon
+        let creation_value = match &tension.horizon {
+            Some(h) => format!(
+                "desired='{}';actual='{}';horizon='{}'",
+                tension.desired, tension.actual, h
+            ),
+            None => format!("desired='{}';actual='{}'", tension.desired, tension.actual),
+        };
+
+        self.record_mutation(&Mutation::new(
+            tension.id.clone(),
+            tension.created_at,
+            "created".to_owned(),
+            None,
+            creation_value,
+        ))?;
+
+        // Emit TensionCreated event
+        self.emit_event(&EventBuilder::tension_created(
+            tension.id.clone(),
+            tension.desired.clone(),
+            tension.actual.clone(),
+            tension.parent_id.clone(),
+            tension.horizon.as_ref().map(|h| h.to_string()),
+        ));
+
+        Ok(tension)
+    }
+
     fn persist_tension(&self, tension: &Tension) -> Result<(), SdError> {
         let conn = self.conn.borrow();
         conn.execute_with_params(
-            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             &[
                 SqliteValue::Text(tension.id.clone()),
                 SqliteValue::Text(tension.desired.clone()),
@@ -308,6 +401,18 @@ impl Store {
                 SqliteValue::Text(tension.status.to_string()),
                 match &tension.horizon {
                     Some(h) => SqliteValue::Text(h.to_string()),
+                    None => SqliteValue::Null,
+                },
+                match tension.position {
+                    Some(p) => SqliteValue::Integer(p as i64),
+                    None => SqliteValue::Null,
+                },
+                match &tension.parent_desired_snapshot {
+                    Some(s) => SqliteValue::Text(s.clone()),
+                    None => SqliteValue::Null,
+                },
+                match &tension.parent_actual_snapshot {
+                    Some(s) => SqliteValue::Text(s.clone()),
                     None => SqliteValue::Null,
                 },
             ],
@@ -346,7 +451,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions WHERE id = ?1",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE id = ?1",
                 &[SqliteValue::Text(id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -431,6 +536,27 @@ impl Store {
             }
         };
 
+        // Parse position column (column 7)
+        let position = match row.get(7) {
+            Some(SqliteValue::Integer(n)) => Some(*n as i32),
+            Some(SqliteValue::Null) | None => None,
+            _ => None,
+        };
+
+        // Parse parent_desired_snapshot (column 8)
+        let parent_desired_snapshot = match row.get(8) {
+            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Null) | None => None,
+            _ => None,
+        };
+
+        // Parse parent_actual_snapshot (column 9)
+        let parent_actual_snapshot = match row.get(9) {
+            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Null) | None => None,
+            _ => None,
+        };
+
         Ok(Some(Tension {
             id,
             desired,
@@ -439,6 +565,9 @@ impl Store {
             created_at,
             status,
             horizon,
+            position,
+            parent_desired_snapshot,
+            parent_actual_snapshot,
         }))
     }
 
@@ -446,7 +575,7 @@ impl Store {
     pub fn list_tensions(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions ORDER BY created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions ORDER BY created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -456,7 +585,7 @@ impl Store {
     pub fn get_roots(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions WHERE parent_id IS NULL ORDER BY created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id IS NULL ORDER BY position ASC NULLS LAST, created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -467,7 +596,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status, horizon FROM tensions WHERE parent_id = ?1 ORDER BY created_at ASC",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id = ?1 ORDER BY position ASC NULLS LAST, created_at ASC",
                 &[SqliteValue::Text(parent_id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -554,6 +683,27 @@ impl Store {
                 }
             };
 
+            // Parse position column (column 7)
+            let position = match row.get(7) {
+                Some(SqliteValue::Integer(n)) => Some(*n as i32),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            // Parse parent_desired_snapshot (column 8)
+            let parent_desired_snapshot = match row.get(8) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            // Parse parent_actual_snapshot (column 9)
+            let parent_actual_snapshot = match row.get(9) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
             tensions.push(Tension {
                 id,
                 desired,
@@ -562,6 +712,9 @@ impl Store {
                 created_at,
                 status,
                 horizon,
+                position,
+                parent_desired_snapshot,
+                parent_actual_snapshot,
             });
         }
 
@@ -1284,6 +1437,74 @@ impl Store {
             tension.actual,
         ));
 
+        Ok(())
+    }
+
+    /// Update the position of a tension for sibling ordering.
+    ///
+    /// Records a mutation and persists the change.
+    pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<(), SdError> {
+        let conn = self.conn.borrow();
+
+        // Get existing tension
+        let rows = conn
+            .query_with_params(
+                "SELECT position FROM tensions WHERE id = ?1",
+                &[SqliteValue::Text(id.to_owned())],
+            )
+            .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
+
+        if rows.is_empty() {
+            return Err(SdError::ValidationError(format!("tension not found: {}", id)));
+        }
+
+        let old_position = match rows[0].get(0) {
+            Some(SqliteValue::Integer(n)) => Some(*n as i32),
+            _ => None,
+        };
+
+        // Update in database
+        conn.execute_with_params(
+            "UPDATE tensions SET position = ?1 WHERE id = ?2",
+            &[
+                match new_position {
+                    Some(p) => SqliteValue::Integer(p as i64),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(id.to_owned()),
+            ],
+        )
+        .map_err(|e| SdError::ValidationError(format!("failed to update position: {:?}", e)))?;
+
+        // Record mutation
+        self.record_mutation(&crate::mutation::Mutation::new(
+            id.to_owned(),
+            Utc::now(),
+            "position".to_owned(),
+            old_position.map(|p| p.to_string()),
+            new_position.map(|p| p.to_string()).unwrap_or_else(|| "null".to_string()),
+        ))?;
+
+        Ok(())
+    }
+
+    /// Reorder siblings by assigning positions to all children of a parent.
+    ///
+    /// Takes a list of tension IDs in the desired order. Assigns sequential
+    /// positions starting from 1. IDs not in the list get position = NULL.
+    pub fn reorder_siblings(&self, _parent_id: Option<&str>, ordered_ids: &[String]) -> Result<(), SdError> {
+        for (i, id) in ordered_ids.iter().enumerate() {
+            let position = (i + 1) as i32;
+            let conn = self.conn.borrow();
+            conn.execute_with_params(
+                "UPDATE tensions SET position = ?1 WHERE id = ?2",
+                &[
+                    SqliteValue::Integer(position as i64),
+                    SqliteValue::Text(id.clone()),
+                ],
+            )
+            .map_err(|e| SdError::ValidationError(format!("failed to reorder: {:?}", e)))?;
+        }
         Ok(())
     }
 }

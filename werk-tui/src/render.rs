@@ -135,6 +135,27 @@ impl InstrumentApp {
             }
         }
 
+        // Parent reality footer (tension chart: reality at the bottom)
+        if let Some(ref parent) = self.parent_tension {
+            if !parent.actual.is_empty() {
+                let w = (area.width as usize).saturating_sub(4);
+                let footer_rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    format!("{}{}", INDENT, footer_rule),
+                    STYLES.dim,
+                )));
+                let text_width = w.saturating_sub(2);
+                let reality_lines = word_wrap(&parent.actual, text_width);
+                for line in &reality_lines {
+                    lines.push(Line::from(Span::styled(
+                        format!("{}{}", INDENT, line),
+                        STYLES.dim,
+                    )));
+                }
+            }
+        }
+
         // Apply scroll offset
         let scroll = self.vlist.scroll_offset.saturating_sub(0); // header not counted in vlist
         let para = Paragraph::new(Text::from_lines(lines)).scroll((scroll as u16, 0));
@@ -206,41 +227,23 @@ impl InstrumentApp {
             STYLES.dim,
         )));
 
-        // ID (dim, for CLI reference)
-        if let Some(entry) = self.gaze.as_ref().and_then(|g| self.siblings.get(g.index)) {
+        // Metadata header: horizon (left), ID (right-aligned, dim)
+        {
+            let horizon_str = data.horizon.as_deref().unwrap_or("");
+            let id_str = &data.id;
+            let created_str = format!("created {}", data.created_at);
+            // Build: "  horizon          created date    id"
+            let left = if horizon_str.is_empty() {
+                format!("{}{}", INDENT, created_str)
+            } else {
+                format!("{}{}  {}", INDENT, horizon_str, created_str)
+            };
+            let right_space = w.saturating_sub(left.chars().count() - INDENT.len() + id_str.len());
+            let padding = " ".repeat(right_space.max(1));
             lines.push(Line::from_spans([
-                Span::styled(format!("{}id       ", INDENT), STYLES.dim),
-                Span::styled(&entry.id, STYLES.dim),
-            ]));
-        }
-
-        // Desire — show full text, word-wrapped
-        let label_width = 9; // "desire   " or "reality  "
-        let text_width = w.saturating_sub(label_width + 2);
-        let desired_lines = word_wrap(&data.desired, text_width);
-        for (i, line) in desired_lines.iter().enumerate() {
-            let label = if i == 0 { "desire   " } else { "         " };
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}{}", INDENT, label), STYLES.label),
-                Span::styled(line.as_str(), STYLES.text),
-            ]));
-        }
-
-        // Reality — show full text, word-wrapped
-        let actual_lines = word_wrap(&data.actual, text_width);
-        for (i, line) in actual_lines.iter().enumerate() {
-            let label = if i == 0 { "reality  " } else { "         " };
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}{}", INDENT, label), STYLES.label),
-                Span::styled(line.as_str(), STYLES.text),
-            ]));
-        }
-
-        // Horizon (if set)
-        if let Some(ref horizon) = data.horizon {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}horizon  ", INDENT), STYLES.label),
-                Span::styled(horizon, STYLES.text),
+                Span::styled(&left, STYLES.dim),
+                Span::styled(padding, STYLES.dim),
+                Span::styled(id_str.as_str(), STYLES.dim),
             ]));
         }
 
@@ -260,45 +263,24 @@ impl InstrumentApp {
             }
         }
 
-        // Gap bar
-        if let Some(mag) = data.magnitude {
+        // Last event
+        if let Some(ref last) = data.last_event {
             lines.push(Line::from(""));
-            let bar = glyphs::gap_bar(mag, 16);
-            let label = if mag > 0.7 {
-                "large"
-            } else if mag > 0.4 {
-                "moderate"
-            } else {
-                "small"
-            };
             lines.push(Line::from_spans([
-                Span::styled(format!("{}gap      ", INDENT), STYLES.label),
-                Span::styled(bar, STYLES.cyan),
-                Span::styled(format!("  {}", label), STYLES.dim),
+                Span::styled(format!("{}last     ", INDENT), STYLES.label),
+                Span::styled(last, STYLES.dim),
             ]));
         }
 
-        // Conflict (only if present)
-        if let Some(ref conflict) = data.conflict {
+        // Reality — the structural ground, at the bottom
+        let label_width = 9;
+        let text_width = w.saturating_sub(label_width + 2);
+        let actual_lines = word_wrap(&data.actual, text_width);
+        for (i, line) in actual_lines.iter().enumerate() {
+            let label = if i == 0 { "reality  " } else { "         " };
             lines.push(Line::from_spans([
-                Span::styled(format!("{}conflict ", INDENT), STYLES.label),
-                Span::styled(conflict, STYLES.red),
-            ]));
-        }
-
-        // Neglect (only if present)
-        if let Some(ref neglect) = data.neglect {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}neglect  ", INDENT), STYLES.label),
-                Span::styled(neglect, STYLES.amber),
-            ]));
-        }
-
-        // Oscillation (only if present)
-        if let Some(ref osc) = data.oscillation {
-            lines.push(Line::from_spans([
-                Span::styled(format!("{}pattern  ", INDENT), STYLES.label),
-                Span::styled(osc, STYLES.amber),
+                Span::styled(format!("{}{}", INDENT, label), STYLES.label),
+                Span::styled(line.as_str(), STYLES.text),
             ]));
         }
 

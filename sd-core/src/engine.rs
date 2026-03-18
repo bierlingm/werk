@@ -206,15 +206,35 @@ impl DynamicsEngine {
     }
 
     /// Create a tension with parent and emit TensionCreated event.
+    ///
+    /// If a parent_id is provided, automatically captures the parent's current
+    /// desired and actual state as snapshots on the child tension.
     pub fn create_tension_with_parent(
         &mut self,
         desired: &str,
         actual: &str,
         parent_id: Option<String>,
     ) -> Result<Tension, crate::tension::SdError> {
-        let tension = self
-            .store
-            .create_tension_with_parent(desired, actual, parent_id)?;
+        // Capture parent snapshots if parent exists
+        let (parent_desired_snapshot, parent_actual_snapshot) =
+            if let Some(ref pid) = parent_id {
+                match self.store.get_tension(pid) {
+                    Ok(Some(parent)) => (Some(parent.desired), Some(parent.actual)),
+                    _ => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
+        let tension = self.store.create_tension_full_with_snapshots(
+            desired,
+            actual,
+            parent_id,
+            None,
+            None,
+            parent_desired_snapshot,
+            parent_actual_snapshot,
+        )?;
         self.previous_state.tensions.insert(
             tension.id.clone(),
             PreviousDynamics {
@@ -243,6 +263,24 @@ impl DynamicsEngine {
         self.store.update_desired(id, new_desired)
     }
 
+    /// Update the position of a tension for sibling ordering.
+    pub fn update_position(
+        &mut self,
+        id: &str,
+        new_position: Option<i32>,
+    ) -> Result<(), crate::tension::SdError> {
+        self.store.update_position(id, new_position)
+    }
+
+    /// Reorder siblings by assigning positions to all children of a parent.
+    pub fn reorder_siblings(
+        &mut self,
+        parent_id: Option<&str>,
+        ordered_ids: &[String],
+    ) -> Result<(), crate::tension::SdError> {
+        self.store.reorder_siblings(parent_id, ordered_ids)
+    }
+
     /// Update parent and recompute dynamics.
     pub fn update_parent(
         &mut self,
@@ -268,6 +306,7 @@ impl DynamicsEngine {
     ///
     /// This creates a tension with a temporal horizon, records the creation mutation,
     /// and emits a TensionCreated event with the horizon field populated.
+    /// If a parent_id is provided, automatically captures parent snapshots.
     pub fn create_tension_full(
         &mut self,
         desired: &str,
@@ -275,9 +314,26 @@ impl DynamicsEngine {
         parent_id: Option<String>,
         horizon: Option<Horizon>,
     ) -> Result<Tension, crate::tension::SdError> {
-        let tension = self
-            .store
-            .create_tension_full(desired, actual, parent_id, horizon)?;
+        // Capture parent snapshots if parent exists
+        let (parent_desired_snapshot, parent_actual_snapshot) =
+            if let Some(ref pid) = parent_id {
+                match self.store.get_tension(pid) {
+                    Ok(Some(parent)) => (Some(parent.desired), Some(parent.actual)),
+                    _ => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
+        let tension = self.store.create_tension_full_with_snapshots(
+            desired,
+            actual,
+            parent_id,
+            horizon,
+            None,
+            parent_desired_snapshot,
+            parent_actual_snapshot,
+        )?;
         // Initialize previous dynamics for this tension
         let mut prev = PreviousDynamics {
             phase: Some(CreativeCyclePhase::Germination),

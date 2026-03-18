@@ -6253,6 +6253,9 @@ mod tests {
             created_at: now,
             status: TensionStatus::Active,
             horizon: t.horizon,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let result = compute_urgency(&t_created, now).unwrap();
@@ -6285,6 +6288,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // 1 hour in (25% of 4 hours)
@@ -6316,6 +6322,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // 1 day in (50% of 2 days)
@@ -6347,6 +6356,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // 3 hours in (75% of 4 hours)
@@ -6377,6 +6389,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // At the horizon end
@@ -6407,6 +6422,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // 2 hours past the horizon (150% = 6 hours / 4 hours)
@@ -6442,6 +6460,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let now = start + Duration::hours(1);
@@ -6474,6 +6495,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // At 50% urgency
@@ -6517,6 +6541,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let now = start + Duration::hours(1);
@@ -6547,6 +6574,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let result = compute_structural_tension(&t, Utc::now());
@@ -6602,6 +6632,9 @@ mod tests {
             created_at: start,
             status: TensionStatus::Active,
             horizon: Some(h),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Call at two clearly separated points in time
@@ -7390,6 +7423,9 @@ mod tests {
             created_at,
             status: TensionStatus::Active,
             horizon: Some(horizon.clone()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Use a "now" that is close to the horizon end (high urgency)
@@ -7663,6 +7699,9 @@ mod tests {
             created_at,
             status: TensionStatus::Active,
             horizon: Some(horizon.clone()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Use "now" very close to horizon end (high urgency)
@@ -8055,6 +8094,9 @@ mod tests {
             created_at,
             status: TensionStatus::Active,
             horizon: Some(year_horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Create a resolved tension from 10 days ago
@@ -8068,6 +8110,9 @@ mod tests {
             created_at: resolved_created,
             status: TensionStatus::Resolved,
             horizon: None,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let thresholds = LifecycleThresholds::default();
@@ -8077,6 +8122,9 @@ mod tests {
         // Resolved tension was 10 days ago → outside 3-day window → NOT momentum
         let t_no_horizon = Tension {
             horizon: None,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
             ..t.clone()
         };
         let result_no_horizon = classify_creative_cycle_phase(
@@ -8172,6 +8220,9 @@ mod tests {
             created_at: now - Duration::days(60),
             status: TensionStatus::Active,
             horizon: Some(year_horizon.clone()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
         let t2 = Tension {
             id: "t2".to_string(),
@@ -8181,6 +8232,9 @@ mod tests {
             created_at: now - Duration::days(60),
             status: TensionStatus::Active,
             horizon: Some(year_horizon.clone()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
         let t3 = Tension {
             id: "t3".to_string(),
@@ -8190,6 +8244,9 @@ mod tests {
             created_at: now - Duration::days(60),
             status: TensionStatus::Active,
             horizon: Some(year_horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Create mutations 20 days ago — inside year-scaled window (~36 days)
@@ -8245,6 +8302,9 @@ mod tests {
             created_at: now - Duration::days(60),
             status: TensionStatus::Active,
             horizon: Some(day_horizon.clone()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
         let t2_day = Tension {
             id: "t2".to_string(),
@@ -8254,6 +8314,9 @@ mod tests {
             created_at: now - Duration::days(60),
             status: TensionStatus::Active,
             horizon: Some(day_horizon.clone()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
         let t3_day = Tension {
             id: "t3".to_string(),
@@ -8263,6 +8326,9 @@ mod tests {
             created_at: now - Duration::days(60),
             status: TensionStatus::Active,
             horizon: Some(day_horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let tensions_day = vec![t1_day, t2_day, t3_day];
@@ -8425,6 +8491,9 @@ mod tests {
             created_at: now - Duration::days(3), // Created 3 days ago
             status: TensionStatus::Active,
             horizon: Some(parent2_horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
         let child2_a = Tension {
             id: "child2a".to_string(),
@@ -8434,6 +8503,9 @@ mod tests {
             created_at: now - Duration::days(1),
             status: TensionStatus::Active,
             horizon: None,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
         let child2_b = Tension {
             id: "child2b".to_string(),
@@ -8443,6 +8515,9 @@ mod tests {
             created_at: now - Duration::days(1),
             status: TensionStatus::Active,
             horizon: None,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let forest2 =
@@ -8533,6 +8608,9 @@ mod tests {
             created_at: created,
             status: TensionStatus::Active,
             horizon: Some(horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // now at ~50% → urgency ~0.5
@@ -8603,6 +8681,9 @@ mod tests {
             created_at: created,
             status: TensionStatus::Active,
             horizon: Some(horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // now at ~75% of year
@@ -8660,6 +8741,9 @@ mod tests {
             created_at: now - Duration::days(90),
             status: TensionStatus::Active,
             horizon: Some(Horizon::new_year(2026).unwrap()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Child with day horizon (narrow recency ~2.4 hours)
@@ -8671,6 +8755,9 @@ mod tests {
             created_at: now - Duration::days(1),
             status: TensionStatus::Active,
             horizon: Some(Horizon::new_day(2026, 6, 16).unwrap()),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let forest = Forest::from_tensions(vec![parent.clone(), child.clone()]).unwrap();
@@ -8764,6 +8851,9 @@ mod tests {
             created_at: now - Duration::days(30),
             status: TensionStatus::Active,
             horizon: None,
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         // Child with horizon giving urgency ~0.5
@@ -8777,6 +8867,9 @@ mod tests {
             created_at: child_created,
             status: TensionStatus::Active,
             horizon: Some(child_horizon),
+            position: None,
+            parent_desired_snapshot: None,
+            parent_actual_snapshot: None,
         };
 
         let child_urgency = compute_urgency(&child, now);
