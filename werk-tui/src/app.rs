@@ -1,5 +1,6 @@
 //! The Operative Instrument application state.
 
+use ftui::widgets::input::TextInput;
 use sd_core::{DynamicsEngine, Tension, TensionStatus};
 use werk_shared::truncate;
 
@@ -34,6 +35,8 @@ pub struct InstrumentApp {
     // Input
     pub input_mode: InputMode,
     pub input_buffer: String,
+    /// TextInput widget for inline editing (edit mode only).
+    pub text_input: TextInput,
 
     // Search
     pub search_state: Option<crate::search::SearchState>,
@@ -65,6 +68,10 @@ pub struct InstrumentApp {
     pub breadcrumb_cache: Vec<(String, String)>,
     pub total_active: usize,
     pub total_count: usize,
+
+    // Alerts — stateless, recomputed on load_siblings
+    pub alerts: Vec<crate::state::Alert>,
+    pub alert_cursor: usize,
 }
 
 /// Filter for the field view.
@@ -116,6 +123,10 @@ impl InstrumentApp {
             full_gaze_data: None,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
+            text_input: TextInput::new()
+                .with_style(crate::theme::STYLES.text_bold)
+                .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
+                .with_placeholder_style(crate::theme::STYLES.dim),
             search_state: None,
             agent_mutations: Vec::new(),
             agent_mutation_selected: Vec::new(),
@@ -133,6 +144,8 @@ impl InstrumentApp {
             breadcrumb_cache: Vec::new(),
             total_active,
             total_count,
+            alerts: Vec::new(),
+            alert_cursor: 0,
         };
         app.load_siblings();
         app.refresh_pending_insight_count();
@@ -159,6 +172,10 @@ impl InstrumentApp {
             full_gaze_data: None,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
+            text_input: TextInput::new()
+                .with_style(crate::theme::STYLES.text_bold)
+                .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
+                .with_placeholder_style(crate::theme::STYLES.dim),
             search_state: None,
             agent_mutations: Vec::new(),
             agent_mutation_selected: Vec::new(),
@@ -176,6 +193,8 @@ impl InstrumentApp {
             breadcrumb_cache: Vec::new(),
             total_active: 0,
             total_count: 0,
+            alerts: Vec::new(),
+            alert_cursor: 0,
         }
     }
 
@@ -321,6 +340,83 @@ impl InstrumentApp {
 
         // Refresh breadcrumb cache
         self.breadcrumb_cache = self.breadcrumb();
+
+        // Compute alerts
+        self.compute_alerts();
+    }
+
+    /// Compute stateless alerts from current tension state.
+    fn compute_alerts(&mut self) {
+        use crate::state::{Alert, AlertKind};
+        let mut alerts = Vec::new();
+        let now = chrono::Utc::now();
+
+        if let Some(ref parent) = self.parent_tension {
+            // Neglect: no reality check in 3+ weeks
+            let mutations = self.engine.store()
+                .get_mutations(&parent.id).unwrap_or_default();
+            let last_reality = mutations.iter().rev()
+                .find(|m| m.field() == "actual" || m.field() == "created")
+                .map(|m| m.timestamp().to_owned())
+                .unwrap_or(parent.created_at);
+            let weeks = now.signed_duration_since(last_reality).num_weeks();
+            if weeks >= 3 {
+                alerts.push(Alert {
+                    kind: AlertKind::Neglect { weeks },
+                    message: format!("neglected {} weeks", weeks),
+                    action_hint: "update reality".to_string(),
+                });
+            }
+
+            // Horizon past
+            if let Some(ref h) = parent.horizon {
+                let end = h.range_end();
+                let past_days = now.signed_duration_since(end).num_days();
+                if past_days > 0 {
+                    alerts.push(Alert {
+                        kind: AlertKind::HorizonPast { days: past_days },
+                        message: format!("horizon past {} days", past_days),
+                        action_hint: "extend or resolve".to_string(),
+                    });
+                }
+            }
+
+            // Oscillation / Conflict from dynamics
+            if let Some(computed) = self.engine.compute_full_dynamics_for_tension(&parent.id) {
+                if computed.oscillation.is_some() {
+                    alerts.push(Alert {
+                        kind: AlertKind::Oscillation,
+                        message: "oscillating".to_string(),
+                        action_hint: "hold the current path".to_string(),
+                    });
+                }
+                if computed.conflict.is_some() {
+                    alerts.push(Alert {
+                        kind: AlertKind::Conflict,
+                        message: "conflict: competing tensions".to_string(),
+                        action_hint: "choose one path".to_string(),
+                    });
+                }
+            }
+        }
+
+        // Root-level alert: multiple root tensions
+        if self.parent_id.is_none() {
+            let roots = self.engine.store().get_roots().unwrap_or_default();
+            let active_roots = roots.iter()
+                .filter(|t| t.status == TensionStatus::Active)
+                .count();
+            if active_roots > 1 {
+                alerts.push(Alert {
+                    kind: AlertKind::MultipleRoots { count: active_roots },
+                    message: format!("{} root tensions \u{2014} no senior organizing principle", active_roots),
+                    action_hint: "create a parent for all / move inside another".to_string(),
+                });
+            }
+        }
+
+        self.alerts = alerts;
+        self.alert_cursor = 0;
     }
 
     /// Descend into a tension's children.
@@ -933,18 +1029,36 @@ The YAML block MUST be the last thing in your response.
 
     /// Quick gaze height estimate for refresh (doesn't conflict with borrows).
     fn quick_gaze_height_for_refresh(&self) -> usize {
-        // top separator + children + reality + bottom separator
-        let base = 3; // top separator + reality + bottom separator
-        let children = self.gaze_data.as_ref()
-            .map(|g| g.children.len())
-            .unwrap_or(0);
-        base + children
+        let mut h = 2; // panel top + bottom border
+        if let Some(ref data) = self.gaze_data {
+            h += data.children.len().max(1);
+            if !data.actual.is_empty() {
+                h += 2;
+            }
+        } else {
+            h += 1;
+        }
+        h
     }
 
     fn full_gaze_height_for_refresh(&self) -> usize {
-        self.quick_gaze_height_for_refresh() + 10 + self.full_gaze_data.as_ref()
-            .map(|d| d.history.len().min(15) + 2)
-            .unwrap_or(0)
+        let mut h = self.quick_gaze_height_for_refresh();
+        if let Some(ref full) = self.full_gaze_data {
+            h += 1; // separator
+            let dyn_count = 2
+                + full.magnitude.is_some() as usize
+                + full.orientation.is_some() as usize
+                + full.conflict.is_some() as usize
+                + full.neglect.is_some() as usize
+                + full.oscillation.is_some() as usize
+                + full.resolution.is_some() as usize
+                + full.compensating_strategy.is_some() as usize
+                + full.assimilation.is_some() as usize
+                + full.horizon_drift.is_some() as usize;
+            let hist_count = full.history.len().min(dyn_count.max(3));
+            h += dyn_count.max(hist_count);
+        }
+        h
     }
 
     /// Set a transient message on the lever.
