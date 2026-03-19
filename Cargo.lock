@@ -1986,7 +1986,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sd-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -2624,7 +2624,7 @@ dependencies = [
 
 [[package]]
 name = "werk"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -2647,7 +2647,7 @@ dependencies = [
 
 [[package]]
 name = "werk-shared"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
@@ -2662,7 +2662,7 @@ dependencies = [
 
 [[package]]
 name = "werk-tui"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "ftui",
