@@ -246,15 +246,19 @@ This is lighter than full JSON for agents that just need to scan the field.
 
 ### 4.6 Vocabulary Consistency
 
-Align CLI terminology with TUI throughout:
+**Note:** The project's canonical vocabulary is still in flux. The TUI has evolved faster than the CLI, and terms haven't fully settled yet. The goal here is not to prescribe final terminology but to flag known divergences so they can be resolved together.
 
-| Current CLI Term | TUI Term | Proposed CLI Change |
+Known divergences:
+
+| Current CLI Term | TUI Term | Status |
 |---|---|---|
-| "actual state" | "reality" | Use "reality" in help text |
-| "movement" (in context JSON) | "tendency" | Rename to "tendency" |
-| "name" (in list output) | "desired" | Already correct, but `list` human output calls it "name" |
-| No term | "the field" | Root-level view should be called "the field" in help |
-| No term | "descended view" | Entering a parent's children should use this language |
+| "actual state" | "reality" | TUI uses "reality" consistently; CLI help says "actual state" |
+| "movement" (in context JSON) | "tendency" | Different names for the same computed dynamic |
+| "name" (in list output) | "desired" | `list` human output sometimes calls desired text "name" |
+| No term | "root level" | Root-level view — terminology still settling |
+| No term | "descended view" | Entering a parent's children — terminology still settling |
+
+When vocabulary does settle, the CLI help text, JSON field names, and TUI labels should all align. Until then, avoid hardcoding terminology into agent-facing documentation (like `guide --agent`) that would be hard to update.
 
 ### 4.7 Explicit `--json` Documentation Per Command
 
@@ -277,7 +281,7 @@ This removes guesswork for agents.
 |---|---|---|---|
 | **P0** | `werk guide --agent` command | Medium | Eliminates cold-start problem entirely |
 | **P0** | Grouped help text with command headings | Low | Immediate orientation improvement |
-| **P1** | Vocabulary alignment (tendency, reality, field) | Low | Reduces confusion between CLI and TUI |
+| **P1** | Vocabulary alignment (once terms settle) | Low | Reduces confusion between CLI and TUI |
 | **P1** | Per-tension alerts in `list --json` and `show` | Medium | Agents can identify what needs attention |
 | **P2** | `show --gaze` / `show --study` depth levels | Medium | Matches TUI information architecture |
 | **P2** | JSON shape documentation in `--help` | Low | Removes guesswork |
