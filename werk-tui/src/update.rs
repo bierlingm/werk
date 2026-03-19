@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use ftui::{Cmd, Frame, Model};
+use ftui::{Cmd, Event, Frame, Model};
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::runtime::subscription::{Every, Subscription};
 
@@ -172,12 +172,10 @@ impl InstrumentApp {
             // Reorder siblings: Shift+K = toward vision (up), Shift+J = toward reality (down)
             Msg::Char('K') | Msg::MoveUp => {
                 self.move_sibling_up();
-                self.set_transient("moved up".to_string());
                 Cmd::none()
             }
             Msg::Char('J') | Msg::MoveDown => {
                 self.move_sibling_down();
-                self.set_transient("moved down".to_string());
                 Cmd::none()
             }
 
@@ -212,32 +210,8 @@ impl InstrumentApp {
                 self.toggle_gaze();
                 Cmd::none()
             }
-            Msg::Tab | Msg::ExpandGaze => {
-                // Tab directly opens/toggles the full expanded view
-                let cursor = self.vlist.cursor;
-                if let Some(gaze) = self.gaze.clone() {
-                    if gaze.full {
-                        // Already fully expanded — collapse entirely
-                        self.close_gaze();
-                    } else {
-                        // Basic gaze open — expand to full
-                        let id = self.siblings.get(gaze.index).map(|e| e.id.clone());
-                        if let Some(id) = id {
-                            self.full_gaze_data = self.compute_full_gaze(&id);
-                        }
-                        self.gaze = Some(GazeState { index: gaze.index, full: true });
-                        self.vlist.set_height(gaze.index, self.full_gaze_height());
-                    }
-                } else if let Some(entry) = self.siblings.get(cursor) {
-                    // No gaze open — open directly to full expanded
-                    let id = entry.id.clone();
-                    self.gaze_data = self.compute_gaze(&id);
-                    self.full_gaze_data = self.compute_full_gaze(&id);
-                    self.gaze = Some(GazeState { index: cursor, full: true });
-                    self.vlist.set_height(cursor, self.full_gaze_height());
-                }
-                Cmd::none()
-            }
+            // Tab is reserved for field cycling in edit mode — no action in normal mode
+            Msg::Tab | Msg::ExpandGaze => Cmd::none(),
 
             // Acts
             Msg::Char('a') | Msg::StartAdd => {
@@ -249,6 +223,9 @@ impl InstrumentApp {
                 if let Some(entry) = self.action_target().cloned() {
                     if entry.status == sd_core::TensionStatus::Active {
                         self.input_buffer = entry.desired.clone();
+                        self.text_input.set_value(&entry.desired);
+                        self.text_input.set_focused(true);
+                        self.text_input.select_all();
                         self.input_mode = InputMode::Editing {
                             tension_id: entry.id,
                             field: EditField::Desire,
@@ -422,6 +399,53 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Alert actions (1-9 in descended view)
+            Msg::Char(c @ '1'..='9') if !self.alerts.is_empty() => {
+                let idx = (c as usize) - ('1' as usize);
+                if let Some(alert) = self.alerts.get(idx).cloned() {
+                    match alert.kind {
+                        crate::state::AlertKind::Neglect { .. } => {
+                            // Open reality for editing on the parent
+                            if let Some(ref pid) = self.parent_id {
+                                let actual = self.parent_tension.as_ref()
+                                    .map(|t| t.actual.clone()).unwrap_or_default();
+                                self.input_buffer.clone_from(&actual);
+                                self.text_input.set_value(&actual);
+                                self.text_input.set_focused(true);
+                                self.text_input.select_all();
+                                self.input_mode = InputMode::Editing {
+                                    tension_id: pid.clone(),
+                                    field: EditField::Reality,
+                                };
+                            }
+                        }
+                        crate::state::AlertKind::HorizonPast { .. } => {
+                            // Open horizon for editing on the parent
+                            if let Some(ref pid) = self.parent_id {
+                                let horizon_str = self.parent_tension.as_ref()
+                                    .and_then(|t| t.horizon.as_ref().map(|h| h.to_string()))
+                                    .unwrap_or_default();
+                                self.input_buffer.clone_from(&horizon_str);
+                                self.text_input.set_value(&horizon_str);
+                                self.text_input.set_focused(true);
+                                self.text_input.select_all();
+                                self.input_mode = InputMode::Editing {
+                                    tension_id: pid.clone(),
+                                    field: EditField::Horizon,
+                                };
+                            }
+                        }
+                        crate::state::AlertKind::Oscillation | crate::state::AlertKind::Conflict => {
+                            self.set_transient(format!("{}", alert.action_hint));
+                        }
+                        crate::state::AlertKind::MultipleRoots { .. } => {
+                            self.set_transient("create a parent tension or reparent siblings");
+                        }
+                    }
+                }
+                Cmd::none()
+            }
+
             // Quit
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             Msg::Cancel => {
@@ -471,6 +495,15 @@ impl InstrumentApp {
                 }
                 self.refresh_pending_insight_count();
                 Cmd::none()
+            }
+
+            // In normal mode, RawEvent carries Left/Right that should be navigation
+            Msg::RawEvent(Event::Key(key)) => {
+                match key.code {
+                    ftui::KeyCode::Left => self.update_normal(Msg::Ascend),
+                    ftui::KeyCode::Right => self.update_normal(Msg::Descend),
+                    _ => Cmd::none(),
+                }
             }
 
             _ => Cmd::none(),
@@ -595,24 +628,20 @@ impl InstrumentApp {
 
     fn update_editing(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
-            Msg::Char(c) => {
-                self.input_buffer.push(c);
-                Cmd::none()
-            }
-            Msg::Backspace => {
-                self.input_buffer.pop();
-                Cmd::none()
-            }
+            // Intercept structural keys before TextInput
             Msg::Submit => {
+                self.sync_text_input_to_buffer();
                 self.save_current_edit_field();
                 self.set_transient("saved");
                 self.reload_after_edit();
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
+                self.text_input.set_focused(false);
                 Cmd::none()
             }
             Msg::Tab => {
                 // Save current field, cycle to next: desire → reality → horizon → desire
+                self.sync_text_input_to_buffer();
                 self.save_current_edit_field();
                 if let InputMode::Editing { ref tension_id, ref field } = self.input_mode.clone() {
                     let new_field = match field {
@@ -630,7 +659,9 @@ impl InstrumentApp {
                     } else {
                         String::new()
                     };
-                    self.input_buffer = new_buf;
+                    self.input_buffer.clone_from(&new_buf);
+                    self.text_input.set_value(&new_buf);
+                    self.text_input.select_all();
                     self.input_mode = InputMode::Editing {
                         tension_id: tension_id.clone(),
                         field: new_field,
@@ -641,11 +672,39 @@ impl InstrumentApp {
             Msg::Cancel => {
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
+                self.text_input.set_focused(false);
                 Cmd::none()
             }
             Msg::Quit => Cmd::quit(),
+
+            // Forward everything else to TextInput via raw event
+            Msg::RawEvent(ref event) => {
+                self.text_input.handle_event(event);
+                self.sync_text_input_to_buffer();
+                Cmd::none()
+            }
+
+            // Char and Backspace: synthesize events for TextInput
+            Msg::Char(c) => {
+                let event = Event::Key(ftui::KeyEvent::new(ftui::KeyCode::Char(c)));
+                self.text_input.handle_event(&event);
+                self.sync_text_input_to_buffer();
+                Cmd::none()
+            }
+            Msg::Backspace => {
+                let event = Event::Key(ftui::KeyEvent::new(ftui::KeyCode::Backspace));
+                self.text_input.handle_event(&event);
+                self.sync_text_input_to_buffer();
+                Cmd::none()
+            }
+
             _ => Cmd::none(),
         }
+    }
+
+    /// Sync TextInput value back to input_buffer (used by save logic).
+    fn sync_text_input_to_buffer(&mut self) {
+        self.input_buffer = self.text_input.value().to_string();
     }
 
     fn save_current_edit_field(&mut self) {
@@ -1106,24 +1165,18 @@ impl InstrumentApp {
         }
     }
 
-    fn full_gaze_height(&self) -> usize {
-        let quick = self.quick_gaze_height();
-        let dynamics_lines = 10; // header + up to 8 dynamics fields
-        let history_lines = self.full_gaze_data.as_ref()
-            .map(|d| d.history.len().min(15) + 2) // header + entries
-            .unwrap_or(0);
-        quick + dynamics_lines + history_lines
-    }
-
     fn quick_gaze_height(&self) -> usize {
-        // top separator + children + reality + bottom separator
-        let base = 3; // top separator + reality + bottom separator
-        let children = self
-            .gaze_data
-            .as_ref()
-            .map(|g| g.children.len())
-            .unwrap_or(0);
-        base + children
+        // Panel (2 border lines) + children + reality
+        let mut h = 2; // panel top + bottom border
+        if let Some(ref data) = self.gaze_data {
+            h += data.children.len().max(1); // at least "no children" line
+            if !data.actual.is_empty() {
+                h += 2; // separator + at least 1 reality line
+            }
+        } else {
+            h += 1; // "no children" line
+        }
+        h
     }
 
     // -----------------------------------------------------------------------

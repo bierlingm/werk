@@ -33,6 +33,9 @@ pub enum Msg {
     Cancel,
     Tab, // switch fields in edit mode
 
+    /// Raw event passthrough — carries full modifier info for TextInput widget.
+    RawEvent(Event),
+
     // Agent
     InvokeAgent,
     AgentClipboard,
@@ -61,10 +64,16 @@ impl From<Event> for Msg {
                 if key.ctrl() && key.code == KeyCode::Char('c') {
                     return Msg::Quit;
                 }
-                // All other key routing happens in update() based on InputMode.
-                // We pass through as Char for printable keys in input modes,
-                // and dispatch specific Msg for navigation keys in Normal mode.
-                // This requires the update() function to handle RawKey routing.
+                // Keys with Ctrl/Alt/Super modifiers (except Shift-only) get passed through
+                // as RawEvent so TextInput can handle word-level operations.
+                let has_modifier = key.modifiers.intersects(
+                    Modifiers::CTRL | Modifiers::ALT | Modifiers::SUPER
+                );
+                if has_modifier {
+                    // Still intercept a few specific combos at the message level
+                    return Msg::RawEvent(Event::Key(key));
+                }
+
                 match key.code {
                     KeyCode::Char(c) if key.modifiers == Modifiers::NONE || key.modifiers == Modifiers::SHIFT => {
                         Msg::Char(c)
@@ -72,16 +81,20 @@ impl From<Event> for Msg {
                     KeyCode::Enter => Msg::Submit,
                     KeyCode::Escape => Msg::Cancel,
                     KeyCode::Backspace => Msg::Backspace,
+                    KeyCode::Delete => Msg::RawEvent(Event::Key(key)),
                     KeyCode::Tab => Msg::Tab,
                     KeyCode::Up if key.shift() => Msg::MoveUp,
                     KeyCode::Down if key.shift() => Msg::MoveDown,
                     KeyCode::Up => Msg::Up,
                     KeyCode::Down => Msg::Down,
-                    KeyCode::Left => Msg::Ascend,
-                    KeyCode::Right => Msg::Descend,
+                    KeyCode::Left => Msg::RawEvent(Event::Key(key)),
+                    KeyCode::Right => Msg::RawEvent(Event::Key(key)),
+                    KeyCode::Home => Msg::RawEvent(Event::Key(key)),
+                    KeyCode::End => Msg::RawEvent(Event::Key(key)),
                     _ => Msg::Noop,
                 }
             }
+            Event::Paste(_) => Msg::RawEvent(event),
             _ => Msg::Noop,
         }
     }

@@ -172,6 +172,29 @@ pub enum ConfirmKind {
     Release { tension_id: String, desired: String },
 }
 
+/// An alert computed from current tension state — stateless, disappears when condition resolves.
+#[derive(Debug, Clone)]
+pub struct Alert {
+    pub kind: AlertKind,
+    pub message: String,
+    pub action_hint: String,
+}
+
+/// Types of stateless alerts.
+#[derive(Debug, Clone)]
+pub enum AlertKind {
+    /// No reality check in 3+ weeks.
+    Neglect { weeks: i64 },
+    /// Desire/reality oscillating back and forth.
+    Oscillation,
+    /// Structural conflict detected.
+    Conflict,
+    /// Temporal horizon has elapsed.
+    HorizonPast { days: i64 },
+    /// Multiple root tensions with no senior organizing principle.
+    MultipleRoots { count: usize },
+}
+
 /// Transient message shown in the Lever, auto-expires.
 #[derive(Debug, Clone)]
 pub struct TransientMessage {
