@@ -9,7 +9,6 @@ use ftui::runtime::subscription::{Every, Subscription};
 use crate::app::InstrumentApp;
 use crate::msg::Msg;
 use crate::state::*;
-use crate::theme::STYLES;
 
 impl Model for InstrumentApp {
     type Message = Msg;
@@ -38,6 +37,7 @@ impl Model for InstrumentApp {
             InputMode::AgentPrompt { .. } => self.update_agent_prompt(msg),
             InputMode::ReviewingMutations => self.update_mutation_review(msg),
             InputMode::ReviewingInsights => self.update_insight_review(msg),
+            InputMode::Reordering { .. } => self.update_reordering(msg),
         }
     }
 
@@ -83,19 +83,8 @@ impl Model for InstrumentApp {
         {
             self.render_empty(&rects[0], frame);
         } else if self.siblings.is_empty() && self.parent_id.is_some() {
-            // Descended into a tension with no children — show parent header + centered hint
-            self.render_field(&rects[0], frame); // renders parent header
-            let content = self.content_area(rects[0]);
-            let hint_y = content.y + 4;
-            let hint_area = Rect::new(content.x, hint_y, content.width, 2);
-            let w = content.width as usize;
-            let hint = ftui::widgets::paragraph::Paragraph::new(
-                ftui::text::Text::from(ftui::text::Line::from(ftui::text::Span::styled(
-                    format!("{:^width$}", "no children yet. press a to add one.", width = w),
-                    STYLES.dim,
-                ))),
-            );
-            ftui::widgets::Widget::render(&hint, hint_area, frame);
+            // Descended into a tension with no children — render_field handles this
+            self.render_field(&rects[0], frame);
         } else {
             self.render_field(&rects[0], frame);
         }
@@ -133,6 +122,7 @@ impl Model for InstrumentApp {
                 InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &rects[2], frame),
                 InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &rects[2], frame),
                 InputMode::Moving { .. } => self.render_input_hints("Enter place here  j/k navigate  Esc cancel", &rects[2], frame),
+                InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &rects[2], frame),
                 InputMode::AgentPrompt { .. } => self.render_input_hints("Enter send  ! clipboard  Esc cancel", &rects[2], frame),
                 InputMode::ReviewingMutations => {
                     if self.agent_mutations.is_empty() {
@@ -169,13 +159,15 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Reorder siblings: Shift+K = toward vision (up), Shift+J = toward reality (down)
+            // Reorder: Shift+J/K enters grab mode and does first move
             Msg::Char('K') | Msg::MoveUp => {
-                self.move_sibling_up();
+                self.enter_reorder();
+                self.reorder_move_up();
                 Cmd::none()
             }
             Msg::Char('J') | Msg::MoveDown => {
-                self.move_sibling_down();
+                self.enter_reorder();
+                self.reorder_move_down();
                 Cmd::none()
             }
 
@@ -506,6 +498,32 @@ impl InstrumentApp {
                 }
             }
 
+            _ => Cmd::none(),
+        }
+    }
+
+    fn update_reordering(&mut self, msg: Msg) -> Cmd<Msg> {
+        match msg {
+            // Shift+J/K moves the grabbed tension
+            Msg::Char('K') | Msg::MoveUp => {
+                self.reorder_move_up();
+                Cmd::none()
+            }
+            Msg::Char('J') | Msg::MoveDown => {
+                self.reorder_move_down();
+                Cmd::none()
+            }
+            // Enter/Space commits
+            Msg::Submit | Msg::Char(' ') => {
+                self.reorder_commit();
+                Cmd::none()
+            }
+            // Esc cancels
+            Msg::Cancel => {
+                self.reorder_cancel();
+                Cmd::none()
+            }
+            // Everything else: ignore (stay in reorder mode)
             _ => Cmd::none(),
         }
     }
