@@ -91,6 +91,8 @@ pub struct ChildPreview {
     pub phase: CreativeCyclePhase,
     pub tendency: StructuralTendency,
     pub status: TensionStatus,
+    /// Explicit ordering position. None means unpositioned (backlog).
+    pub position: Option<i32>,
 }
 
 /// Data for the full Gaze (Depth 2 — dynamics + history).
@@ -129,6 +131,9 @@ pub enum InputMode {
     },
     Confirming(ConfirmKind),
     Moving {
+        tension_id: String,
+    },
+    Reordering {
         tension_id: String,
     },
     Searching,

@@ -95,21 +95,23 @@ impl InstrumentApp {
 
         // Parent desire header (if descended)
         if let Some(ref parent) = self.parent_tension {
-            // Build right annotation: "Mar ◌◌◦◌●◌ · 3w ago"
-            let right_text = self.build_desire_annotation();
-            let right_w = right_text.chars().count();
-            let text_width = w.saturating_sub(right_w + 2);
+            let (inline_suffix, right_text) = self.build_desire_header_parts();
+            let suffix_w = if inline_suffix.is_empty() { 0 } else { inline_suffix.chars().count() + 3 }; // " · age"
+            let right_w = if right_text.is_empty() { 0 } else { right_text.chars().count() + 2 }; // "  right"
+            // Text budget: room for both annotations (worst case: single line)
+            let text_width = w.saturating_sub(suffix_w + right_w);
             let desire_lines = word_wrap(&parent.desired, text_width);
-            let h = desire_lines.len() as u16;
             elements.push(FieldElement::DesireHeader {
                 lines: desire_lines,
+                inline_suffix,
                 right_text,
-                text_width,
             });
-            // Heavy rule
             elements.push(FieldElement::HeavyRule);
-            // Blank line after rule for breathing room
-            let _ = h; // used above for desire_lines count
+        }
+
+        // Empty hint when descended with no children
+        if is_descended && self.siblings.is_empty() {
+            elements.push(FieldElement::BlankLine);
         }
 
         // Children (tension lines)
@@ -127,16 +129,16 @@ impl InstrumentApp {
                 }
             }
 
-            // The tension line itself
-            elements.push(FieldElement::TensionLine {
-                index: i,
-                selected: is_selected,
-                gazed: is_gazed,
-            });
-
-            // Gaze expansion (Panel-based)
             if is_gazed {
+                // Gazed: the tension line becomes the first line inside the GazeCard
                 elements.push(FieldElement::GazeCard { index: i });
+            } else {
+                // Normal tension line
+                elements.push(FieldElement::TensionLine {
+                    index: i,
+                    selected: is_selected,
+                    gazed: false,
+                });
             }
 
             // Dotted separator between positioned and unpositioned
@@ -154,13 +156,12 @@ impl InstrumentApp {
                 elements.push(FieldElement::BlankLine);
                 elements.push(FieldElement::LightRule);
                 let right_text = self.parent_reality_age.as_deref().unwrap_or("").to_string();
-                let right_w = right_text.chars().count();
-                let text_width = w.saturating_sub(right_w + 2);
+                let annotation_w = if right_text.is_empty() { 0 } else { right_text.chars().count() + 4 };
+                let text_width = w.saturating_sub(annotation_w);
                 let reality_lines = word_wrap(&parent.actual, text_width);
                 elements.push(FieldElement::RealityFooter {
                     lines: reality_lines,
                     right_text,
-                    text_width,
                 });
             }
         }
@@ -211,19 +212,22 @@ impl InstrumentApp {
         }
     }
 
-    /// Build the desire header annotation string: "Mar ◌◌◦◌●◌ · 3w ago"
-    fn build_desire_annotation(&self) -> String {
-        let mut parts: Vec<String> = Vec::new();
+    /// Build desire header annotations as two parts:
+    /// - inline_suffix: age ("3d ago") follows the text with " · "
+    /// - right_text: horizon + temporal indicator ("Jun ◌◌◦◌●◌") stays right-aligned
+    fn build_desire_header_parts(&self) -> (String, String) {
+        let inline_suffix = self.parent_desire_age.clone().unwrap_or_default();
+
+        let mut right_parts: Vec<String> = Vec::new();
         if let Some(ref hl) = self.parent_horizon_label {
-            parts.push(hl.clone());
+            right_parts.push(hl.clone());
         }
         if !self.parent_temporal_indicator.is_empty() {
-            parts.push(self.parent_temporal_indicator.clone());
+            right_parts.push(self.parent_temporal_indicator.clone());
         }
-        if let Some(ref age) = self.parent_desire_age {
-            parts.push(format!("\u{00B7} {}", age));
-        }
-        parts.join(" ")
+        let right_text = right_parts.join(" ");
+
+        (inline_suffix, right_text)
     }
 
     /// Compute the height (in lines) of a field element.
@@ -235,10 +239,9 @@ impl InstrumentApp {
             | FieldElement::BlankLine => 1,
             FieldElement::TensionLine { index, selected, .. } => {
                 if let Some(entry) = self.siblings.get(*index) {
-                    let w = (width as usize).saturating_sub(4);
                     let suffix_w = self.tension_suffix_width(entry);
-                    let prefix_w = INDENT.len() + 2 + 1;
-                    let budget = w.saturating_sub(suffix_w + prefix_w).max(10);
+                    let prefix_w = INDENT.len() + 2 + 1; // glyph + space
+                    let budget = (width as usize).saturating_sub(suffix_w + prefix_w).max(10);
                     if *selected && entry.desired.chars().count() > budget {
                         word_wrap(&entry.desired, budget).len() as u16
                     } else {
@@ -249,13 +252,23 @@ impl InstrumentApp {
                 }
             }
             FieldElement::GazeCard { .. } => {
-                // Children lines + rule + reality lines + border chrome
-                let mut h: u16 = 0;
+                // Heading line + children lines + rule + reality lines + border chrome
+                let mut h: u16 = 1; // heading line (tension line inside panel)
                 if let Some(ref data) = self.gaze_data {
+                    // Separator between heading and children (if there are children or reality)
+                    if !data.children.is_empty() || !data.actual.is_empty() {
+                        h += 1; // light rule after heading
+                    }
                     h += data.children.len() as u16; // child preview lines
+                    // Dotted separator between positioned and unpositioned children
+                    let has_positioned = data.children.iter().any(|c| c.position.is_some());
+                    let has_unpositioned = data.children.iter().any(|c| c.position.is_none());
+                    if has_positioned && has_unpositioned {
+                        h += 1;
+                    }
                     if !data.actual.is_empty() {
                         let w = (width as usize).saturating_sub(8); // panel padding
-                        h += 1; // light rule
+                        h += 1; // light rule before reality
                         h += word_wrap(&data.actual, w).len() as u16; // reality
                     }
                 }
@@ -275,27 +288,41 @@ impl InstrumentApp {
     fn render_element(&self, elem: &FieldElement, rect: Rect, frame: &mut Frame<'_>) {
         let w = (rect.width as usize).saturating_sub(4);
         match elem {
-            FieldElement::DesireHeader { lines, right_text, text_width } => {
+            FieldElement::DesireHeader { lines, inline_suffix, right_text } => {
+                let right_w = if right_text.is_empty() { 0 } else { right_text.chars().count() + 2 };
                 let mut out: Vec<Line> = Vec::new();
+                let last = lines.len().saturating_sub(1);
                 for (i, line) in lines.iter().enumerate() {
-                    if i == 0 && !right_text.is_empty() {
-                        let padded = format!("{:<width$}", line, width = *text_width);
-                        out.push(Line::from_spans([
-                            Span::styled(format!("{}{}", INDENT, padded), STYLES.text_bold),
-                            Span::styled(format!("  {}", right_text), STYLES.dim),
-                        ]));
-                    } else {
-                        out.push(Line::from(Span::styled(
-                            format!("{}{}", INDENT, line),
-                            STYLES.text_bold,
-                        )));
+                    let is_last = i == last;
+                    let text = format!("{}{}", INDENT, line);
+                    let mut text_len = text.chars().count();
+
+                    let mut spans: Vec<Span> = Vec::new();
+                    spans.push(Span::styled(&text, STYLES.text_bold));
+
+                    // Inline suffix (age) follows the last line of text
+                    if is_last && !inline_suffix.is_empty() {
+                        let suffix_str = format!(" \u{00B7} {}", inline_suffix);
+                        text_len += suffix_str.chars().count();
+                        spans.push(Span::styled(suffix_str, STYLES.dim));
                     }
+
+                    // Right-aligned horizon + indicator on the first line
+                    if i == 0 && !right_text.is_empty() {
+                        let total = w + INDENT.len();
+                        let pad = total.saturating_sub(text_len + right_w);
+                        spans.push(Span::styled(" ".repeat(pad), Style::new()));
+                        spans.push(Span::styled(format!("  {}", right_text), STYLES.dim));
+                    }
+
+                    out.push(Line::from_spans(spans));
                 }
                 Paragraph::new(Text::from_lines(out)).render(rect, frame);
             }
 
             FieldElement::HeavyRule => {
-                let rule = glyphs::HEAVY_RULE.to_string().repeat(w);
+                let rule_w = (rect.width as usize).saturating_sub(INDENT.len());
+                let rule = glyphs::HEAVY_RULE.to_string().repeat(rule_w);
                 Paragraph::new(Text::from(Line::from(Span::styled(
                     format!("{}{}", INDENT, rule),
                     STYLES.dim,
@@ -303,7 +330,8 @@ impl InstrumentApp {
             }
 
             FieldElement::LightRule => {
-                let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+                let rule_w = (rect.width as usize).saturating_sub(INDENT.len());
+                let rule = glyphs::LIGHT_RULE.to_string().repeat(rule_w);
                 Paragraph::new(Text::from(Line::from(Span::styled(
                     format!("{}{}", INDENT, rule),
                     STYLES.dim,
@@ -318,8 +346,9 @@ impl InstrumentApp {
             }
 
             FieldElement::DottedSeparator => {
+                let rule_w = (rect.width as usize).saturating_sub(INDENT.len());
                 Paragraph::new(Text::from(Line::from(Span::styled(
-                    format!("{}{}", INDENT, "\u{00B7} ".repeat(w / 2)),
+                    format!("{}{}", INDENT, "\u{00B7} ".repeat(rule_w / 2)),
                     STYLES.dim,
                 )))).render(rect, frame);
             }
@@ -343,14 +372,15 @@ impl InstrumentApp {
                 self.render_gaze_panel(rect, frame);
             }
 
-            FieldElement::RealityFooter { lines, right_text, text_width } => {
+            FieldElement::RealityFooter { lines, right_text } => {
                 let mut out: Vec<Line> = Vec::new();
+                let last = lines.len().saturating_sub(1);
                 for (i, line) in lines.iter().enumerate() {
-                    if i == 0 && !right_text.is_empty() {
-                        let padded = format!("{:<width$}", line, width = *text_width);
+                    if i == last && !right_text.is_empty() {
+                        // Annotation follows text directly with dot separator
                         out.push(Line::from_spans([
-                            Span::styled(format!("{}{}", INDENT, padded), STYLES.dim),
-                            Span::styled(format!("  {}", right_text), STYLES.dim),
+                            Span::styled(format!("{}{}", INDENT, line), STYLES.dim),
+                            Span::styled(format!(" \u{00B7} {}", right_text), STYLES.dim),
                         ]));
                     } else {
                         out.push(Line::from(Span::styled(
@@ -364,10 +394,15 @@ impl InstrumentApp {
 
             FieldElement::AlertLine { index, alert } => {
                 let num = format!("{}", index + 1);
+                // Prefix: "  1  ⚠ " = INDENT(2) + num + "  ⚠ "
+                let prefix_w = INDENT.len() + 2 + num.len() + 4; // "  " + num + "  ⚠ "
+                let available = w.saturating_sub(prefix_w);
+                let full_text = format!("{} \u{2014} {}", alert.message, alert.action_hint);
+                let alert_text = truncate(&full_text, available);
                 let line = Line::from_spans([
                     Span::styled(format!("{}  ", INDENT), Style::new()),
                     Span::styled(format!("{}", num), STYLES.amber),
-                    Span::styled(format!("  \u{26A0} {} \u{2014} {}", alert.message, alert.action_hint), STYLES.amber),
+                    Span::styled(format!("  \u{26A0} {}", alert_text), STYLES.amber),
                 ]);
                 Paragraph::new(Text::from(line)).render(rect, frame);
             }
@@ -375,9 +410,11 @@ impl InstrumentApp {
     }
 
     /// Compute the right-side suffix width for a tension line.
+    /// Always reserves at least 8 chars for horizon area even if no horizon is set,
+    /// plus the indicator width, for visual breathing room.
     fn tension_suffix_width(&self, entry: &FieldEntry) -> usize {
         let horizon_str = entry.horizon_label.as_deref().unwrap_or("");
-        let horizon_w = if horizon_str.is_empty() { 0 } else { horizon_str.chars().count() + 1 };
+        let horizon_w = horizon_str.chars().count().max(6) + 2; // min 6 chars + spacing
         let indicator_width = entry.temporal_indicator.chars().count();
         horizon_w + indicator_width + 1
     }
@@ -386,43 +423,48 @@ impl InstrumentApp {
         &self,
         entry: &FieldEntry,
         selected: bool,
-        gazed: bool,
+        _gazed: bool,
         is_descended: bool,
         is_positioned: bool,
         width: u16,
     ) -> Vec<Line> {
+        let w = width as usize;
         let glyph = glyphs::status_glyph(entry.status, entry.phase);
         let indicator = &entry.temporal_indicator;
         let indicator_width = indicator.chars().count();
+        let is_reordering = matches!(self.input_mode, InputMode::Reordering { .. });
+        let is_grabbed = is_reordering && selected;
 
-        // Glyph color based on tendency
         let tendency_color = match entry.tendency {
             sd_core::StructuralTendency::Advancing => CLR_CYAN,
             sd_core::StructuralTendency::Stagnant => CLR_DEFAULT,
             sd_core::StructuralTendency::Oscillating => CLR_AMBER,
         };
 
-        let base_style = if selected {
+        let is_done = entry.status == sd_core::TensionStatus::Resolved
+            || entry.status == sd_core::TensionStatus::Released;
+
+        // When selected, ALL spans get the selected bg so the highlight is full-width
+        let base_style = if is_grabbed {
+            STYLES.cyan
+        } else if selected {
             STYLES.selected
-        } else if entry.status == sd_core::TensionStatus::Resolved
-            || entry.status == sd_core::TensionStatus::Released
-        {
+        } else if is_done {
             STYLES.dim
         } else {
             STYLES.text
         };
 
-        let glyph_style = if gazed {
+        let glyph_style = if is_grabbed {
             Style::new().fg(CLR_CYAN)
-        } else if entry.status == sd_core::TensionStatus::Resolved
-            || entry.status == sd_core::TensionStatus::Released
-        {
+        } else if selected {
+            Style::new().fg(tendency_color).bg(CLR_SELECTED_BG).bold()
+        } else if is_done {
             STYLES.dim
         } else {
             Style::new().fg(tendency_color)
         };
 
-        // Temporal indicator color based on urgency
         let indicator_color = if entry.temporal_urgency > 0.8 {
             CLR_RED
         } else if entry.temporal_urgency > 0.5 {
@@ -430,91 +472,179 @@ impl InstrumentApp {
         } else {
             CLR_CYAN
         };
-        let indicator_style = if selected {
-            STYLES.selected
+        let indicator_style = if selected && !is_grabbed {
+            Style::new().fg(indicator_color).bg(CLR_SELECTED_BG)
         } else {
             Style::new().fg(indicator_color)
         };
 
-        // Right side: horizon label + temporal indicator
+        // Right side: horizon + indicator. Reserve space even without horizon for breathing room.
         let horizon_str = entry.horizon_label.as_deref().unwrap_or("");
-        let horizon_w = if horizon_str.is_empty() { 0 } else { horizon_str.chars().count() + 1 };
+        let horizon_w = horizon_str.chars().count().max(6) + 2; // min gap even without horizon
         let suffix_w = horizon_w + indicator_width + 1;
 
-        // In descended view, positioned children use glyph on the trunk
-        // Prefix: INDENT + glyph + " " (glyph sits on trunk for positioned children)
+        // Prefix: INDENT(2) + glyph(1) + space(1) = 4 chars
         let prefix_w = INDENT.len() + 2 + 1;
-        let desired_budget = (width as usize).saturating_sub(prefix_w + suffix_w).max(10);
+        let desired_budget = w.saturating_sub(prefix_w + suffix_w).max(10);
 
-        let dim_style = if selected { STYLES.selected } else { STYLES.dim };
+        let dim_style = if is_grabbed { STYLES.cyan } else if selected { STYLES.selected } else { STYLES.dim };
+        // bg_style: used for spacing/indent areas when selected, to ensure full-width background
+        let bg_style = if selected && !is_grabbed { STYLES.selected } else { Style::new() };
 
-        // Build the glyph prefix — glyph is on the trunk for positioned descended children
-        let glyph_prefix = if is_descended && is_positioned {
-            // Glyph directly on the trunk line (no │ before it)
+        // Build the glyph prefix
+        let glyph_prefix = if is_grabbed {
+            if is_descended && is_positioned {
+                format!("{}\u{2261} ", INDENT)
+            } else if is_descended && !is_positioned {
+                format!("{}  \u{2261} ", INDENT)
+            } else {
+                format!("{}\u{2261} ", INDENT)
+            }
+        } else if is_descended && is_positioned {
             format!("{}{} ", INDENT, glyph)
         } else if is_descended && !is_positioned {
-            // Unpositioned: indented off the trunk
             format!("{}  {} ", INDENT, glyph)
         } else {
             format!("{}{} ", INDENT, glyph)
         };
 
+
+
+        // Right-side parts: horizon gap + indicator
+        let horizon_part = if !horizon_str.is_empty() {
+            format!("{:>width$} ", horizon_str, width = horizon_w.saturating_sub(1))
+        } else {
+            " ".repeat(horizon_w)
+        };
+        let indicator_part = format!(" {}", indicator);
+
+        // Build a single full-width string for each line, then style regions.
+        // This avoids any char-vs-display-width discrepancies between spans.
+
         if selected && entry.desired.chars().count() > desired_budget {
-            // Focused + long text: word-wrap, first line gets glyph + suffix
             let wrapped = word_wrap(&entry.desired, desired_budget);
             let mut lines = Vec::new();
             for (i, line_text) in wrapped.iter().enumerate() {
                 if i == 0 {
-                    let padded = format!("{:<width$}", line_text, width = desired_budget);
-                    let mut spans = vec![
-                        Span::styled(&glyph_prefix, glyph_style),
-                        Span::styled(padded, base_style),
-                    ];
-                    if !horizon_str.is_empty() {
-                        spans.push(Span::styled(format!(" {}", horizon_str), dim_style));
-                    }
-                    spans.push(Span::styled(format!(" {}", indicator), indicator_style));
-                    lines.push(Line::from_spans(spans));
-                } else {
-                    let indent_pad = " ".repeat(prefix_w);
+                    // Build the full line as one string, then split into styled regions
+                    let text_part = format!("{:<width$}", line_text, width = desired_budget);
+                    // Total so far: prefix + text + gap + suffix
+                    let content_len = glyph_prefix.chars().count() + desired_budget;
+                    let right_len = horizon_part.chars().count() + indicator_part.chars().count();
+                    let gap = w.saturating_sub(content_len + right_len);
+
                     lines.push(Line::from_spans([
-                        Span::styled(indent_pad, Style::new()),
-                        Span::styled(line_text.as_str(), base_style),
+                        Span::styled(&glyph_prefix, glyph_style),
+                        Span::styled(text_part, base_style),
+                        Span::styled(" ".repeat(gap), bg_style),
+                        Span::styled(&horizon_part, dim_style),
+                        Span::styled(&indicator_part, indicator_style),
                     ]));
+                } else {
+                    // Continuation line: prefix + text, padded to full width
+                    let prefix_str = if is_descended && is_positioned {
+                        format!("{}{} ", INDENT, TRUNK)
+                    } else {
+                        " ".repeat(prefix_w)
+                    };
+                    let fill_w = w.saturating_sub(prefix_str.chars().count());
+                    let full_line = format!("{}{:<width$}", prefix_str, line_text, width = fill_w);
+                    let p_len = prefix_str.chars().count();
+                    let p: String = full_line.chars().take(p_len).collect();
+                    let rest: String = full_line.chars().skip(p_len).collect();
+                    let trunk_style = if selected { bg_style } else { STYLES.dim };
+                    if is_descended && is_positioned {
+                        lines.push(Line::from_spans([
+                            Span::styled(p, trunk_style),
+                            Span::styled(rest, base_style),
+                        ]));
+                    } else {
+                        lines.push(Line::from_spans([
+                            Span::styled(p, bg_style),
+                            Span::styled(rest, base_style),
+                        ]));
+                    }
                 }
             }
             lines
         } else {
-            // Single line: truncate if needed
+            // Single line
             let desired_trunc = truncate(&entry.desired, desired_budget);
-            let name_padded = format!("{:<width$}", desired_trunc, width = desired_budget);
+            let text_part = format!("{:<width$}", desired_trunc, width = desired_budget);
+            let content_len = glyph_prefix.chars().count() + desired_budget;
+            let right_len = horizon_part.chars().count() + indicator_part.chars().count();
+            let gap = w.saturating_sub(content_len + right_len);
 
-            let mut spans = vec![
+            vec![Line::from_spans([
                 Span::styled(&glyph_prefix, glyph_style),
-                Span::styled(name_padded, base_style),
-            ];
-            if !horizon_str.is_empty() {
-                spans.push(Span::styled(format!(" {}", horizon_str), dim_style));
-            }
-            spans.push(Span::styled(format!(" {}", indicator), indicator_style));
-            vec![Line::from_spans(spans)]
+                Span::styled(text_part, base_style),
+                Span::styled(" ".repeat(gap), bg_style),
+                Span::styled(&horizon_part, dim_style),
+                Span::styled(&indicator_part, indicator_style),
+            ])]
         }
     }
 
     /// Render the gaze card as a Panel with rounded borders.
+    /// The tension line is rendered as the first content line inside the panel,
+    /// making the card a cohesive extension of the tension.
     fn render_gaze_panel(&self, rect: Rect, frame: &mut Frame<'_>) {
         if rect.height < 3 {
             return; // not enough space for panel borders + content
         }
 
         let mut content_lines: Vec<Line> = Vec::new();
+        let inner_w = (rect.width as usize).saturating_sub(6); // panel borders + padding
+
+        // First line: the tension line itself (glyph + desire + horizon + indicator)
+        if let Some(ref gaze) = self.gaze {
+            if let Some(entry) = self.siblings.get(gaze.index) {
+                let glyph = glyphs::status_glyph(entry.status, entry.phase);
+                let indicator = &entry.temporal_indicator;
+                let indicator_width = indicator.chars().count();
+
+                let glyph_style = Style::new().fg(CLR_CYAN); // always cyan when gazed
+                let indicator_color = if entry.temporal_urgency > 0.8 {
+                    CLR_RED
+                } else if entry.temporal_urgency > 0.5 {
+                    CLR_AMBER
+                } else {
+                    CLR_CYAN
+                };
+
+                let horizon_str = entry.horizon_label.as_deref().unwrap_or("");
+                let horizon_w = if horizon_str.is_empty() { 0 } else { horizon_str.chars().count() + 1 };
+                let suffix_w = horizon_w + indicator_width + 1;
+                let desired_budget = inner_w.saturating_sub(suffix_w + 3).max(10); // 3 = glyph + spaces
+                let desired_trunc = truncate(&entry.desired, desired_budget);
+                let name_padded = format!("{:<width$}", desired_trunc, width = desired_budget);
+
+                let mut spans = vec![
+                    Span::styled(format!("{} ", glyph), glyph_style),
+                    Span::styled(name_padded, STYLES.text_bold),
+                ];
+                if !horizon_str.is_empty() {
+                    spans.push(Span::styled(format!(" {}", horizon_str), STYLES.dim));
+                }
+                spans.push(Span::styled(format!(" {}", indicator), Style::new().fg(indicator_color)));
+                content_lines.push(Line::from_spans(spans));
+            }
+        }
 
         // Children preview — the action steps
         if let Some(ref data) = self.gaze_data {
-            let inner_w = (rect.width as usize).saturating_sub(6); // panel borders + padding
+            let has_content = !data.children.is_empty() || !data.actual.is_empty();
+            if has_content {
+                let rule = glyphs::LIGHT_RULE.to_string().repeat(inner_w);
+                content_lines.push(Line::from(Span::styled(rule, STYLES.dim)));
+            }
 
             if !data.children.is_empty() {
-                for child in &data.children {
+                // Split children into positioned and unpositioned groups
+                let positioned: Vec<_> = data.children.iter().filter(|c| c.position.is_some()).collect();
+                let unpositioned: Vec<_> = data.children.iter().filter(|c| c.position.is_none()).collect();
+
+                for child in &positioned {
                     let child_glyph = glyphs::status_glyph(child.status, child.phase);
                     let tendency_color = match child.tendency {
                         sd_core::StructuralTendency::Advancing => CLR_CYAN,
@@ -527,6 +657,30 @@ impl InstrumentApp {
                         Span::styled(
                             truncate(&child.desired, child_budget).to_string(),
                             STYLES.text,
+                        ),
+                    ]));
+                }
+
+                // Dotted separator between positioned and unpositioned
+                if !positioned.is_empty() && !unpositioned.is_empty() {
+                    let dots = "\u{00B7} ".repeat(inner_w / 2);
+                    content_lines.push(Line::from(Span::styled(dots, STYLES.dim)));
+                }
+
+                for child in &unpositioned {
+                    let child_glyph = glyphs::status_glyph(child.status, child.phase);
+                    let tendency_color = match child.tendency {
+                        sd_core::StructuralTendency::Advancing => CLR_CYAN,
+                        sd_core::StructuralTendency::Stagnant => CLR_DEFAULT,
+                        sd_core::StructuralTendency::Oscillating => CLR_AMBER,
+                    };
+                    let child_budget = inner_w.saturating_sub(6); // extra indent for unpositioned
+                    content_lines.push(Line::from_spans([
+                        Span::styled("  ", Style::new()), // extra indent
+                        Span::styled(format!("{} ", child_glyph), Style::new().fg(tendency_color)),
+                        Span::styled(
+                            truncate(&child.desired, child_budget).to_string(),
+                            STYLES.dim,
                         ),
                     ]));
                 }
@@ -551,26 +705,15 @@ impl InstrumentApp {
             }
         }
 
-        if content_lines.is_empty() {
+        if content_lines.len() <= 1 {
+            // Only the heading line — add a dim hint
             content_lines.push(Line::from(Span::styled("no children", STYLES.dim)));
         }
 
-        // Get the gazed entry's desire for the panel title
-        let title = if let Some(ref gaze) = self.gaze {
-            self.siblings.get(gaze.index)
-                .map(|e| truncate(&e.desired, (rect.width as usize).saturating_sub(8)).to_string())
-        } else {
-            None
-        };
-
         let para = Paragraph::new(Text::from_lines(content_lines));
-        let mut panel = Panel::new(para)
+        let panel = Panel::new(para)
             .border_type(BorderType::Rounded)
             .border_style(Style::new().fg(CLR_DIM));
-
-        if let Some(ref t) = title {
-            panel = panel.title(t).title_style(STYLES.cyan);
-        }
 
         // Indent the panel
         let panel_rect = Rect::new(
@@ -775,102 +918,153 @@ impl InstrumentApp {
         let area = self.content_area(*area);
         crate::helpers::clear_area(frame, area);
 
-        // Two-column layout with precise alignment
-        let col1 = [
-            ("", "NAVIGATION", "", "ACTS"),
-            ("", "", "", ""),
-            ("j/k", "move up/down", "a", "add tension"),
-            ("l/Enter", "descend", "e", "edit"),
-            ("h/Bksp", "ascend", "n", "add note"),
-            ("", "", "r", "resolve"),
-            ("g", "jump to top", "x", "release"),
-            ("G", "jump to bottom", "o", "reopen"),
-            ("Shift+J/K", "reorder", "m", "move/reparent"),
-            ("", "", "@", "agent (one-shot)"),
-            ("", "VIEWS", "", ""),
-            ("", "", "u", "undo"),
-            ("Space", "gaze (peek)", "y", "copy ID"),
-            ("/", "search", "f", "filter"),
-            ("", "", "i", "insights"),
-            ("1-9", "act on alert", "q", "quit"),
-        ];
-
-        let start_y = area.height.saturating_sub(col1.len() as u16 + 8) / 2;
-        let left_pad = (area.width as usize).saturating_sub(60) / 2;
+        let w = area.width as usize;
+        let content_w = w.min(72);
+        let left_pad = (w.saturating_sub(content_w)) / 2;
         let pad = " ".repeat(left_pad);
+        let rule_w = content_w.saturating_sub(2);
+        let light_rule = glyphs::LIGHT_RULE.to_string().repeat(rule_w);
 
         let mut lines: Vec<Line> = Vec::new();
-        for (key1, desc1, key2, desc2) in &col1 {
-            let mut spans = vec![Span::styled(&pad, Style::new())];
-            if !key1.is_empty() {
-                spans.push(Span::styled(format!("{:<12}", key1), STYLES.cyan));
-            } else {
-                spans.push(Span::styled("            ", Style::new()));
-            }
-            spans.push(Span::styled(format!("{:<18}", desc1), STYLES.text));
-            if !key2.is_empty() {
-                spans.push(Span::styled(format!("{:<4}", key2), STYLES.cyan));
-            } else {
-                spans.push(Span::styled("    ", Style::new()));
-            }
-            spans.push(Span::styled(*desc2, STYLES.text));
-            lines.push(Line::from_spans(spans));
-        }
 
-        // Glyph legend section
-        lines.push(Line::from(""));
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            format!("{}GLYPHS", pad),
-            STYLES.text,
-        )));
-        lines.push(Line::from(""));
-        let glyph_rows = [
-            ("\u{25C7} germination", "\u{25C6} assimilation", "\u{25C8} completion", "\u{25C9} momentum"),
-            ("\u{2726} resolved", "\u{00B7} released", "", ""),
-        ];
-        for (g1, g2, g3, g4) in &glyph_rows {
-            let mut spans = vec![Span::styled(&pad, Style::new())];
-            spans.push(Span::styled(format!("{:<18}", g1), STYLES.text));
-            spans.push(Span::styled(format!("{:<18}", g2), STYLES.text));
-            spans.push(Span::styled(format!("{:<18}", g3), STYLES.text));
-            spans.push(Span::styled(*g4, STYLES.text));
-            lines.push(Line::from_spans(spans));
-        }
-
-        lines.push(Line::from(""));
-        // Color legend
-        let color_rows = [
-            ("cyan", "advancing", CLR_CYAN),
-            ("white", "stagnant", CLR_DEFAULT),
-            ("amber", "oscillating", CLR_AMBER),
-        ];
-        for (name, meaning, color) in &color_rows {
-            let mut spans = vec![Span::styled(&pad, Style::new())];
-            spans.push(Span::styled(format!("{:<10}", name), Style::new().fg(*color)));
-            spans.push(Span::styled(*meaning, STYLES.dim));
-            lines.push(Line::from_spans(spans));
-        }
-
-        // Temporal indicator legend
-        lines.push(Line::from(""));
+        // --- Navigation section ---
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25E6}\u{25CC}\u{25CF}\u{25CC}", STYLES.cyan),
-            Span::styled("  \u{25E6} = now  \u{25CF} = horizon end", STYLES.dim),
+            Span::styled("NAVIGATION", STYLES.text_bold),
+        ]));
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled(&light_rule, STYLES.dim),
+        ]));
+        let nav_keys: &[(&str, &str, &str, &str)] = &[
+            ("j/k", "move up/down", "g/G", "jump to top/bottom"),
+            ("l/Enter", "descend into", "h/Bksp", "ascend out"),
+            ("Shift+J/K", "reorder position", "Space", "gaze (peek)"),
+            ("/", "search", "1-9", "act on alert"),
+        ];
+        for (k1, d1, k2, d2) in nav_keys {
+            lines.push(Line::from_spans([
+                Span::styled(&pad, Style::new()),
+                Span::styled(format!("{:<12}", k1), STYLES.cyan),
+                Span::styled(format!("{:<22}", d1), STYLES.text),
+                Span::styled(format!("{:<12}", k2), STYLES.cyan),
+                Span::styled(*d2, STYLES.text),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+
+        // --- Acts section ---
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("ACTS", STYLES.text_bold),
+        ]));
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled(&light_rule, STYLES.dim),
+        ]));
+        let act_keys: &[(&str, &str, &str, &str)] = &[
+            ("a", "add tension", "e", "edit (desire/reality/horizon)"),
+            ("n", "add note", "m", "move / reparent"),
+            ("r", "resolve", "x", "release"),
+            ("o", "reopen", "u", "undo last act"),
+            ("@", "agent (one-shot)", "y", "copy ID"),
+            ("f", "filter", "i", "review insights"),
+            ("q", "quit", "", ""),
+        ];
+        for (k1, d1, k2, d2) in act_keys {
+            let mut spans = vec![
+                Span::styled(&pad, Style::new()),
+                Span::styled(format!("{:<4}", k1), STYLES.cyan),
+                Span::styled(format!("{:<30}", d1), STYLES.text),
+            ];
+            if !k2.is_empty() {
+                spans.push(Span::styled(format!("{:<4}", k2), STYLES.cyan));
+                spans.push(Span::styled(*d2, STYLES.text));
+            }
+            lines.push(Line::from_spans(spans));
+        }
+
+        lines.push(Line::from(""));
+
+        // --- Glyphs section ---
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("GLYPHS & COLORS", STYLES.text_bold),
+        ]));
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled(&light_rule, STYLES.dim),
+        ]));
+
+        // Glyphs with their actual colors inline
+        // Render glyphs in a compact row
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("\u{25C7} ", Style::new().fg(CLR_DEFAULT)),
+            Span::styled("germination   ", STYLES.dim),
+            Span::styled("\u{25C6} ", Style::new().fg(CLR_DEFAULT)),
+            Span::styled("assimilation  ", STYLES.dim),
+            Span::styled("\u{25C8} ", Style::new().fg(CLR_DEFAULT)),
+            Span::styled("completion    ", STYLES.dim),
+            Span::styled("\u{25C9} ", Style::new().fg(CLR_DEFAULT)),
+            Span::styled("momentum", STYLES.dim),
+        ]));
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("\u{2726} ", Style::new().fg(CLR_DIM)),
+            Span::styled("resolved      ", STYLES.dim),
+            Span::styled("\u{00B7} ", Style::new().fg(CLR_DIM)),
+            Span::styled("released", STYLES.dim),
+        ]));
+
+        // Color legend inline
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("\u{25C6} ", Style::new().fg(CLR_CYAN)),
+            Span::styled("advancing   ", STYLES.dim),
+            Span::styled("\u{25C6} ", Style::new().fg(CLR_DEFAULT)),
+            Span::styled("stagnant    ", STYLES.dim),
+            Span::styled("\u{25C6} ", Style::new().fg(CLR_AMBER)),
+            Span::styled("oscillating", STYLES.dim),
+        ]));
+
+        lines.push(Line::from(""));
+
+        // Temporal indicator legend
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("\u{25CC}\u{25CC}\u{25E6}\u{25CC}\u{25CF}\u{25CC}", Style::new().fg(CLR_CYAN)),
+            Span::styled("  temporal window: ", STYLES.dim),
+            Span::styled("\u{25E6}", STYLES.cyan),
+            Span::styled(" now  ", STYLES.dim),
+            Span::styled("\u{25CF}", STYLES.cyan),
+            Span::styled(" horizon end", STYLES.dim),
         ]));
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
             Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CE}", STYLES.dim),
-            Span::styled("  staleness (no horizon)", STYLES.dim),
+            Span::styled("  staleness (no horizon set)", STYLES.dim),
+        ]));
+        lines.push(Line::from_spans([
+            Span::styled(&pad, Style::new()),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(CLR_CYAN)),
+            Span::styled(" comfortable  ", STYLES.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(CLR_AMBER)),
+            Span::styled(" approaching  ", STYLES.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(CLR_RED)),
+            Span::styled(" overdue", STYLES.dim),
         ]));
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            format!("{}        press any key to close", pad),
+            format!("{}press any key to close", pad),
             STYLES.dim,
         )));
 
+        // Center vertically
+        let total_lines = lines.len() as u16;
+        let start_y = area.height.saturating_sub(total_lines) / 2;
         let text_area = Rect::new(area.x, area.y + start_y, area.width, area.height - start_y);
         let para = Paragraph::new(Text::from_lines(lines));
         para.render(text_area, frame);
@@ -1342,8 +1536,8 @@ impl InstrumentApp {
 enum FieldElement {
     DesireHeader {
         lines: Vec<String>,
-        right_text: String,
-        text_width: usize,
+        inline_suffix: String,  // age ("3d ago") — follows last line of text
+        right_text: String,     // horizon + indicator ("Jun ◌○○●◎") — right-aligned
     },
     HeavyRule,
     LightRule,
@@ -1362,7 +1556,6 @@ enum FieldElement {
     RealityFooter {
         lines: Vec<String>,
         right_text: String,
-        text_width: usize,
     },
     AlertLine {
         index: usize,

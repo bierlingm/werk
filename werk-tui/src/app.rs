@@ -72,6 +72,9 @@ pub struct InstrumentApp {
     // Alerts — stateless, recomputed on load_siblings
     pub alerts: Vec<crate::state::Alert>,
     pub alert_cursor: usize,
+
+    // Reordering — stores original positions for cancel
+    pub reorder_original: Vec<(String, Option<i32>)>,
 }
 
 /// Filter for the field view.
@@ -146,6 +149,7 @@ impl InstrumentApp {
             total_count,
             alerts: Vec::new(),
             alert_cursor: 0,
+            reorder_original: Vec::new(),
         };
         app.load_siblings();
         app.refresh_pending_insight_count();
@@ -195,6 +199,7 @@ impl InstrumentApp {
             total_count: 0,
             alerts: Vec::new(),
             alert_cursor: 0,
+            reorder_original: Vec::new(),
         }
     }
 
@@ -518,6 +523,7 @@ impl InstrumentApp {
                 phase,
                 tendency,
                 status: c.status,
+                position: c.position,
             });
         }
 
@@ -583,91 +589,126 @@ impl InstrumentApp {
         }
     }
 
-    /// Move the currently selected sibling toward the vision (up in display).
-    ///
-    /// Display order is position DESC: highest position = top = closest to vision.
-    /// Moving up = getting a higher position value (appears higher in DESC sort).
-    pub fn move_sibling_up(&mut self) {
-        if self.siblings.is_empty() || self.vlist.cursor == 0 {
-            return;
-        }
+    // -----------------------------------------------------------------------
+    // Reordering — grab-and-drop interaction
+    // -----------------------------------------------------------------------
+
+    /// Enter reorder mode: grab the selected tension for repositioning.
+    /// Shift+J/K enters this mode; j/k moves visually; Enter commits; Esc cancels.
+    pub fn enter_reorder(&mut self) {
+        if self.siblings.is_empty() { return; }
         let cursor = self.vlist.cursor;
-        let current_id = self.siblings[cursor].id.clone();
-        let current_pos = self.siblings[cursor].position;
-        let swap_id = self.siblings[cursor - 1].id.clone();
-        let swap_pos = self.siblings[cursor - 1].position;
+        let tension_id = self.siblings[cursor].id.clone();
 
-        match (current_pos, swap_pos) {
-            (Some(cp), Some(sp)) => {
-                // Both positioned: swap their positions
-                let _ = self.engine.update_position(&current_id, Some(sp));
-                let _ = self.engine.update_position(&swap_id, Some(cp));
-            }
-            (None, Some(sp)) => {
-                // Current is unpositioned, above is positioned: enter positioned group
-                // Take the position of the item above, shift that item down by 1
-                let _ = self.engine.update_position(&current_id, Some(sp));
-                let _ = self.engine.update_position(&swap_id, Some(sp.saturating_sub(1).max(1)));
-            }
-            (None, None) => {
-                // Both unpositioned: assign positions to establish order
-                // Give current a higher position so it appears above
-                let _ = self.engine.update_position(&current_id, Some(2));
-                let _ = self.engine.update_position(&swap_id, Some(1));
-            }
-            (Some(_), None) => {
-                // Current is positioned, above is unpositioned — shouldn't happen in DESC sort
-                return;
+        // Store original positions for cancel
+        self.reorder_original = self.siblings.iter()
+            .map(|s| (s.id.clone(), s.position))
+            .collect();
+
+        self.input_mode = InputMode::Reordering { tension_id };
+        // Close gaze if open
+        if self.gaze.is_some() {
+            self.gaze = None;
+            self.gaze_data = None;
+            self.full_gaze_data = None;
+            self.vlist.reset_heights();
+        }
+    }
+
+    /// Move the grabbed tension up one position (visual swap only, no engine writes).
+    pub fn reorder_move_up(&mut self) {
+        if self.siblings.is_empty() || self.vlist.cursor == 0 { return; }
+        let cursor = self.vlist.cursor;
+        self.siblings.swap(cursor, cursor - 1);
+        self.vlist.cursor = cursor - 1;
+    }
+
+    /// Move the grabbed tension down one position (visual swap only, no engine writes).
+    pub fn reorder_move_down(&mut self) {
+        if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 { return; }
+        let cursor = self.vlist.cursor;
+        self.siblings.swap(cursor, cursor + 1);
+        self.vlist.cursor = cursor + 1;
+    }
+
+    /// Commit the reorder: write final positions to engine as a single logical action.
+    /// Preserves the positioned/unpositioned boundary. Moving a tension below the
+    /// boundary unpositions it; moving one above positions it.
+    pub fn reorder_commit(&mut self) {
+        let tension_id = match &self.input_mode {
+            InputMode::Reordering { tension_id } => tension_id.clone(),
+            _ => String::new(),
+        };
+
+        // Count how many items were originally positioned
+        let originally_positioned = self.reorder_original.iter()
+            .filter(|(_, pos)| pos.is_some())
+            .count();
+
+        // Was the grabbed tension originally positioned?
+        let grabbed_was_positioned = self.reorder_original.iter()
+            .any(|(id, pos)| id == &tension_id && pos.is_some());
+
+        // Find where the grabbed tension ended up
+        let grabbed_index = self.siblings.iter()
+            .position(|s| s.id == tension_id)
+            .unwrap_or(0);
+
+        // Compute the boundary: how many items should be positioned in the result.
+        // The boundary is the original count, adjusted if the grabbed item crossed it.
+        let boundary = if grabbed_was_positioned && grabbed_index >= originally_positioned {
+            // Grabbed item moved out of positioned group → boundary shrinks by 1
+            originally_positioned.saturating_sub(1)
+        } else if !grabbed_was_positioned && grabbed_index < originally_positioned {
+            // Grabbed item moved into positioned group → boundary grows by 1
+            originally_positioned + 1
+        } else {
+            originally_positioned
+        };
+
+        // Assign positions above boundary, None below
+        for (i, sibling) in self.siblings.iter().enumerate() {
+            if i < boundary {
+                let pos = (boundary - i) as i32;
+                let _ = self.engine.update_position(&sibling.id, Some(pos));
+            } else {
+                let _ = self.engine.update_position(&sibling.id, None);
             }
         }
 
+        self.reorder_original.clear();
+        self.input_mode = InputMode::Normal;
         self.load_siblings();
-        if let Some(idx) = self.siblings.iter().position(|s| s.id == current_id) {
+
+        // Restore cursor to the moved tension
+        if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
+            self.vlist.cursor = idx;
+        }
+        self.set_transient("position updated");
+    }
+
+    /// Cancel the reorder: restore original positions and cursor.
+    pub fn reorder_cancel(&mut self) {
+        // Get the original tension ID to restore cursor
+        let tension_id = match &self.input_mode {
+            InputMode::Reordering { tension_id } => tension_id.clone(),
+            _ => String::new(),
+        };
+
+        // Restore original positions from snapshot
+        for (id, pos) in &self.reorder_original {
+            let _ = self.engine.update_position(id, *pos);
+        }
+        self.reorder_original.clear();
+        self.input_mode = InputMode::Normal;
+        self.load_siblings();
+
+        // Restore cursor to the original tension
+        if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
         }
     }
 
-    /// Move the currently selected sibling toward reality (down in display).
-    ///
-    /// Moving down = getting a lower position value (appears lower in DESC sort).
-    /// Moving past position 1 removes the position (returns to unpositioned group).
-    pub fn move_sibling_down(&mut self) {
-        if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 {
-            return;
-        }
-        let cursor = self.vlist.cursor;
-        let current_id = self.siblings[cursor].id.clone();
-        let current_pos = self.siblings[cursor].position;
-        let swap_id = self.siblings[cursor + 1].id.clone();
-        let swap_pos = self.siblings[cursor + 1].position;
-
-        match (current_pos, swap_pos) {
-            (Some(cp), Some(sp)) => {
-                // Both positioned: swap
-                let _ = self.engine.update_position(&current_id, Some(sp));
-                let _ = self.engine.update_position(&swap_id, Some(cp));
-            }
-            (Some(_cp), None) => {
-                // Moving from positioned into unpositioned: remove position
-                let _ = self.engine.update_position(&current_id, None);
-            }
-            (None, None) => {
-                // Both unpositioned: assign positions to establish order
-                // Give swap a higher position so it appears above current
-                let _ = self.engine.update_position(&swap_id, Some(2));
-                let _ = self.engine.update_position(&current_id, Some(1));
-            }
-            (None, Some(_)) => {
-                // Current unpositioned, below is positioned — shouldn't happen
-                return;
-            }
-        }
-
-        self.load_siblings();
-        if let Some(idx) = self.siblings.iter().position(|s| s.id == current_id) {
-            self.vlist.cursor = idx;
-        }
-    }
 
     /// Compute full gaze data (dynamics + history) for a tension.
     pub fn compute_full_gaze(&mut self, id: &str) -> Option<FullGazeData> {
