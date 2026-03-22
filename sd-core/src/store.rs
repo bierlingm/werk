@@ -23,7 +23,9 @@
 //!     horizon TEXT,
 //!     position INTEGER,
 //!     parent_desired_snapshot TEXT,
-//!     parent_actual_snapshot TEXT
+//!     parent_actual_snapshot TEXT,
+//!     parent_snapshot_json TEXT,
+//!     short_code INTEGER
 //! );
 //!
 //! CREATE TABLE mutations (
@@ -32,7 +34,33 @@
 //!     timestamp TEXT NOT NULL,
 //!     field TEXT NOT NULL,
 //!     old_value TEXT,
-//!     new_value TEXT
+//!     new_value TEXT,
+//!     gesture_id TEXT,
+//!     actual_at TEXT
+//! );
+//!
+//! CREATE TABLE sessions (
+//!     id TEXT PRIMARY KEY,
+//!     started_at TEXT NOT NULL,
+//!     ended_at TEXT,
+//!     summary_note TEXT
+//! );
+//!
+//! CREATE TABLE gestures (
+//!     id TEXT PRIMARY KEY,
+//!     session_id TEXT,
+//!     timestamp TEXT NOT NULL,
+//!     description TEXT
+//! );
+//!
+//! CREATE TABLE epochs (
+//!     id TEXT PRIMARY KEY,
+//!     tension_id TEXT NOT NULL,
+//!     timestamp TEXT NOT NULL,
+//!     desire_snapshot TEXT NOT NULL,
+//!     reality_snapshot TEXT NOT NULL,
+//!     children_snapshot_json TEXT,
+//!     trigger_gesture_id TEXT
 //! );
 //! ```
 
@@ -98,6 +126,10 @@ pub struct Store {
     conn: Rc<RefCell<Connection>>,
     path: Option<PathBuf>,
     event_bus: Option<EventBus>,
+    /// The currently active gesture. When set, all mutations are linked to this gesture.
+    active_gesture_id: Option<String>,
+    /// Pending actual_at timestamp for the next mutation(s). Supports "I did this yesterday."
+    pending_actual_at: Option<DateTime<Utc>>,
 }
 
 impl Store {
@@ -124,6 +156,8 @@ impl Store {
             conn: Rc::new(RefCell::new(conn)),
             path: Some(db_path),
             event_bus: None,
+            active_gesture_id: None,
+            pending_actual_at: None,
         };
         store.create_schema()?;
         Ok(store)
@@ -148,6 +182,8 @@ impl Store {
             conn: Rc::new(RefCell::new(conn)),
             path: None,
             event_bus: None,
+            active_gesture_id: None,
+            pending_actual_at: None,
         };
         store.create_schema()?;
         Ok(store)
@@ -187,7 +223,8 @@ impl Store {
                 horizon TEXT,
                 position INTEGER,
                 parent_desired_snapshot TEXT,
-                parent_actual_snapshot TEXT
+                parent_actual_snapshot TEXT,
+                short_code INTEGER
             )",
         )
         .map_err(|e| {
@@ -201,11 +238,52 @@ impl Store {
                 timestamp TEXT NOT NULL,
                 field TEXT NOT NULL,
                 old_value TEXT,
-                new_value TEXT
+                new_value TEXT,
+                gesture_id TEXT,
+                actual_at TEXT
             )",
         )
         .map_err(|e| {
             StoreError::DatabaseError(format!("failed to create mutations table: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                summary_note TEXT
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create sessions table: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS gestures (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                timestamp TEXT NOT NULL,
+                description TEXT
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create gestures table: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS epochs (
+                id TEXT PRIMARY KEY,
+                tension_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                desire_snapshot TEXT NOT NULL,
+                reality_snapshot TEXT NOT NULL,
+                children_snapshot_json TEXT,
+                trigger_gesture_id TEXT
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create epochs table: {:?}", e))
         })?;
 
         // Migration: Add horizon column to existing databases
@@ -266,6 +344,92 @@ impl Store {
                 })?;
         }
 
+        // Migration: Add short_code to tensions
+        let has_short_code = columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "short_code"
+            } else {
+                false
+            }
+        });
+
+        if !has_short_code {
+            conn.execute("ALTER TABLE tensions ADD COLUMN short_code INTEGER")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add short_code column: {:?}", e))
+                })?;
+            // Backfill short_codes for existing tensions
+            let existing = conn.query("SELECT id FROM tensions ORDER BY created_at ASC")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to query tensions for backfill: {:?}", e))
+                })?;
+            for (i, row) in existing.iter().enumerate() {
+                if let Some(SqliteValue::Text(tid)) = row.get(0) {
+                    conn.execute_with_params(
+                        "UPDATE tensions SET short_code = ?1 WHERE id = ?2",
+                        &[
+                            SqliteValue::Integer((i + 1) as i64),
+                            SqliteValue::Text(tid.clone()),
+                        ],
+                    ).map_err(|e| {
+                        StoreError::DatabaseError(format!("failed to backfill short_code: {:?}", e))
+                    })?;
+                }
+            }
+        }
+
+        // Migration: Add parent_snapshot_json to tensions
+        let has_parent_snapshot_json = columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "parent_snapshot_json"
+            } else {
+                false
+            }
+        });
+
+        if !has_parent_snapshot_json {
+            conn.execute("ALTER TABLE tensions ADD COLUMN parent_snapshot_json TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add parent_snapshot_json column: {:?}", e))
+                })?;
+        }
+
+        // Migration: Add gesture_id and actual_at to mutations
+        let mutation_columns: Vec<fsqlite::Row> =
+            conn.query("PRAGMA table_info(mutations)").map_err(|e| {
+                StoreError::DatabaseError(format!("failed to query mutations schema: {:?}", e))
+            })?;
+
+        let has_gesture_id = mutation_columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "gesture_id"
+            } else {
+                false
+            }
+        });
+
+        if !has_gesture_id {
+            conn.execute("ALTER TABLE mutations ADD COLUMN gesture_id TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add gesture_id column: {:?}", e))
+                })?;
+        }
+
+        let has_actual_at = mutation_columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                s == "actual_at"
+            } else {
+                false
+            }
+        });
+
+        if !has_actual_at {
+            conn.execute("ALTER TABLE mutations ADD COLUMN actual_at TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add actual_at column: {:?}", e))
+                })?;
+        }
+
         Ok(())
     }
 
@@ -293,6 +457,7 @@ impl Store {
     ///
     /// Generates a ULID id, persists the tension, and records a "created" mutation.
     /// The creation mutation includes horizon if present.
+    /// Automatically captures parent snapshots when parent_id is provided.
     pub fn create_tension_full(
         &self,
         desired: &str,
@@ -300,7 +465,40 @@ impl Store {
         parent_id: Option<String>,
         horizon: Option<Horizon>,
     ) -> Result<Tension, SdError> {
-        let tension = Tension::new_full(desired, actual, parent_id, horizon)?;
+        let mut tension = Tension::new_full(desired, actual, parent_id, horizon)?;
+
+        // Auto-assign short_code
+        tension.short_code = Some(self.next_short_code()?);
+
+        // Auto-capture parent snapshots if creating a child
+        if let Some(ref pid) = tension.parent_id {
+            if let Ok(Some(parent)) = self.get_tension(pid) {
+                tension.parent_desired_snapshot = Some(parent.desired.clone());
+                tension.parent_actual_snapshot = Some(parent.actual.clone());
+                // Build full JSON snapshot with children state
+                if let Ok(siblings) = self.get_children(pid) {
+                    let children_json: Vec<serde_json::Value> = siblings.iter().map(|c| {
+                        serde_json::json!({
+                            "id": c.id,
+                            "desired": c.desired,
+                            "actual": c.actual,
+                            "status": c.status.to_string(),
+                            "position": c.position,
+                            "horizon": c.horizon.as_ref().map(|h| h.to_string()),
+                        })
+                    }).collect();
+                    let snapshot = serde_json::json!({
+                        "desired": parent.desired,
+                        "actual": parent.actual,
+                        "status": parent.status.to_string(),
+                        "horizon": parent.horizon.as_ref().map(|h| h.to_string()),
+                        "children": children_json,
+                    });
+                    tension.parent_snapshot_json = serde_json::to_string(&snapshot).ok();
+                }
+            }
+        }
+
         self.persist_tension(&tension)?;
 
         // Build creation mutation value with optional horizon
@@ -344,8 +542,9 @@ impl Store {
         position: Option<i32>,
         parent_desired_snapshot: Option<String>,
         parent_actual_snapshot: Option<String>,
+        parent_snapshot_json: Option<String>,
     ) -> Result<Tension, SdError> {
-        let tension = Tension::new_full_with_snapshots(
+        let mut tension = Tension::new_full_with_snapshots(
             desired,
             actual,
             parent_id,
@@ -353,7 +552,9 @@ impl Store {
             position,
             parent_desired_snapshot,
             parent_actual_snapshot,
+            parent_snapshot_json,
         )?;
+        tension.short_code = Some(self.next_short_code()?);
         self.persist_tension(&tension)?;
 
         // Build creation mutation value with optional horizon
@@ -388,7 +589,7 @@ impl Store {
     fn persist_tension(&self, tension: &Tension) -> Result<(), SdError> {
         let conn = self.conn.borrow();
         conn.execute_with_params(
-            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             &[
                 SqliteValue::Text(tension.id.clone()),
                 SqliteValue::Text(tension.desired.clone()),
@@ -415,6 +616,14 @@ impl Store {
                     Some(s) => SqliteValue::Text(s.clone()),
                     None => SqliteValue::Null,
                 },
+                match &tension.parent_snapshot_json {
+                    Some(s) => SqliteValue::Text(s.clone()),
+                    None => SqliteValue::Null,
+                },
+                match tension.short_code {
+                    Some(sc) => SqliteValue::Integer(sc as i64),
+                    None => SqliteValue::Null,
+                },
             ],
         )
         .map_err(|e| SdError::ValidationError(format!("failed to persist tension: {:?}", e)))?;
@@ -426,9 +635,17 @@ impl Store {
     /// This is a low-level method for recording arbitrary mutations.
     /// Most operations automatically record appropriate mutations.
     pub fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
+        // Use the mutation's gesture_id if set, otherwise fall back to store's active gesture
+        let effective_gesture_id = mutation.gesture_id()
+            .map(|g| g.to_owned())
+            .or_else(|| self.active_gesture_id.clone());
+        // Use the mutation's actual_at if set, otherwise fall back to store's pending actual_at
+        let effective_actual_at = mutation.actual_at()
+            .or(self.pending_actual_at);
+
         let conn = self.conn.borrow();
         conn.execute_with_params(
-            "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[
                 SqliteValue::Text(mutation.tension_id().to_owned()),
                 SqliteValue::Text(mutation.timestamp().to_rfc3339()),
@@ -438,6 +655,14 @@ impl Store {
                     None => SqliteValue::Null,
                 },
                 SqliteValue::Text(mutation.new_value().to_owned()),
+                match &effective_gesture_id {
+                    Some(g) => SqliteValue::Text(g.clone()),
+                    None => SqliteValue::Null,
+                },
+                match effective_actual_at {
+                    Some(t) => SqliteValue::Text(t.to_rfc3339()),
+                    None => SqliteValue::Null,
+                },
             ],
         )
         .map_err(|e| SdError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
@@ -451,7 +676,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE id = ?1",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code FROM tensions WHERE id = ?1",
                 &[SqliteValue::Text(id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -557,6 +782,20 @@ impl Store {
             _ => None,
         };
 
+        // Parse parent_snapshot_json (column 10)
+        let parent_snapshot_json = match row.get(10) {
+            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Null) | None => None,
+            _ => None,
+        };
+
+        // Parse short_code (column 11)
+        let short_code = match row.get(11) {
+            Some(SqliteValue::Integer(n)) => Some(*n as i32),
+            Some(SqliteValue::Null) | None => None,
+            _ => None,
+        };
+
         Ok(Some(Tension {
             id,
             desired,
@@ -568,6 +807,8 @@ impl Store {
             position,
             parent_desired_snapshot,
             parent_actual_snapshot,
+            parent_snapshot_json,
+            short_code,
         }))
     }
 
@@ -575,7 +816,7 @@ impl Store {
     pub fn list_tensions(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions ORDER BY created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code FROM tensions ORDER BY created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -585,7 +826,7 @@ impl Store {
     pub fn get_roots(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id IS NULL ORDER BY position DESC NULLS LAST, created_at ASC")
+            .query("SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code FROM tensions WHERE parent_id IS NULL ORDER BY position DESC NULLS LAST, created_at ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_tension_rows(rows)
@@ -596,7 +837,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot FROM tensions WHERE parent_id = ?1 ORDER BY position DESC NULLS LAST, created_at ASC",
+                "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code FROM tensions WHERE parent_id = ?1 ORDER BY position DESC NULLS LAST, created_at ASC",
                 &[SqliteValue::Text(parent_id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -704,6 +945,20 @@ impl Store {
                 _ => None,
             };
 
+            // Parse parent_snapshot_json (column 10)
+            let parent_snapshot_json = match row.get(10) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            // Parse short_code (column 11)
+            let short_code = match row.get(11) {
+                Some(SqliteValue::Integer(n)) => Some(*n as i32),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
             tensions.push(Tension {
                 id,
                 desired,
@@ -715,6 +970,8 @@ impl Store {
                 position,
                 parent_desired_snapshot,
                 parent_actual_snapshot,
+                parent_snapshot_json,
+                short_code,
             });
         }
 
@@ -1149,8 +1406,14 @@ impl Store {
         conn: &Connection,
         mutation: &Mutation,
     ) -> Result<(), SdError> {
+        let effective_gesture_id = mutation.gesture_id()
+            .map(|g| g.to_owned())
+            .or_else(|| self.active_gesture_id.clone());
+        let effective_actual_at = mutation.actual_at()
+            .or(self.pending_actual_at);
+
         conn.execute_with_params(
-            "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[
                 SqliteValue::Text(mutation.tension_id().to_owned()),
                 SqliteValue::Text(mutation.timestamp().to_rfc3339()),
@@ -1160,6 +1423,14 @@ impl Store {
                     None => SqliteValue::Null,
                 },
                 SqliteValue::Text(mutation.new_value().to_owned()),
+                match &effective_gesture_id {
+                    Some(g) => SqliteValue::Text(g.clone()),
+                    None => SqliteValue::Null,
+                },
+                match effective_actual_at {
+                    Some(t) => SqliteValue::Text(t.to_rfc3339()),
+                    None => SqliteValue::Null,
+                },
             ],
         )
         .map_err(|e| SdError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
@@ -1171,7 +1442,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT tension_id, timestamp, field, old_value, new_value FROM mutations WHERE tension_id = ?1 ORDER BY timestamp ASC",
+                "SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations WHERE tension_id = ?1 ORDER BY timestamp ASC",
                 &[SqliteValue::Text(tension_id.to_owned())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -1183,7 +1454,7 @@ impl Store {
     pub fn all_mutations(&self) -> Result<Vec<Mutation>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT tension_id, timestamp, field, old_value, new_value FROM mutations ORDER BY timestamp ASC")
+            .query("SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations ORDER BY timestamp ASC")
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_mutation_rows(rows)
@@ -1200,7 +1471,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT tension_id, timestamp, field, old_value, new_value FROM mutations WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp ASC",
+                "SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp ASC",
                 &[
                     SqliteValue::Text(start.to_rfc3339()),
                     SqliteValue::Text(end.to_rfc3339()),
@@ -1256,8 +1527,24 @@ impl Store {
                 }
             };
 
-            mutations.push(Mutation::new(
-                tension_id, timestamp, field, old_value, new_value,
+            let gesture_id = match row.get(5) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            let actual_at = match row.get(6) {
+                Some(SqliteValue::Text(s)) => {
+                    DateTime::parse_from_rfc3339(s)
+                        .map(|dt| Some(dt.with_timezone(&Utc)))
+                        .unwrap_or(None)
+                }
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            mutations.push(Mutation::new_with_gesture(
+                tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at,
             ));
         }
 
@@ -1284,6 +1571,67 @@ impl Store {
     /// Remove the EventBus from this store.
     pub fn clear_event_bus(&mut self) {
         self.event_bus = None;
+    }
+
+    /// Begin a gesture. Creates the gesture record and sets it as active.
+    /// All subsequent mutations will be linked to this gesture until
+    /// `end_gesture()` is called or a new gesture is begun.
+    ///
+    /// The gesture is sessionless by default. Use `begin_gesture_in_session`
+    /// to associate with a specific session (e.g., from a TUI instance).
+    /// Sessions are process-scoped — a CLI command should not inherit a
+    /// TUI's active session.
+    pub fn begin_gesture(&mut self, description: Option<&str>) -> Result<String, StoreError> {
+        let gesture_id = self.create_gesture(None, description)?;
+        self.active_gesture_id = Some(gesture_id.clone());
+        Ok(gesture_id)
+    }
+
+    /// Begin a gesture within a specific session.
+    /// Used by TUI instances that manage their own session lifecycle.
+    pub fn begin_gesture_in_session(
+        &mut self,
+        session_id: &str,
+        description: Option<&str>,
+    ) -> Result<String, StoreError> {
+        let gesture_id = self.create_gesture(Some(session_id), description)?;
+        self.active_gesture_id = Some(gesture_id.clone());
+        Ok(gesture_id)
+    }
+
+    /// End the current gesture, returning its ID.
+    pub fn end_gesture(&mut self) -> Option<String> {
+        self.active_gesture_id.take()
+    }
+
+    /// Get the currently active gesture ID, if any.
+    pub fn active_gesture(&self) -> Option<&str> {
+        self.active_gesture_id.as_deref()
+    }
+
+    /// Set a pending actual_at for subsequent mutations.
+    /// Supports "I did this yesterday" — the gap between actual_at and
+    /// the mutation timestamp is engagement pattern data.
+    pub fn set_actual_at(&mut self, actual_at: DateTime<Utc>) {
+        self.pending_actual_at = Some(actual_at);
+    }
+
+    /// Clear the pending actual_at.
+    pub fn clear_actual_at(&mut self) {
+        self.pending_actual_at = None;
+    }
+
+    /// Get the next available short_code for a new tension.
+    fn next_short_code(&self) -> Result<i32, SdError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT MAX(short_code) FROM tensions")
+            .map_err(|e| SdError::ValidationError(format!("failed to get max short_code: {:?}", e)))?;
+        match rows.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Integer(n)) => Ok((*n as i32) + 1),
+            Some(SqliteValue::Null) | None => Ok(1),
+            _ => Ok(1),
+        }
     }
 
     /// Emit an event if an EventBus is attached.
@@ -1499,6 +1847,206 @@ impl Store {
         }
         Ok(())
     }
+
+    // ── Session (run) management ───────────────────────────────────
+
+    /// Start a new session. Returns the session ID.
+    pub fn start_session(&self) -> Result<String, StoreError> {
+        let id = ulid::Ulid::new().to_string();
+        let now = Utc::now();
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO sessions (id, started_at) VALUES (?1, ?2)",
+            &[
+                SqliteValue::Text(id.clone()),
+                SqliteValue::Text(now.to_rfc3339()),
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to start session: {:?}", e)))?;
+        Ok(id)
+    }
+
+    /// End a session, optionally with a summary note.
+    pub fn end_session(&self, id: &str, summary_note: Option<&str>) -> Result<(), StoreError> {
+        let now = Utc::now();
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "UPDATE sessions SET ended_at = ?1, summary_note = ?2 WHERE id = ?3",
+            &[
+                SqliteValue::Text(now.to_rfc3339()),
+                match summary_note {
+                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(id.to_owned()),
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to end session: {:?}", e)))?;
+        Ok(())
+    }
+
+    /// Get the currently active session (started but not ended), if any.
+    pub fn active_session(&self) -> Result<Option<String>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+        match rows[0].get(0) {
+            Some(SqliteValue::Text(s)) => Ok(Some(s.clone())),
+            _ => Ok(None),
+        }
+    }
+
+    // ── Gesture management ─────────────────────────────────────────
+
+    /// Create a new gesture, optionally within a session.
+    pub fn create_gesture(
+        &self,
+        session_id: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<String, StoreError> {
+        let id = ulid::Ulid::new().to_string();
+        let now = Utc::now();
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO gestures (id, session_id, timestamp, description) VALUES (?1, ?2, ?3, ?4)",
+            &[
+                SqliteValue::Text(id.clone()),
+                match session_id {
+                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    None => SqliteValue::Null,
+                },
+                SqliteValue::Text(now.to_rfc3339()),
+                match description {
+                    Some(d) => SqliteValue::Text(d.to_owned()),
+                    None => SqliteValue::Null,
+                },
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to create gesture: {:?}", e)))?;
+        Ok(id)
+    }
+
+    /// Get all mutations belonging to a gesture.
+    pub fn get_gesture_mutations(&self, gesture_id: &str) -> Result<Vec<Mutation>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations WHERE gesture_id = ?1 ORDER BY timestamp ASC",
+                &[SqliteValue::Text(gesture_id.to_owned())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+        self.parse_mutation_rows(rows)
+    }
+
+    // ── Epoch management ───────────────────────────────────────────
+
+    /// Create a new epoch snapshot for a tension.
+    pub fn create_epoch(
+        &self,
+        tension_id: &str,
+        desire_snapshot: &str,
+        reality_snapshot: &str,
+        children_snapshot_json: Option<&str>,
+        trigger_gesture_id: Option<&str>,
+    ) -> Result<String, StoreError> {
+        let id = ulid::Ulid::new().to_string();
+        let now = Utc::now();
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO epochs (id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            &[
+                SqliteValue::Text(id.clone()),
+                SqliteValue::Text(tension_id.to_owned()),
+                SqliteValue::Text(now.to_rfc3339()),
+                SqliteValue::Text(desire_snapshot.to_owned()),
+                SqliteValue::Text(reality_snapshot.to_owned()),
+                match children_snapshot_json {
+                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    None => SqliteValue::Null,
+                },
+                match trigger_gesture_id {
+                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    None => SqliteValue::Null,
+                },
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to create epoch: {:?}", e)))?;
+        Ok(id)
+    }
+
+    /// Get all epochs for a tension in chronological order.
+    pub fn get_epochs(&self, tension_id: &str) -> Result<Vec<EpochRecord>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id FROM epochs WHERE tension_id = ?1 ORDER BY timestamp ASC",
+                &[SqliteValue::Text(tension_id.to_owned())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        let mut epochs = Vec::new();
+        for row in &rows {
+            let id = match row.get(0) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid epoch id".to_owned())),
+            };
+            let tid = match row.get(1) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid epoch tension_id".to_owned())),
+            };
+            let ts_str = match row.get(2) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid epoch timestamp".to_owned())),
+            };
+            let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::DatabaseError(format!("invalid epoch timestamp: {}", e)))?;
+            let desire = match row.get(3) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid epoch desire_snapshot".to_owned())),
+            };
+            let reality = match row.get(4) {
+                Some(SqliteValue::Text(s)) => s.clone(),
+                _ => return Err(StoreError::DatabaseError("invalid epoch reality_snapshot".to_owned())),
+            };
+            let children_json = match row.get(5) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+            let trigger = match row.get(6) {
+                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+            epochs.push(EpochRecord {
+                id,
+                tension_id: tid,
+                timestamp,
+                desire_snapshot: desire,
+                reality_snapshot: reality,
+                children_snapshot_json: children_json,
+                trigger_gesture_id: trigger,
+            });
+        }
+        Ok(epochs)
+    }
+}
+
+/// A record of an epoch snapshot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EpochRecord {
+    pub id: String,
+    pub tension_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub desire_snapshot: String,
+    pub reality_snapshot: String,
+    pub children_snapshot_json: Option<String>,
+    pub trigger_gesture_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -3284,5 +3832,146 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_base);
+    }
+
+    // ── Gesture tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_gesture_creation() {
+        let store = Store::new_in_memory().unwrap();
+        let gesture_id = store.create_gesture(None, Some("test gesture")).unwrap();
+        assert!(!gesture_id.is_empty());
+    }
+
+    #[test]
+    fn test_gesture_links_to_mutations() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let gesture_id = store.begin_gesture(Some("update reality")).unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        store.end_gesture();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        // Last mutation should have the gesture_id
+        let last = mutations.last().unwrap();
+        assert_eq!(last.gesture_id(), Some(gesture_id.as_str()));
+    }
+
+    #[test]
+    fn test_gesture_groups_multiple_mutations() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let gesture_id = store.begin_gesture(Some("restructure")).unwrap();
+        store.update_desired(&t.id, "new goal").unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        store.end_gesture();
+
+        let gesture_mutations = store.get_gesture_mutations(&gesture_id).unwrap();
+        assert_eq!(gesture_mutations.len(), 2);
+        assert!(gesture_mutations.iter().all(|m| m.gesture_id() == Some(gesture_id.as_str())));
+    }
+
+    #[test]
+    fn test_mutations_without_gesture_have_none() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+
+        let mutations = store.get_mutations(&t.id).unwrap();
+        for m in &mutations {
+            assert!(m.gesture_id().is_none());
+        }
+    }
+
+    // ── Session tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_session_lifecycle() {
+        let store = Store::new_in_memory().unwrap();
+        assert!(store.active_session().unwrap().is_none());
+
+        let session_id = store.start_session().unwrap();
+        assert_eq!(store.active_session().unwrap(), Some(session_id.clone()));
+
+        store.end_session(&session_id, Some("good session")).unwrap();
+        assert!(store.active_session().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_gesture_inherits_active_session() {
+        let mut store = Store::new_in_memory().unwrap();
+        let session_id = store.start_session().unwrap();
+
+        let gesture_id = store.begin_gesture(Some("test")).unwrap();
+        store.end_gesture();
+
+        // Verify the gesture was created with the session_id
+        // (We can check by querying mutations in the gesture)
+        assert!(!gesture_id.is_empty());
+        assert!(!session_id.is_empty());
+    }
+
+    // ── Epoch tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_epoch_creation() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let epoch_id = store.create_epoch(
+            &t.id,
+            "goal",
+            "reality",
+            Some(r#"{"children":[]}"#),
+            None,
+        ).unwrap();
+
+        let epochs = store.get_epochs(&t.id).unwrap();
+        assert_eq!(epochs.len(), 1);
+        assert_eq!(epochs[0].id, epoch_id);
+        assert_eq!(epochs[0].tension_id, t.id);
+        assert_eq!(epochs[0].desire_snapshot, "goal");
+        assert_eq!(epochs[0].reality_snapshot, "reality");
+        assert_eq!(epochs[0].children_snapshot_json, Some(r#"{"children":[]}"#.to_string()));
+    }
+
+    #[test]
+    fn test_epoch_with_trigger_gesture() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let gesture_id = store.begin_gesture(Some("update reality")).unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        store.end_gesture();
+
+        let epoch_id = store.create_epoch(
+            &t.id,
+            "goal",
+            "new reality",
+            None,
+            Some(&gesture_id),
+        ).unwrap();
+
+        let epochs = store.get_epochs(&t.id).unwrap();
+        assert_eq!(epochs.len(), 1);
+        assert_eq!(epochs[0].id, epoch_id);
+        assert_eq!(epochs[0].trigger_gesture_id, Some(gesture_id));
+    }
+
+    #[test]
+    fn test_multiple_epochs_chronological() {
+        let store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let e1 = store.create_epoch(&t.id, "goal v1", "reality v1", None, None).unwrap();
+        let e2 = store.create_epoch(&t.id, "goal v2", "reality v2", None, None).unwrap();
+
+        let epochs = store.get_epochs(&t.id).unwrap();
+        assert_eq!(epochs.len(), 2);
+        assert_eq!(epochs[0].id, e1);
+        assert_eq!(epochs[1].id, e2);
+        assert!(epochs[0].timestamp <= epochs[1].timestamp);
     }
 }

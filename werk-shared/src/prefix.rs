@@ -30,12 +30,24 @@ impl PrefixResolver {
 
     /// Resolve a prefix to a single tension (non-interactive).
     ///
+    /// Accepts:
+    /// - A short code (numeric, e.g., "7") — exact match, always unambiguous
+    /// - A ULID prefix (4+ chars) — prefix match, must be unique
+    ///
     /// Returns an error if:
-    /// - Prefix is shorter than 4 characters
-    /// - No tension matches the prefix
+    /// - ULID prefix is shorter than 4 characters
+    /// - No tension matches
     /// - Multiple tensions match the prefix (ambiguous)
     pub fn resolve(&self, prefix: &str) -> Result<&Tension> {
-        // Check minimum length
+        // Try short code first (pure numeric input)
+        if let Ok(code) = prefix.parse::<i32>() {
+            if let Some(t) = self.tensions.iter().find(|t| t.short_code == Some(code)) {
+                return Ok(t);
+            }
+            // If no short code match, fall through to ULID prefix matching
+        }
+
+        // ULID prefix matching
         if prefix.len() < MIN_PREFIX_LEN {
             return Err(WerkError::PrefixTooShort {
                 prefix: prefix.to_string(),
@@ -51,7 +63,10 @@ impl PrefixResolver {
             _ => {
                 let match_list = matches
                     .iter()
-                    .map(|t| format!("  {} - {}", t.id, truncate(&t.desired, 40)))
+                    .map(|t| {
+                        let sc = t.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+                        format!("  {} {} - {}", t.id, sc, truncate(&t.desired, 40))
+                    })
                     .collect::<Vec<_>>()
                     .join("\n");
                 Err(WerkError::AmbiguousPrefix {
@@ -105,6 +120,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         }
     }
 

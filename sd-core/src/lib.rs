@@ -87,6 +87,6 @@ pub use projection::{
     Trajectory, TrajectoryBuckets, UrgencyCollision, estimate_time_to_resolution,
     extract_mutation_pattern, project_field, project_frequency_at, project_gap_at, project_tension,
 };
-pub use store::{Store, StoreError};
+pub use store::{EpochRecord, Store, StoreError};
 pub use tension::{SdError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};
