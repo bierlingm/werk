@@ -1,6 +1,6 @@
 //! Health command handler.
 //!
-//! System health summary: phase distribution, movement ratios, alerts.
+//! System health summary: closure progress, urgency distribution, alerts.
 
 use chrono::Utc;
 use serde::Serialize;
@@ -8,38 +8,28 @@ use serde::Serialize;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{
-    compute_urgency, CreativeCyclePhase, DynamicsEngine, StructuralTendency, TensionStatus,
-};
+use sd_core::{compute_urgency, TensionStatus};
 
 /// JSON output structure for health.
 #[derive(Serialize)]
 struct HealthJson {
     active_count: usize,
-    phase_distribution: PhaseDistribution,
-    movement_ratios: MovementRatios,
+    with_children: usize,
+    leaf_count: usize,
+    closure: ClosureStats,
     alerts: Alerts,
 }
 
 #[derive(Serialize)]
-struct PhaseDistribution {
-    germination: usize,
-    assimilation: usize,
-    completion: usize,
-    momentum: usize,
-}
-
-#[derive(Serialize)]
-struct MovementRatios {
-    advancing: usize,
-    oscillating: usize,
-    stagnant: usize,
+struct ClosureStats {
+    total_children: usize,
+    resolved_children: usize,
 }
 
 #[derive(Serialize)]
 struct Alerts {
     urgent: usize,
-    neglected: usize,
+    overdue: usize,
 }
 
 fn bar(count: usize, total: usize, width: usize) -> String {
@@ -59,11 +49,9 @@ fn bar(count: usize, total: usize, width: usize) -> String {
 pub fn cmd_health(output: &Output) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
-    let mut engine = DynamicsEngine::with_store(store);
     let now = Utc::now();
 
-    let tensions = engine
-        .store()
+    let tensions = store
         .list_tensions()
         .map_err(WerkError::StoreError)?;
 
@@ -74,40 +62,38 @@ pub fn cmd_health(output: &Output) -> Result<(), WerkError> {
         .collect();
     let total = active.len();
 
-    // Phase distribution
-    let mut germination = 0usize;
-    let mut assimilation = 0usize;
-    let mut completion = 0usize;
-    let mut momentum = 0usize;
+    // Closure stats
+    let mut with_children = 0usize;
+    let mut leaf_count = 0usize;
+    let mut total_children = 0usize;
+    let mut resolved_children = 0usize;
 
-    // Movement distribution
-    let mut advancing = 0usize;
-    let mut oscillating = 0usize;
-    let mut stagnant = 0usize;
+    for t in &active {
+        let children: Vec<_> = tensions
+            .iter()
+            .filter(|c| c.parent_id.as_deref() == Some(&t.id))
+            .collect();
+        if children.is_empty() {
+            leaf_count += 1;
+        } else {
+            with_children += 1;
+            total_children += children.len();
+            resolved_children += children
+                .iter()
+                .filter(|c| c.status == TensionStatus::Resolved)
+                .count();
+        }
+    }
 
     // Alerts
     let mut urgent = 0usize;
-    let mut neglected = 0usize;
+    let mut overdue = 0usize;
 
     for t in &active {
-        if let Some(cd) = engine.compute_full_dynamics_for_tension(&t.id) {
-            match cd.phase.phase {
-                CreativeCyclePhase::Germination => germination += 1,
-                CreativeCyclePhase::Assimilation => assimilation += 1,
-                CreativeCyclePhase::Completion => completion += 1,
-                CreativeCyclePhase::Momentum => momentum += 1,
-            }
-            match cd.tendency.tendency {
-                StructuralTendency::Advancing => advancing += 1,
-                StructuralTendency::Oscillating => oscillating += 1,
-                StructuralTendency::Stagnant => stagnant += 1,
-            }
-            if cd.neglect.is_some() {
-                neglected += 1;
-            }
-        }
         if let Some(u) = compute_urgency(t, now) {
-            if u.value > 0.75 {
+            if u.value > 1.0 {
+                overdue += 1;
+            } else if u.value > 0.75 {
                 urgent += 1;
             }
         }
@@ -116,18 +102,13 @@ pub fn cmd_health(output: &Output) -> Result<(), WerkError> {
     if output.is_structured() {
         let result = HealthJson {
             active_count: total,
-            phase_distribution: PhaseDistribution {
-                germination,
-                assimilation,
-                completion,
-                momentum,
+            with_children,
+            leaf_count,
+            closure: ClosureStats {
+                total_children,
+                resolved_children,
             },
-            movement_ratios: MovementRatios {
-                advancing,
-                oscillating,
-                stagnant,
-            },
-            alerts: Alerts { urgent, neglected },
+            alerts: Alerts { urgent, overdue },
         };
         output
             .print_structured(&result)
@@ -137,53 +118,33 @@ pub fn cmd_health(output: &Output) -> Result<(), WerkError> {
 
         println!("System Health ({} active tensions)", total);
         println!();
-        println!("Phase Distribution:");
+        println!("Structure:");
         println!(
-            "  Germination   {}  {}",
-            bar(germination, total, bar_width),
-            germination,
+            "  With children  {}  {}",
+            bar(with_children, total, bar_width),
+            with_children,
         );
         println!(
-            "  Assimilation  {}  {}",
-            bar(assimilation, total, bar_width),
-            assimilation,
+            "  Leaf tensions  {}  {}",
+            bar(leaf_count, total, bar_width),
+            leaf_count,
         );
-        println!(
-            "  Completion    {}  {}",
-            bar(completion, total, bar_width),
-            completion,
-        );
-        println!(
-            "  Momentum      {}  {}",
-            bar(momentum, total, bar_width),
-            momentum,
-        );
-        println!();
-        println!("Movement Ratios:");
-        println!(
-            "  Advancing     {}  {}",
-            bar(advancing, total, bar_width),
-            advancing,
-        );
-        println!(
-            "  Oscillating   {}  {}",
-            bar(oscillating, total, bar_width),
-            oscillating,
-        );
-        println!(
-            "  Stagnant      {}  {}",
-            bar(stagnant, total, bar_width),
-            stagnant,
-        );
+        if total_children > 0 {
+            println!();
+            println!(
+                "Closure: {}/{} children resolved across {} parents",
+                resolved_children, total_children, with_children
+            );
+        }
 
-        if urgent > 0 || neglected > 0 {
+        if urgent > 0 || overdue > 0 {
             println!();
             println!("Alerts:");
-            if urgent > 0 {
-                println!("  ! {} urgent tension(s)", urgent);
+            if overdue > 0 {
+                println!("  ! {} overdue tension(s)", overdue);
             }
-            if neglected > 0 {
-                println!("  ! {} neglected tension(s)", neglected);
+            if urgent > 0 {
+                println!("  ! {} urgent tension(s) (>75% of horizon elapsed)", urgent);
             }
         }
     }

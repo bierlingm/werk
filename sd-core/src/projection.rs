@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use crate::dynamics::{compute_gap_magnitude, compute_urgency};
+use crate::dynamics::{compute_urgency, gap_magnitude};
 use crate::mutation::Mutation;
 use crate::tension::{Tension, TensionStatus};
 
@@ -106,7 +106,7 @@ pub fn extract_mutation_pattern(
     };
     let gap_samples: Vec<f64> = recent_actual
         .iter()
-        .map(|m| compute_gap_magnitude(&tension.desired, m.new_value()))
+        .map(|m| gap_magnitude(&tension.desired, m.new_value()))
         .collect();
 
     // Gap trend: linear regression slope over gap_samples by index.
@@ -362,7 +362,7 @@ pub fn project_tension(
         thresholds.pattern_window_seconds,
         now,
     );
-    let current_gap = compute_gap_magnitude(&tension.desired, &tension.actual);
+    let current_gap = gap_magnitude(&tension.desired, &tension.actual);
     let trajectory = classify_trajectory(&pattern, thresholds);
     let ttr = estimate_time_to_resolution(&pattern, current_gap);
 

@@ -9,9 +9,7 @@ use std::collections::HashMap;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{
-    DynamicsEngine, HorizonDriftType, StructuralTendency, TensionStatus,
-};
+use sd_core::{detect_horizon_drift, HorizonDriftType, TensionStatus};
 
 /// JSON output for insights.
 #[derive(Serialize)]
@@ -19,8 +17,8 @@ struct InsightsJson {
     days: i64,
     mutation_count: usize,
     attention: Vec<AttentionEntry>,
-    oscillating_count: usize,
     postponed_count: usize,
+    overdue_count: usize,
     activity_by_day: HashMap<String, usize>,
 }
 
@@ -70,12 +68,11 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
     let day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     let mut day_counts = [0usize; 7];
     for m in &recent {
-        // weekday: Mon=0 .. Sun=6
         let wd = m.timestamp().weekday().num_days_from_monday() as usize;
         day_counts[wd] += 1;
     }
 
-    // Load tensions to get desired state text and compute dynamics
+    // Load tensions for display text and horizon drift detection
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let tension_map: HashMap<&str, &sd_core::Tension> =
         tensions.iter().map(|t| (t.id.as_str(), t)).collect();
@@ -87,24 +84,27 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
         .collect();
     attention.sort_by(|a, b| b.1.cmp(&a.1));
 
-    // Compute oscillation and horizon drift counts across active tensions
-    let mut engine = DynamicsEngine::with_store(store);
-    let mut oscillating_count = 0usize;
+    // Compute horizon drift and overdue counts
     let mut postponed_count = 0usize;
+    let mut overdue_count = 0usize;
 
     for t in &tensions {
         if t.status == TensionStatus::Resolved || t.status == TensionStatus::Released {
             continue;
         }
-        if let Some(cd) = engine.compute_full_dynamics_for_tension(&t.id) {
-            if cd.tendency.tendency == StructuralTendency::Oscillating {
-                oscillating_count += 1;
+        // Horizon drift from mutations
+        let t_mutations = store.get_mutations(&t.id).map_err(WerkError::StoreError)?;
+        let drift = detect_horizon_drift(&t.id, &t_mutations);
+        match drift.drift_type {
+            HorizonDriftType::Postponement | HorizonDriftType::RepeatedPostponement => {
+                postponed_count += 1;
             }
-            match cd.horizon_drift.drift_type {
-                HorizonDriftType::Postponement | HorizonDriftType::RepeatedPostponement => {
-                    postponed_count += 1;
-                }
-                _ => {}
+            _ => {}
+        }
+        // Overdue check
+        if let Some(h) = &t.horizon {
+            if h.is_past(now) {
+                overdue_count += 1;
             }
         }
     }
@@ -134,8 +134,8 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
             days,
             mutation_count: recent_count,
             attention: attention_entries,
-            oscillating_count,
             postponed_count,
+            overdue_count,
             activity_by_day: activity,
         };
         output
@@ -149,7 +149,6 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
             println!("  No mutations recorded in this period.");
         } else {
             println!("Attention:");
-            // Show most active
             if let Some((id, count)) = attention.first() {
                 let desired = tension_map
                     .get(id)
@@ -165,7 +164,6 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
                     label, count,
                 );
             }
-            // Show least active
             if attention.len() > 1 {
                 if let Some((id, count)) = attention.last() {
                     let desired = tension_map
@@ -186,19 +184,19 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
             println!();
 
             println!("Patterns:");
-            if oscillating_count > 0 {
-                println!(
-                    "  {} tension(s) show oscillation",
-                    oscillating_count,
-                );
-            }
             if postponed_count > 0 {
                 println!(
-                    "  {} horizon(s) postponed repeatedly",
+                    "  {} horizon(s) postponed",
                     postponed_count,
                 );
             }
-            if oscillating_count == 0 && postponed_count == 0 {
+            if overdue_count > 0 {
+                println!(
+                    "  {} tension(s) overdue",
+                    overdue_count,
+                );
+            }
+            if postponed_count == 0 && overdue_count == 0 {
                 println!("  No concerning patterns detected.");
             }
             println!();

@@ -773,7 +773,6 @@ fn test_context_with_horizon() {
     assert!(json["tension"]["horizon_range"]["start"].is_string());
     assert!(json["tension"]["horizon_range"]["end"].is_string());
     assert!(json["tension"]["urgency"].is_number());
-    assert!(json["tension"]["pressure"].is_number());
 }
 
 // VAL-HCLI-015: Context JSON without horizon

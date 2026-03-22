@@ -87,10 +87,6 @@ fn test_context_outputs_valid_json() {
         "Should have children section"
     );
     assert!(
-        json.get("dynamics").is_some(),
-        "Should have dynamics section"
-    );
-    assert!(
         json.get("mutations").is_some(),
         "Should have mutations section"
     );
@@ -144,9 +140,9 @@ fn test_context_tension_has_all_fields() {
     assert!(tension_obj.get("parent_id").is_some());
 }
 
-/// Context dynamics section has all 10 dynamics.
+/// Context no longer includes dynamics, but has projection.
 #[test]
-fn test_context_has_all_10_dynamics() {
+fn test_context_has_projection() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -171,29 +167,11 @@ fn test_context_has_all_10_dynamics() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).unwrap();
 
-    let dynamics = json.get("dynamics").unwrap();
+    // Should have projection field
+    assert!(json.get("projection").is_some(), "Should have projection");
 
-    // All 10 dynamics should be present (as fields, null for absent)
-    let expected_fields = [
-        "structural_tension",
-        "structural_conflict",
-        "oscillation",
-        "resolution",
-        "creative_cycle_phase",
-        "orientation",
-        "compensating_strategy",
-        "structural_tendency",
-        "assimilation_depth",
-        "neglect",
-    ];
-
-    for field in &expected_fields {
-        assert!(
-            dynamics.get(field).is_some(),
-            "Dynamics should have field '{}'",
-            field
-        );
-    }
+    // Should NOT have dynamics
+    assert!(json.get("dynamics").is_none(), "Should not have dynamics");
 }
 
 /// Context mutations are in chronological order.

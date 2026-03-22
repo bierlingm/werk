@@ -1,57 +1,19 @@
 //! Symbol vocabulary for the Operative Instrument.
 
 use chrono::Datelike;
-use sd_core::{CreativeCyclePhase, StructuralTendency, TensionStatus};
+use sd_core::TensionStatus;
 
-/// Phase glyph: ◇ Germination, ◆ Assimilation, ◈ Completion, ◉ Momentum.
-pub fn phase_glyph(phase: CreativeCyclePhase) -> &'static str {
-    match phase {
-        CreativeCyclePhase::Germination => "\u{25C7}",  // ◇
-        CreativeCyclePhase::Assimilation => "\u{25C6}", // ◆
-        CreativeCyclePhase::Completion => "\u{25C8}",   // ◈
-        CreativeCyclePhase::Momentum => "\u{25C9}",     // ◉
-    }
-}
-
-/// Status-aware glyph: ✦ resolved, · released, else phase glyph.
-pub fn status_glyph(status: TensionStatus, phase: CreativeCyclePhase) -> &'static str {
+/// Status glyph: ✦ resolved, · released, ◇ active.
+pub fn status_glyph(status: TensionStatus) -> &'static str {
     match status {
         TensionStatus::Resolved => "\u{2726}", // ✦
         TensionStatus::Released => "\u{00B7}", // ·
-        TensionStatus::Active => phase_glyph(phase),
+        TensionStatus::Active => "\u{25C7}",   // ◇
     }
 }
 
 /// Card border character — thin vertical line for card edges.
 pub const CARD_EDGE: char = '\u{2502}'; // │
-
-/// Tendency arrow.
-pub fn tendency_char(tendency: StructuralTendency) -> &'static str {
-    match tendency {
-        StructuralTendency::Advancing => "\u{2192}",   // →
-        StructuralTendency::Oscillating => "\u{2194}",  // ↔
-        StructuralTendency::Stagnant => "\u{25CB}",     // ○
-    }
-}
-
-/// Tendency as a word (for Gaze children summary).
-pub fn tendency_word(tendency: StructuralTendency) -> &'static str {
-    match tendency {
-        StructuralTendency::Advancing => "advancing",
-        StructuralTendency::Oscillating => "oscillating",
-        StructuralTendency::Stagnant => "stagnant",
-    }
-}
-
-/// Phase as a word.
-pub fn phase_word(phase: CreativeCyclePhase) -> &'static str {
-    match phase {
-        CreativeCyclePhase::Germination => "germination",
-        CreativeCyclePhase::Assimilation => "assimilation",
-        CreativeCyclePhase::Completion => "completion",
-        CreativeCyclePhase::Momentum => "momentum",
-    }
-}
 
 /// Activity trail: ○● dots showing weekly mutation activity.
 /// Each dot represents one time bucket: ● = active, ○ = quiet.

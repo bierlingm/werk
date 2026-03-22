@@ -1,6 +1,6 @@
 //! Flat search across all tensions in the forest.
 
-use sd_core::DynamicsEngine;
+use sd_core::Store;
 use werk_shared::truncate;
 
 /// A search result with parent breadcrumb.
@@ -35,13 +35,13 @@ impl SearchState {
 }
 
 /// Search all tensions for a query (case-insensitive substring match).
-pub fn search_all(query: &str, engine: &DynamicsEngine) -> Vec<SearchResult> {
+pub fn search_all(query: &str, store: &Store) -> Vec<SearchResult> {
     if query.is_empty() {
         return Vec::new();
     }
 
     let q = query.to_lowercase();
-    let tensions = engine.store().list_tensions().unwrap_or_default();
+    let tensions = store.list_tensions().unwrap_or_default();
 
     let mut results: Vec<SearchResult> = tensions
         .iter()
@@ -50,7 +50,7 @@ pub fn search_all(query: &str, engine: &DynamicsEngine) -> Vec<SearchResult> {
         })
         .map(|t| {
             // Build parent breadcrumb
-            let parent_path = build_breadcrumb(t.parent_id.as_deref(), engine);
+            let parent_path = build_breadcrumb(t.parent_id.as_deref(), store);
             SearchResult {
                 id: t.id.clone(),
                 desired: t.desired.clone(),
@@ -72,22 +72,22 @@ pub fn search_all(query: &str, engine: &DynamicsEngine) -> Vec<SearchResult> {
 }
 
 /// Search with a special "(root level)" entry prepended (for move-to-root).
-pub fn search_all_with_root(query: &str, engine: &DynamicsEngine) -> Vec<SearchResult> {
+pub fn search_all_with_root(query: &str, store: &Store) -> Vec<SearchResult> {
     let mut results = vec![SearchResult {
         id: String::new(),
         desired: "(root level)".to_string(),
         parent_path: String::new(),
         is_root_entry: true,
     }];
-    results.extend(search_all(query, engine));
+    results.extend(search_all(query, store));
     results
 }
 
-fn build_breadcrumb(parent_id: Option<&str>, engine: &DynamicsEngine) -> String {
+fn build_breadcrumb(parent_id: Option<&str>, store: &Store) -> String {
     let mut crumbs = Vec::new();
     let mut current = parent_id.map(|s| s.to_string());
     while let Some(ref id) = current {
-        if let Ok(Some(t)) = engine.store().get_tension(id) {
+        if let Ok(Some(t)) = store.get_tension(id) {
             crumbs.push(truncate(&t.desired, 15).to_string());
             current = t.parent_id.clone();
         } else {

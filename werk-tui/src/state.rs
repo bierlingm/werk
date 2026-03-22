@@ -1,6 +1,6 @@
 //! Core state types for the Operative Instrument TUI.
 
-use sd_core::{ComputedDynamics, CreativeCyclePhase, StructuralTendency, TensionStatus};
+use sd_core::TensionStatus;
 
 /// A tension as displayed in the Field.
 #[derive(Debug, Clone)]
@@ -9,8 +9,6 @@ pub struct FieldEntry {
     pub desired: String,
     pub actual: String,
     pub status: TensionStatus,
-    pub phase: CreativeCyclePhase,
-    pub tendency: StructuralTendency,
     pub has_children: bool,
     pub parent_id: Option<String>,
     /// Explicit ordering position among siblings. None means unpositioned.
@@ -26,16 +24,10 @@ pub struct FieldEntry {
 impl FieldEntry {
     pub fn from_tension(
         tension: &sd_core::Tension,
-        computed: &Option<ComputedDynamics>,
         last_reality_update: chrono::DateTime<chrono::Utc>,
         has_children: bool,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Self {
-        let (phase, tendency) = match computed {
-            Some(cd) => (cd.phase.phase, cd.tendency.tendency),
-            None => (CreativeCyclePhase::Germination, StructuralTendency::Stagnant),
-        };
-
         let horizon_end = tension.horizon.as_ref().map(|h| h.range_end());
         let (temporal_indicator, temporal_urgency) =
             crate::glyphs::temporal_indicator(last_reality_update, horizon_end, now);
@@ -51,8 +43,6 @@ impl FieldEntry {
             desired: tension.desired.clone(),
             actual: tension.actual.clone(),
             status: tension.status,
-            phase,
-            tendency,
             has_children,
             parent_id: tension.parent_id.clone(),
             position: tension.position,
@@ -67,20 +57,16 @@ impl FieldEntry {
 #[derive(Debug, Clone)]
 pub struct GazeState {
     pub index: usize,
-    pub full: bool, // false = quick (desire/reality/gap), true = + dynamics + history
+    pub full: bool,
 }
 
 /// Data for the quick Gaze (Depth 1).
-///
-/// The primary gaze card: minimal information to act on.
-/// Desire is not included — it's already visible in the tension line.
 pub struct GazeData {
     pub id: String,
     pub actual: String,
     pub horizon: Option<String>,
     pub created_at: String,
     pub children: Vec<ChildPreview>,
-    /// The most recent event for this tension, stated concisely.
     pub last_event: Option<String>,
 }
 
@@ -88,26 +74,16 @@ pub struct GazeData {
 pub struct ChildPreview {
     pub id: String,
     pub desired: String,
-    pub phase: CreativeCyclePhase,
-    pub tendency: StructuralTendency,
     pub status: TensionStatus,
     /// Explicit ordering position. None means unpositioned (backlog).
     pub position: Option<i32>,
 }
 
-/// Data for the full Gaze (Depth 2 — dynamics + history).
+/// Data for the full Gaze (Depth 2 — facts + history).
 pub struct FullGazeData {
-    pub phase: String,
-    pub tendency: String,
-    pub magnitude: Option<f64>,
-    pub orientation: Option<String>,
-    pub conflict: Option<String>,
-    pub neglect: Option<String>,
-    pub oscillation: Option<String>,
-    pub resolution: Option<String>,
-    pub compensating_strategy: Option<String>,
-    pub assimilation: Option<String>,
+    pub urgency: Option<String>,
     pub horizon_drift: Option<String>,
+    pub closure: Option<String>,
     pub history: Vec<HistoryEntry>,
 }
 
@@ -153,7 +129,7 @@ pub struct InsightData {
     pub trigger: String,
     pub response: String,
     pub mutation_count: usize,
-    pub mutation_text: String,  // raw mutation YAML for display
+    pub mutation_text: String,
     pub timestamp: String,
     pub expanded: bool,
 }
@@ -179,7 +155,7 @@ pub enum ConfirmKind {
     Release { tension_id: String, desired: String },
 }
 
-/// An alert computed from current tension state — stateless, disappears when condition resolves.
+/// An alert computed from current tension state.
 #[derive(Debug, Clone)]
 pub struct Alert {
     pub kind: AlertKind,
@@ -187,18 +163,10 @@ pub struct Alert {
     pub action_hint: String,
 }
 
-/// Types of stateless alerts.
 #[derive(Debug, Clone)]
 pub enum AlertKind {
-    /// No reality check in 3+ weeks.
     Neglect { weeks: i64 },
-    /// Desire/reality oscillating back and forth.
-    Oscillation,
-    /// Structural conflict detected.
-    Conflict,
-    /// Temporal horizon has elapsed.
     HorizonPast { days: i64 },
-    /// Multiple root tensions with no senior organizing principle.
     MultipleRoots { count: usize },
 }
 

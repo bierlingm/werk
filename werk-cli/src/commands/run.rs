@@ -9,7 +9,7 @@
 use crate::commands::config::Config;
 use crate::commands::context::ContextResult;
 use crate::dynamics::{
-    compute_all_dynamics, mutation_to_info, node_to_tension_info, tension_to_info,
+    mutation_to_info, node_to_tension_info, tension_to_info,
     MutationInfo, TensionInfo,
 };
 use crate::error::WerkError;
@@ -201,24 +201,23 @@ fn run_system(
     println!("\nSystem-wide context: {} active tensions", active.len());
     println!();
 
-    // Build system context with all active tensions + dynamics
+    // Build system context with all active tensions
     let mut context_parts = vec!["System-wide tension context:\n".to_string()];
     for t in &active {
-        let dynamics = compute_all_dynamics(engine, &t.id);
         let urgency = compute_urgency(t, now);
         let urgency_str = match urgency {
             Some(u) => format!("{:.2}", u.value),
             None => "none".to_string(),
         };
+        let overdue = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
         context_parts.push(format!(
-            "- {} ({}): desired=\"{}\", actual=\"{}\", phase={}, tendency={}, urgency={}\n",
+            "- {} ({}): desired=\"{}\", actual=\"{}\", urgency={}{}\n",
             &t.id[..8.min(t.id.len())],
             t.status,
             t.desired,
             t.actual,
-            dynamics.phase.phase,
-            dynamics.structural_tendency.tendency,
             urgency_str,
+            if overdue { " OVERDUE" } else { "" },
         ));
     }
 
@@ -424,7 +423,6 @@ fn run_interactive(
         .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    let dynamics_json = compute_all_dynamics(engine, &tension.id);
     let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
     let thresholds = ProjectionThresholds::default();
@@ -436,7 +434,6 @@ fn run_interactive(
         ancestors,
         siblings,
         children,
-        dynamics: dynamics_json.into(),
         mutations: mutation_infos,
         projection: projection_json,
     };
@@ -521,7 +518,7 @@ fn run_interactive(
 
 /// Build a markdown context string for agent consumption in one-shot mode.
 pub fn build_context_markdown(
-    engine: &mut DynamicsEngine,
+    _engine: &mut DynamicsEngine,
     tension: &Tension,
     all_tensions: &[Tension],
 ) -> String {
@@ -534,19 +531,16 @@ pub fn build_context_markdown(
 
     if let Some(h) = &tension.horizon {
         out.push_str(&format!("**Horizon:** {}\n", h));
+        let now = Utc::now();
+        if let Some(u) = compute_urgency(tension, now) {
+            out.push_str(&format!("**Urgency:** {:.0}%\n", u.value * 100.0));
+        }
+        if h.is_past(now) {
+            out.push_str("**OVERDUE**\n");
+        }
     }
 
-    // Dynamics summary
-    let dynamics = compute_all_dynamics(engine, &tension.id);
-    out.push_str(&format!("**Phase:** {}\n", dynamics.phase.phase));
-    out.push_str(&format!(
-        "**Movement:** {}\n",
-        dynamics.structural_tendency.tendency
-    ));
-
-    if let Some(st) = &dynamics.structural_tension {
-        out.push_str(&format!("**Gap Magnitude:** {:.2}\n", st.magnitude));
-    }
+    out.push_str(&format!("**Has gap:** {}\n", tension.desired != tension.actual));
 
     // Parent chain
     if let Some(parent_id) = &tension.parent_id {

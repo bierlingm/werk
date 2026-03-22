@@ -91,7 +91,7 @@ fn test_show_displays_phase() {
 
 /// VAL-DISP-009: Show JSON includes conflict dynamics when present
 #[test]
-fn test_show_displays_conflict_when_present() {
+fn test_show_displays_closure_for_parent() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -100,25 +100,19 @@ fn test_show_displays_conflict_when_present() {
         .assert()
         .success();
 
-    // Create parent with children to enable conflict detection
     let store = sd_core::Store::init(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p reality").unwrap();
-    let child1 = store
+    let _child1 = store
         .create_tension_with_parent("child1", "c1", Some(parent.id.clone()))
         .unwrap();
     let _child2 = store
         .create_tension_with_parent("child2", "c2", Some(parent.id.clone()))
         .unwrap();
 
-    // Create asymmetric activity on child1
-    for _ in 0..5 {
-        store.update_actual(&child1.id, "active update").unwrap();
-    }
-
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("show")
-        .arg(&child1.id)
+        .arg(&parent.id)
         .current_dir(dir.path())
         .assert()
         .success()
@@ -129,13 +123,8 @@ fn test_show_displays_conflict_when_present() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    // Should have dynamics field with conflict info
-    let dynamics = json.get("dynamics").expect("Should have dynamics");
-    assert!(
-        dynamics.get("conflict").is_some() || dynamics.get("structural_conflict").is_some(),
-        "Should have conflict field in dynamics JSON, got: {:?}",
-        dynamics
-    );
+    assert_eq!(json["closure_total"].as_u64(), Some(2));
+    assert_eq!(json["closure_resolved"].as_u64(), Some(0));
 }
 
 /// VAL-DISP-009: Show displays last activity
@@ -423,7 +412,7 @@ fn test_show_new_tension_no_panic() {
 
 /// --json flag produces valid JSON with dynamics
 #[test]
-fn test_show_json_with_dynamics() {
+fn test_show_json_has_temporal() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -449,23 +438,13 @@ fn test_show_json_with_dynamics() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    // Should have dynamics field
-    assert!(
-        json.get("dynamics").is_some(),
-        "JSON should have 'dynamics' field"
-    );
-
-    // Dynamics should have phase
-    let dynamics = json.get("dynamics").unwrap();
-    assert!(
-        dynamics.get("phase").is_some() || dynamics.get("creative_cycle_phase").is_some(),
-        "Dynamics should have phase"
-    );
+    assert!(json.get("temporal").is_some(), "Should have temporal signals");
+    assert!(json.get("dynamics").is_none(), "Should NOT have dynamics");
 }
 
-/// --json --verbose shows all 10 dynamics fields
+/// --json shows honest facts (temporal, closure, overdue)
 #[test]
-fn test_show_json_verbose_all_dynamics() {
+fn test_show_json_honest_facts() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -491,23 +470,14 @@ fn test_show_json_verbose_all_dynamics() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    // Should have dynamics object
-    let dynamics = json.get("dynamics").expect("Should have dynamics");
-
-    // Should have multiple dynamics fields (at least these core ones)
-    assert!(
-        dynamics.get("structural_tension").is_some() || dynamics.get("structuralTension").is_some(),
-        "Should have structural_tension"
-    );
-    assert!(
-        dynamics.get("phase").is_some() || dynamics.get("creative_cycle_phase").is_some(),
-        "Should have phase"
-    );
+    assert!(json.get("temporal").is_some(), "Should have temporal");
+    assert!(json.get("overdue").is_some(), "Should have overdue");
+    assert!(json.get("closure_total").is_some(), "Should have closure_total");
 }
 
-/// --json absent dynamics are null (not omitted)
+/// --json urgency is null when no horizon
 #[test]
-fn test_show_json_null_for_absent_dynamics() {
+fn test_show_json_null_urgency_no_horizon() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -533,28 +503,10 @@ fn test_show_json_null_for_absent_dynamics() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    let dynamics = json.get("dynamics").expect("Should have dynamics");
-
-    // Check that some dynamics are null (e.g., oscillation, conflict for new tension)
-    // At least one of these should be null for a fresh tension
-    let has_null = dynamics
-        .get("oscillation")
-        .map(|v| v.is_null())
-        .unwrap_or(false)
-        || dynamics
-            .get("conflict")
-            .map(|v| v.is_null())
-            .unwrap_or(false)
-        || dynamics
-            .get("resolution")
-            .map(|v| v.is_null())
-            .unwrap_or(false);
-
-    assert!(
-        has_null,
-        "At least one dynamics should be null for new tension, got: {:?}",
-        dynamics
-    );
+    // Urgency should be null without horizon
+    assert!(json["urgency"].is_null(), "urgency should be null without horizon");
+    // Overdue should be false
+    assert_eq!(json["overdue"].as_bool(), Some(false));
 }
 
 /// --json shows children array

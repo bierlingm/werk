@@ -18,19 +18,17 @@ pub mod agent;
 pub use app::InstrumentApp;
 
 use std::collections::HashMap;
-use sd_core::DynamicsEngine;
+use sd_core::Store;
 use werk_shared::Workspace;
 
 use crate::state::FieldEntry;
 
-/// Load all tensions from the workspace and compute dynamics + activity.
-pub fn load_field() -> Result<(DynamicsEngine, Vec<FieldEntry>), String> {
+/// Load all tensions from the workspace and compute activity.
+pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
     let workspace = Workspace::discover().map_err(|e| e.to_string())?;
     let store = workspace.open_store().map_err(|e| e.to_string())?;
-    let mut engine = DynamicsEngine::with_store(store);
 
-    let tensions = engine
-        .store()
+    let tensions = store
         .list_tensions()
         .map_err(|e| e.to_string())?;
 
@@ -50,9 +48,8 @@ pub fn load_field() -> Result<(DynamicsEngine, Vec<FieldEntry>), String> {
     let entries: Vec<FieldEntry> = tensions
         .iter()
         .map(|t| {
-            let computed = engine.compute_full_dynamics_for_tension(&t.id);
             let has_children = child_counts.get(&t.id).copied().unwrap_or(0) > 0;
-            let last_reality_update = engine.store()
+            let last_reality_update = store
                 .get_mutations(&t.id)
                 .unwrap_or_default()
                 .iter()
@@ -60,11 +57,11 @@ pub fn load_field() -> Result<(DynamicsEngine, Vec<FieldEntry>), String> {
                 .find(|m| m.field() == "actual" || m.field() == "created")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(t.created_at);
-            FieldEntry::from_tension(t, &computed, last_reality_update, has_children, now)
+            FieldEntry::from_tension(t, last_reality_update, has_children, now)
         })
         .collect();
 
-    Ok((engine, entries))
+    Ok((store, entries))
 }
 
 /// Launch the Operative Instrument TUI.
@@ -72,8 +69,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     use ftui::App;
 
     match load_field() {
-        Ok((engine, entries)) => {
-            let app = InstrumentApp::new(engine, entries);
+        Ok((store, entries)) => {
+            let app = InstrumentApp::new(store, entries);
             App::fullscreen(app).run()?;
         }
         Err(_) => {

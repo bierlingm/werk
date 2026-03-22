@@ -5,12 +5,11 @@
 //! tool into an instrument that watches while you work.
 
 use crate::commands::config::Config;
-use crate::dynamics::compute_all_dynamics;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{DynamicsEngine, TensionStatus};
+use sd_core::{compute_urgency, detect_horizon_drift, DynamicsEngine, TensionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,18 +18,14 @@ use std::path::{Path, PathBuf};
 // Data types
 // ============================================================================
 
-/// A snapshot of dynamics state for a single tension.
+/// A snapshot of honest facts for a single tension.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TensionSnapshot {
     pub tension_id: String,
     pub desired: String,
-    pub phase: String,
-    pub tendency: String,
-    pub has_conflict: bool,
-    pub has_neglect: bool,
-    pub oscillation_reversals: usize,
-    pub has_resolution: bool,
     pub status: String,
+    pub urgency: Option<f64>,
+    pub overdue: bool,
     pub horizon_drift: String,
     pub timestamp: DateTime<Utc>,
 }
@@ -46,24 +41,18 @@ pub struct SnapshotStore {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggerType {
-    NeglectOnset,
-    ConflictDetected,
-    OscillationSpike,
     HorizonBreach,
-    PhaseTransition,
-    Stagnation,
+    HorizonPostponed,
+    UrgencyThreshold,
     Resolution,
 }
 
 impl std::fmt::Display for TriggerType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TriggerType::NeglectOnset => write!(f, "neglect_onset"),
-            TriggerType::ConflictDetected => write!(f, "conflict_detected"),
-            TriggerType::OscillationSpike => write!(f, "oscillation_spike"),
             TriggerType::HorizonBreach => write!(f, "horizon_breach"),
-            TriggerType::PhaseTransition => write!(f, "phase_transition"),
-            TriggerType::Stagnation => write!(f, "stagnation"),
+            TriggerType::HorizonPostponed => write!(f, "horizon_postponed"),
+            TriggerType::UrgencyThreshold => write!(f, "urgency_threshold"),
             TriggerType::Resolution => write!(f, "resolution"),
         }
     }
@@ -297,20 +286,21 @@ pub fn mark_insight_reviewed(path: &Path) -> Result<(), WerkError> {
 
 fn snapshot_tension(engine: &mut DynamicsEngine, tension_id: &str) -> Option<TensionSnapshot> {
     let tension = engine.store().get_tension(tension_id).ok()??;
-    let dynamics = compute_all_dynamics(engine, tension_id);
+    let now = Utc::now();
+    let urgency = compute_urgency(&tension, now).map(|u| u.value);
+    let overdue = tension.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
+
+    let mutations = engine.store().get_mutations(tension_id).ok().unwrap_or_default();
+    let drift = detect_horizon_drift(tension_id, &mutations);
 
     Some(TensionSnapshot {
         tension_id: tension.id.clone(),
         desired: tension.desired.clone(),
-        phase: dynamics.phase.phase.clone(),
-        tendency: dynamics.structural_tendency.tendency.clone(),
-        has_conflict: dynamics.structural_conflict.is_some(),
-        has_neglect: dynamics.neglect.is_some(),
-        oscillation_reversals: dynamics.oscillation.as_ref().map(|o| o.reversals).unwrap_or(0),
-        has_resolution: dynamics.resolution.is_some(),
         status: tension.status.to_string(),
-        horizon_drift: dynamics.horizon_drift.drift_type.clone(),
-        timestamp: Utc::now(),
+        urgency,
+        overdue,
+        horizon_drift: format!("{:?}", drift.drift_type),
+        timestamp: now,
     })
 }
 
@@ -322,58 +312,42 @@ fn detect_crossings(
 
     for (id, current) in new_snapshots {
         if let Some(previous) = old.tensions.get(id) {
-            // Neglect onset: was false, now true
-            if !previous.has_neglect && current.has_neglect {
+            // Overdue onset: was not overdue, now is
+            if !previous.overdue && current.overdue {
                 crossings.push(ThresholdCrossing {
                     tension_id: id.clone(),
                     tension_desired: current.desired.clone(),
-                    trigger: TriggerType::NeglectOnset,
-                    previous_summary: "no neglect".to_string(),
-                    current_summary: "neglect detected".to_string(),
+                    trigger: TriggerType::HorizonBreach,
+                    previous_summary: "not overdue".to_string(),
+                    current_summary: "OVERDUE".to_string(),
                 });
             }
 
-            // Conflict detected: was false, now true
-            if !previous.has_conflict && current.has_conflict {
+            // Urgency threshold crossed (75%)
+            let prev_urgent = previous.urgency.map(|u| u > 0.75).unwrap_or(false);
+            let curr_urgent = current.urgency.map(|u| u > 0.75).unwrap_or(false);
+            if !prev_urgent && curr_urgent {
                 crossings.push(ThresholdCrossing {
                     tension_id: id.clone(),
                     tension_desired: current.desired.clone(),
-                    trigger: TriggerType::ConflictDetected,
-                    previous_summary: "no conflict".to_string(),
-                    current_summary: "conflict detected".to_string(),
+                    trigger: TriggerType::UrgencyThreshold,
+                    previous_summary: format!("urgency {:.0}%", previous.urgency.unwrap_or(0.0) * 100.0),
+                    current_summary: format!("urgency {:.0}%", current.urgency.unwrap_or(0.0) * 100.0),
                 });
             }
 
-            // Oscillation spike: reversals increased by 2+
-            if current.oscillation_reversals >= previous.oscillation_reversals + 2 {
+            // Horizon postponed
+            if previous.horizon_drift != "Postponement"
+                && previous.horizon_drift != "RepeatedPostponement"
+                && (current.horizon_drift == "Postponement"
+                    || current.horizon_drift == "RepeatedPostponement")
+            {
                 crossings.push(ThresholdCrossing {
                     tension_id: id.clone(),
                     tension_desired: current.desired.clone(),
-                    trigger: TriggerType::OscillationSpike,
-                    previous_summary: format!("{} reversals", previous.oscillation_reversals),
-                    current_summary: format!("{} reversals", current.oscillation_reversals),
-                });
-            }
-
-            // Phase transition
-            if previous.phase != current.phase {
-                crossings.push(ThresholdCrossing {
-                    tension_id: id.clone(),
-                    tension_desired: current.desired.clone(),
-                    trigger: TriggerType::PhaseTransition,
-                    previous_summary: previous.phase.clone(),
-                    current_summary: current.phase.clone(),
-                });
-            }
-
-            // Stagnation: tendency was not Stagnant, now is Stagnant
-            if previous.tendency != "Stagnant" && current.tendency == "Stagnant" {
-                crossings.push(ThresholdCrossing {
-                    tension_id: id.clone(),
-                    tension_desired: current.desired.clone(),
-                    trigger: TriggerType::Stagnation,
-                    previous_summary: previous.tendency.clone(),
-                    current_summary: "Stagnant".to_string(),
+                    trigger: TriggerType::HorizonPostponed,
+                    previous_summary: previous.horizon_drift.clone(),
+                    current_summary: current.horizon_drift.clone(),
                 });
             }
 
@@ -387,23 +361,7 @@ fn detect_crossings(
                     current_summary: "Resolved".to_string(),
                 });
             }
-
-            // Horizon breach: drift went to Postponement or RepeatedPostponement
-            if previous.horizon_drift != "Postponement"
-                && previous.horizon_drift != "RepeatedPostponement"
-                && (current.horizon_drift == "Postponement"
-                    || current.horizon_drift == "RepeatedPostponement")
-            {
-                crossings.push(ThresholdCrossing {
-                    tension_id: id.clone(),
-                    tension_desired: current.desired.clone(),
-                    trigger: TriggerType::HorizonBreach,
-                    previous_summary: previous.horizon_drift.clone(),
-                    current_summary: current.horizon_drift.clone(),
-                });
-            }
         }
-        // New tensions: no crossing to detect on first sight
     }
 
     crossings

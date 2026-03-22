@@ -249,15 +249,14 @@ fn test_lifecycle_json_dynamics_tracking() {
     let stdout = String::from_utf8_lossy(&output);
     let show_json: Value = serde_json::from_str(&stdout).expect("Should be valid JSON");
 
-    // Initial phase should be Germination
-    let dynamics = show_json.get("dynamics").expect("Should have dynamics");
-    let phase = dynamics
-        .get("phase")
-        .or_else(|| dynamics.get("creative_cycle_phase"));
+    // Show JSON should have expected top-level fields
     assert!(
-        phase.is_some(),
-        "Should have phase in dynamics, got: {:?}",
-        dynamics
+        show_json.get("id").is_some(),
+        "Show JSON should have id"
+    );
+    assert!(
+        show_json.get("status").is_some(),
+        "Show JSON should have status"
     );
 
     // Update reality multiple times
@@ -712,11 +711,6 @@ fn test_json_schema_identical_tree_show() {
         "Tree tension should have closure_total field"
     );
 
-    // Show has dynamics object (kept for agent consumers)
-    assert!(
-        show_json.get("dynamics").is_some(),
-        "Show JSON should have dynamics object"
-    );
     // Show also has factual fields
     assert!(
         show_json.get("overdue").is_some(),
@@ -1384,20 +1378,6 @@ fn test_agent_workflow_full_flow() {
         "Context should have correct tension ID"
     );
 
-    // Verify dynamics are present and computed
-    let dynamics = context_json
-        .get("dynamics")
-        .expect("Context should have dynamics");
-
-    // Phase should be computed from history (not Germination after updates)
-    let phase = dynamics
-        .get("phase")
-        .or_else(|| dynamics.get("creative_cycle_phase"));
-    assert!(
-        phase.is_some(),
-        "Context should have computed phase from history"
-    );
-
     // Mutations should show the history
     let mutations = context_json
         .get("mutations")
@@ -1452,9 +1432,9 @@ fn test_agent_workflow_full_flow() {
     );
 }
 
-/// VAL-CROSS-003: Context dynamics computed from mutation history
+/// VAL-CROSS-003: Context has expected fields (no dynamics)
 #[test]
-fn test_context_dynamics_computed_from_history() {
+fn test_context_has_expected_fields() {
     let dir = TempDir::new().unwrap();
 
     // Init
@@ -1464,15 +1444,13 @@ fn test_context_dynamics_computed_from_history() {
         .assert()
         .success();
 
-    // Create tension with alternating updates (oscillation pattern)
+    // Create tension with some updates
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial").unwrap();
     let id = tension.id.clone();
 
-    // Create oscillating pattern by alternating actual values
-    for i in 1..=6 {
-        let value = if i % 2 == 0 { "state A" } else { "state B" };
-        store.update_actual(&id, value).unwrap();
+    for i in 1..=3 {
+        store.update_actual(&id, &format!("update {}", i)).unwrap();
     }
 
     // Get context
@@ -1489,22 +1467,16 @@ fn test_context_dynamics_computed_from_history() {
     let stdout = String::from_utf8_lossy(&output);
     let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
 
-    // Dynamics should reflect the oscillating pattern
-    let dynamics = context_json.get("dynamics").expect("Should have dynamics");
+    // Context should have expected top-level fields
+    assert!(context_json.get("tension").is_some(), "Should have tension");
+    assert!(context_json.get("ancestors").is_some(), "Should have ancestors");
+    assert!(context_json.get("siblings").is_some(), "Should have siblings");
+    assert!(context_json.get("children").is_some(), "Should have children");
+    assert!(context_json.get("mutations").is_some(), "Should have mutations");
+    assert!(context_json.get("projection").is_some(), "Should have projection");
 
-    // Oscillation dynamics should be present and computed
-    let oscillation = dynamics.get("oscillation");
-    assert!(
-        oscillation.is_some(),
-        "Context should have oscillation dynamics computed from history"
-    );
-
-    // Structural tendency should be computed
-    let tendency = dynamics.get("structural_tendency");
-    assert!(
-        tendency.is_some(),
-        "Context should have structural tendency computed"
-    );
+    // Context should NOT have dynamics
+    assert!(context_json.get("dynamics").is_none(), "Should not have dynamics");
 }
 
 /// VAL-CROSS-003: Run passes full context via stdin to agent
@@ -1561,10 +1533,6 @@ fn test_run_passes_context_via_stdin() {
     assert!(
         stdin_context.get("children").is_some(),
         "Should have children"
-    );
-    assert!(
-        stdin_context.get("dynamics").is_some(),
-        "Should have dynamics"
     );
     assert!(
         stdin_context.get("mutations").is_some(),
@@ -1752,11 +1720,9 @@ fn test_config_persists_across_commands() {
 // JSON Consistency: context output schema matches show --json dynamics
 // =============================================================================
 
-/// Context dynamics schema matches show --json dynamics schema
-/// Note: show uses "phase" while context uses "creative_cycle_phase" for the phase field.
-/// Both have the same structure otherwise.
+/// Context and show --json have consistent core fields (no dynamics)
 #[test]
-fn test_context_show_json_dynamics_schema_match() {
+fn test_context_show_json_consistent_fields() {
     let dir = TempDir::new().unwrap();
 
     // Init
@@ -1800,60 +1766,24 @@ fn test_context_show_json_dynamics_schema_match() {
     let stdout = String::from_utf8_lossy(&output);
     let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
 
-    // Both should have dynamics with matching core schema
-    let show_dynamics = show_json
-        .get("dynamics")
-        .expect("Show should have dynamics");
-    let context_dynamics = context_json
-        .get("dynamics")
-        .expect("Context should have dynamics");
-
-    // 9 dynamics fields (excluding phase which is named differently) should be present in both
-    let shared_dynamics_fields = [
-        "structural_tension",
-        "structural_conflict",
-        "oscillation",
-        "resolution",
-        "orientation",
-        "compensating_strategy",
-        "structural_tendency",
-        "assimilation_depth",
-        "neglect",
-    ];
-
-    for field in &shared_dynamics_fields {
-        assert!(
-            show_dynamics.get(field).is_some(),
-            "Show dynamics should have field '{}'",
-            field
-        );
-        assert!(
-            context_dynamics.get(field).is_some(),
-            "Context dynamics should have field '{}'",
-            field
-        );
-    }
-
-    // Show uses "phase", context uses "creative_cycle_phase" - both have phase data
+    // Neither should have dynamics
     assert!(
-        show_dynamics.get("phase").is_some(),
-        "Show dynamics should have 'phase' field"
+        show_json.get("dynamics").is_none(),
+        "Show JSON should not have dynamics"
     );
     assert!(
-        context_dynamics.get("creative_cycle_phase").is_some(),
-        "Context dynamics should have 'creative_cycle_phase' field"
+        context_json.get("dynamics").is_none(),
+        "Context JSON should not have dynamics"
     );
 
-    // Phase values should match (show.phase == context.creative_cycle_phase)
-    let show_phase = show_dynamics.get("phase").unwrap();
-    let context_phase = context_dynamics.get("creative_cycle_phase").unwrap();
-    assert_eq!(
-        show_phase.get("phase").unwrap().as_str().unwrap(),
-        context_phase.get("phase").unwrap().as_str().unwrap(),
-        "Phase values should match between show and context"
-    );
+    // Show should have factual temporal fields
+    assert!(show_json.get("urgency").is_some(), "Show should have urgency");
+    assert!(show_json.get("overdue").is_some(), "Show should have overdue");
+    assert!(show_json.get("closure_resolved").is_some(), "Show should have closure_resolved");
+    assert!(show_json.get("closure_total").is_some(), "Show should have closure_total");
+    assert!(show_json.get("temporal").is_some(), "Show should have temporal");
 
-    // Core tension fields should match
+    // Core tension fields should match between show and context
     assert_eq!(
         show_json["id"], context_json["tension"]["id"],
         "Tension ID should match between show and context"

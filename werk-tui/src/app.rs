@@ -1,7 +1,7 @@
 //! The Operative Instrument application state.
 
 use ftui::widgets::input::TextInput;
-use sd_core::{DynamicsEngine, Tension, TensionStatus};
+use sd_core::{DynamicsEngine, Store, Tension, TensionStatus};
 use werk_shared::truncate;
 
 use crate::glyphs;
@@ -15,7 +15,6 @@ pub struct InstrumentApp {
     // Navigation
     pub parent_id: Option<String>,
     pub parent_tension: Option<Tension>,
-    pub parent_phase: sd_core::CreativeCyclePhase,
     /// Parent's temporal indicator (six dots), computed on load_siblings
     pub parent_temporal_indicator: String,
     pub parent_temporal_urgency: f64,
@@ -102,7 +101,8 @@ impl Filter {
 
 impl InstrumentApp {
     /// Create a new app. Starts at the Field (root level).
-    pub fn new(engine: DynamicsEngine, all_entries: Vec<FieldEntry>) -> Self {
+    pub fn new(store: Store, all_entries: Vec<FieldEntry>) -> Self {
+        let engine = DynamicsEngine::with_store(store);
         let total_count = all_entries.len();
         let total_active = all_entries
             .iter()
@@ -113,7 +113,6 @@ impl InstrumentApp {
             engine,
             parent_id: None,
             parent_tension: None,
-            parent_phase: sd_core::CreativeCyclePhase::Germination,
             parent_temporal_indicator: String::new(),
             parent_temporal_urgency: 0.0,
             parent_horizon_label: None,
@@ -163,7 +162,6 @@ impl InstrumentApp {
             engine,
             parent_id: None,
             parent_tension: None,
-            parent_phase: sd_core::CreativeCyclePhase::Germination,
             parent_temporal_indicator: String::new(),
             parent_temporal_urgency: 0.0,
             parent_horizon_label: None,
@@ -215,14 +213,6 @@ impl InstrumentApp {
             .parent_id
             .as_ref()
             .and_then(|pid| self.engine.store().get_tension(pid).ok().flatten());
-
-        // Compute parent phase and temporal data
-        if let Some(ref pid) = self.parent_id {
-            let cd = self.engine.compute_full_dynamics_for_tension(pid);
-            self.parent_phase = cd
-                .map(|c| c.phase.phase)
-                .unwrap_or(sd_core::CreativeCyclePhase::Germination);
-        }
 
         let now = chrono::Utc::now();
 
@@ -293,7 +283,6 @@ impl InstrumentApp {
         self.siblings = filtered
             .iter()
             .map(|t| {
-                let computed = self.engine.compute_full_dynamics_for_tension(&t.id);
                 let has_children = !self
                     .engine
                     .store()
@@ -309,7 +298,7 @@ impl InstrumentApp {
                     .find(|m| m.field() == "actual" || m.field() == "created")
                     .map(|m| m.timestamp().to_owned())
                     .unwrap_or(t.created_at);
-                FieldEntry::from_tension(t, &computed, last_reality_update, has_children, now)
+                FieldEntry::from_tension(t, last_reality_update, has_children, now)
             })
             .collect();
 
@@ -382,24 +371,6 @@ impl InstrumentApp {
                         kind: AlertKind::HorizonPast { days: past_days },
                         message: format!("horizon past {} days", past_days),
                         action_hint: "extend or resolve".to_string(),
-                    });
-                }
-            }
-
-            // Oscillation / Conflict from dynamics
-            if let Some(computed) = self.engine.compute_full_dynamics_for_tension(&parent.id) {
-                if computed.oscillation.is_some() {
-                    alerts.push(Alert {
-                        kind: AlertKind::Oscillation,
-                        message: "oscillating".to_string(),
-                        action_hint: "hold the current path".to_string(),
-                    });
-                }
-                if computed.conflict.is_some() {
-                    alerts.push(Alert {
-                        kind: AlertKind::Conflict,
-                        message: "conflict: competing tensions".to_string(),
-                        action_hint: "choose one path".to_string(),
                     });
                 }
             }
@@ -480,11 +451,7 @@ impl InstrumentApp {
         let mut current_id = self.parent_id.clone();
         while let Some(ref id) = current_id {
             if let Ok(Some(t)) = self.engine.store().get_tension(id) {
-                let glyph = glyphs::status_glyph(t.status, {
-                    let cd = self.engine.compute_full_dynamics_for_tension(&t.id);
-                    cd.map(|c| c.phase.phase)
-                        .unwrap_or(sd_core::CreativeCyclePhase::Germination)
-                });
+                let glyph = glyphs::status_glyph(t.status);
                 crumbs.push((glyph.to_string(), t.desired.clone()));
                 current_id = t.parent_id.clone();
             } else {
@@ -510,18 +477,9 @@ impl InstrumentApp {
 
         let mut children: Vec<ChildPreview> = Vec::new();
         for c in &active_children {
-            let cd = self.engine.compute_full_dynamics_for_tension(&c.id);
-            let (phase, tendency) = cd
-                .map(|d| (d.phase.phase, d.tendency.tendency))
-                .unwrap_or((
-                    sd_core::CreativeCyclePhase::Germination,
-                    sd_core::StructuralTendency::Stagnant,
-                ));
             children.push(ChildPreview {
                 id: c.id.clone(),
                 desired: c.desired.clone(),
-                phase,
-                tendency,
                 status: c.status,
                 position: c.position,
             });
@@ -710,62 +668,21 @@ impl InstrumentApp {
     }
 
 
-    /// Compute full gaze data (dynamics + history) for a tension.
+    /// Compute full gaze data (facts + history) for a tension.
     pub fn compute_full_gaze(&mut self, id: &str) -> Option<FullGazeData> {
-        let computed = self.engine.compute_full_dynamics_for_tension(id)?;
+        let tension = self.engine.store().get_tension(id).ok()??;
+        let now = chrono::Utc::now();
 
-        let phase = crate::glyphs::phase_word(computed.phase.phase).to_string();
-        let tendency = crate::glyphs::tendency_word(computed.tendency.tendency).to_string();
-        let magnitude = computed.structural_tension.as_ref().map(|st| st.magnitude);
+        // Urgency from horizon
+        let urgency = self.engine.compute_urgency(&tension).map(|u| {
+            format!("{:.0}%", u.value * 100.0)
+        });
 
-        let orientation = computed.orientation.as_ref().map(|o| {
-            match o.orientation {
-                sd_core::Orientation::Creative => "creative".to_string(),
-                sd_core::Orientation::ProblemSolving => "problem-solving".to_string(),
-                sd_core::Orientation::ReactiveResponsive => "reactive".to_string(),
-            }
-        });
-        let conflict = computed.conflict.as_ref().map(|c| {
-            match c.pattern {
-                sd_core::ConflictPattern::CompetingTensions => "competing tensions".to_string(),
-                sd_core::ConflictPattern::AsymmetricActivity => "asymmetric activity".to_string(),
-            }
-        });
-        let neglect = computed.neglect.as_ref().map(|n| {
-            match n.neglect_type {
-                sd_core::NeglectType::ParentNeglectsChildren |
-                sd_core::NeglectType::ChildrenNeglected => "children neglected".to_string(),
-            }
-        });
-        let oscillation = computed.oscillation.as_ref().map(|o| {
-            format!("{} reversals, magnitude {:.2}", o.reversals, o.magnitude)
-        });
-        let resolution = computed.resolution.as_ref().map(|r| {
-            let trend = match r.trend {
-                sd_core::ResolutionTrend::Accelerating => "accelerating",
-                sd_core::ResolutionTrend::Steady => "steady",
-                sd_core::ResolutionTrend::Decelerating => "decelerating",
-            };
-            format!("{}, velocity {:.3}", trend, r.velocity)
-        });
-        let compensating_strategy = computed.compensating_strategy.as_ref().map(|cs| {
-            match cs.strategy_type {
-                sd_core::CompensatingStrategyType::TolerableConflict => "tolerable conflict".to_string(),
-                sd_core::CompensatingStrategyType::ConflictManipulation => "conflict manipulation".to_string(),
-                sd_core::CompensatingStrategyType::WillpowerManipulation => "willpower manipulation".to_string(),
-            }
-        });
-        let assimilation = if computed.assimilation.depth != sd_core::AssimilationDepth::None {
-            Some(match computed.assimilation.depth {
-                sd_core::AssimilationDepth::Shallow => "shallow".to_string(),
-                sd_core::AssimilationDepth::Deep => "deep".to_string(),
-                sd_core::AssimilationDepth::None => unreachable!(),
-            })
-        } else {
-            None
-        };
-        let horizon_drift = if computed.horizon_drift.change_count > 0 {
-            Some(match computed.horizon_drift.drift_type {
+        // Horizon drift from mutation history
+        let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
+        let drift = sd_core::detect_horizon_drift(id, &mutations);
+        let horizon_drift = if drift.change_count > 0 {
+            Some(match drift.drift_type {
                 sd_core::HorizonDriftType::Stable => "stable".to_string(),
                 sd_core::HorizonDriftType::Tightening => "tightening".to_string(),
                 sd_core::HorizonDriftType::Postponement => "postponement".to_string(),
@@ -777,9 +694,16 @@ impl InstrumentApp {
             None
         };
 
+        // Closure: proportion of children resolved
+        let children = self.engine.store().get_children(id).unwrap_or_default();
+        let closure = if !children.is_empty() {
+            let resolved = children.iter().filter(|c| c.status == TensionStatus::Resolved).count();
+            Some(format!("{}/{}", resolved, children.len()))
+        } else {
+            None
+        };
+
         // History
-        let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
-        let now = chrono::Utc::now();
         let history: Vec<HistoryEntry> = mutations
             .iter()
             .rev() // most recent first
@@ -804,17 +728,9 @@ impl InstrumentApp {
             .collect();
 
         Some(FullGazeData {
-            phase,
-            tendency,
-            magnitude,
-            orientation,
-            conflict,
-            neglect,
-            oscillation,
-            resolution,
-            compensating_strategy,
-            assimilation,
+            urgency,
             horizon_drift,
+            closure,
             history,
         })
     }
@@ -831,19 +747,6 @@ impl InstrumentApp {
                 ctx.push_str(&format!("Horizon: {}\n", h));
             }
             ctx.push_str(&format!("Status: {}\n", t.status));
-
-            // Add dynamics
-            if let Some(cd) = self.engine.compute_full_dynamics_for_tension(tension_id) {
-                ctx.push_str(&format!("Phase: {} | Tendency: {}\n",
-                    crate::glyphs::phase_word(cd.phase.phase),
-                    crate::glyphs::tendency_word(cd.tendency.tendency),
-                ));
-                if let Some(ref st) = cd.structural_tension {
-                    ctx.push_str(&format!("Magnitude: {:.2}\n", st.magnitude));
-                }
-                if cd.conflict.is_some() { ctx.push_str("Conflict: present\n"); }
-                if cd.neglect.is_some() { ctx.push_str("Neglect: detected\n"); }
-            }
 
             // Add children
             let children = self.engine.store().get_children(tension_id).unwrap_or_default();
@@ -915,18 +818,6 @@ The YAML block MUST be the last thing in your response.
                 ctx.push_str(&format!("Horizon: {}\n", h));
             }
             ctx.push_str(&format!("Status: {}\n", t.status));
-
-            if let Some(cd) = self.engine.compute_full_dynamics_for_tension(tension_id) {
-                ctx.push_str(&format!("Phase: {} | Tendency: {}\n",
-                    crate::glyphs::phase_word(cd.phase.phase),
-                    crate::glyphs::tendency_word(cd.tendency.tendency),
-                ));
-                if let Some(ref st) = cd.structural_tension {
-                    ctx.push_str(&format!("Magnitude: {:.2}\n", st.magnitude));
-                }
-                if cd.conflict.is_some() { ctx.push_str("Conflict: present\n"); }
-                if cd.neglect.is_some() { ctx.push_str("Neglect: detected\n"); }
-            }
 
             let children = self.engine.store().get_children(tension_id).unwrap_or_default();
             if !children.is_empty() {
@@ -1086,16 +977,10 @@ The YAML block MUST be the last thing in your response.
         let mut h = self.quick_gaze_height_for_refresh();
         if let Some(ref full) = self.full_gaze_data {
             h += 1; // separator
-            let dyn_count = 2
-                + full.magnitude.is_some() as usize
-                + full.orientation.is_some() as usize
-                + full.conflict.is_some() as usize
-                + full.neglect.is_some() as usize
-                + full.oscillation.is_some() as usize
-                + full.resolution.is_some() as usize
-                + full.compensating_strategy.is_some() as usize
-                + full.assimilation.is_some() as usize
-                + full.horizon_drift.is_some() as usize;
+            let dyn_count = full.urgency.is_some() as usize
+                + full.horizon_drift.is_some() as usize
+                + full.closure.is_some() as usize;
+            let dyn_count = dyn_count.max(1); // at least 1 row
             let hist_count = full.history.len().min(dyn_count.max(3));
             h += dyn_count.max(hist_count);
         }

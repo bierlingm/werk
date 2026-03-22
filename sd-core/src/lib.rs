@@ -1,14 +1,12 @@
 #![forbid(unsafe_code)]
 
-// sd-core: Structural Dynamics Grammar
+// sd-core: Core computation and storage layer for werk.
 //
-// A faithful computational model of Robert Fritz's structural dynamics.
-// The primitive is structural tension — the gap between a desired state
-// and current reality. Everything else is computed from tensions and
-// their mutation histories.
+// Provides: tension model, tree/forest, store, temporal computations,
+// urgency, horizon drift, mutations, events, projections.
 //
-// This crate has zero instrument dependencies. It computes dynamics
-// and emits events. Instruments subscribe and react.
+// This crate has zero instrument dependencies. Instruments subscribe
+// and react to events.
 
 pub mod dynamics;
 pub mod engine;
@@ -21,65 +19,12 @@ pub mod temporal;
 pub mod tension;
 pub mod tree;
 
-// Re-export commonly used types for convenience
-#[allow(deprecated)]
-pub use dynamics::predict_structural_tendency_default;
+// Re-export commonly used types
 pub use dynamics::{
-    // Secondary dynamics
-    AssimilationDepth,
-    AssimilationDepthResult,
-    AssimilationDepthThresholds,
-    AssimilationEvidence,
-    CompensatingStrategy,
-    CompensatingStrategyThresholds,
-    CompensatingStrategyType,
-    // Core dynamics
-    Conflict,
-    ConflictPattern,
-    ConflictThresholds,
-    // Lifecycle and orientation
-    CreativeCyclePhase,
-    CreativeCyclePhaseResult,
-    // Horizon dynamics
-    HorizonDrift,
-    HorizonDriftType,
-    LifecycleThresholds,
-    Neglect,
-    NeglectThresholds,
-    NeglectType,
-    Orientation,
-    OrientationEvidence,
-    OrientationResult,
-    OrientationThresholds,
-    Oscillation,
-    OscillationThresholds,
-    PhaseEvidence,
-    Resolution,
-    ResolutionThresholds,
-    ResolutionTrend,
-    StructuralTendency,
-    StructuralTendencyResult,
-    StructuralTension,
-    TendencyThresholds,
-    Urgency,
-    // Functions
-    classify_creative_cycle_phase,
-    classify_orientation,
-    compute_structural_tension,
-    compute_temporal_pressure,
-    compute_urgency,
-    detect_compensating_strategy,
-    detect_horizon_drift,
-    detect_neglect,
-    detect_oscillation,
-    detect_resolution,
-    detect_structural_conflict,
-    measure_assimilation_depth,
-    predict_structural_tendency,
+    HorizonDrift, HorizonDriftType, Urgency,
+    compute_urgency, detect_horizon_drift, gap_magnitude,
 };
-pub use engine::{
-    ComputedDynamics, DynamicsEngine, DynamicsThresholds, PreviousDynamics, PreviousState,
-};
+pub use engine::DynamicsEngine;
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};

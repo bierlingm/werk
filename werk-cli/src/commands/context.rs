@@ -1,8 +1,8 @@
 //! Context command handler.
 
 use crate::dynamics::{
-    compute_all_dynamics, mutation_to_info, node_to_tension_info, tension_to_info,
-    ContextDynamicsJson, MutationInfo, TensionInfo,
+    mutation_to_info, node_to_tension_info, tension_to_info,
+    MutationInfo, TensionInfo,
 };
 use crate::error::WerkError;
 use crate::output::Output;
@@ -10,7 +10,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::{
-    compute_urgency, project_tension, DynamicsEngine, ProjectionThresholds, TensionStatus,
+    compute_urgency, project_tension, ProjectionThresholds, TensionStatus,
 };
 use serde::Serialize;
 
@@ -21,7 +21,6 @@ pub struct ContextResult {
     pub ancestors: Vec<TensionInfo>,
     pub siblings: Vec<TensionInfo>,
     pub children: Vec<TensionInfo>,
-    pub dynamics: ContextDynamicsJson,
     pub mutations: Vec<MutationInfo>,
     pub projection: serde_json::Value,
 }
@@ -38,52 +37,37 @@ pub fn cmd_context(
         ));
     }
 
-    // Bulk modes: --all or --urgent
     if all || urgent {
         return cmd_context_bulk(output, urgent);
     }
 
-    // Single-tension mode: id is required
     let id = id.ok_or_else(|| {
         WerkError::InvalidInput(
             "Tension ID is required (or use --all / --urgent for bulk mode)".to_string(),
         )
     })?;
 
-    // Discover workspace
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
-    // Create DynamicsEngine from store (all store access goes through engine.store())
-    let mut engine = DynamicsEngine::with_store(store);
-
-    // Get all tensions for prefix resolution
-    let all_tensions = engine
-        .store()
+    let all_tensions = store
         .list_tensions()
         .map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(all_tensions.clone());
 
-    // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
 
-    // Get mutations for this tension
-    let mutations = engine
-        .store()
+    let mutations = store
         .get_mutations(&tension.id)
         .map_err(WerkError::StoreError)?;
 
-    // Build forest for ancestors, siblings, children
     let forest = sd_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // === Compute time reference ===
     let now = Utc::now();
 
-    // === Tension Info (with staleness_ratio) ===
     let tension_info = tension_to_info(tension, &mutations, now);
 
-    // === Ancestors (root-first) ===
     let ancestors: Vec<TensionInfo> = forest
         .ancestors(&tension.id)
         .unwrap_or_default()
@@ -91,7 +75,6 @@ pub fn cmd_context(
         .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    // === Siblings (excluding self) ===
     let siblings: Vec<TensionInfo> = forest
         .siblings(&tension.id)
         .unwrap_or_default()
@@ -99,7 +82,6 @@ pub fn cmd_context(
         .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    // === Children ===
     let children: Vec<TensionInfo> = forest
         .children(&tension.id)
         .unwrap_or_default()
@@ -107,29 +89,21 @@ pub fn cmd_context(
         .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    // === Compute all dynamics via DynamicsEngine (shared module) ===
-    let dynamics_json = compute_all_dynamics(&mut engine, &tension.id);
-
-    // === Compute projection ===
     let thresholds = ProjectionThresholds::default();
     let projections = project_tension(tension, &mutations, &thresholds, now);
     let projection_json = build_projection_json(&projections);
 
-    // === Mutations (chronological order - oldest first) ===
     let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
-    // Build final result (using ContextDynamicsJson for creative_cycle_phase field name)
     let result = ContextResult {
         tension: tension_info,
         ancestors,
         siblings,
         children,
-        dynamics: dynamics_json.into(),
         mutations: mutation_infos,
         projection: projection_json,
     };
 
-    // Context always outputs structured format (designed for agent consumption)
     output
         .print_structured(&result)
         .map_err(WerkError::IoError)?;
@@ -137,26 +111,21 @@ pub fn cmd_context(
     Ok(())
 }
 
-/// Bulk context: iterate tensions and output a JSON array of context objects.
 fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
-    let mut engine = DynamicsEngine::with_store(store);
 
-    let all_tensions = engine
-        .store()
+    let all_tensions = store
         .list_tensions()
         .map_err(WerkError::StoreError)?;
 
     let now = Utc::now();
 
-    // Filter to active tensions
     let mut targets: Vec<_> = all_tensions
         .iter()
         .filter(|t| t.status == TensionStatus::Active)
         .collect();
 
-    // If urgent-only, further filter to urgency > 0.75
     if urgent_only {
         targets.retain(|t| {
             compute_urgency(t, now)
@@ -171,8 +140,7 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
     let mut results: Vec<ContextResult> = Vec::new();
 
     for tension in &targets {
-        let mutations = engine
-            .store()
+        let mutations = store
             .get_mutations(&tension.id)
             .map_err(WerkError::StoreError)?;
 
@@ -199,8 +167,6 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
             .map(|node| node_to_tension_info(node, now))
             .collect();
 
-        let dynamics_json = compute_all_dynamics(&mut engine, &tension.id);
-
         let thresholds = ProjectionThresholds::default();
         let projections = project_tension(tension, &mutations, &thresholds, now);
         let projection_json = build_projection_json(&projections);
@@ -212,7 +178,6 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
             ancestors,
             siblings,
             children,
-            dynamics: dynamics_json.into(),
             mutations: mutation_infos,
             projection: projection_json,
         });
@@ -225,7 +190,6 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
     Ok(())
 }
 
-/// Build a projection JSON value from the projection results.
 pub fn build_projection_json(
     projections: &[sd_core::TensionProjection],
 ) -> serde_json::Value {

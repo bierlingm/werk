@@ -120,11 +120,8 @@ fn test_show_json_valid_with_dynamics() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Show output should be valid JSON");
     assert!(json.get("id").is_some(), "Should have id field");
-    assert!(json.get("dynamics").is_some(), "Should have dynamics field");
-    assert!(
-        json.get("dynamics").unwrap().get("phase").is_some(),
-        "Should have phase in dynamics"
-    );
+    assert!(json.get("temporal").is_some(), "Should have temporal field");
+    assert!(json.get("dynamics").is_none(), "Should NOT have dynamics field");
 }
 
 // =============================================================================
@@ -638,7 +635,7 @@ fn test_tree_json_filter_resolved() {
 // =============================================================================
 
 #[test]
-fn test_show_json_dynamics_null_not_omitted() {
+fn test_show_json_has_honest_fields() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -676,29 +673,15 @@ fn test_show_json_dynamics_null_not_omitted() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Should be valid JSON");
 
-    let dynamics = json.get("dynamics").expect("Should have dynamics");
+    // Should have honest fields
+    assert!(json.get("id").is_some(), "Should have id");
+    assert!(json.get("temporal").is_some(), "Should have temporal signals");
+    assert!(json.get("closure_total").is_some(), "Should have closure_total");
+    assert!(json.get("closure_resolved").is_some(), "Should have closure_resolved");
+    assert!(json.get("overdue").is_some(), "Should have overdue");
 
-    // Check that certain dynamics are null (not omitted)
-    // For a new tension, these should be null:
-    let null_fields = [
-        "oscillation",
-        "resolution",
-        "structural_conflict",
-        "neglect",
-    ];
-    for field in null_fields {
-        assert!(
-            dynamics.get(field).is_some(),
-            "Field '{}' should exist in dynamics (not omitted)",
-            field
-        );
-        assert!(
-            dynamics.get(field).unwrap().is_null(),
-            "Field '{}' should be null for new tension, got: {:?}",
-            field,
-            dynamics.get(field)
-        );
-    }
+    // Should NOT have dynamics
+    assert!(json.get("dynamics").is_none(), "Should NOT have dynamics");
 }
 
 // =============================================================================
