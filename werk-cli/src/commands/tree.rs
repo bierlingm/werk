@@ -4,7 +4,7 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::{Forest, TensionStatus};
+use sd_core::{Forest, TensionStatus, detect_containment_violations, detect_sequencing_pressure};
 use serde::Serialize;
 use werk_shared::truncate;
 
@@ -20,6 +20,8 @@ struct TensionJson {
     created_at: String,
     horizon: Option<String>,
     overdue: bool,
+    containment_violation: bool,
+    sequencing_pressure: bool,
     closure_resolved: usize,
     closure_total: usize,
 }
@@ -123,6 +125,20 @@ pub fn cmd_tree(
                         .map(|h| h.is_past(now))
                         .unwrap_or(false);
 
+                let containment_violation = t.status == TensionStatus::Active
+                    && t.parent_id.as_ref().map_or(false, |pid| {
+                        detect_containment_violations(&forest, pid)
+                            .iter()
+                            .any(|v| v.tension_id == t.id)
+                    });
+
+                let sequencing_pressure = t.status == TensionStatus::Active
+                    && t.parent_id.as_ref().map_or(false, |pid| {
+                        detect_sequencing_pressure(&forest, pid)
+                            .iter()
+                            .any(|p| p.tension_id == t.id)
+                    });
+
                 TensionJson {
                     id: t.id.clone(),
                     short_code: t.short_code,
@@ -133,6 +149,8 @@ pub fn cmd_tree(
                     created_at: t.created_at.to_rfc3339(),
                     horizon: t.horizon.as_ref().map(|h| h.to_string()),
                     overdue,
+                    containment_violation,
+                    sequencing_pressure,
                     closure_resolved,
                     closure_total: all_children.len(),
                 }
@@ -213,6 +231,23 @@ pub fn cmd_tree(
                 content.push_str(&format!(" [{}]", h));
                 if node.tension.status == TensionStatus::Active && h.is_past(now) {
                     content.push_str(" OVERDUE");
+                }
+            }
+
+            // Containment violation (child deadline exceeds parent)
+            if node.tension.status == TensionStatus::Active {
+                if let Some(ref parent_id) = node.tension.parent_id {
+                    let violations = detect_containment_violations(forest, parent_id);
+                    if violations.iter().any(|v| v.tension_id == node.id()) {
+                        content.push_str(" EXCEEDS_PARENT");
+                    }
+                }
+                // Sequencing pressure
+                if let Some(ref parent_id) = node.tension.parent_id {
+                    let pressures = detect_sequencing_pressure(forest, parent_id);
+                    if pressures.iter().any(|p| p.tension_id == node.id()) {
+                        content.push_str(" PRESSURE");
+                    }
                 }
             }
 

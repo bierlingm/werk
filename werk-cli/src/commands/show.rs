@@ -6,7 +6,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_structural_tension, compute_urgency, DynamicsEngine, HorizonKind, TensionStatus};
+use sd_core::{compute_structural_tension, compute_temporal_signals, compute_urgency, DynamicsEngine, HorizonKind, TensionStatus};
 use serde::Serialize;
 use werk_shared::{relative_time, truncate};
 
@@ -28,6 +28,7 @@ struct ShowResult {
     overdue: bool,
     closure_resolved: usize,
     closure_total: usize,
+    temporal: sd_core::TemporalSignals,
     dynamics: crate::dynamics::DynamicsJson,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
@@ -119,6 +120,9 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             .map(|h| h.is_past(now))
             .unwrap_or(false);
 
+    // Temporal signals (calculus of time)
+    let temporal = compute_temporal_signals(&forest, &tension.id, now);
+
     // Build mutation info (last 10, chronological order - oldest first)
     let mutation_infos: Vec<ShowMutationInfo> = mutations
         .iter()
@@ -152,6 +156,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         overdue,
         closure_resolved,
         closure_total,
+        temporal: temporal.clone(),
         dynamics: dynamics_json,
         mutations: mutation_infos,
         children,
@@ -254,6 +259,59 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             println!("  Position:   {} (positioned)", pos);
         } else if tension.parent_id.is_some() {
             println!("  Position:   held (unpositioned)");
+        }
+
+        // Implied execution window
+        if let Some(ref iw) = temporal.implied_window {
+            let days = iw.duration_seconds as f64 / 86400.0;
+            if days < 0.0 {
+                println!("  Window:     negative ({:.0} days past)", -days);
+            } else {
+                println!("  Window:     {:.0} days", days);
+            }
+        }
+
+        // Sequencing pressure (signal by exception)
+        for sp in &temporal.sequencing_pressures {
+            let pred_display = werk_shared::display_id(sp.predecessor_short_code, &sp.predecessor_id);
+            let days = sp.gap_seconds as f64 / 86400.0;
+            println!(
+                "  PRESSURE:   deadline is {:.0} days before {} (ordered after)",
+                days, pred_display
+            );
+        }
+
+        // On critical path of parent
+        if temporal.on_critical_path {
+            println!("  CRITICAL:   on parent's critical path");
+        }
+
+        // Containment violation
+        if temporal.has_containment_violation {
+            println!("  VIOLATION:  deadline exceeds parent's deadline");
+        }
+
+        // Children on critical path
+        for cp in &temporal.critical_path {
+            let child_sc = all_tensions.iter().find(|t| t.id == cp.tension_id).and_then(|t| t.short_code);
+            let child_display = werk_shared::display_id(child_sc, &cp.tension_id);
+            let slack_days = cp.slack_seconds as f64 / 86400.0;
+            if slack_days <= 0.0 {
+                println!("  CRITICAL:   {} matches or exceeds deadline", child_display);
+            } else {
+                println!("  CRITICAL:   {} has only {:.0} days slack", child_display, slack_days);
+            }
+        }
+
+        // Children with containment violations
+        for cv in &temporal.containment_violations {
+            let child_sc = all_tensions.iter().find(|t| t.id == cv.tension_id).and_then(|t| t.short_code);
+            let child_display = werk_shared::display_id(child_sc, &cv.tension_id);
+            let excess_days = cv.excess_seconds as f64 / 86400.0;
+            println!(
+                "  VIOLATION:  {} deadline exceeds by {:.0} days",
+                child_display, excess_days
+            );
         }
 
         // === Children List ===
