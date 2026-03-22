@@ -68,6 +68,8 @@ Gestures, not individual mutations, are the meaningful units for:
 - History (the ghost geometry is a sequence of gestures)
 - Dynamics interpretation (a gesture is the smallest meaningful event)
 
+In the data model, each mutation carries a `gesture_id` linking it to its gesture. A gesture optionally belongs to a session. CLI commands each constitute a single gesture. Batch operations group all their mutations under one gesture. Agent mutations are sessionless gestures.
+
 ### 7. Locality
 
 Meaningful signal propagates one level, not globally. A mutation at a given tension produces signal relevant to:
@@ -164,8 +166,8 @@ The temporal system is built from two user-set primitives and everything else is
 8. **Overdue** — deadline passed, step unresolved. A fact, not an inference.
 
 **Two recorded temporal facts:**
-9. **Actual resolution point** — when the step was done in reality. Auto-recorded at resolution time; optionally overridable for "I did this yesterday" cases. Configuration option for whether the instrument asks.
-10. **Reported resolution point** — when the user marked it done in the instrument. The gap between actual and reported is engagement pattern data.
+9. **Actual resolution point** — when the step was done in reality. Auto-recorded at resolution time; optionally overridable for "I did this yesterday" cases (`--actual-at` in CLI). Configuration option for whether the instrument asks. Stored as `actual_at` on the mutation record.
+10. **Reported resolution point** — when the user marked it done in the instrument. Stored as the mutation's `timestamp`. The gap between actual and reported is engagement pattern data.
 
 **Optional temporal refinement (configurable):**
 11. **Aimed execution point** — a personal commitment to a specific date more precise than the deadline or implied window. Rarely needed — the implied window from order + neighboring deadlines usually suffices. Available as a configuration option in ground mode for users who want this precision.
@@ -256,23 +258,25 @@ The survey naturally unifies multiple workspaces. If each workspace is a context
 
 The survey answers the Napoleonic question: where across the field of opportunities should energy flow? Which tension offers the best opportunity for advancement right now?
 
-### Runs
+### Sessions (Runs)
 
-A **run** is the span from opening the instrument to closing it. It is the session unit — a complete cycle of engagement with the structure.
+A **session** is the span from opening the instrument to closing it. It is the atomic unit of engagement — a complete cycle of engagement with the structure. (The conceptual term "run" and the implementation term "session" refer to the same thing. "Session" is preferred in code to avoid collision with agent invocation commands.)
 
-A run records: navigation path, gestures performed, dwell times, thresholds crossed, what was viewed but not changed. Over many runs, patterns emerge that feed the reflection layer.
+A session records: navigation path, gestures performed, dwell times, thresholds crossed, what was viewed but not changed. Over many sessions, patterns emerge that feed the reflection layer.
 
-**Takeoff threshold:** On opening, the instrument surfaces a brief ambient orientation — what's at the frontier, what's changed since last run, what's overdue. The user can linger (engage with the orientation) or flick through (land directly at the envelope).
+**Sessions are process-scoped.** Each TUI instance manages its own session. Multiple open TUI panes are multiple independent sessions. CLI commands and agent mutations operate outside any session — their gestures are sessionless (`session_id = NULL`). This is by design: a session represents *the user inhabiting the instrument*, not merely changing data.
 
-**Landing threshold:** On closing, the instrument surfaces a brief summary of the run and an optional invitation to note anything before closing. This is the debrief moment — the natural point for a compressed reflection.
+**Takeoff threshold:** On opening, the instrument surfaces a brief ambient orientation — what's at the frontier, what's changed since last session, what's overdue. The user can linger (engage with the orientation) or flick through (land directly at the envelope).
 
-Runs are queryable and searchable — session history that can be examined in ground mode.
+**Landing threshold:** On closing, the instrument surfaces a brief summary of the session and an optional invitation to note anything before closing. This is the debrief moment — the natural point for a compressed reflection.
+
+Sessions are queryable and searchable — session history that can be examined in ground mode.
 
 ### Ground Mode
 
 When you're not flying, you're on the ground. **Ground mode** is the debrief and study surface:
 
-- Review run history (session patterns, navigation paths)
+- Review session history (session patterns, navigation paths)
 - Examine low-confidence interpretive dynamics (the instrument's theories about your patterns)
 - Study telemetry (creation-to-resolution ratios, temporal frame distribution, engagement rhythms)
 - Access the full dynamics readout (everything computed, including what's normally hidden)
@@ -411,7 +415,7 @@ These are available for configuration, evolution, or removal based on use:
 
 **Epoch boundary detection:** The instrument offers "start a new epoch?" at any reality or desire update. The user confirms or dismisses. "Long absence" defined relative to the tension's own run rhythm (Nx the median inter-run gap).
 
-**Runs as sessions:** A run is the span from opening to closing. Records navigation, gestures, dwell times. Takeoff threshold on opening (ambient orientation). Landing threshold on closing (summary + optional debrief note). Runs are searchable and queryable.
+**Sessions (runs):** A session is the span from opening to closing. Process-scoped — each TUI instance manages its own. CLI and agent mutations are sessionless gestures. Records navigation, gestures, dwell times. Takeoff threshold on opening (ambient orientation). Landing threshold on closing (summary + optional debrief note). Sessions are searchable and queryable.
 
 **Ground mode:** The debrief and study surface for when you're not flying. Low-confidence dynamics, telemetry, run history, full dynamics readout. Where coaching-level interpretations live.
 
@@ -445,7 +449,7 @@ This instrument draws on:
 | **Theory of closure** | The composed set of action steps bridging from current reality to desired outcome. A conjecture about how to cross the gap. |
 | **Frontier of action** | The present moment as structural boundary between accomplished reality and remaining theory. Where directed action meets now. |
 | **Gesture** | The unit of meaningful action. A single intentional act that may involve one or more mutations. |
-| **Epoch** | A period of action within a single delta. |
+| **Epoch** | A period of action within a single delta. Stored as a snapshot: desire, reality, and children state at the moment of phase transition. |
 | **Phase transition** | The boundary between epochs — a structural reconfiguration generating a new delta. |
 | **Ghost geometry** | The history of deltas — the shape of directed action over time, visible by scrolling below current reality. |
 | **Positioned** | Temporally committed and sequenced within the theory of closure. |
@@ -469,8 +473,8 @@ This instrument draws on:
 | **Pitch** | Navigation along the time axis (↑/↓) — up toward desire/future, down toward reality/past. |
 | **Roll** | Navigation along the structure axis (←/→) — right to descend into a child, left to ascend to parent. |
 | **Yaw** | Navigation toggle between depth and breadth — descended view ↔ horizon view. |
-| **Run** | A session — the span from opening the instrument to closing it. Records navigation path, gestures, dwell times. The atomic unit of engagement. |
-| **Ground mode** | The debrief and study surface. Where low-confidence dynamics, telemetry, run history, and coaching-level interpretations live. Not flying — studying. |
+| **Session (Run)** | The span from opening the instrument to closing it. Records navigation path, gestures, dwell times. The atomic unit of engagement. Process-scoped: each TUI instance is its own session; CLI and agent mutations are sessionless. |
+| **Ground mode** | The debrief and study surface. Where low-confidence dynamics, telemetry, session history, and coaching-level interpretations live. Not flying — studying. |
 | **Compose up** | The gesture of creating a parent for one or more existing tensions. Reveals implicit coherence. The inverse of decomposing. |
 | **Peek** | A read-only partial view of an adjacent context (SHIFT+NAVKEY). Slides the adjacent space into partial visibility without leaving the current context. |
 | **Over/under** | An optional binary flag on an action step indicating above-average or below-average effort/difficulty. Weights resolution velocity calculations. |

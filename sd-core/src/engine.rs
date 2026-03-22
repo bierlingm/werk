@@ -205,16 +205,48 @@ impl DynamicsEngine {
         Ok(tension)
     }
 
-    /// Capture parent's current desired/actual state for snapshot storage.
-    fn parent_snapshots(&self, parent_id: &Option<String>) -> (Option<String>, Option<String>) {
+    /// Capture parent's full state for snapshot storage.
+    /// Returns (desired_text, actual_text, full_json_snapshot).
+    fn parent_snapshots(&self, parent_id: &Option<String>) -> (Option<String>, Option<String>, Option<String>) {
         if let Some(pid) = parent_id {
             match self.store.get_tension(pid) {
-                Ok(Some(parent)) => (Some(parent.desired), Some(parent.actual)),
-                _ => (None, None),
+                Ok(Some(parent)) => {
+                    let desired = parent.desired.clone();
+                    let actual = parent.actual.clone();
+                    // Build full JSON snapshot including children state
+                    let json = self.build_parent_snapshot_json(pid, &parent);
+                    (Some(desired), Some(actual), json)
+                }
+                _ => (None, None, None),
             }
         } else {
-            (None, None)
+            (None, None, None)
         }
+    }
+
+    /// Build a JSON snapshot of a parent's full descended view state.
+    fn build_parent_snapshot_json(&self, parent_id: &str, parent: &Tension) -> Option<String> {
+        let children = self.store.get_children(parent_id).ok()?;
+        let children_json: Vec<serde_json::Value> = children.iter().map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "desired": c.desired,
+                "actual": c.actual,
+                "status": c.status.to_string(),
+                "position": c.position,
+                "horizon": c.horizon.as_ref().map(|h| h.to_string()),
+            })
+        }).collect();
+
+        let snapshot = serde_json::json!({
+            "desired": parent.desired,
+            "actual": parent.actual,
+            "status": parent.status.to_string(),
+            "horizon": parent.horizon.as_ref().map(|h| h.to_string()),
+            "children": children_json,
+        });
+
+        serde_json::to_string(&snapshot).ok()
     }
 
     /// Create a tension with parent and emit TensionCreated event.
@@ -227,7 +259,7 @@ impl DynamicsEngine {
         actual: &str,
         parent_id: Option<String>,
     ) -> Result<Tension, crate::tension::SdError> {
-        let (parent_desired_snapshot, parent_actual_snapshot) =
+        let (parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json) =
             self.parent_snapshots(&parent_id);
 
         let tension = self.store.create_tension_full_with_snapshots(
@@ -238,6 +270,7 @@ impl DynamicsEngine {
             None,
             parent_desired_snapshot,
             parent_actual_snapshot,
+            parent_snapshot_json,
         )?;
         self.previous_state.tensions.insert(
             tension.id.clone(),
@@ -317,7 +350,7 @@ impl DynamicsEngine {
         parent_id: Option<String>,
         horizon: Option<Horizon>,
     ) -> Result<Tension, crate::tension::SdError> {
-        let (parent_desired_snapshot, parent_actual_snapshot) =
+        let (parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json) =
             self.parent_snapshots(&parent_id);
 
         let tension = self.store.create_tension_full_with_snapshots(
@@ -328,6 +361,7 @@ impl DynamicsEngine {
             None,
             parent_desired_snapshot,
             parent_actual_snapshot,
+            parent_snapshot_json,
         )?;
         // Initialize previous dynamics for this tension
         let mut prev = PreviousDynamics {

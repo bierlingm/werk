@@ -6256,6 +6256,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let result = compute_urgency(&t_created, now).unwrap();
@@ -6291,6 +6293,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // 1 hour in (25% of 4 hours)
@@ -6325,6 +6329,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // 1 day in (50% of 2 days)
@@ -6359,6 +6365,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // 3 hours in (75% of 4 hours)
@@ -6392,6 +6400,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // At the horizon end
@@ -6425,6 +6435,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // 2 hours past the horizon (150% = 6 hours / 4 hours)
@@ -6463,6 +6475,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let now = start + Duration::hours(1);
@@ -6498,6 +6512,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // At 50% urgency
@@ -6544,6 +6560,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let now = start + Duration::hours(1);
@@ -6577,6 +6595,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let result = compute_structural_tension(&t, Utc::now());
@@ -6635,6 +6655,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Call at two clearly separated points in time
@@ -7426,6 +7448,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Use a "now" that is close to the horizon end (high urgency)
@@ -7702,6 +7726,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Use "now" very close to horizon end (high urgency)
@@ -8097,6 +8123,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Create a resolved tension from 10 days ago
@@ -8113,6 +8141,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let thresholds = LifecycleThresholds::default();
@@ -8223,6 +8253,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
         let t2 = Tension {
             id: "t2".to_string(),
@@ -8235,6 +8267,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
         let t3 = Tension {
             id: "t3".to_string(),
@@ -8247,6 +8281,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Create mutations 20 days ago — inside year-scaled window (~36 days)
@@ -8305,6 +8341,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
         let t2_day = Tension {
             id: "t2".to_string(),
@@ -8317,6 +8355,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
         let t3_day = Tension {
             id: "t3".to_string(),
@@ -8329,6 +8369,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let tensions_day = vec![t1_day, t2_day, t3_day];
@@ -8494,6 +8536,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
         let child2_a = Tension {
             id: "child2a".to_string(),
@@ -8506,6 +8550,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
         let child2_b = Tension {
             id: "child2b".to_string(),
@@ -8518,6 +8564,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let forest2 =
@@ -8611,6 +8659,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // now at ~50% → urgency ~0.5
@@ -8684,6 +8734,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // now at ~75% of year
@@ -8744,6 +8796,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Child with day horizon (narrow recency ~2.4 hours)
@@ -8758,6 +8812,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let forest = Forest::from_tensions(vec![parent.clone(), child.clone()]).unwrap();
@@ -8854,6 +8910,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         // Child with horizon giving urgency ~0.5
@@ -8870,6 +8928,8 @@ mod tests {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         };
 
         let child_urgency = compute_urgency(&child, now);

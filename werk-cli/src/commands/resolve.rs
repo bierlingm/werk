@@ -4,6 +4,7 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
 use werk_shared::{Config, HookEvent, HookRunner};
 
@@ -12,12 +13,18 @@ use werk_shared::{Config, HookEvent, HookRunner};
 struct ResolveResult {
     id: String,
     status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actual_at: Option<String>,
 }
 
-pub fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
+pub fn cmd_resolve(
+    output: &Output,
+    id: String,
+    actual_at: Option<String>,
+) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -37,13 +44,29 @@ pub fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
         )));
     }
 
+    // Parse actual_at if provided
+    let actual_at_dt = match &actual_at {
+        Some(s) => Some(parse_actual_at(s)?),
+        None => None,
+    };
+
     // Hook infrastructure
     let hooks = Config::load(&workspace)
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop());
     let event = HookEvent::status_change(&tension.id, &tension.desired, "Resolved");
     if !hooks.pre_mutation(&event) {
-        return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+        return Err(WerkError::InvalidInput(
+            "Blocked by pre_mutation hook".to_string(),
+        ));
+    }
+
+    // Begin gesture for this resolve action
+    let _ = store.begin_gesture(Some(&format!("resolve {}", &tension.id)));
+
+    // Set actual_at if provided (when the resolution actually happened)
+    if let Some(dt) = actual_at_dt {
+        store.set_actual_at(dt);
     }
 
     // Update status via store (handles validation and mutation recording)
@@ -51,12 +74,16 @@ pub fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
         .update_status(&tension.id, sd_core::TensionStatus::Resolved)
         .map_err(WerkError::SdError)?;
 
+    store.clear_actual_at();
+    store.end_gesture();
+
     hooks.post_mutation(&event);
     hooks.post_resolve(&event);
 
     let result = ResolveResult {
         id: tension.id.clone(),
         status: "Resolved".to_string(),
+        actual_at: actual_at.clone(),
     };
 
     if output.is_structured() {
@@ -64,12 +91,44 @@ pub fn cmd_resolve(output: &Output, id: String) -> Result<(), WerkError> {
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
-        // Human-readable output
         output
-            .success(&format!("Resolved tension {}", &tension.id))
+            .success(&format!("Resolved tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Status: {} -> Resolved", old_status);
+        if let Some(at) = &actual_at {
+            println!("  Actually done: {}", at);
+        }
     }
 
     Ok(())
+}
+
+/// Parse a human-friendly actual_at value into a DateTime<Utc>.
+///
+/// Supported: "yesterday", "N days ago", "YYYY-MM-DD"
+fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, WerkError> {
+    let v = value.trim().to_lowercase();
+    let now = Utc::now();
+
+    if v == "yesterday" {
+        let yesterday = now - chrono::Duration::days(1);
+        return Ok(yesterday);
+    }
+
+    if let Some(rest) = v.strip_suffix(" days ago") {
+        let n: i64 = rest.trim().parse().map_err(|_| {
+            WerkError::InvalidInput(format!("invalid number in '{}': expected 'N days ago'", value))
+        })?;
+        return Ok(now - chrono::Duration::days(n));
+    }
+
+    // Try ISO date
+    if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
+        return Ok(date.and_hms_opt(12, 0, 0).unwrap().and_utc());
+    }
+
+    Err(WerkError::InvalidInput(format!(
+        "cannot parse '{}' as a date. Try: 'yesterday', '3 days ago', or '2026-03-20'",
+        value
+    )))
 }

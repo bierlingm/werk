@@ -56,7 +56,7 @@ fn main() {
         Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
         Commands::Reality { id, value } => werk::commands::reality::cmd_reality(&output, id, value),
         Commands::Desire { id, value } => werk::commands::desire::cmd_desire(&output, id, value),
-        Commands::Resolve { id } => werk::commands::resolve::cmd_resolve(&output, id),
+        Commands::Resolve { id, actual_at } => werk::commands::resolve::cmd_resolve(&output, id, actual_at),
         Commands::Release { id, reason } => {
             werk::commands::release::cmd_release(&output, id, reason)
         }
@@ -71,6 +71,8 @@ fn main() {
         } => werk::commands::recur::cmd_recur(&output, id, interval, clear),
         Commands::Rm { id } => werk::commands::rm::cmd_rm(&output, id),
         Commands::Move { id, parent } => werk::commands::move_cmd::cmd_move(&output, id, parent),
+        Commands::Hold { id } => werk::commands::hold::cmd_hold(&output, id),
+        Commands::Position { id, n } => werk::commands::position::cmd_position(&output, id, n),
         Commands::Note { arg1, arg2 } => werk::commands::note::cmd_note(&output, arg1, arg2),
         Commands::Notes { id } => werk::commands::notes::cmd_notes(&output, id),
         Commands::List {

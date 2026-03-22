@@ -76,6 +76,11 @@ pub struct Tension {
     pub parent_desired_snapshot: Option<String>,
     /// Snapshot of parent's actual state at child creation time.
     pub parent_actual_snapshot: Option<String>,
+    /// JSON snapshot of parent's full descended view at child creation time.
+    /// Includes children with their order, held steps, resolved steps.
+    pub parent_snapshot_json: Option<String>,
+    /// Workspace-local short code for human addressing. Auto-assigned, sequential.
+    pub short_code: Option<i32>,
 }
 
 impl Tension {
@@ -123,11 +128,13 @@ impl Tension {
         position: Option<i32>,
         parent_desired_snapshot: Option<String>,
         parent_actual_snapshot: Option<String>,
+        parent_snapshot_json: Option<String>,
     ) -> Result<Self, SdError> {
         let mut tension = Self::new_inner(desired, actual, parent_id, horizon)?;
         tension.position = position;
         tension.parent_desired_snapshot = parent_desired_snapshot;
         tension.parent_actual_snapshot = parent_actual_snapshot;
+        tension.parent_snapshot_json = parent_snapshot_json;
         Ok(tension)
     }
 
@@ -159,6 +166,8 @@ impl Tension {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         })
     }
 

@@ -10,6 +10,7 @@ pub mod context;
 pub mod desire;
 pub mod diff;
 pub mod health;
+pub mod hold;
 pub mod horizon;
 pub mod init;
 pub mod insights;
@@ -17,6 +18,7 @@ pub mod list;
 pub mod move_cmd;
 pub mod note;
 pub mod notes;
+pub mod position;
 pub mod nuke;
 pub mod reality;
 pub mod recur;
@@ -106,6 +108,11 @@ pub enum Commands {
     Resolve {
         /// Tension ID or prefix.
         id: String,
+
+        /// When resolution actually happened (e.g., "yesterday", "2026-03-20").
+        /// If omitted, actual resolution time = now.
+        #[arg(long)]
+        actual_at: Option<String>,
     },
 
     /// Release a tension (abandon desired state).
@@ -164,6 +171,21 @@ pub enum Commands {
         /// New parent ID (omit to make root).
         #[arg(short, long)]
         parent: Option<String>,
+    },
+
+    /// Remove a tension from the sequence (set to held/unpositioned).
+    Hold {
+        /// Tension ID or prefix.
+        id: String,
+    },
+
+    /// Set the position of a tension in the order of operations.
+    Position {
+        /// Tension ID or prefix.
+        id: String,
+
+        /// Position number (1-based, higher = earlier in sequence).
+        n: i32,
     },
 
     /// Attach a narrative annotation to a tension.

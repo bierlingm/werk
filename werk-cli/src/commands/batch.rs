@@ -74,6 +74,13 @@ fn cmd_batch_apply(output: &Output, file: &str, dry_run: bool) -> Result<(), Wer
     let store = workspace.open_store()?;
     let mut engine = DynamicsEngine::with_store(store);
 
+    // Begin a single gesture for the entire batch — a batch IS one gesture
+    if !dry_run {
+        let _ = engine.store_mut().begin_gesture(
+            Some(&format!("batch apply ({} mutations)", mutations.len())),
+        );
+    }
+
     // Validate and optionally apply each mutation
     let mut applied = 0usize;
     let mut failed = 0usize;
@@ -136,6 +143,11 @@ fn cmd_batch_apply(output: &Output, file: &str, dry_run: bool) -> Result<(), Wer
                 failed += 1;
             }
         }
+    }
+
+    // End the batch gesture
+    if !dry_run {
+        engine.store_mut().end_gesture();
     }
 
     // Summary

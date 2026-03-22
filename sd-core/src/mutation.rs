@@ -47,6 +47,8 @@ impl ReconstructedTension {
             position: None,
             parent_desired_snapshot: None,
             parent_actual_snapshot: None,
+            parent_snapshot_json: None,
+            short_code: None,
         }
     }
 }
@@ -201,6 +203,12 @@ fn apply_mutation(
             // Creation should only appear as the first mutation
             return Err(ReplayError::UnexpectedCreation);
         }
+        // Notes are first-class narrative mutations — they don't change tension fields
+        "note" => {}
+        // Position changes don't affect reconstructed tension state
+        "position" => {}
+        // Deleted marker — doesn't change reconstructed state
+        "deleted" => {}
         field => {
             return Err(ReplayError::UnknownField(field.to_owned()));
         }
@@ -250,14 +258,20 @@ pub enum ReplayError {
 pub struct Mutation {
     /// The ID of the tension this mutation applies to.
     tension_id: String,
-    /// When this mutation occurred.
+    /// When this mutation occurred (reported resolution point).
     timestamp: DateTime<Utc>,
-    /// Which field was changed (e.g., "desired", "actual", "status", "created").
+    /// Which field was changed (e.g., "desired", "actual", "status", "created", "note").
     field: String,
     /// The previous value (None for creation events).
     old_value: Option<String>,
     /// The new value.
     new_value: String,
+    /// The gesture this mutation belongs to (unit of meaningful change).
+    gesture_id: Option<String>,
+    /// When this actually happened in reality (if different from timestamp).
+    /// Supports "I did this yesterday" — the gap between actual_at and timestamp
+    /// is engagement pattern data per the Calculus of Time.
+    actual_at: Option<DateTime<Utc>>,
 }
 
 impl Mutation {
@@ -275,6 +289,29 @@ impl Mutation {
             field,
             old_value,
             new_value,
+            gesture_id: None,
+            actual_at: None,
+        }
+    }
+
+    /// Create a new mutation record with gesture and actual_at.
+    pub fn new_with_gesture(
+        tension_id: String,
+        timestamp: DateTime<Utc>,
+        field: String,
+        old_value: Option<String>,
+        new_value: String,
+        gesture_id: Option<String>,
+        actual_at: Option<DateTime<Utc>>,
+    ) -> Self {
+        Self {
+            tension_id,
+            timestamp,
+            field,
+            old_value,
+            new_value,
+            gesture_id,
+            actual_at,
         }
     }
 
@@ -283,7 +320,7 @@ impl Mutation {
         &self.tension_id
     }
 
-    /// When this mutation occurred.
+    /// When this mutation occurred (reported resolution point).
     pub fn timestamp(&self) -> DateTime<Utc> {
         self.timestamp
     }
@@ -301,6 +338,16 @@ impl Mutation {
     /// The new value.
     pub fn new_value(&self) -> &str {
         &self.new_value
+    }
+
+    /// The gesture this mutation belongs to.
+    pub fn gesture_id(&self) -> Option<&str> {
+        self.gesture_id.as_deref()
+    }
+
+    /// When this actually happened (if different from reported timestamp).
+    pub fn actual_at(&self) -> Option<DateTime<Utc>> {
+        self.actual_at
     }
 }
 
