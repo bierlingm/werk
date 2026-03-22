@@ -62,7 +62,7 @@ pub fn cmd_add(
 
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Resolve parent if provided
     let parent_id = if let Some(parent_prefix) = parent {
@@ -75,8 +75,10 @@ pub fn cmd_add(
     };
 
     // Create the tension with horizon
+    let _ = store.begin_gesture(Some("create tension"));
     let tension =
         store.create_tension_full(&desired, &actual, parent_id.clone(), horizon_parsed.clone())?;
+    store.end_gesture();
 
     // Hook infrastructure (post_create — tension must exist first)
     let hooks = Config::load(&workspace)
@@ -101,7 +103,10 @@ pub fn cmd_add(
     } else {
         // Human-readable output
         output
-            .success(&format!("Created tension {}", &tension.id))
+            .success(&format!(
+                "Created tension {}",
+                werk_shared::display_id(tension.short_code, &tension.id)
+            ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Desired: {}", &tension.desired);
         println!("  Actual:  {}", &tension.actual);

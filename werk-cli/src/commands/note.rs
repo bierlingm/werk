@@ -13,6 +13,8 @@ use werk_shared::{Config, HookEvent, HookRunner};
 #[derive(Serialize)]
 struct NoteResult {
     id: Option<String>,
+    #[serde(skip)]
+    display_id: Option<String>,
     note: String,
 }
 
@@ -44,7 +46,7 @@ pub fn cmd_note(
 
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Hook infrastructure
     let hooks = Config::load(&workspace)
@@ -64,6 +66,7 @@ pub fn cmd_note(
             }
 
             // Record note mutation (notes work on any status, no validation needed)
+            let _ = store.begin_gesture(Some(&format!("note {}", &tension.id)));
             store
                 .record_mutation(&Mutation::new(
                     tension.id.clone(),
@@ -73,11 +76,13 @@ pub fn cmd_note(
                     text.clone(),
                 ))
                 .map_err(WerkError::SdError)?;
+            store.end_gesture();
 
             hooks.post_mutation(&event);
 
             NoteResult {
                 id: Some(tension.id.clone()),
+                display_id: Some(werk_shared::display_id(tension.short_code, &tension.id)),
                 note: text.clone(),
             }
         }
@@ -92,6 +97,7 @@ pub fn cmd_note(
             }
 
             // Record note mutation on the sentinel
+            let _ = store.begin_gesture(Some("note workspace"));
             store
                 .record_mutation(&Mutation::new(
                     WORKSPACE_NOTE_TENSION_ID.to_owned(),
@@ -101,11 +107,13 @@ pub fn cmd_note(
                     text.clone(),
                 ))
                 .map_err(WerkError::SdError)?;
+            store.end_gesture();
 
             hooks.post_mutation(&event);
 
             NoteResult {
                 id: None,
+                display_id: None,
                 note: text.clone(),
             }
         }
@@ -117,10 +125,10 @@ pub fn cmd_note(
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        match &result.id {
-            Some(tid) => {
+        match &result.display_id {
+            Some(did) => {
                 output
-                    .success(&format!("Added note to tension {}", tid))
+                    .success(&format!("Added note to tension {}", did))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
             None => {

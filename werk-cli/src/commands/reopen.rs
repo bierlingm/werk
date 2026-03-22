@@ -18,7 +18,7 @@ struct ReopenResult {
 pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -49,9 +49,11 @@ pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
     }
 
     // Update status via store
+    let _ = store.begin_gesture(Some(&format!("reopen {}", &tension.id)));
     store
         .update_status(&tension.id, sd_core::TensionStatus::Active)
         .map_err(WerkError::SdError)?;
+    store.end_gesture();
 
     hooks.post_mutation(&event);
 
@@ -67,7 +69,7 @@ pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
             .map_err(WerkError::IoError)?;
     } else {
         output
-            .success(&format!("Reopened tension {}", &tension.id))
+            .success(&format!("Reopened tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Status: {} -> Active", old_status);
     }

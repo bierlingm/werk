@@ -29,7 +29,7 @@ struct HorizonDisplayResult {
 pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -80,9 +80,11 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             }
 
             // Update horizon
+            let _ = store.begin_gesture(Some(&format!("update horizon {}", &tension.id)));
             store
                 .update_horizon(&tension.id, horizon_parsed.clone())
                 .map_err(WerkError::SdError)?;
+            store.end_gesture();
 
             hooks.post_mutation(&event);
 
@@ -102,13 +104,13 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                         output
                             .success(&format!(
                                 "Set horizon for tension {} to {}",
-                                &tension.id, h
+                                werk_shared::display_id(tension.short_code, &tension.id), h
                             ))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                     None => {
                         output
-                            .success(&format!("Cleared horizon for tension {}", &tension.id))
+                            .success(&format!("Cleared horizon for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                 }
@@ -142,7 +144,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                     .print_structured(&result)
                     .map_err(WerkError::IoError)?;
             } else {
-                println!("Tension {}", &tension.id);
+                println!("Tension {}", werk_shared::display_id(tension.short_code, &tension.id));
 
                 match &tension.horizon {
                     Some(h) => {

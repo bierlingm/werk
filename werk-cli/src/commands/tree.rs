@@ -3,23 +3,25 @@
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{DynamicsEngine, Forest, TensionStatus};
-use werk_shared::truncate;
+use chrono::Utc;
+use sd_core::{Forest, TensionStatus};
 use serde::Serialize;
+use werk_shared::truncate;
 
 /// JSON output structure for a tension in tree.
 #[derive(Serialize)]
 struct TensionJson {
     id: String,
+    short_code: Option<i32>,
     desired: String,
     actual: String,
     status: String,
     parent_id: Option<String>,
     created_at: String,
     horizon: Option<String>,
-    phase: String,
-    movement: String,
-    has_conflict: bool,
+    overdue: bool,
+    closure_resolved: usize,
+    closure_total: usize,
 }
 
 /// JSON output structure for tree.
@@ -53,24 +55,16 @@ pub fn cmd_tree(
     resolved: bool,
     released: bool,
 ) -> Result<(), WerkError> {
-    // Discover workspace
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
-    // Create DynamicsEngine from store
-    let mut engine = DynamicsEngine::with_store(store);
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
 
-    // Get all tensions
-    let tensions = engine
-        .store()
-        .list_tensions()
-        .map_err(WerkError::StoreError)?;
-
-    // Build forest
     let forest = Forest::from_tensions(tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // Determine filter
+    let now = Utc::now();
+
     let filter = if all {
         Filter::All
     } else if resolved {
@@ -78,11 +72,9 @@ pub fn cmd_tree(
     } else if released {
         Filter::Released
     } else {
-        // Default: --open (active only)
         Filter::Active
     };
 
-    // Filter tensions
     let filtered_tensions: Vec<_> = tensions
         .iter()
         .filter(|t| match filter {
@@ -93,7 +85,6 @@ pub fn cmd_tree(
         })
         .collect();
 
-    // Handle empty forest
     if filtered_tensions.is_empty() {
         if output.is_structured() {
             let result = TreeJson {
@@ -116,68 +107,38 @@ pub fn cmd_tree(
         return Ok(());
     }
 
-    // Compute dynamics for each tension using DynamicsEngine
-    let mut dynamics_map: std::collections::HashMap<String, (String, String, bool)> =
-        std::collections::HashMap::new();
-
-    for tension in &filtered_tensions {
-        // Use DynamicsEngine to compute all dynamics (phase, conflict, tendency, etc.)
-        let computed = engine.compute_full_dynamics_for_tension(&tension.id);
-
-        let (phase_badge, movement_signal, has_conflict) = match computed {
-            Some(cd) => {
-                let phase = match cd.phase.phase {
-                    sd_core::CreativeCyclePhase::Germination => "[G]",
-                    sd_core::CreativeCyclePhase::Assimilation => "[A]",
-                    sd_core::CreativeCyclePhase::Completion => "[C]",
-                    sd_core::CreativeCyclePhase::Momentum => "[M]",
-                };
-                let movement = match cd.tendency.tendency {
-                    sd_core::StructuralTendency::Advancing => "→",
-                    sd_core::StructuralTendency::Oscillating => "↔",
-                    sd_core::StructuralTendency::Stagnant => "○",
-                };
-                (phase, movement, cd.conflict.is_some())
-            }
-            None => ("[G]", "○", false),
-        };
-
-        dynamics_map.insert(
-            tension.id.clone(),
-            (
-                phase_badge.to_string(),
-                movement_signal.to_string(),
-                has_conflict,
-            ),
-        );
-    }
-
-    // If JSON output, build JSON structure
+    // JSON output
     if output.is_structured() {
         let json_tensions: Vec<TensionJson> = filtered_tensions
             .iter()
             .map(|t| {
-                let (phase, movement, has_conflict) = dynamics_map.get(&t.id).cloned().unwrap_or((
-                    "[G]".to_string(),
-                    "○".to_string(),
-                    false,
-                ));
+                let all_children = forest.children(&t.id).unwrap_or_default();
+                let closure_resolved = all_children
+                    .iter()
+                    .filter(|c| c.tension.status == TensionStatus::Resolved)
+                    .count();
+                let overdue = t.status == TensionStatus::Active
+                    && t.horizon
+                        .as_ref()
+                        .map(|h| h.is_past(now))
+                        .unwrap_or(false);
+
                 TensionJson {
                     id: t.id.clone(),
+                    short_code: t.short_code,
                     desired: t.desired.clone(),
                     actual: t.actual.clone(),
                     status: t.status.to_string(),
                     parent_id: t.parent_id.clone(),
                     created_at: t.created_at.to_rfc3339(),
                     horizon: t.horizon.as_ref().map(|h| h.to_string()),
-                    phase: phase.replace(['[', ']'], ""),
-                    movement: movement.to_string(),
-                    has_conflict,
+                    overdue,
+                    closure_resolved,
+                    closure_total: all_children.len(),
                 }
             })
             .collect();
 
-        // Count by status
         let active_count = tensions
             .iter()
             .filter(|t| t.status == TensionStatus::Active)
@@ -208,17 +169,14 @@ pub fn cmd_tree(
     }
 
     // Human-readable tree output
-    // Build filtered forest for display
     let filtered_ids: std::collections::HashSet<_> =
         filtered_tensions.iter().map(|t| t.id.as_str()).collect();
 
-    // Traverse and render the forest
     fn render_tree(
         forest: &Forest,
         root_ids: &[String],
         filtered_ids: &std::collections::HashSet<&str>,
-        dynamics_map: &std::collections::HashMap<String, (String, String, bool)>,
-        _output: &Output,
+        now: chrono::DateTime<Utc>,
         prefix: &str,
         lines: &mut Vec<String>,
     ) {
@@ -228,7 +186,7 @@ pub fn cmd_tree(
             .filter_map(|id| forest.find(id))
             .collect();
 
-        // Sort roots by horizon (earliest first, None last)
+        // Sort by horizon (earliest first, None last)
         roots.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
             (Some(ha), Some(hb)) => ha.cmp(hb),
             (Some(_), None) => std::cmp::Ordering::Less,
@@ -238,41 +196,41 @@ pub fn cmd_tree(
 
         for (i, node) in roots.iter().enumerate() {
             let is_last = i == roots.len() - 1;
-
-            // Get dynamics
-            let (phase, movement, has_conflict) = dynamics_map.get(node.id()).cloned().unwrap_or((
-                "[G]".to_string(),
-                "○".to_string(),
-                false,
-            ));
-
-            // Build the line
             let connector = if is_last { "└── " } else { "├── " };
 
-            // Conflict marker
-            let conflict_marker = if has_conflict { "!" } else { " " };
+            // Build line content
+            let mut content = werk_shared::display_id(node.tension.short_code, node.id());
 
-            // Horizon annotation
-            let horizon_annotation = match &node.tension.horizon {
-                Some(h) => format!("[{}]", h),
-                None => "[—]".to_string(),
-            };
+            // Status marker (only for non-Active)
+            match node.tension.status {
+                TensionStatus::Resolved => content.push_str(" ✓"),
+                TensionStatus::Released => content.push_str(" ~"),
+                TensionStatus::Active => {}
+            }
 
-            // Format: prefix + connector + [badge] status id horizon movement desired
-            let id_short = &node.id()[..8.min(node.id().len())];
-            let line = format!(
-                "{}{}{}{} {} {} {}{} {}",
-                prefix,
-                connector,
-                &phase,
-                &node.tension.status,
-                id_short,
-                &horizon_annotation,
-                conflict_marker,
-                movement,
-                truncate(&node.tension.desired, 50)
-            );
-            lines.push(line);
+            // Horizon and overdue
+            if let Some(h) = &node.tension.horizon {
+                content.push_str(&format!(" [{}]", h));
+                if node.tension.status == TensionStatus::Active && h.is_past(now) {
+                    content.push_str(" OVERDUE");
+                }
+            }
+
+            // Desired text
+            content.push(' ');
+            content.push_str(&truncate(&node.tension.desired, 50));
+
+            // Theory of closure progress (from ALL children, not just filtered)
+            let all_children = forest.children(node.id()).unwrap_or_default();
+            if !all_children.is_empty() {
+                let resolved_count = all_children
+                    .iter()
+                    .filter(|c| c.tension.status == TensionStatus::Resolved)
+                    .count();
+                content.push_str(&format!(" [{}/{}]", resolved_count, all_children.len()));
+            }
+
+            lines.push(format!("{}{}{}", prefix, connector, content));
 
             // Recurse for children (only those that pass the filter)
             let mut children: Vec<_> = node
@@ -282,7 +240,6 @@ pub fn cmd_tree(
                 .filter_map(|id| forest.find(id))
                 .collect();
 
-            // Sort children by horizon as well
             children.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
                 (Some(ha), Some(hb)) => ha.cmp(hb),
                 (Some(_), None) => std::cmp::Ordering::Less,
@@ -300,8 +257,7 @@ pub fn cmd_tree(
                     forest,
                     &node.children,
                     filtered_ids,
-                    dynamics_map,
-                    _output,
+                    now,
                     &new_prefix,
                     lines,
                 );
@@ -314,18 +270,16 @@ pub fn cmd_tree(
         &forest,
         forest.root_ids(),
         &filtered_ids,
-        &dynamics_map,
-        output,
+        now,
         "",
         &mut lines,
     );
 
-    // Print tree
     for line in &lines {
         println!("{}", line);
     }
 
-    // Print summary footer
+    // Summary footer
     let active_count = tensions
         .iter()
         .filter(|t| t.status == TensionStatus::Active)
@@ -342,7 +296,10 @@ pub fn cmd_tree(
     println!();
     println!(
         "Total: {}  Active: {}  Resolved: {}  Released: {}",
-        tensions.len(), active_count, resolved_count, released_count
+        tensions.len(),
+        active_count,
+        resolved_count,
+        released_count
     );
 
     Ok(())

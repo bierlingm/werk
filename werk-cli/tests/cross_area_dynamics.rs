@@ -16,8 +16,18 @@ use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
 use tempfile::TempDir;
 
-/// Extract a ULID from werk output.
+/// Extract a tension identifier from werk output.
+/// Tries short code (#N) first, then ULID (26 uppercase alphanumeric chars).
 fn extract_ulid(output: &str) -> Option<String> {
+    // Try short code pattern: #N where N is one or more digits
+    if let Some(idx) = output.find('#') {
+        let rest = &output[idx + 1..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            return Some(digits);
+        }
+    }
+    // Fall back to ULID extraction
     let chars: Vec<char> = output.chars().collect();
     for i in 0..chars.len().saturating_sub(25) {
         let slice: String = chars[i..i + 26].iter().collect();
@@ -42,9 +52,10 @@ fn init_workspace() -> TempDir {
     dir
 }
 
-/// Helper: add a tension and return its ID.
+/// Helper: add a tension and return its ULID.
 fn add_tension(dir: &TempDir, desired: &str, actual: &str) -> String {
     let output = cargo_bin_cmd!("werk")
+        .arg("--json")
         .arg("add")
         .arg(desired)
         .arg(actual)
@@ -54,13 +65,14 @@ fn add_tension(dir: &TempDir, desired: &str, actual: &str) -> String {
         .get_output()
         .stdout
         .clone();
-    let stdout = String::from_utf8_lossy(&output);
-    extract_ulid(&stdout).expect("Should get tension ID from add output")
+    let json: Value = serde_json::from_str(&String::from_utf8_lossy(&output)).unwrap();
+    json["id"].as_str().unwrap().to_string()
 }
 
-/// Helper: add a tension with horizon and return its ID.
+/// Helper: add a tension with horizon and return its ULID.
 fn add_tension_with_horizon(dir: &TempDir, desired: &str, actual: &str, horizon: &str) -> String {
     let output = cargo_bin_cmd!("werk")
+        .arg("--json")
         .arg("add")
         .arg("--horizon")
         .arg(horizon)
@@ -72,8 +84,8 @@ fn add_tension_with_horizon(dir: &TempDir, desired: &str, actual: &str, horizon:
         .get_output()
         .stdout
         .clone();
-    let stdout = String::from_utf8_lossy(&output);
-    extract_ulid(&stdout).expect("Should get tension ID from add output")
+    let json: Value = serde_json::from_str(&String::from_utf8_lossy(&output)).unwrap();
+    json["id"].as_str().unwrap().to_string()
 }
 
 /// Helper: get JSON output from show command.

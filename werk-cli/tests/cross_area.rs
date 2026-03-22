@@ -10,10 +10,57 @@
 
 use assert_cmd::cargo_bin_cmd;
 use serde_json::Value;
+use std::path::Path;
 use tempfile::TempDir;
 
-/// Extract a ULID from werk output.
+/// Add a tension via --json and return the ULID.
+fn json_add(dir: &Path, desired: &str, actual: &str) -> String {
+    let output = cargo_bin_cmd!("werk")
+        .arg("--json")
+        .arg("add")
+        .arg(desired)
+        .arg(actual)
+        .current_dir(dir)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: Value = serde_json::from_str(&String::from_utf8_lossy(&output)).unwrap();
+    json["id"].as_str().unwrap().to_string()
+}
+
+/// Add a tension with parent via --json and return the ULID.
+fn json_add_child(dir: &Path, desired: &str, actual: &str, parent: &str) -> String {
+    let output = cargo_bin_cmd!("werk")
+        .arg("--json")
+        .arg("add")
+        .arg(desired)
+        .arg(actual)
+        .arg("--parent")
+        .arg(parent)
+        .current_dir(dir)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: Value = serde_json::from_str(&String::from_utf8_lossy(&output)).unwrap();
+    json["id"].as_str().unwrap().to_string()
+}
+
+/// Extract a tension identifier from werk output.
+/// Tries short code (#N) first, then ULID (26 uppercase alphanumeric chars).
 fn extract_ulid(output: &str) -> Option<String> {
+    // Try short code pattern: #N where N is one or more digits
+    if let Some(idx) = output.find('#') {
+        let rest = &output[idx + 1..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            return Some(digits);
+        }
+    }
+    // Fall back to ULID extraction
     let chars: Vec<char> = output.chars().collect();
     for i in 0..chars.len().saturating_sub(25) {
         let slice: String = chars[i..i + 26].iter().collect();
@@ -88,8 +135,8 @@ fn test_full_lifecycle_dynamics_evolution() {
 
     let stdout = String::from_utf8_lossy(&output);
     assert!(
-        stdout.contains("Germination"),
-        "Initial phase should be Germination, got: {}",
+        stdout.contains("Facts:"),
+        "Should show Facts section, got: {}",
         stdout
     );
 
@@ -316,7 +363,7 @@ fn test_tree_shows_hierarchy() {
         .arg("parent goal")
         .arg("p reality")
         .arg("--parent")
-        .arg(&gp_id[..12])
+        .arg(&gp_id)
         .current_dir(dir.path())
         .assert()
         .success()
@@ -332,7 +379,7 @@ fn test_tree_shows_hierarchy() {
         .arg("child goal")
         .arg("c reality")
         .arg("--parent")
-        .arg(&p_id[..12])
+        .arg(&p_id)
         .current_dir(dir.path())
         .assert()
         .success();
@@ -389,48 +436,10 @@ fn test_tree_reflects_move() {
         .assert()
         .success();
 
-    // Create two root tensions
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("root A")
-        .arg("reality A")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let root_a_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have root A ID");
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("root B")
-        .arg("reality B")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let root_b_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have root B ID");
-
-    // Create a child under root A
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("child node")
-        .arg("child reality")
-        .arg("--parent")
-        .arg(&root_a_id[..12])
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let child_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have child ID");
+    // Create two root tensions (use json_add to get ULIDs for parent_id comparison)
+    let root_a_id = json_add(dir.path(), "root A", "reality A");
+    let root_b_id = json_add(dir.path(), "root B", "reality B");
+    let child_id = json_add_child(dir.path(), "child node", "child reality", &root_a_id);
 
     // Initial tree - child under root A
     let output = cargo_bin_cmd!("werk")
@@ -448,9 +457,9 @@ fn test_tree_reflects_move() {
     // Move child to root B
     cargo_bin_cmd!("werk")
         .arg("move")
-        .arg(&child_id[..12])
+        .arg(&child_id)
         .arg("--parent")
-        .arg(&root_b_id[..12])
+        .arg(&root_b_id)
         .current_dir(dir.path())
         .assert()
         .success();
@@ -519,49 +528,10 @@ fn test_tree_shows_reparenting_after_rm() {
         .assert()
         .success();
 
-    // Create A -> B -> C hierarchy
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("grandparent A")
-        .arg("A reality")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let a_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have A ID");
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("parent B")
-        .arg("B reality")
-        .arg("--parent")
-        .arg(&a_id[..12])
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let b_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have B ID");
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("add")
-        .arg("child C")
-        .arg("C reality")
-        .arg("--parent")
-        .arg(&b_id[..12])
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let c_id = extract_ulid(&String::from_utf8_lossy(&output)).expect("Should have C ID");
+    // Create A -> B -> C hierarchy (use json_add to get ULIDs for parent_id comparison)
+    let a_id = json_add(dir.path(), "grandparent A", "A reality");
+    let b_id = json_add_child(dir.path(), "parent B", "B reality", &a_id);
+    let c_id = json_add_child(dir.path(), "child C", "C reality", &b_id);
 
     // Verify initial structure
     let output = cargo_bin_cmd!("werk")
@@ -724,25 +694,37 @@ fn test_json_schema_identical_tree_show() {
         );
     }
 
-    // Tree has phase, movement, has_conflict as top-level fields on tension
-    // Show has these in the dynamics object
+    // Tree has factual fields: short_code, overdue, closure_resolved, closure_total
     assert!(
-        tree_tension.get("phase").is_some(),
-        "Tree tension should have phase field"
+        tree_tension.get("short_code").is_some(),
+        "Tree tension should have short_code field"
     );
     assert!(
-        tree_tension.get("movement").is_some(),
-        "Tree tension should have movement field"
+        tree_tension.get("overdue").is_some(),
+        "Tree tension should have overdue field"
     );
     assert!(
-        tree_tension.get("has_conflict").is_some(),
-        "Tree tension should have has_conflict field"
+        tree_tension.get("closure_resolved").is_some(),
+        "Tree tension should have closure_resolved field"
+    );
+    assert!(
+        tree_tension.get("closure_total").is_some(),
+        "Tree tension should have closure_total field"
     );
 
-    // Show has full dynamics object
+    // Show has dynamics object (kept for agent consumers)
     assert!(
         show_json.get("dynamics").is_some(),
         "Show JSON should have dynamics object"
+    );
+    // Show also has factual fields
+    assert!(
+        show_json.get("overdue").is_some(),
+        "Show JSON should have overdue field"
+    );
+    assert!(
+        show_json.get("closure_resolved").is_some(),
+        "Show JSON should have closure_resolved field"
     );
 }
 
@@ -828,71 +810,29 @@ fn test_json_dynamics_consistency() {
         .find(|t| t["id"].as_str() == Some(id.as_str()))
         .expect("Should find tension in tree");
 
-    // Phase should be consistent (tree uses abbreviated "G"/"A"/"C"/"M", show uses full names)
-    let tree_phase = tree_tension
-        .get("phase")
-        .expect("Tree tension should have phase field");
-
-    // Show has phase in dynamics object
-    let show_dynamics = show_json
-        .get("dynamics")
-        .expect("Show should have dynamics");
-    let show_phase = show_dynamics
-        .get("phase")
-        .or_else(|| show_dynamics.get("creative_cycle_phase"))
-        .expect("Show dynamics should have phase");
-
-    // Compare the phase values (accounting for abbreviation)
-    let tree_phase_str = tree_phase.as_str().expect("Tree phase should be string");
-    let show_phase_str = show_phase
-        .get("phase")
-        .and_then(|p| p.as_str())
-        .or_else(|| show_phase.as_str())
-        .expect("Show phase should have phase string");
-
-    // Map abbreviations to full names for comparison
-    let expected_from_abbrev = match tree_phase_str {
-        "G" => "Germination",
-        "A" => "Assimilation",
-        "C" => "Completion",
-        "M" => "Momentum",
-        _ => tree_phase_str,
-    };
+    // Factual fields should be consistent between tree and show
+    let tree_overdue = tree_tension
+        .get("overdue")
+        .expect("Tree tension should have overdue field");
+    let show_overdue = show_json
+        .get("overdue")
+        .expect("Show should have overdue field");
 
     assert_eq!(
-        expected_from_abbrev, show_phase_str,
-        "Phase should match between tree ({:?} -> {:?}) and show ({:?})",
-        tree_phase_str, expected_from_abbrev, show_phase_str
+        tree_overdue, show_overdue,
+        "Overdue should match between tree and show"
     );
 
-    // Movement should also be consistent (tree uses symbols "→"/"↔"/"○", show uses full words)
-    let tree_movement = tree_tension
-        .get("movement")
-        .expect("Tree tension should have movement field");
-    let show_tendency = show_dynamics
-        .get("structural_tendency")
-        .expect("Show dynamics should have structural_tendency");
-
-    let tree_movement_str = tree_movement
-        .as_str()
-        .expect("Tree movement should be string");
-    let show_tendency_str = show_tendency
-        .get("tendency")
-        .and_then(|t| t.as_str())
-        .expect("Show tendency should have tendency string");
-
-    // Map symbols to full names for comparison
-    let expected_from_symbol = match tree_movement_str {
-        "→" => "Advancing",
-        "↔" => "Oscillating",
-        "○" => "Stagnant",
-        _ => tree_movement_str,
-    };
-
+    // Status should match
     assert_eq!(
-        expected_from_symbol, show_tendency_str,
-        "Movement should match between tree ({:?} -> {:?}) and show tendency ({:?})",
-        tree_movement_str, expected_from_symbol, show_tendency_str
+        tree_tension["status"], show_json["status"],
+        "Status should match between tree and show"
+    );
+
+    // Core identity fields match
+    assert_eq!(
+        tree_tension["id"], show_json["id"],
+        "ID should match between tree and show"
     );
 }
 
@@ -1100,7 +1040,7 @@ fn test_multiple_roots_with_children() {
         .arg("child of A")
         .arg("child reality")
         .arg("--parent")
-        .arg(&root_a[..12])
+        .arg(&root_a)
         .current_dir(dir.path())
         .assert()
         .success();
@@ -1110,7 +1050,7 @@ fn test_multiple_roots_with_children() {
         .arg("child of B")
         .arg("child reality")
         .arg("--parent")
-        .arg(&root_b[..12])
+        .arg(&root_b)
         .current_dir(dir.path())
         .assert()
         .success();
@@ -1257,12 +1197,11 @@ fn test_prefix_consistency_show_resolve() {
 
     let stdout = String::from_utf8_lossy(&output);
     let id = extract_ulid(&stdout).expect("Should have tension ID");
-    let prefix = &id[..8]; // Use 8-char prefix
 
-    // Show with prefix should work
+    // Show with short code should work
     let output = cargo_bin_cmd!("werk")
         .arg("show")
-        .arg(prefix)
+        .arg(&id)
         .current_dir(dir.path())
         .assert()
         .success()
@@ -1273,14 +1212,14 @@ fn test_prefix_consistency_show_resolve() {
     let stdout = String::from_utf8_lossy(&output);
     assert!(
         stdout.contains("prefix test"),
-        "Show with prefix should show correct tension, got: {}",
+        "Show with short code should show correct tension, got: {}",
         stdout
     );
 
-    // Resolve with same prefix should work
+    // Resolve with same short code should work
     cargo_bin_cmd!("werk")
         .arg("resolve")
-        .arg(prefix)
+        .arg(&id)
         .current_dir(dir.path())
         .assert()
         .success();
@@ -1288,7 +1227,7 @@ fn test_prefix_consistency_show_resolve() {
     // Verify resolved
     let output = cargo_bin_cmd!("werk")
         .arg("show")
-        .arg(prefix)
+        .arg(&id)
         .current_dir(dir.path())
         .assert()
         .success()

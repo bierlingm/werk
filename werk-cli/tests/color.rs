@@ -81,23 +81,18 @@ fn test_plain_text_show() {
         .assert()
         .success();
 
-    let output = cargo_bin_cmd!("werk")
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("test goal")
         .arg("test reality")
         .current_dir(dir.path())
         .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
+        .success();
 
-    let stdout = String::from_utf8_lossy(&output);
-    let id = extract_ulid(&stdout).expect("Should have tension ID");
-
+    // Use short code to show (first tension is #1)
     let output = cargo_bin_cmd!("werk")
         .arg("show")
-        .arg(&id[..8])
+        .arg("1")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -206,18 +201,10 @@ fn test_tree_readable() {
         stdout
     );
 
-    // Should show lifecycle badge
+    // Should show short code
     assert!(
-        stdout.contains("[G]"),
-        "Output should show lifecycle badge [G], got: {}",
-        stdout
-    );
-
-    // Should show movement signal
-    let has_signal = stdout.contains('→') || stdout.contains('↔') || stdout.contains('○');
-    assert!(
-        has_signal,
-        "Output should show movement signal, got: {}",
+        stdout.contains("#1"),
+        "Output should show short code #1, got: {}",
         stdout
     );
 }
@@ -233,23 +220,18 @@ fn test_show_readable() {
         .assert()
         .success();
 
-    let output = cargo_bin_cmd!("werk")
+    cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a novel")
         .arg("have an outline")
         .current_dir(dir.path())
         .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
+        .success();
 
-    let stdout = String::from_utf8_lossy(&output);
-    let id = extract_ulid(&stdout).expect("Should have tension ID");
-
+    // Use short code to show
     let output = cargo_bin_cmd!("werk")
         .arg("show")
-        .arg(&id[..8])
+        .arg("1")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -296,8 +278,13 @@ fn test_show_readable() {
         stdout
     );
     assert!(
-        stdout.contains("Phase:"),
-        "Output should contain 'Phase:', got: {}",
+        stdout.contains("Facts:"),
+        "Output should contain 'Facts:', got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Closure:"),
+        "Output should contain 'Closure:', got: {}",
         stdout
     );
 }

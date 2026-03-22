@@ -5,17 +5,16 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use werk_shared::{relative_time, truncate};
 use chrono::{DateTime, Utc};
-use sd_core::{
-    compute_structural_tension, compute_urgency, DynamicsEngine, HorizonKind,
-};
+use sd_core::{compute_structural_tension, compute_urgency, DynamicsEngine, HorizonKind, TensionStatus};
 use serde::Serialize;
+use werk_shared::{relative_time, truncate};
 
 /// JSON output structure for show command.
 #[derive(Serialize)]
 struct ShowResult {
     id: String,
+    short_code: Option<i32>,
     desired: String,
     actual: String,
     status: String,
@@ -26,6 +25,9 @@ struct ShowResult {
     urgency: Option<f64>,
     pressure: Option<f64>,
     staleness_ratio: Option<f64>,
+    overdue: bool,
+    closure_resolved: usize,
+    closure_total: usize,
     dynamics: crate::dynamics::DynamicsJson,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
@@ -44,66 +46,78 @@ struct ShowMutationInfo {
 #[derive(Serialize)]
 struct ChildInfo {
     id: String,
-    id_prefix: String,
+    short_code: Option<i32>,
     desired: String,
     status: String,
 }
 
 pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
-    // Discover workspace
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
-    // Create DynamicsEngine from store (all store access goes through engine.store())
     let mut engine = DynamicsEngine::with_store(store);
 
-    // Get all tensions for prefix resolution
     let all_tensions = engine
         .store()
         .list_tensions()
         .map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(all_tensions.clone());
 
-    // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
 
-    // Get mutations for this tension
     let mutations = engine
         .store()
         .get_mutations(&tension.id)
         .map_err(WerkError::StoreError)?;
 
-    // Build forest for children finding
+    // Build forest for children
     let forest = sd_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // Get children
+    // Get children with short codes
     let children: Vec<ChildInfo> = forest
         .children(&tension.id)
         .unwrap_or_default()
         .iter()
         .map(|child| ChildInfo {
             id: child.id().to_string(),
-            id_prefix: child.id()[..8.min(child.id().len())].to_string(),
+            short_code: child.tension.short_code,
             desired: truncate(&child.tension.desired, 40),
             status: child.tension.status.to_string(),
         })
         .collect();
 
-    // Compute dynamics via DynamicsEngine (shared module)
+    // Theory of closure progress
+    let closure_total = children.len();
+    let closure_resolved = children
+        .iter()
+        .filter(|c| c.status == "Resolved")
+        .count();
+
+    // Compute dynamics (kept for JSON output / agent consumers)
     let now = Utc::now();
     let dynamics_json = compute_all_dynamics(&mut engine, &tension.id);
 
-    // Compute urgency and pressure for top-level fields
+    // Urgency (honest — computed from horizon)
     let urgency = compute_urgency(tension, now);
+
+    // Structural tension and pressure (kept for JSON backward compat)
     let structural_tension = compute_structural_tension(tension, now);
 
-    // Staleness ratio
+    // Staleness ratio (kept for JSON backward compat)
     let last_mutation_time = mutations.last().map(|m| m.timestamp());
     let staleness_ratio = match (&tension.horizon, last_mutation_time) {
         (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
         _ => None,
     };
+
+    // Overdue (honest — a fact)
+    let overdue = tension.status == TensionStatus::Active
+        && tension
+            .horizon
+            .as_ref()
+            .map(|h| h.is_past(now))
+            .unwrap_or(false);
 
     // Build mutation info (last 10, chronological order - oldest first)
     let mutation_infos: Vec<ShowMutationInfo> = mutations
@@ -121,6 +135,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
 
     let result = ShowResult {
         id: tension.id.clone(),
+        short_code: tension.short_code,
         desired: tension.desired.clone(),
         actual: tension.actual.clone(),
         status: tension.status.to_string(),
@@ -134,6 +149,9 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         urgency: urgency.as_ref().map(|u| u.value),
         pressure: structural_tension.as_ref().and_then(|st| st.pressure),
         staleness_ratio,
+        overdue,
+        closure_resolved,
+        closure_total,
         dynamics: dynamics_json,
         mutations: mutation_infos,
         children,
@@ -145,7 +163,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             .map_err(WerkError::IoError)?;
     } else {
         // Human-readable output
-        println!("Tension {}", &tension.id);
+        println!("Tension {}", werk_shared::display_id(tension.short_code, &tension.id));
         println!("  Desired:    {}", &tension.desired);
         println!("  Actual:     {}", &tension.actual);
         println!("  Status:     {}", &tension.status);
@@ -154,8 +172,10 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             relative_time(tension.created_at, now)
         );
 
+        // Parent
         if let Some(pid) = &tension.parent_id {
-            println!("  Parent:     {}", pid);
+            let parent_sc = all_tensions.iter().find(|t| &t.id == pid).and_then(|t| t.short_code);
+            println!("  Parent:     {}", werk_shared::display_id(parent_sc, pid));
         }
 
         // Horizon display
@@ -189,55 +209,67 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             );
         }
 
-        // === Key Dynamics (5 only) ===
+        // === Facts (replacing old Dynamics section) ===
         println!();
-        println!("Dynamics:");
+        println!("Facts:");
 
-        // 1. Phase
-        println!(
-            "  Phase:      {} (mutations: {}, convergence: {:.0}%)",
-            &result.dynamics.phase.phase,
-            result.dynamics.phase.evidence.mutation_count,
-            (1.0 - result.dynamics.phase.evidence.convergence_ratio) * 100.0
-        );
-
-        // 2. Magnitude (skip if not computed)
-        if let Some(st) = &result.dynamics.structural_tension {
-            println!("  Magnitude:  {:.2}", st.magnitude);
+        // Theory of closure progress
+        if closure_total > 0 {
+            println!(
+                "  Closure:    {}/{} children resolved",
+                closure_resolved, closure_total
+            );
+        } else {
+            println!("  Closure:    no children (leaf tension)");
         }
 
-        // 3. Urgency (skip if not computed)
+        // Urgency (only if horizon exists)
         if let Some(urg) = &urgency {
             let pct = (urg.value * 100.0).min(999.0);
-            println!("  Urgency:    {:.0}%", pct);
+            if overdue {
+                let days_past = (-urg.time_remaining as f64 / 86400.0).ceil() as i64;
+                println!("  Urgency:    OVERDUE ({} days past horizon)", days_past);
+            } else {
+                let days_left = (urg.time_remaining as f64 / 86400.0).floor() as i64;
+                println!(
+                    "  Urgency:    {:.0}% of horizon elapsed ({} days remaining)",
+                    pct, days_left
+                );
+            }
         }
 
-        // 4. Neglect (skip if not detected)
-        if let Some(n) = &result.dynamics.neglect {
-            println!("  Neglect:    {} (ratio: {:.2})", n.neglect_type, n.activity_ratio);
+        // Last activity
+        if let Some(last) = mutations.last() {
+            println!(
+                "  Last act:   {} ({})",
+                relative_time(last.timestamp(), now),
+                last.field()
+            );
+        } else {
+            println!("  Last act:   no mutations recorded");
         }
 
-        // 5. Movement/Tendency
-        let movement_symbol = match result.dynamics.structural_tendency.tendency.as_str() {
-            "Advancing" => "->",
-            "Oscillating" => "<>",
-            _ => "--",
-        };
-        println!(
-            "  Movement:   {} {}",
-            movement_symbol, &result.dynamics.structural_tendency.tendency
-        );
+        // Position
+        if let Some(pos) = tension.position {
+            println!("  Position:   {} (positioned)", pos);
+        } else if tension.parent_id.is_some() {
+            println!("  Position:   held (unpositioned)");
+        }
 
         // === Children List ===
         if !result.children.is_empty() {
             println!();
             println!("Children:");
             for child in &result.children {
+                let child_id = werk_shared::display_id(child.short_code, &child.id);
+                let status_marker = match child.status.as_str() {
+                    "Resolved" => " ✓",
+                    "Released" => " ~",
+                    _ => "",
+                };
                 println!(
-                    "  {} [{}] {}",
-                    &child.id_prefix,
-                    &child.status,
-                    &child.desired
+                    "  {}{} {}",
+                    child_id, status_marker, &child.desired
                 );
             }
         }
@@ -253,10 +285,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
                 let old = m.old_value.as_deref().unwrap_or("(none)");
                 println!(
                     "  {} [{}] {} -> {}",
-                    ts,
-                    &m.field,
-                    old,
-                    &m.new_value
+                    ts, &m.field, old, &m.new_value
                 );
             }
         }
