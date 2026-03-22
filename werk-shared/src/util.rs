@@ -12,6 +12,14 @@ pub fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Human-readable tension identifier: short code (#N) if available, ULID prefix fallback.
+pub fn display_id(short_code: Option<i32>, ulid: &str) -> String {
+    match short_code {
+        Some(c) => format!("#{}", c),
+        None => ulid[..8.min(ulid.len())].to_string(),
+    }
+}
+
 /// Format a datetime as a human-readable relative time string.
 pub fn relative_time(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let secs = (now - dt).num_seconds().max(0);

@@ -18,7 +18,7 @@ struct MoveResult {
 pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution and forest building
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -27,6 +27,7 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
     // Resolve the tension to move
     let tension = resolver.resolve(&id)?;
     let tension_id = tension.id.clone();
+    let tension_display = werk_shared::display_id(tension.short_code, &tension.id);
     let old_parent_id = tension.parent_id.clone();
 
     // Resolve the new parent if provided
@@ -60,9 +61,11 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
     };
 
     // Perform the move via store
+    let _ = store.begin_gesture(Some(&format!("move {}", &tension_id)));
     store
         .update_parent(&tension_id, new_parent_id.as_deref())
         .map_err(WerkError::SdError)?;
+    store.end_gesture();
 
     let result = MoveResult {
         id: tension_id.clone(),
@@ -79,12 +82,14 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
         match &new_parent_id {
             Some(pid) => {
                 output
-                    .success(&format!("Moved tension {} under {}", &tension_id, pid))
+                    .success(&format!("Moved tension {} under {}", &tension_display, werk_shared::display_id(
+                        tensions.iter().find(|t| &t.id == pid).and_then(|t| t.short_code), pid
+                    )))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
             None => {
                 output
-                    .success(&format!("Moved tension {} to root", &tension_id))
+                    .success(&format!("Moved tension {} to root", &tension_display))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
         }

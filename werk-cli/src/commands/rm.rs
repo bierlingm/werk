@@ -17,7 +17,7 @@ struct RmResult {
 pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -28,6 +28,7 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
 
     // Record the tension ID before deletion
     let tension_id = tension.id.clone();
+    let tension_display = werk_shared::display_id(tension.short_code, &tension.id);
     let tension_desired = tension.desired.clone();
 
     // Hook infrastructure
@@ -40,9 +41,11 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     }
 
     // Delete via store (handles reparenting children to grandparent)
+    let _ = store.begin_gesture(Some(&format!("delete {}", &tension_id)));
     store
         .delete_tension(&tension_id)
         .map_err(WerkError::SdError)?;
+    store.end_gesture();
 
     hooks.post_mutation(&event);
 
@@ -58,7 +61,7 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     } else {
         // Human-readable output
         output
-            .success(&format!("Deleted tension {}", &tension_id))
+            .success(&format!("Deleted tension {}", &tension_display))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Desired: {}", &tension_desired);
     }

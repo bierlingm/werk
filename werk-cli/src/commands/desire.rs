@@ -18,7 +18,7 @@ struct DesireResult {
 pub fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -77,9 +77,11 @@ pub fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<
     }
 
     // Update via store (this handles status validation and mutation recording)
+    let _ = store.begin_gesture(Some(&format!("update desire {}", &tension.id)));
     store
         .update_desired(&tension.id, &new_value)
         .map_err(WerkError::SdError)?;
+    store.end_gesture();
 
     hooks.post_mutation(&event);
 
@@ -96,7 +98,7 @@ pub fn cmd_desire(output: &Output, id: String, value: Option<String>) -> Result<
     } else {
         // Human-readable output
         output
-            .success(&format!("Updated desired for tension {}", &tension.id))
+            .success(&format!("Updated desired for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Old:  {}", &result.old_desired);
         println!("  New:  {}", &result.desired);

@@ -14,10 +14,18 @@
 use assert_cmd::cargo_bin_cmd;
 use tempfile::TempDir;
 
-/// Extract a ULID from werk output.
-/// ULIDs are 26 character uppercase alphanumeric strings.
+/// Extract a tension identifier from werk output.
+/// Tries short code (#N) first, then ULID (26 uppercase alphanumeric chars).
 fn extract_ulid(output: &str) -> Option<String> {
-    // Find a sequence of 26 uppercase alphanumeric characters
+    // Try short code pattern: #N where N is one or more digits
+    if let Some(idx) = output.find('#') {
+        let rest = &output[idx + 1..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            return Some(digits);
+        }
+    }
+    // Fall back to ULID extraction
     let chars: Vec<char> = output.chars().collect();
     for i in 0..chars.len().saturating_sub(25) {
         let slice: String = chars[i..i + 26].iter().collect();
@@ -102,10 +110,10 @@ fn test_tree_single_root() {
         stdout
     );
 
-    // Should show lifecycle badge [G] for Germination (new tension)
+    // Should show short code
     assert!(
-        stdout.contains("[G]"),
-        "Should show Germination badge [G], got: {}",
+        stdout.contains("#1"),
+        "Should show short code #1, got: {}",
         stdout
     );
 }
@@ -207,7 +215,7 @@ fn test_tree_hierarchy() {
         .arg("child goal")
         .arg("child reality")
         .arg("--parent")
-        .arg(&parent_id[..12]) // Use 12 char prefix for better uniqueness
+        .arg(&parent_id)
         .current_dir(dir.path())
         .assert()
         .success();
@@ -270,8 +278,7 @@ fn test_tree_deep_hierarchy() {
             .current_dir(dir.path());
 
         if let Some(pid) = &prev_id {
-            // Use 12 char prefix for better uniqueness
-            cmd.arg("--parent").arg(&pid[..12]);
+            cmd.arg("--parent").arg(&pid);
         }
 
         let output = cmd.assert().success().get_output().stdout.clone();
@@ -727,7 +734,7 @@ fn test_tree_summary_footer() {
 // Lifecycle badges
 // =============================================================================
 
-/// Tree shows lifecycle badge [G] for Germination (new tension)
+/// Tree shows short code for new tension
 #[test]
 fn test_tree_lifecycle_germination() {
     let dir = TempDir::new().unwrap();
@@ -757,19 +764,19 @@ fn test_tree_lifecycle_germination() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // New tension should show [G] for Germination
+    // New tension should show short code
     assert!(
-        stdout.contains("[G]"),
-        "Should show [G] badge for new tension, got: {}",
+        stdout.contains("#1"),
+        "Should show short code for new tension, got: {}",
         stdout
     );
 }
 
 // =============================================================================
-// Movement signals
+// Factual signals
 // =============================================================================
 
-/// Tree shows movement signal for each tension
+/// Tree shows short code and desired text for each tension
 #[test]
 fn test_tree_movement_signals() {
     let dir = TempDir::new().unwrap();
@@ -799,9 +806,12 @@ fn test_tree_movement_signals() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show at least one movement signal: → (advancing), ↔ (oscillating), or ○ (stagnant)
-    let has_signal = stdout.contains('→') || stdout.contains('↔') || stdout.contains('○');
-    assert!(has_signal, "Should show movement signal, got: {}", stdout);
+    // Should show short code and desired text
+    assert!(
+        stdout.contains("#1") && stdout.contains("goal"),
+        "Should show short code and desired text, got: {}",
+        stdout
+    );
 }
 
 // =============================================================================

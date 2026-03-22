@@ -55,7 +55,7 @@ fn test_show_displays_tension_magnitude() {
     );
 }
 
-/// VAL-DISP-009: Show displays creative cycle phase
+/// VAL-DISP-009: Show displays facts section with closure info
 #[test]
 fn test_show_displays_phase() {
     let dir = TempDir::new().unwrap();
@@ -81,13 +81,10 @@ fn test_show_displays_phase() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show phase (Germination for new tension)
+    // Should show Facts section with closure info
     assert!(
-        stdout.contains("Germination")
-            || stdout.contains("phase")
-            || stdout.contains("Phase")
-            || stdout.contains("[G]"),
-        "Should show phase, got: {}",
+        stdout.contains("Facts:") && stdout.contains("Closure:"),
+        "Should show Facts with Closure, got: {}",
         stdout
     );
 }
@@ -141,7 +138,7 @@ fn test_show_displays_conflict_when_present() {
     );
 }
 
-/// VAL-DISP-009: Show displays movement direction
+/// VAL-DISP-009: Show displays last activity
 #[test]
 fn test_show_displays_movement() {
     let dir = TempDir::new().unwrap();
@@ -167,15 +164,10 @@ fn test_show_displays_movement() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show movement/tendency section
+    // Should show last activity fact
     assert!(
-        stdout.contains("Movement")
-            || stdout.contains("movement")
-            || stdout.contains("Tendency")
-            || stdout.contains("tendency")
-            || stdout.contains("→")
-            || stdout.contains("○"),
-        "Should show movement, got: {}",
+        stdout.contains("Last act:"),
+        "Should show last activity, got: {}",
         stdout
     );
 }
@@ -361,7 +353,7 @@ fn test_show_no_children_for_leaf() {
 // New Tension Dynamics Tests (VAL-DISP-013)
 // =============================================================================
 
-/// VAL-DISP-013: New tension shows Germination phase
+/// VAL-DISP-013: New tension shows leaf closure status
 #[test]
 fn test_show_new_tension_shows_germination() {
     let dir = TempDir::new().unwrap();
@@ -387,10 +379,10 @@ fn test_show_new_tension_shows_germination() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show Germination phase
+    // New tension with no children should show leaf status
     assert!(
-        stdout.contains("Germination"),
-        "New tension should show Germination phase, got: {}",
+        stdout.contains("leaf tension"),
+        "New tension should show leaf closure status, got: {}",
         stdout
     );
 }

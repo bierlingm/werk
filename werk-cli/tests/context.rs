@@ -14,7 +14,18 @@ use tempfile::TempDir;
 
 /// Extract a ULID from werk output.
 #[allow(dead_code)]
+/// Extract a tension identifier from werk output.
+/// Tries short code (#N) first, then ULID (26 uppercase alphanumeric chars).
 fn extract_ulid(output: &str) -> Option<String> {
+    // Try short code pattern: #N where N is one or more digits
+    if let Some(idx) = output.find('#') {
+        let rest = &output[idx + 1..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            return Some(digits);
+        }
+    }
+    // Fall back to ULID extraction
     let chars: Vec<char> = output.chars().collect();
     for i in 0..chars.len().saturating_sub(25) {
         let slice: String = chars[i..i + 26].iter().collect();

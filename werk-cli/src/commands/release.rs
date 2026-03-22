@@ -20,7 +20,7 @@ struct ReleaseResult {
 pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -50,9 +50,11 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
     }
 
     // Update status via store (handles validation and mutation recording)
+    let _ = store.begin_gesture(Some(&format!("release {}", &tension.id)));
     store
         .update_status(&tension.id, sd_core::TensionStatus::Released)
         .map_err(WerkError::SdError)?;
+    store.end_gesture();
 
     hooks.post_mutation(&event);
 
@@ -80,7 +82,7 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
     } else {
         // Human-readable output
         output
-            .success(&format!("Released tension {}", &tension.id))
+            .success(&format!("Released tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Status: {} -> Released", old_status);
         println!("  Reason: {}", &reason);

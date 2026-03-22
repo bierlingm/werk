@@ -17,5 +17,5 @@ pub use config::Config;
 pub use hooks::{HookEvent, HookRunner};
 pub use error::{ErrorCode, Result, WerkError};
 pub use prefix::PrefixResolver;
-pub use util::{relative_time, truncate};
+pub use util::{display_id, relative_time, truncate};
 pub use workspace::Workspace;
