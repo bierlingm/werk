@@ -427,9 +427,6 @@ impl InstrumentApp {
                                 };
                             }
                         }
-                        crate::state::AlertKind::Oscillation | crate::state::AlertKind::Conflict => {
-                            self.set_transient(format!("{}", alert.action_hint));
-                        }
                         crate::state::AlertKind::MultipleRoots { .. } => {
                             self.set_transient("create a parent tension or reparent siblings");
                         }
@@ -1137,9 +1134,9 @@ impl InstrumentApp {
 
     fn refresh_search_results(&mut self, include_root: bool) {
         let results = if include_root {
-            crate::search::search_all_with_root(&self.input_buffer, &self.engine)
+            crate::search::search_all_with_root(&self.input_buffer, self.engine.store())
         } else {
-            crate::search::search_all(&self.input_buffer, &self.engine)
+            crate::search::search_all(&self.input_buffer, self.engine.store())
         };
         if let Some(ref mut s) = self.search_state {
             s.query = self.input_buffer.clone();

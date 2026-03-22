@@ -1,12 +1,12 @@
 //! Show command handler.
 
-use crate::dynamics::{compute_all_dynamics, HorizonRangeJson};
+use crate::dynamics::HorizonRangeJson;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_structural_tension, compute_temporal_signals, compute_urgency, DynamicsEngine, HorizonKind, TensionStatus};
+use sd_core::{compute_temporal_signals, compute_urgency, HorizonKind, TensionStatus};
 use serde::Serialize;
 use werk_shared::{relative_time, truncate};
 
@@ -23,13 +23,10 @@ struct ShowResult {
     horizon: Option<String>,
     horizon_range: Option<HorizonRangeJson>,
     urgency: Option<f64>,
-    pressure: Option<f64>,
-    staleness_ratio: Option<f64>,
     overdue: bool,
     closure_resolved: usize,
     closure_total: usize,
     temporal: sd_core::TemporalSignals,
-    dynamics: crate::dynamics::DynamicsJson,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
 }
@@ -56,18 +53,14 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
-    let mut engine = DynamicsEngine::with_store(store);
-
-    let all_tensions = engine
-        .store()
+    let all_tensions = store
         .list_tensions()
         .map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     let tension = resolver.resolve(&id)?;
 
-    let mutations = engine
-        .store()
+    let mutations = store
         .get_mutations(&tension.id)
         .map_err(WerkError::StoreError)?;
 
@@ -95,22 +88,10 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         .filter(|c| c.status == "Resolved")
         .count();
 
-    // Compute dynamics (kept for JSON output / agent consumers)
     let now = Utc::now();
-    let dynamics_json = compute_all_dynamics(&mut engine, &tension.id);
 
     // Urgency (honest — computed from horizon)
     let urgency = compute_urgency(tension, now);
-
-    // Structural tension and pressure (kept for JSON backward compat)
-    let structural_tension = compute_structural_tension(tension, now);
-
-    // Staleness ratio (kept for JSON backward compat)
-    let last_mutation_time = mutations.last().map(|m| m.timestamp());
-    let staleness_ratio = match (&tension.horizon, last_mutation_time) {
-        (Some(h), Some(last_time)) => Some(h.staleness(last_time, now)),
-        _ => None,
-    };
 
     // Overdue (honest — a fact)
     let overdue = tension.status == TensionStatus::Active
@@ -151,13 +132,10 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             end: h.range_end().to_rfc3339(),
         }),
         urgency: urgency.as_ref().map(|u| u.value),
-        pressure: structural_tension.as_ref().and_then(|st| st.pressure),
-        staleness_ratio,
         overdue,
         closure_resolved,
         closure_total,
         temporal: temporal.clone(),
-        dynamics: dynamics_json,
         mutations: mutation_infos,
         children,
     };
@@ -214,7 +192,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             );
         }
 
-        // === Facts (replacing old Dynamics section) ===
+        // === Facts ===
         println!();
         println!("Facts:");
 

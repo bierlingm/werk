@@ -429,17 +429,11 @@ impl InstrumentApp {
         width: u16,
     ) -> Vec<Line> {
         let w = width as usize;
-        let glyph = glyphs::status_glyph(entry.status, entry.phase);
+        let glyph = glyphs::status_glyph(entry.status);
         let indicator = &entry.temporal_indicator;
         let indicator_width = indicator.chars().count();
         let is_reordering = matches!(self.input_mode, InputMode::Reordering { .. });
         let is_grabbed = is_reordering && selected;
-
-        let tendency_color = match entry.tendency {
-            sd_core::StructuralTendency::Advancing => CLR_CYAN,
-            sd_core::StructuralTendency::Stagnant => CLR_DEFAULT,
-            sd_core::StructuralTendency::Oscillating => CLR_AMBER,
-        };
 
         let is_done = entry.status == sd_core::TensionStatus::Resolved
             || entry.status == sd_core::TensionStatus::Released;
@@ -458,11 +452,11 @@ impl InstrumentApp {
         let glyph_style = if is_grabbed {
             Style::new().fg(CLR_CYAN)
         } else if selected {
-            Style::new().fg(tendency_color).bg(CLR_SELECTED_BG).bold()
+            Style::new().fg(CLR_CYAN).bg(CLR_SELECTED_BG).bold()
         } else if is_done {
             STYLES.dim
         } else {
-            Style::new().fg(tendency_color)
+            Style::new().fg(CLR_DEFAULT)
         };
 
         let indicator_color = if entry.temporal_urgency > 0.8 {
@@ -599,7 +593,7 @@ impl InstrumentApp {
         // First line: the tension line itself (glyph + desire + horizon + indicator)
         if let Some(ref gaze) = self.gaze {
             if let Some(entry) = self.siblings.get(gaze.index) {
-                let glyph = glyphs::status_glyph(entry.status, entry.phase);
+                let glyph = glyphs::status_glyph(entry.status);
                 let indicator = &entry.temporal_indicator;
                 let indicator_width = indicator.chars().count();
 
@@ -645,15 +639,10 @@ impl InstrumentApp {
                 let unpositioned: Vec<_> = data.children.iter().filter(|c| c.position.is_none()).collect();
 
                 for child in &positioned {
-                    let child_glyph = glyphs::status_glyph(child.status, child.phase);
-                    let tendency_color = match child.tendency {
-                        sd_core::StructuralTendency::Advancing => CLR_CYAN,
-                        sd_core::StructuralTendency::Stagnant => CLR_DEFAULT,
-                        sd_core::StructuralTendency::Oscillating => CLR_AMBER,
-                    };
+                    let child_glyph = glyphs::status_glyph(child.status);
                     let child_budget = inner_w.saturating_sub(4);
                     content_lines.push(Line::from_spans([
-                        Span::styled(format!("{} ", child_glyph), Style::new().fg(tendency_color)),
+                        Span::styled(format!("{} ", child_glyph), Style::new().fg(CLR_DEFAULT)),
                         Span::styled(
                             truncate(&child.desired, child_budget).to_string(),
                             STYLES.text,
@@ -668,16 +657,11 @@ impl InstrumentApp {
                 }
 
                 for child in &unpositioned {
-                    let child_glyph = glyphs::status_glyph(child.status, child.phase);
-                    let tendency_color = match child.tendency {
-                        sd_core::StructuralTendency::Advancing => CLR_CYAN,
-                        sd_core::StructuralTendency::Stagnant => CLR_DEFAULT,
-                        sd_core::StructuralTendency::Oscillating => CLR_AMBER,
-                    };
+                    let child_glyph = glyphs::status_glyph(child.status);
                     let child_budget = inner_w.saturating_sub(6); // extra indent for unpositioned
                     content_lines.push(Line::from_spans([
                         Span::styled("  ", Style::new()), // extra indent
-                        Span::styled(format!("{} ", child_glyph), Style::new().fg(tendency_color)),
+                        Span::styled(format!("{} ", child_glyph), Style::new().fg(CLR_DEFAULT)),
                         Span::styled(
                             truncate(&child.desired, child_budget).to_string(),
                             STYLES.dim,
@@ -725,7 +709,7 @@ impl InstrumentApp {
         panel.render(panel_rect, frame);
     }
 
-    /// Build content lines for the full gaze (dynamics + history) — used inside Panel.
+    /// Build content lines for the full gaze (facts + history) — used inside Panel.
     fn build_full_gaze_content(&self, data: &FullGazeData, width: u16) -> Vec<Line> {
         let mut lines = Vec::new();
         let w = (width as usize).saturating_sub(8); // panel padding
@@ -733,37 +717,16 @@ impl InstrumentApp {
 
         lines.push(Line::from(Span::styled(rule, STYLES.dim)));
 
-        // Build dynamics column
+        // Build facts column
         let mut dyn_lines: Vec<(String, String, Style)> = Vec::new();
-        dyn_lines.push(("phase".to_string(), data.phase.clone(), STYLES.text));
-        dyn_lines.push(("tendency".to_string(), data.tendency.clone(), STYLES.text));
-        if let Some(mag) = data.magnitude {
-            let label = if mag > 0.7 { "large" } else if mag > 0.4 { "moderate" } else { "small" };
-            dyn_lines.push(("magnitude".to_string(), label.to_string(), STYLES.text));
-        }
-        if let Some(ref v) = data.orientation {
-            dyn_lines.push(("orientation".to_string(), v.clone(), STYLES.text));
-        }
-        if let Some(ref v) = data.conflict {
-            dyn_lines.push(("conflict".to_string(), v.clone(), STYLES.red));
-        }
-        if let Some(ref v) = data.neglect {
-            dyn_lines.push(("neglect".to_string(), v.clone(), STYLES.amber));
-        }
-        if let Some(ref v) = data.oscillation {
-            dyn_lines.push(("oscillation".to_string(), v.clone(), STYLES.amber));
-        }
-        if let Some(ref v) = data.resolution {
-            dyn_lines.push(("resolution".to_string(), v.clone(), STYLES.text));
-        }
-        if let Some(ref v) = data.compensating_strategy {
-            dyn_lines.push(("strategy".to_string(), v.clone(), STYLES.amber));
-        }
-        if let Some(ref v) = data.assimilation {
-            dyn_lines.push(("assimilation".to_string(), v.clone(), STYLES.text));
+        if let Some(ref v) = data.urgency {
+            dyn_lines.push(("urgency".to_string(), v.clone(), STYLES.text));
         }
         if let Some(ref v) = data.horizon_drift {
             dyn_lines.push(("drift".to_string(), v.clone(), STYLES.text));
+        }
+        if let Some(ref v) = data.closure {
+            dyn_lines.push(("closure".to_string(), v.clone(), STYLES.text));
         }
 
         // Build history column
@@ -828,16 +791,11 @@ impl InstrumentApp {
     /// Count lines for full gaze content (for height calculation).
     fn full_gaze_line_count(&self, data: &FullGazeData, width: u16) -> u16 {
         let mut count: u16 = 1; // separator rule
-        let mut dyn_count: u16 = 2; // phase + tendency always present
-        if data.magnitude.is_some() { dyn_count += 1; }
-        if data.orientation.is_some() { dyn_count += 1; }
-        if data.conflict.is_some() { dyn_count += 1; }
-        if data.neglect.is_some() { dyn_count += 1; }
-        if data.oscillation.is_some() { dyn_count += 1; }
-        if data.resolution.is_some() { dyn_count += 1; }
-        if data.compensating_strategy.is_some() { dyn_count += 1; }
-        if data.assimilation.is_some() { dyn_count += 1; }
+        let mut dyn_count: u16 = 0;
+        if data.urgency.is_some() { dyn_count += 1; }
         if data.horizon_drift.is_some() { dyn_count += 1; }
+        if data.closure.is_some() { dyn_count += 1; }
+        let dyn_count = dyn_count.max(1); // at least 1 row
         let hist_count = data.history.len().min((dyn_count as usize).max(3)) as u16;
         count += dyn_count.max(hist_count);
         let _ = width; // reserved for future use
@@ -998,35 +956,14 @@ impl InstrumentApp {
         ]));
 
         // Glyphs with their actual colors inline
-        // Render glyphs in a compact row
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
             Span::styled("\u{25C7} ", Style::new().fg(CLR_DEFAULT)),
-            Span::styled("germination   ", STYLES.dim),
-            Span::styled("\u{25C6} ", Style::new().fg(CLR_DEFAULT)),
-            Span::styled("assimilation  ", STYLES.dim),
-            Span::styled("\u{25C8} ", Style::new().fg(CLR_DEFAULT)),
-            Span::styled("completion    ", STYLES.dim),
-            Span::styled("\u{25C9} ", Style::new().fg(CLR_DEFAULT)),
-            Span::styled("momentum", STYLES.dim),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
+            Span::styled("active        ", STYLES.dim),
             Span::styled("\u{2726} ", Style::new().fg(CLR_DIM)),
             Span::styled("resolved      ", STYLES.dim),
             Span::styled("\u{00B7} ", Style::new().fg(CLR_DIM)),
             Span::styled("released", STYLES.dim),
-        ]));
-
-        // Color legend inline
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("\u{25C6} ", Style::new().fg(CLR_CYAN)),
-            Span::styled("advancing   ", STYLES.dim),
-            Span::styled("\u{25C6} ", Style::new().fg(CLR_DEFAULT)),
-            Span::styled("stagnant    ", STYLES.dim),
-            Span::styled("\u{25C6} ", Style::new().fg(CLR_AMBER)),
-            Span::styled("oscillating", STYLES.dim),
         ]));
 
         lines.push(Line::from(""));
