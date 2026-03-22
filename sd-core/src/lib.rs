@@ -17,6 +17,7 @@ pub mod horizon;
 pub mod mutation;
 pub mod projection;
 pub mod store;
+pub mod temporal;
 pub mod tension;
 pub mod tree;
 
@@ -88,5 +89,10 @@ pub use projection::{
     extract_mutation_pattern, project_field, project_frequency_at, project_gap_at, project_tension,
 };
 pub use store::{EpochRecord, Store, StoreError};
+pub use temporal::{
+    ContainmentViolation, CriticalPath, ImpliedWindow, SequencingPressure, TemporalSignals,
+    compute_implied_windows, compute_temporal_signals, detect_containment_violations,
+    detect_critical_path, detect_critical_path_recursive, detect_sequencing_pressure,
+};
 pub use tension::{SdError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};
