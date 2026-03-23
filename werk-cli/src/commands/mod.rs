@@ -11,6 +11,7 @@ pub mod context;
 pub mod desire;
 pub mod diff;
 pub mod epoch;
+pub mod flush;
 pub mod health;
 pub mod hold;
 pub mod horizon;
@@ -91,6 +92,12 @@ pub enum Commands {
         #[arg(required = true, num_args = 1..)]
         children: Vec<String>,
     },
+
+    /// Flush tension state to a git-trackable JSON file at workspace root.
+    ///
+    /// Writes werk-state.json containing all tensions as raw structural data.
+    /// Deterministic output: same state produces identical file content.
+    Flush,
 
     /// Mark an epoch boundary for a tension.
     ///
