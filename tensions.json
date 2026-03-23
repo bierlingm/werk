@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-23T11:33:59Z",
+  "flushed_at": "2026-03-23T11:51:58Z",
   "summary": {
     "active": 31,
     "released": 3,
@@ -327,7 +327,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "epoch table and CRUD methods exist. CLI 'epoch' command implemented — creates epoch snapshots (desire, reality, children state) and lists existing epochs. No TUI trigger path yet.",
+      "actual": "CLI trigger path complete: reality and desire commands auto-create epoch boundaries before applying updates. --no-epoch flag for minor corrections. Manual 'werk epoch' command also available. TUI trigger path not yet implemented.",
       "created_at": "2026-03-22T18:50:26.033279+00:00",
       "desired": "epoch creation has a trigger path — CLI or TUI prompts 'start a new epoch?' when desire/reality changes, snapshotting the current delta",
       "horizon": null,
@@ -470,7 +470,7 @@
       "status": "Active"
     },
     {
-      "actual": "Reality and desire commands now auto-create epoch boundaries. Before applying the update, the current state (desire, reality, children) is snapshotted as the ending delta. --no-epoch flag available for minor corrections. Epoch count shown in output. Ghost geometry builds through normal use.",
+      "actual": "Complete: reality/desire auto-create epochs, --no-epoch for minor corrections, epoch --show N queries all mutations (tension + descendants) within the epoch span. Ghost geometry builds through normal use and is queryable.",
       "created_at": "2026-03-23T11:20:05.501259+00:00",
       "desired": "Reality and desire updates create epoch boundaries — the ghost geometry builds through normal use, mutations are queryable per epoch span",
       "horizon": "2026-05",
