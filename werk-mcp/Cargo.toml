@@ -1,0 +1,18 @@
+[package]
+name = "werk-mcp"
+version = "1.1.0"
+edition = "2021"
+description = "MCP server for werk — exposes operative gestures as protocol tools"
+
+[dependencies]
+sd-core = { path = "../sd-core" }
+werk-shared = { path = "../werk-shared" }
+rmcp = { version = "1", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+schemars = "1"
