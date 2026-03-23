@@ -46,6 +46,7 @@ struct ChildInfo {
     short_code: Option<i32>,
     desired: String,
     status: String,
+    position: Option<i32>,
 }
 
 pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
@@ -67,8 +68,8 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
     let forest = sd_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // Get children with short codes
-    let children: Vec<ChildInfo> = forest
+    // Get children with short codes, sorted: positioned (by position) → held → resolved → released
+    let mut children: Vec<ChildInfo> = forest
         .children(&tension.id)
         .unwrap_or_default()
         .iter()
@@ -77,8 +78,21 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             short_code: child.tension.short_code,
             desired: truncate(&child.tension.desired, 40),
             status: child.tension.status.to_string(),
+            position: child.tension.position,
         })
         .collect();
+    children.sort_by(|a, b| {
+        fn sort_key(c: &ChildInfo) -> (u8, i32) {
+            match (c.status.as_str(), c.position) {
+                (_, Some(pos)) if c.status == "Active" => (0, pos),
+                ("Active", None) => (1, 0),
+                ("Resolved", _) => (2, 0),
+                ("Released", _) => (3, 0),
+                _ => (4, 0),
+            }
+        }
+        sort_key(a).cmp(&sort_key(b))
+    });
 
     let now = Utc::now();
 
@@ -320,6 +334,11 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
                         "  Next:       {}{} {}",
                         ns_display, overdue_marker, truncate(&ns.desired, 40)
                     );
+                } else if !frontier.held.is_empty() {
+                    // Theory exists but has no committed order — frontier cannot advance
+                    let n = frontier.held.len();
+                    let noun = if n == 1 { "step" } else { "steps" };
+                    println!("  Sequence:   uncommitted ({} held {})", n, noun);
                 }
 
                 // Overdue (other than next step)
@@ -333,17 +352,24 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
                     }
                 }
 
-                // Held count
-                if !frontier.held.is_empty() {
+                // Held count (only if next_step exists — otherwise the Sequence line covers it)
+                if !frontier.held.is_empty() && frontier.next_step.is_some() {
                     println!("  Held:       {} unpositioned", frontier.held.len());
                 }
 
-                // Recently resolved count
+                // Recently resolved count — honest about epoch boundary
                 if !frontier.recently_resolved.is_empty() {
-                    println!(
-                        "  Recent:     {} resolved since last epoch",
-                        frontier.recently_resolved.len()
-                    );
+                    if epochs.is_empty() {
+                        println!(
+                            "  Recent:     {} resolved",
+                            frontier.recently_resolved.len()
+                        );
+                    } else {
+                        println!(
+                            "  Recent:     {} resolved since last epoch",
+                            frontier.recently_resolved.len()
+                        );
+                    }
                 }
             }
         }
