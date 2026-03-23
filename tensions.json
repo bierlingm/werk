@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-23T18:55:01Z",
+  "flushed_at": "2026-03-23T19:11:35Z",
   "summary": {
     "active": 29,
     "released": 4,
@@ -107,7 +107,7 @@
       "status": "Released"
     },
     {
-      "actual": "CLI has foundation vocabulary (survey, ground, horizon, note testimony, hold/position, compose-up, epoch). JSON output available on all commands. Agent context command exists (context --all, context --urgent, context <id>) with structural data including urgency, staleness, frontier. Batch command applies YAML mutations grouped as one gesture. Agent run command works. However: help output is flat (30+ commands alphabetically, not grouped by gesture type or framework), and there is no zero-argument cold-start orientation for agents. The theory of closure (#21 vocabulary, #27 batch, #25 staging) does not actually address the desire's 'grouped help' or 'machine-readable orientation' requirements — #25 is about agent interaction patterns (propose/confirm), a different concern from CLI optimization for agent consumption.",
+      "actual": "CLI has foundation vocabulary (survey, ground, horizon, note testimony, hold/position, compose, epoch). JSON output on all commands. Context command provides structural JSON (context --all, --urgent, <id>) with urgency, staleness, frontier — useful for MCP, scripts, agents. Batch applies YAML mutations grouped as one gesture (BatchMutation schema, bare YAML lists). run/watch deleted (#48 resolved). Agent orchestration vocabulary purged from all three interfaces. Remaining gaps: help output is flat (30+ commands alphabetically), no grouped help by framework.",
       "created_at": "2026-03-19T09:05:44.291553+00:00",
       "desired": "CLI is a complete, honest interface to the structure — foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands",
       "horizon": null,
