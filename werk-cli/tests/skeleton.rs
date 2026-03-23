@@ -55,9 +55,8 @@ fn test_werk_help_lists_all_subcommands() {
         .stdout(predicate::str::contains("note"))
         // Display commands
         .stdout(predicate::str::contains("tree"))
-        // Agent commands
-        .stdout(predicate::str::contains("context"))
-        .stdout(predicate::str::contains("run"));
+        // Structural context
+        .stdout(predicate::str::contains("context"));
 }
 
 #[test]

@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-23T17:08:39Z",
+  "flushed_at": "2026-03-23T18:11:58Z",
   "summary": {
-    "active": 30,
+    "active": 29,
     "released": 4,
-    "resolved": 15,
+    "resolved": 16,
     "total": 49
   },
   "tensions": [
@@ -514,7 +514,7 @@
       "status": "Active"
     },
     {
-      "actual": "run exists (975 lines, four modes of agent subprocess orchestration). watch exists (832 lines, background daemon invoking agents at thresholds). Both embody the 1.0 model where the instrument orchestrates agents.",
+      "actual": "run command deleted (975 lines), watch command deleted (832 lines), run.rs test file deleted, agent-specific cross-area tests removed, which dependency removed. context command kept as general structural query tool. batch command preserved.",
       "created_at": "2026-03-23T16:17:27.432218+00:00",
       "desired": "run and watch commands deleted — agent orchestration removed from the instrument",
       "horizon": null,
@@ -522,7 +522,7 @@
       "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
       "position": null,
       "short_code": 48,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "No staging mechanism exists. Batch command applies YAML mutations immediately. No concept of pending/draft mutations.",
