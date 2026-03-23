@@ -62,7 +62,7 @@ fn main() {
         } => werk::commands::compose_up::cmd_compose_up(&output, desired, actual, children),
 
         Commands::Flush => werk::commands::flush::cmd_flush(&output),
-        Commands::Epoch { id, list } => werk::commands::epoch::cmd_epoch(&output, id, list),
+        Commands::Epoch { id, list, show } => werk::commands::epoch::cmd_epoch(&output, id, list, show),
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
         Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
         Commands::Reality { id, value, no_epoch } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch),

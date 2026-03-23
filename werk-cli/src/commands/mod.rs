@@ -110,6 +110,10 @@ pub enum Commands {
         /// List existing epochs instead of creating a new one.
         #[arg(short, long)]
         list: bool,
+
+        /// Show what happened during epoch N (mutations on tension + descendants).
+        #[arg(short, long)]
+        show: Option<usize>,
     },
 
     /// Set or display the deadline of a tension.

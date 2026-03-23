@@ -845,6 +845,49 @@ impl Store {
         self.parse_tension_rows(rows)
     }
 
+    /// Get all descendant IDs of a tension (recursive children).
+    ///
+    /// Returns IDs of children, grandchildren, etc. Does NOT include the
+    /// tension itself.
+    pub fn get_descendant_ids(&self, tension_id: &str) -> Result<Vec<String>, StoreError> {
+        let mut result = Vec::new();
+        let mut queue = vec![tension_id.to_owned()];
+        while let Some(parent) = queue.pop() {
+            let children = self.get_children(&parent)?;
+            for child in children {
+                result.push(child.id.clone());
+                queue.push(child.id);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Get mutations for a tension and all its descendants within a time range.
+    ///
+    /// Returns mutations in chronological order. The range is inclusive on
+    /// start and exclusive on end (start <= timestamp < end).
+    pub fn get_epoch_mutations(
+        &self,
+        tension_id: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<Mutation>, StoreError> {
+        // Collect all relevant IDs: the tension itself + descendants
+        let mut ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        ids.insert(tension_id.to_owned());
+        for desc_id in self.get_descendant_ids(tension_id)? {
+            ids.insert(desc_id);
+        }
+
+        // Get all mutations in the time range, then filter by IDs
+        let all = self.mutations_between(start, end)?;
+        let filtered: Vec<Mutation> = all
+            .into_iter()
+            .filter(|m| ids.contains(m.tension_id()))
+            .collect();
+        Ok(filtered)
+    }
+
     fn parse_tension_rows(&self, rows: Vec<fsqlite::Row>) -> Result<Vec<Tension>, StoreError> {
         let mut tensions = Vec::new();
         for row in &rows {
