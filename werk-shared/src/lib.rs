@@ -4,7 +4,7 @@
 //
 // Extracted from werk-cli to enable reuse by TUI and other frontends.
 
-pub mod agent_response;
+pub mod batch_mutation;
 pub mod config;
 pub mod error;
 pub mod hooks;
@@ -12,7 +12,7 @@ pub mod prefix;
 pub mod util;
 pub mod workspace;
 
-pub use agent_response::{AgentMutation, StructuredResponse};
+pub use batch_mutation::BatchMutation;
 pub use config::Config;
 pub use hooks::{HookEvent, HookRunner};
 pub use error::{ErrorCode, Result, WerkError};

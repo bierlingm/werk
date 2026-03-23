@@ -111,25 +111,7 @@ pub enum InputMode {
         tension_id: String,
     },
     Searching,
-    AgentPrompt {
-        tension_id: String,
-    },
-    ReviewingMutations,
-    ReviewingInsights,
     Help,
-}
-
-/// A pending watch insight loaded from disk for TUI review.
-pub struct InsightData {
-    pub file_path: std::path::PathBuf,
-    pub tension_id: String,
-    pub tension_desired: String,
-    pub trigger: String,
-    pub response: String,
-    pub mutation_count: usize,
-    pub mutation_text: String,
-    pub timestamp: String,
-    pub expanded: bool,
 }
 
 #[derive(Debug, Clone)]

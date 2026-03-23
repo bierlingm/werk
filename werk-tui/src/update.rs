@@ -34,9 +34,6 @@ impl Model for InstrumentApp {
             InputMode::Confirming(_) => self.update_confirming(msg),
             InputMode::Searching => self.update_searching(msg),
             InputMode::Moving { .. } => self.update_moving(msg),
-            InputMode::AgentPrompt { .. } => self.update_agent_prompt(msg),
-            InputMode::ReviewingMutations => self.update_mutation_review(msg),
-            InputMode::ReviewingInsights => self.update_insight_review(msg),
             InputMode::Reordering { .. } => self.update_reordering(msg),
         }
     }
@@ -61,23 +58,12 @@ impl Model for InstrumentApp {
         if matches!(self.input_mode, InputMode::Help) {
             crate::helpers::clear_area(frame, rects[0]);
             self.render_help(&rects[0], frame);
-        } else if matches!(self.input_mode, InputMode::ReviewingMutations) {
-            crate::helpers::clear_area(frame, rects[0]);
-            self.render_mutation_review(&rects[0], frame);
-        } else if matches!(self.input_mode, InputMode::ReviewingInsights) {
-            crate::helpers::clear_area(frame, rects[0]);
-            self.render_insight_review(&rects[0], frame);
         } else if matches!(self.input_mode, InputMode::Searching) {
             crate::helpers::clear_area(frame, rects[0]);
             self.render_search(&rects[0], frame);
         } else if matches!(self.input_mode, InputMode::Moving { .. }) {
             crate::helpers::clear_area(frame, rects[0]);
             self.render_search(&rects[0], frame);
-        } else if matches!(self.input_mode, InputMode::AgentPrompt { .. }) && self.agent_response_text.is_some() {
-            // Follow-up: show response with prompt overlay at bottom
-            crate::helpers::clear_area(frame, rects[0]);
-            self.render_mutation_review(&rects[0], frame);
-            self.render_agent_prompt(&rects[0], frame);
         } else if self.siblings.is_empty() && self.parent_id.is_none()
             && !matches!(self.input_mode, InputMode::Adding(_))
         {
@@ -103,9 +89,6 @@ impl Model for InstrumentApp {
             InputMode::Annotating { .. } => {
                 self.render_note_prompt(&rects[0], frame);
             }
-            InputMode::AgentPrompt { .. } => {
-                self.render_agent_prompt(&rects[0], frame);
-            }
             // Full-screen modes already rendered above
             _ => {}
         }
@@ -123,17 +106,6 @@ impl Model for InstrumentApp {
                 InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &rects[2], frame),
                 InputMode::Moving { .. } => self.render_input_hints("Enter place here  j/k navigate  Esc cancel", &rects[2], frame),
                 InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &rects[2], frame),
-                InputMode::AgentPrompt { .. } => self.render_input_hints("Enter send  ! clipboard  Esc cancel", &rects[2], frame),
-                InputMode::ReviewingMutations => {
-                    if self.agent_mutations.is_empty() {
-                        self.render_input_hints("@ follow up  Esc close", &rects[2], frame);
-                    } else {
-                        self.render_input_hints("Space toggle  a apply  @ follow up  j/k navigate  Esc dismiss", &rects[2], frame);
-                    }
-                }
-                InputMode::ReviewingInsights => {
-                    self.render_input_hints("Space expand  a apply  d dismiss  j/k navigate  Esc close", &rects[2], frame);
-                }
                 _ => self.render_hints(&rects[2], frame),
             }
         }
@@ -258,15 +230,6 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Agent one-shot
-            Msg::Char('@') | Msg::InvokeAgent => {
-                if let Some(entry) = self.action_target().cloned() {
-                    self.input_mode = InputMode::AgentPrompt { tension_id: entry.id };
-                    self.input_buffer.clear();
-                }
-                Cmd::none()
-            }
-
             // Undo last undoable mutation
             Msg::Char('u') | Msg::Undo => {
                 if let Some(entry) = self.action_target().cloned() {
@@ -373,18 +336,6 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Insights
-            Msg::Char('i') | Msg::OpenInsights => {
-                // Always try to load — count may be stale
-                self.load_pending_insights();
-                if !self.pending_insights.is_empty() {
-                    self.input_mode = InputMode::ReviewingInsights;
-                } else {
-                    self.set_transient("no pending insights");
-                }
-                Cmd::none()
-            }
-
             // Help
             Msg::Char('?') | Msg::ToggleHelp => {
                 self.input_mode = InputMode::Help;
@@ -444,34 +395,6 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Agent response received (from background task)
-            Msg::AgentResponse(result) => {
-                match result {
-                    Ok(response) => {
-                        // Try to parse structured response for mutations
-                        if let Some(parsed) = werk_shared::StructuredResponse::from_response(&response) {
-                            self.agent_response_text = Some(parsed.response.clone());
-                            if !parsed.mutations.is_empty() {
-                                self.agent_mutations = parsed.mutations.clone();
-                                self.agent_mutation_selected = vec![true; self.agent_mutations.len()];
-                                self.agent_mutation_cursor = 0;
-                                self.input_mode = InputMode::ReviewingMutations;
-                            } else {
-                                self.set_transient("agent responded (no mutations)");
-                            }
-                        } else {
-                            // Plain text response, no structured mutations
-                            self.agent_response_text = Some(response);
-                            self.input_mode = InputMode::ReviewingMutations;
-                        }
-                    }
-                    Err(e) => {
-                        self.set_transient(format!("agent error: {}", truncate_str(&e, 40)));
-                    }
-                }
-                Cmd::none()
-            }
-
             Msg::Tick => {
                 if let Some(ref t) = self.transient {
                     if t.is_expired() {
@@ -482,7 +405,6 @@ impl InstrumentApp {
                 if self.db_has_changed() {
                     self.load_siblings();
                 }
-                self.refresh_pending_insight_count();
                 Cmd::none()
             }
 
@@ -937,194 +859,6 @@ impl InstrumentApp {
                 self.input_mode = InputMode::Normal;
                 self.search_state = None;
                 self.input_buffer.clear();
-                Cmd::none()
-            }
-            Msg::Quit => Cmd::quit(),
-            _ => Cmd::none(),
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Agent prompt
-    // -----------------------------------------------------------------------
-
-    fn update_agent_prompt(&mut self, msg: Msg) -> Cmd<Msg> {
-        match msg {
-            Msg::Char(c) => {
-                // Check for @! clipboard handoff
-                if c == '!' {
-                    if let InputMode::AgentPrompt { ref tension_id } = self.input_mode.clone() {
-                        let context = self.build_agent_context_for_clipboard(tension_id);
-                        let prompt = if self.input_buffer.is_empty() {
-                            "Analyze this tension and suggest what to do next.".to_string()
-                        } else {
-                            self.input_buffer.clone()
-                        };
-                        let short = &tension_id[..12.min(tension_id.len())];
-                        let full = format!("{}\n\nUser request: {}\n\nYou can query more info and make changes directly via the werk CLI:\n\n  werk show {}          # full tension details + history\n  werk context {}       # JSON with dynamics\n  werk notes {}         # notes for this tension\n  werk tree             # forest overview\n  werk list             # all tensions\n  werk help             # all commands\n\n  werk reality {} \"new reality\"\n  werk desire {} \"new desire\"\n  werk note {} \"your note\"\n  werk resolve {}\n  werk release --reason \"reason\" {}\n  werk horizon {} \"2w\"\n  werk add -p {} \"child desired\" \"child actual\"",
-                            context, prompt,
-                            short, short, short,
-                            short, short, short, short, short, short, short,
-                        );
-                        let _ = self.copy_to_clipboard(&full);
-                        self.set_transient("copied to clipboard \u{2014} paste into your agent");
-                    }
-                    self.input_mode = InputMode::Normal;
-                    self.input_buffer.clear();
-                    return Cmd::none();
-                }
-                self.input_buffer.push(c);
-                Cmd::none()
-            }
-            Msg::Backspace => {
-                self.input_buffer.pop();
-                Cmd::none()
-            }
-            Msg::Submit => {
-                let prompt = self.input_buffer.clone();
-                if prompt.is_empty() {
-                    return Cmd::none();
-                }
-                let tension_id = match &self.input_mode {
-                    InputMode::AgentPrompt { tension_id } => tension_id.clone(),
-                    _ => return Cmd::none(),
-                };
-
-                // Build the full prompt with context
-                let context = self.build_agent_context(&tension_id);
-
-                let mut full_prompt = context.clone();
-
-                // If there's a prior exchange, include both the user's question and the agent's response
-                if let (Some(ref prev_q), Some(ref prev_a)) = (&self.agent_last_user_message, &self.agent_response_text) {
-                    full_prompt.push_str("\n\n--- Previous exchange ---\n");
-                    full_prompt.push_str(&format!("User: {}\n\n", prev_q));
-                    full_prompt.push_str(&format!("Assistant: {}\n", prev_a));
-                    full_prompt.push_str("--- End previous exchange ---\n");
-                } else if let Some(ref prev_a) = self.agent_response_text {
-                    full_prompt.push_str("\n\n--- Previous agent response ---\n");
-                    full_prompt.push_str(prev_a);
-                    full_prompt.push_str("\n--- End previous response ---\n");
-                }
-                full_prompt.push_str(&format!("\nUser: {}", prompt));
-
-                // Store this message for next follow-up
-                self.agent_last_user_message = Some(prompt);
-
-                // Get agent command from config
-                let agent_cmd = self.get_agent_command();
-
-                self.agent_tension_id = Some(tension_id);
-                self.input_mode = InputMode::Normal;
-                self.input_buffer.clear();
-                self.set_transient("running agent...");
-
-                if let Some(cmd) = agent_cmd {
-                    // Run agent in background via Cmd::task
-                    let cmd_clone = cmd.clone();
-                    Cmd::task_named("agent", move || {
-                        let result = crate::agent::execute_agent_oneshot(&cmd_clone, &full_prompt);
-                        Msg::AgentResponse(result)
-                    })
-                } else {
-                    self.set_transient("no agent configured \u{2014} run: werk config set agent.command <cmd>");
-                    Cmd::none()
-                }
-            }
-            Msg::Cancel => {
-                self.input_mode = InputMode::Normal;
-                self.input_buffer.clear();
-                Cmd::none()
-            }
-            Msg::Quit => Cmd::quit(),
-            _ => Cmd::none(),
-        }
-    }
-
-    fn update_mutation_review(&mut self, msg: Msg) -> Cmd<Msg> {
-        match msg {
-            // Follow-up: @ while viewing response opens prompt overlay on this screen
-            Msg::Char('@') => {
-                if let Some(ref tid) = self.agent_tension_id.clone() {
-                    // Switch to AgentPrompt but keep the response visible
-                    // (AgentPrompt rendering will overlay on the response view)
-                    self.input_mode = InputMode::AgentPrompt { tension_id: tid.clone() };
-                    self.input_buffer.clear();
-                }
-                return Cmd::none();
-            }
-            Msg::Up | Msg::Char('k') => {
-                if self.agent_mutation_cursor > 0 {
-                    self.agent_mutation_cursor -= 1;
-                }
-                Cmd::none()
-            }
-            Msg::Down | Msg::Char('j') => {
-                if self.agent_mutation_cursor + 1 < self.agent_mutations.len() {
-                    self.agent_mutation_cursor += 1;
-                }
-                Cmd::none()
-            }
-            Msg::Char(' ') => {
-                // Toggle selection
-                if let Some(sel) = self.agent_mutation_selected.get_mut(self.agent_mutation_cursor) {
-                    *sel = !*sel;
-                }
-                Cmd::none()
-            }
-            Msg::Char('a') | Msg::Submit => {
-                // Apply selected mutations
-                self.apply_selected_mutations();
-                self.input_mode = InputMode::Normal;
-                Cmd::none()
-            }
-            Msg::Cancel => {
-                self.agent_mutations.clear();
-                self.agent_mutation_selected.clear();
-                self.agent_response_text = None;
-                self.input_mode = InputMode::Normal;
-                Cmd::none()
-            }
-            Msg::Quit => Cmd::quit(),
-            _ => Cmd::none(),
-        }
-    }
-
-    fn update_insight_review(&mut self, msg: Msg) -> Cmd<Msg> {
-        match msg {
-            Msg::Char(' ') => {
-                // Toggle expanded view for current insight
-                if let Some(insight) = self.pending_insights.get_mut(self.insight_cursor) {
-                    insight.expanded = !insight.expanded;
-                }
-                Cmd::none()
-            }
-            Msg::Up | Msg::Char('k') => {
-                if self.insight_cursor > 0 {
-                    self.insight_cursor -= 1;
-                }
-                Cmd::none()
-            }
-            Msg::Down | Msg::Char('j') => {
-                if self.insight_cursor + 1 < self.pending_insights.len() {
-                    self.insight_cursor += 1;
-                }
-                Cmd::none()
-            }
-            Msg::Char('a') | Msg::Submit => {
-                // Accept/apply: mark reviewed, add note mutation
-                self.accept_current_insight();
-                Cmd::none()
-            }
-            Msg::Char('d') => {
-                // Dismiss: mark reviewed without action
-                self.dismiss_current_insight();
-                Cmd::none()
-            }
-            Msg::Cancel => {
-                // Close insight review without marking anything
-                self.pending_insights.clear();
-                self.input_mode = InputMode::Normal;
                 Cmd::none()
             }
             Msg::Quit => Cmd::quit(),
