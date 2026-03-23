@@ -130,6 +130,10 @@ pub enum Commands {
     },
 
     /// Update the current reality of a tension.
+    ///
+    /// Reality updates are epoch boundaries — they snapshot the ending delta
+    /// before applying the new reality. Use --no-epoch for minor corrections
+    /// that don't warrant a new delta.
     #[command(alias = "actual")]
     Reality {
         /// Tension ID or prefix.
@@ -137,15 +141,27 @@ pub enum Commands {
 
         /// New actual state (opens $EDITOR if omitted).
         value: Option<String>,
+
+        /// Skip epoch creation (for minor corrections).
+        #[arg(long)]
+        no_epoch: bool,
     },
 
     /// Update the desired state of a tension.
+    ///
+    /// Desire updates are epoch boundaries — they snapshot the ending delta
+    /// before applying the new desire. Use --no-epoch for minor corrections
+    /// that don't warrant a new delta.
     Desire {
         /// Tension ID or prefix.
         id: String,
 
         /// New desired state (opens $EDITOR if omitted).
         value: Option<String>,
+
+        /// Skip epoch creation (for minor corrections).
+        #[arg(long)]
+        no_epoch: bool,
     },
 
     /// Mark a tension as resolved.
