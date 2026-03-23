@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-23T10:35:05Z",
+  "flushed_at": "2026-03-23T11:28:08Z",
   "summary": {
-    "active": 30,
+    "active": 31,
     "released": 3,
     "resolved": 9,
-    "total": 42
+    "total": 43
   },
   "tensions": [
     {
@@ -74,7 +74,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "No way to remove notes once added; can only add via 'werk note'",
+      "actual": "Note commands restructured as noun-verb subcommands (note add/rm/list). Retraction via soft-delete: note_retracted mutation preserves audit trail. Old 'notes' command absorbed into 'note list'. All 839 tests pass.",
       "created_at": "2026-03-18T19:23:04.293990+00:00",
       "desired": "Note deletion capability: delete or soft-delete notes that were added to the wrong tension",
       "horizon": "2026-04",
@@ -467,6 +467,17 @@
       "parent_id": "01KMD3S2F5CHGZCJEG3JE5AQWM",
       "position": null,
       "short_code": 43,
+      "status": "Active"
+    },
+    {
+      "actual": "Reality and desire commands are disconnected from epochs entirely. No prompt, no auto-epoch, no epoch-span mutation queries. Ghost geometry doesn't build through normal use.",
+      "created_at": "2026-03-23T11:20:05.501259+00:00",
+      "desired": "Reality and desire updates create epoch boundaries — the ghost geometry builds through normal use, mutations are queryable per epoch span",
+      "horizon": "2026-05",
+      "id": "01KMD6RT3X5PC9RF21JECVRYNF",
+      "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
+      "position": null,
+      "short_code": 44,
       "status": "Active"
     }
   ]

@@ -20,7 +20,6 @@ pub mod insights;
 pub mod list;
 pub mod move_cmd;
 pub mod note;
-pub mod notes;
 pub mod position;
 pub mod nuke;
 pub mod reality;
@@ -233,20 +232,13 @@ pub enum Commands {
         n: i32,
     },
 
-    /// Attach a narrative annotation to a tension.
-    /// Usage: `werk note <text>` for workspace note, or `werk note <id> <text>` for tension note.
+    /// Testimony operations: add, retract, or list notes.
+    ///
+    /// Notes are first-class operative gestures — observational testimony
+    /// that accumulates within the current epoch.
     Note {
-        /// First argument: either tension ID/prefix (if second arg present) or note text.
-        arg1: Option<String>,
-
-        /// Second argument: note text (when first arg is ID).
-        arg2: Option<String>,
-    },
-
-    /// List notes. Without an ID, shows workspace notes. With an ID, shows notes for that tension.
-    Notes {
-        /// Optional tension ID to show notes for a specific tension.
-        id: Option<String>,
+        #[command(subcommand)]
+        command: NoteCommand,
     },
 
     /// Show system health summary (phase distribution, movement ratios, alerts).
@@ -441,6 +433,37 @@ impl Commands {
                 | Commands::Batch { .. }
         )
     }
+}
+
+/// Note subcommands (noun-verb pattern).
+#[derive(Debug, Subcommand)]
+pub enum NoteCommand {
+    /// Add a note (observational testimony).
+    /// Usage: `werk note add <text>` for workspace, `werk note add <id> <text>` for tension.
+    Add {
+        /// First argument: either tension ID/prefix (if second arg present) or note text.
+        arg1: Option<String>,
+
+        /// Second argument: note text (when first arg is ID).
+        arg2: Option<String>,
+    },
+
+    /// Retract a note (retraction testimony).
+    /// Usage: `werk note rm <n>` for workspace, `werk note rm <id> <n>` for tension.
+    Rm {
+        /// First argument: tension ID/prefix (if second arg present) or note number.
+        arg1: String,
+
+        /// Second argument: note number (when first arg is ID).
+        arg2: Option<String>,
+    },
+
+    /// List active notes.
+    /// Usage: `werk note list` for workspace, `werk note list <id>` for tension.
+    List {
+        /// Optional tension ID to show notes for a specific tension.
+        id: Option<String>,
+    },
 }
 
 /// Config subcommands.

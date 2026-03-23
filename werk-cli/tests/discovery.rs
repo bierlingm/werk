@@ -332,6 +332,7 @@ fn test_discovery_note_from_subdirectory() {
     let prefix = &tension.id[..8];
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(prefix)
         .arg("note added from subdirectory")
         .current_dir(&subdir)
@@ -918,6 +919,7 @@ fn test_prefix_consistency_across_commands() {
     // Note with prefix
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(prefix)
         .arg("test note")
         .current_dir(dir.path())
