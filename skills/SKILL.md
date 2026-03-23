@@ -44,22 +44,23 @@ A gesture is the unit of meaningful action — a compression of intentionality i
 
 The instrument is not a tool the user consults. It is a structure the user inhabits. Opening it is stepping into a field that shapes cognition toward the user's aims.
 
-## What the Instrument Computes
+## What the Instrument Surfaces
 
-### Facts (always display-worthy)
+### Facts (directly observable, always display-worthy)
 - **Urgency** — elapsed fraction of deadline window (0.0 = just entered, 1.0 = at deadline, >1.0 = overdue)
 - **Overdue** — deadline passed, step unresolved
 - **Horizon drift** — whether deadlines have moved and in which direction
+- **Child-resolution rate** — fraction of theory of closure completed
+- **Mutation recency** — when the tension was last acted on
 
-### Signals (surfaced by exception)
+### Signals (facts recognized as action-relevant, surfaced by exception)
 - **Sequencing pressure** — order conflicts with deadline ordering
 - **Critical path** — child whose deadline crowds parent's deadline
 - **Containment violation** — child deadline exceeds parent deadline
 
-### Dynamics (theories of meaning — interpretations, not assertions)
-- Phase, tendency, magnitude, conflict, neglect, oscillation, orientation, compensating strategy
-- These are proposed readings of patterns. The instrument proposes; the user disposes.
-- Most dynamics are hidden by default. They live in ground mode — the debrief and study surface.
+### What the Instrument Does NOT Compute
+
+**Dynamics** — phase, tendency, oscillation, conflict, neglect, compensating strategy, orientation — are interpretive frameworks from structural dynamics practice. They require understanding the user's life context that the instrument doesn't capture. The practitioner (or an AI assistant) applies these frameworks to the facts the instrument surfaces. The instrument holds the honest record; interpretation belongs to the practice.
 
 ## CLI Commands
 

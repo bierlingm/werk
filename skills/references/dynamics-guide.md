@@ -1,29 +1,18 @@
-# Interpreting What the Instrument Reveals
+# Reading the Structure — A Guide for Practitioners and AI
 
-The instrument computes three categories of output. They are not equivalent and should not be treated the same way.
+The instrument surfaces **facts** and **signals**. Everything beyond that is the practitioner's (or AI's) reading of the structure through the lens of structural dynamics. This guide helps you make those readings.
 
-## Facts (directly observable, always display-worthy)
+## What the Instrument Gives You
 
-**Urgency** — elapsed fraction of the deadline window. 0.0 = just entered. 1.0 = at deadline. >1.0 = overdue. A fact, not a judgment.
+**Facts** — directly observable from the data:
+- Urgency (elapsed fraction of deadline window), overdue, horizon drift, child-resolution rate, mutation recency, gesture history
 
-**Overdue** — deadline passed, step unresolved. A fact.
+**Signals** — facts recognized as action-relevant:
+- Sequencing pressure, critical path, containment violation
 
-**Horizon drift** — whether deadlines have moved:
-- Stable: hasn't moved
-- Tightening: moving closer (commitment increasing)
-- Postponement / repeated postponement: slipping (the goal is retreating)
+## Interpretive Frameworks (Applied by You, Not the Instrument)
 
-## Signals (facts recognized as action-relevant, surfaced by exception)
-
-**Sequencing pressure** — a step ordered later has an earlier deadline than a preceding step. The order says "wait" but the deadline says "now." Not necessarily wrong — may reflect genuine real-world pressure.
-
-**Critical path** — a child whose deadline crowds the parent's deadline. The bottleneck in the theory of closure. Recursive: if the bottleneck has children, their bottleneck is also on the critical path.
-
-**Containment violation** — a child's deadline exceeds the parent's. The instrument offers pathways: keep as-is, clip to parent, promote to sibling, extend parent.
-
-## Dynamics (theories of meaning — interpretations, not assertions)
-
-These are proposed readings of patterns in the user's action and structure. The instrument proposes; the user disposes. Most are hidden by default and live in ground mode.
+The following are structural dynamics concepts that help a practitioner or AI read meaning in the factual record. They require understanding the person's life and context — information the instrument doesn't and can't capture. Apply them with humility.
 
 **Phase** — where in the creative cycle the tension sits:
 - Germination: few mutations, still forming. Don't push.
@@ -60,8 +49,8 @@ These are proposed readings of patterns in the user's action and structure. The 
 - **Compensating strategy present**: the lie IS the reading. The sharpest diagnostic.
 - **No conflict + advancing**: rare alignment. Note it.
 
-## Confidence Tiers
+## Confidence and Humility
 
-- **High-confidence facts**: surface automatically when actionable
-- **Medium-confidence theories**: surface as questions at thresholds
-- **Low-confidence interpretations**: live in ground mode — accessible during debrief, not during flight
+These frameworks are powerful when applied with discernment and weak when applied mechanically. The instrument gives you facts about what was recorded and when. You bring the understanding of the person's life, intentions, and context. The further your reading goes beyond the factual record, the more tentative it should be.
+
+When offering a reading to someone: name what the structure shows (the facts), then offer one interpretation as a question, not a diagnosis.
