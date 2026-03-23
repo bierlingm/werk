@@ -66,7 +66,7 @@ The term "gesture" is chosen deliberately. In an operative tradition (Fernandez)
 Gestures, not individual mutations, are the meaningful units for:
 - Undo (undoing a gesture undoes the whole set)
 - History (the ghost geometry is a sequence of gestures)
-- Dynamics interpretation (a gesture is the smallest meaningful event)
+- Interpretation (a gesture is the smallest meaningful event for reading structural patterns)
 
 In the data model, each mutation carries a `gesture_id` linking it to its gesture. A gesture optionally belongs to a session. CLI commands each constitute a single gesture. Batch operations group all their mutations under one gesture. Agent mutations are sessionless gestures.
 
@@ -77,11 +77,11 @@ Meaningful signal propagates one level, not globally. A mutation at a given tens
 - **Its parent** (the parent's theory of closure changed)
 - **Its direct children** (their context changed)
 
-Signal beyond this neighborhood — grandparent, cousin, global — is weaker inference operating at greater distance. Computed dynamics should respect this: **local dynamics** (from the tension and its immediate neighborhood) are high-confidence; **field dynamics** (from broader structural patterns) are lower-confidence and should be treated accordingly.
+Signal beyond this neighborhood — grandparent, cousin, global — is weaker inference operating at greater distance. Any interpretation of structural patterns should respect this: local patterns (from the tension and its immediate neighborhood) are higher-confidence than field-level patterns (from broader structural relationships).
 
 ### 8. Root Tensions as Coherence Generators
 
-Everything in the structure derives meaning from the root level. Sub-tensions, computed dynamics, action steps, temporal organization, the frontier of action — all of these are coherent only insofar as they serve the root tensions that organize the user's directed energy.
+Everything in the structure derives meaning from the root level. Sub-tensions, action steps, temporal organization, the frontier of action — all of these are coherent only insofar as they serve the root tensions that organize the user's directed energy.
 
 A structure with twenty root tensions is not a structure — it is a wish list. A structure with five root tensions, each held honestly with accurate reality and active theory of closure, is a machine that generates coherence. (Fritz, via Catton: "Fewer tensions held honestly produce more structural integrity than many tensions held loosely.")
 
@@ -135,19 +135,17 @@ Phase transitions are orthogonal to within-epoch movement. They don't advance al
 
 The ghost geometry is the sequence of epochs — the pyramids laid end to end, each growing from the material of the last.
 
-### Theories of Meaning
+### The Instrument's Boundary
 
-Computed dynamics are not assertions of fact. They are **proposed interpretations** of patterns in the user's action and structure.
+The instrument computes **facts** and **signals** from the data it holds. It does not compute **dynamics**.
 
-A theory of meaning has:
-- **Premises** — the data it draws on (mutations, temporal patterns, structural relationships)
-- **Confidence** — how strong the inference is
-- **Scope** — what level it applies to (respecting locality)
-- **Actionability** — what the user could do differently if this interpretation is correct
+- **Facts** are directly observable from the data: urgency (elapsed fraction of deadline window), overdue (deadline passed), horizon drift (whether deadlines moved), child-resolution rate, mutation recency.
+- **Signals** are facts recognized as action-relevant by the instrument's design: sequencing pressure, critical path, containment violation. Surfaced by exception.
+- **Dynamics** — phase, tendency, oscillation, conflict, neglect, compensating strategy, orientation — are interpretive frameworks from the structural dynamics *practice*. They require understanding the user's life, intentions, and context that the instrument does not and cannot capture. A human practitioner or AI may apply these frameworks to the facts the instrument surfaces, but the instrument itself does not make these readings.
 
-Dynamics should not be displayed as properties of a tension. They should be available as interpretations the user can interrogate. The instrument proposes; the user disposes.
+This boundary is sacred. The instrument surfaces honest facts about what was recorded and when. Interpretation belongs to the practice — the human (possibly aided by AI) reading the structure and recognizing patterns. The instrument holds the structure; the practitioner reads it.
 
-The didactic function of the instrument emerges here: by repeatedly encountering proposed interpretations of their own action patterns, the user develops structural awareness — not because the tool taught them about structural dynamics through documentation, but because they keep seeing their own patterns reflected back with a proposed reading. The consciousness is renewed through the craft, not the doctrine.
+The didactic function emerges not from the instrument computing dynamics, but from the structure itself making patterns visible. By returning to an honest record of desire, reality, and action over time, the practitioner develops structural awareness — not because the tool diagnosed their patterns, but because the patterns are there in the data for anyone (human or AI) to read. The consciousness is renewed through the craft, not the instrument's assertions.
 
 ### Calculus of Time
 
@@ -277,12 +275,11 @@ Sessions are queryable and searchable — session history that can be examined i
 When you're not flying, you're on the ground. **Ground mode** is the debrief and study surface:
 
 - Review session history (session patterns, navigation paths)
-- Examine low-confidence interpretive dynamics (the instrument's theories about your patterns)
 - Study telemetry (creation-to-resolution ratios, temporal frame distribution, engagement rhythms)
-- Access the full dynamics readout (everything computed, including what's normally hidden)
+- Examine the full factual record — all mutations, gesture history, epoch transitions
 - Prepare for the next run
 
-Ground mode is where the instrument's coaching-level interpretations live — the structural dynamics concepts that are too speculative for the primary flight surfaces but valuable for study and reflection.
+Ground mode surfaces the raw material that the practitioner (or an AI assistant) can interpret through the lens of structural dynamics. The instrument provides the honest record; the reading belongs to the practice.
 
 ### Operative Gestures
 
@@ -368,8 +365,8 @@ How context determines what's visible, what's actionable, and what's signaled. D
 
 These are available for configuration, evolution, or removal based on use:
 
-- **Phase computation and display** — only when the logic earns trust through rigor and transparency
-- **Most computed dynamics** — hidden by default; only urgency, overdue, and deadline drift as facts; the rest in ground mode
+- **Phase glyphs as interpretive shorthand** — the instrument may offer a phase glyph as a visual hint, but this is display convention, not a computed assertion
+- **What the instrument surfaces beyond facts and signals** — the boundary between instrument output and practice interpretation is sacred; what specific telemetry or patterns the instrument makes visible in ground mode is not
 - **Specific glyph shapes and families** — the diamond family (◇◆◈◉) is aesthetically and symbolically right but open to expansion, modification, or replacement
 - **Color semantics** — colors feel right but have not yet earned their specific semantic assignments; this remains open
 - **Specific visual chrome** — border types, background shifts, envelope demarcation style are design choices, not sacred
@@ -399,13 +396,13 @@ These are available for configuration, evolution, or removal based on use:
 
 **Gesture grouping:** Implicit grouping within a descended view session. Explicit compose mode via key entry for deliberate restructuring. Peeking and suspending for cross-structure reference during composition. Structural review prompts (non-blocking) after composition.
 
-**Which dynamics are real enough to display:** Three are display-worthy as facts (urgency, horizon drift, neglect-as-observation). Two need rebuilt computation (tension magnitude, resolution). The rest are important structural dynamics concepts but belong in coaching/agent layers, not direct display. Dynamics are theories of meaning, not assertions. Facts, signals, and dynamics are distinct categories.
+**What the instrument surfaces vs. what belongs to the practice:** The instrument computes and displays facts (urgency, overdue, horizon drift, child-resolution rate) and signals (sequencing pressure, critical path, containment violation). Dynamics — phase, tendency, oscillation, conflict, compensating strategy, etc. — are interpretive frameworks from the structural dynamics practice. They require life context the instrument doesn't capture. The human practitioner (possibly aided by AI) applies these frameworks to the facts. The instrument holds the honest record; interpretation belongs to the practice.
 
 **Epoch boundaries:** User-initiated narrative beats — gestures that update articulated desire or reality. Organic, not computed. The felt need for narrative compression is the signal. The instrument can detect candidates but the user marks significance.
 
 **Root tension relationships:** Optionally hierarchical — the user can compose up (create a parent) for one or more root tensions, revealing implicit coherence. The horizon view surfaces relationships without forcing hierarchy. Root tensions compete for finite energy and may support, compete with, or sequence each other. No "meta-structure" needed — just structure.
 
-**Usage pattern inference:** Tiered by confidence. High-confidence facts surface automatically when actionable. Medium-confidence theories surface as questions at thresholds. Low-confidence interpretations live in ground mode — accessible during debrief and study, not during flight.
+**What the instrument makes visible:** Facts surface automatically when actionable. Signals surface by exception. Telemetry (creation-to-resolution ratios, temporal frame distribution, engagement rhythms) is available in ground mode as raw material for the practitioner's own reading.
 
 **Tension magnitude:** Rebuilt around child-resolution rate (fraction of theory of closure completed). No user-rated metric. Optional binary over/under flag on individual steps to indicate above-average or below-average effort/difficulty, weighting the calculation.
 
@@ -417,7 +414,7 @@ These are available for configuration, evolution, or removal based on use:
 
 **Sessions (runs):** A session is the span from opening to closing. Process-scoped — each TUI instance manages its own. CLI and agent mutations are sessionless gestures. Records navigation, gestures, dwell times. Takeoff threshold on opening (ambient orientation). Landing threshold on closing (summary + optional debrief note). Sessions are searchable and queryable.
 
-**Ground mode:** The debrief and study surface for when you're not flying. Low-confidence dynamics, telemetry, run history, full dynamics readout. Where coaching-level interpretations live.
+**Ground mode:** The debrief and study surface for when you're not flying. Telemetry, session history, full factual record. Where the raw material lives for the practitioner's own structural reading.
 
 **Compose up:** First-class gesture — creating a parent for one or more existing tensions. Works at root level and within any descended view. The inverse of decomposing.
 
@@ -485,8 +482,8 @@ This instrument draws on:
 | **SITREP** | A reality update — compressing the current situation into a narrative beat. The user's ground truth articulation. (Informal alias for the reality update gesture.) |
 | **Fact** | Something directly observable from the data without inference. Always display-worthy. |
 | **Signal** | A fact recognized as potentially action-relevant by the instrument's design. Curated for salience. Presented by exception. |
-| **Dynamic** | An inference — a theory of meaning derived from patterns in facts. Goes beyond what's directly observable. Offered as interpretation, not assertion. |
+| **Dynamic** | An interpretive framework from structural dynamics practice (phase, tendency, oscillation, conflict, compensating strategy, etc.). Applied by the practitioner or AI to the facts the instrument surfaces. Not computed by the instrument — requires life context the instrument doesn't capture. |
 | **Locality** | The principle that meaningful signal propagates one level (self, parent, children), not globally. |
-| **Theory of meaning** | A proposed interpretation of structural patterns. What computed dynamics actually are. |
+| **Theory of meaning** | A proposed interpretation of structural patterns. What dynamics are when applied to the factual record. Belongs to the practice, not the instrument. |
 | **Root tension** | A top-level tension that organizes the user's directed energy. The coherence generator. |
 | **Operative gesture** | An act within the instrument through which the user's relationship to their creative structure becomes conscious. |
