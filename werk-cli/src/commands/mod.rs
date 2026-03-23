@@ -29,13 +29,11 @@ pub mod release;
 pub mod reopen;
 pub mod resolve;
 pub mod rm;
-pub mod run;
 pub mod show;
 pub mod snooze;
 pub mod survey;
 pub mod trajectory;
 pub mod tree;
-pub mod watch;
 
 use clap::Subcommand;
 use batch::BatchCommand;
@@ -356,7 +354,7 @@ pub enum Commands {
         collisions: bool,
     },
 
-    /// Output structural context for agent consumption (JSON only).
+    /// Output structural context (JSON). Useful for MCP, scripts, or agent consumption.
     Context {
         /// Tension ID or prefix (omit for bulk modes).
         id: Option<String>,
@@ -368,65 +366,6 @@ pub enum Commands {
         /// Output context for urgent tensions only.
         #[arg(long)]
         urgent: bool,
-    },
-
-    /// Launch an agent with structural context.
-    ///
-    /// Three modes:
-    ///   werk run <id> "prompt"       One-shot: send prompt with tension context, get response
-    ///   werk run <id> -- <command>   Interactive: launch agent with context piped to stdin
-    ///   werk run --system "prompt"   System-wide: all active tensions as context
-    ///   werk run <id> --decompose    Decompose: break tension into sub-tensions
-    Run {
-        /// Tension ID or prefix (optional with --system).
-        id: Option<String>,
-
-        /// User prompt for one-shot mode.
-        #[arg(value_name = "PROMPT")]
-        prompt: Option<String>,
-
-        /// Don't prompt for reality updates from agent suggestions.
-        #[arg(long)]
-        no_suggest: bool,
-
-        /// Agent command to run (overrides config default, for interactive mode).
-        #[arg(last = true)]
-        command: Vec<String>,
-
-        /// System-wide context (all active tensions, no specific ID needed).
-        #[arg(long)]
-        system: bool,
-
-        /// Auto-decompose: ask agent to break tension into sub-tensions.
-        #[arg(long)]
-        decompose: bool,
-
-        /// Dry run: show what would be applied without applying.
-        #[arg(long)]
-        dry_run: bool,
-    },
-
-    /// Monitor tension dynamics and invoke agent on threshold crossings.
-    Watch {
-        /// Start as background daemon.
-        #[arg(long)]
-        daemon: bool,
-
-        /// Stop the background daemon.
-        #[arg(long)]
-        stop: bool,
-
-        /// Show watch status (daemon, last check, pending insights).
-        #[arg(long)]
-        status: bool,
-
-        /// List pending insights.
-        #[arg(long)]
-        pending: bool,
-
-        /// Show recent watch activity.
-        #[arg(long)]
-        history: bool,
     },
 
     /// Batch operations (apply/validate mutations from YAML).

@@ -3,9 +3,9 @@
 //! Tests verify:
 //! - VAL-CROSS-001: Full lifecycle flow (init -> add -> reality updates -> show dynamics -> resolve)
 //! - VAL-CROSS-002: Tree operations flow (hierarchy -> move -> rm with reparenting)
-//! - VAL-CROSS-003: Agent workflow flow (add -> updates -> context -> run)
+//! - VAL-CROSS-003: Context workflow flow (add -> updates -> context)
 //! - VAL-CROSS-005: JSON consistency across tree --json and show --json
-//! - VAL-CROSS-006: Config affects agent behavior (set -> run uses it -> -- overrides)
+//! - VAL-CROSS-006: Config persistence
 //! - VAL-CROSS-008: Multiple roots handled correctly
 
 use assert_cmd::cargo_bin_cmd;
@@ -1387,49 +1387,6 @@ fn test_agent_workflow_full_flow() {
         "Context should have at least 5 mutations (creation + updates)"
     );
 
-    // Step 5: Run agent with context and verify env vars
-    let output = cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&id)
-        .arg("--")
-        .arg("printenv")
-        .arg("WERK_TENSION_ID")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert_eq!(
-        stdout.trim(),
-        id,
-        "WERK_TENSION_ID should be set to full tension ID"
-    );
-
-    // Step 6: Verify stdin receives context JSON
-    let output = cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&id)
-        .arg("--")
-        .arg("cat")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    let stdin_json: Value = serde_json::from_str(&stdout).expect("Stdin should contain valid JSON");
-
-    // Stdin JSON should match context structure
-    assert_eq!(
-        stdin_json["tension"]["id"].as_str().unwrap(),
-        id,
-        "Stdin context should have correct tension ID"
-    );
 }
 
 /// VAL-CROSS-003: Context has expected fields (no dynamics)
@@ -1479,180 +1436,9 @@ fn test_context_has_expected_fields() {
     assert!(context_json.get("dynamics").is_none(), "Should not have dynamics");
 }
 
-/// VAL-CROSS-003: Run passes full context via stdin to agent
-#[test]
-fn test_run_passes_context_via_stdin() {
-    let dir = TempDir::new().unwrap();
-
-    // Init
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Create tension with hierarchy
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let parent = store
-        .create_tension("parent goal", "parent reality")
-        .unwrap();
-    let child = store
-        .create_tension_with_parent("child goal", "child reality", Some(parent.id.clone()))
-        .unwrap();
-
-    // Run and capture stdin
-    let output = cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&child.id)
-        .arg("--")
-        .arg("cat")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    let stdin_context: Value =
-        serde_json::from_str(&stdout).expect("Stdin should have valid JSON context");
-
-    // Verify all context sections present
-    assert!(
-        stdin_context.get("tension").is_some(),
-        "Should have tension"
-    );
-    assert!(
-        stdin_context.get("ancestors").is_some(),
-        "Should have ancestors"
-    );
-    assert!(
-        stdin_context.get("siblings").is_some(),
-        "Should have siblings"
-    );
-    assert!(
-        stdin_context.get("children").is_some(),
-        "Should have children"
-    );
-    assert!(
-        stdin_context.get("mutations").is_some(),
-        "Should have mutations"
-    );
-
-    // Verify ancestors include parent
-    let ancestors = stdin_context["ancestors"].as_array().unwrap();
-    assert_eq!(
-        ancestors.len(),
-        1,
-        "Child should have one ancestor (parent)"
-    );
-    assert_eq!(
-        ancestors[0]["id"].as_str().unwrap(),
-        parent.id,
-        "Ancestor should be parent"
-    );
-}
-
 // =============================================================================
-// VAL-CROSS-006: Config affects agent behavior
+// VAL-CROSS-006: Config persistence
 // =============================================================================
-
-/// VAL-CROSS-006: Config default is used by run command
-#[test]
-fn test_config_default_used_by_run() {
-    let dir = TempDir::new().unwrap();
-
-    // Init
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Set agent.command in config
-    cargo_bin_cmd!("werk")
-        .arg("config")
-        .arg("set")
-        .arg("agent.command")
-        .arg("echo config_default_used")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Create tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store.create_tension("goal", "reality").unwrap();
-
-    // Run without -- (should use config default)
-    let output = cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&tension.id)
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        stdout.contains("config_default_used"),
-        "Run should use config agent.command, got: {}",
-        stdout
-    );
-}
-
-/// VAL-CROSS-006: Override with -- ignores config default
-#[test]
-fn test_config_override_with_double_dash() {
-    let dir = TempDir::new().unwrap();
-
-    // Init
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Set agent.command in config
-    cargo_bin_cmd!("werk")
-        .arg("config")
-        .arg("set")
-        .arg("agent.command")
-        .arg("echo should_not_appear")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Create tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store.create_tension("goal", "reality").unwrap();
-
-    // Run WITH -- override
-    let output = cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&tension.id)
-        .arg("--")
-        .arg("echo")
-        .arg("override_used")
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        stdout.contains("override_used"),
-        "Run -- override should be used, got: {}",
-        stdout
-    );
-    assert!(
-        !stdout.contains("should_not_appear"),
-        "Config default should be ignored with -- override"
-    );
-}
 
 /// VAL-CROSS-006: Config persists across commands
 #[test]
@@ -1693,26 +1479,6 @@ fn test_config_persists_across_commands() {
         stdout.contains("echo persisted"),
         "Config should persist, got: {}",
         stdout
-    );
-
-    // Create tension and run - config should still be used
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store.create_tension("test", "reality").unwrap();
-
-    let output = cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&tension.id)
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    assert!(
-        stdout.contains("persisted"),
-        "Config should be used by run after other commands"
     );
 }
 
@@ -1909,55 +1675,3 @@ fn test_context_show_mutations_match() {
     }
 }
 
-/// Verify agent session mutation is recorded after run
-#[test]
-fn test_agent_session_recorded_in_context() {
-    let dir = TempDir::new().unwrap();
-
-    // Init
-    cargo_bin_cmd!("werk")
-        .arg("init")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Create tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
-    let tension = store.create_tension("goal", "reality").unwrap();
-
-    // Run agent
-    cargo_bin_cmd!("werk")
-        .arg("run")
-        .arg(&tension.id)
-        .arg("--")
-        .arg("echo")
-        .arg("test")
-        .current_dir(dir.path())
-        .assert()
-        .success();
-
-    // Get context - should have agent_session mutation
-    let output = cargo_bin_cmd!("werk")
-        .arg("context")
-        .arg(&tension.id)
-        .current_dir(dir.path())
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let stdout = String::from_utf8_lossy(&output);
-    let context_json: Value = serde_json::from_str(&stdout).expect("Context should be valid JSON");
-
-    let mutations = context_json["mutations"].as_array().unwrap();
-
-    // Find agent_session mutation
-    let session_mutation = mutations
-        .iter()
-        .find(|m| m["field"].as_str() == Some("agent_session"));
-    assert!(
-        session_mutation.is_some(),
-        "Context should have agent_session mutation after run"
-    );
-}

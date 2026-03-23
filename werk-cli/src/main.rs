@@ -117,22 +117,6 @@ fn main() {
             werk::commands::trajectory::cmd_trajectory(&output, id, collisions)
         }
         Commands::Context { id, all, urgent } => werk::commands::context::cmd_context(&output, id, all, urgent),
-        Commands::Run {
-            id,
-            prompt,
-            no_suggest,
-            command,
-            system,
-            decompose,
-            dry_run,
-        } => werk::commands::run::cmd_run(&output, id, prompt, no_suggest, command, system, decompose, dry_run),
-        Commands::Watch {
-            daemon,
-            stop,
-            status,
-            pending,
-            history,
-        } => werk::commands::watch::cmd_watch(&output, daemon, stop, status, pending, history),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)
