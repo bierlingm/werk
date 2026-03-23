@@ -65,8 +65,8 @@ fn main() {
         Commands::Epoch { id, list } => werk::commands::epoch::cmd_epoch(&output, id, list),
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
         Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
-        Commands::Reality { id, value } => werk::commands::reality::cmd_reality(&output, id, value),
-        Commands::Desire { id, value } => werk::commands::desire::cmd_desire(&output, id, value),
+        Commands::Reality { id, value, no_epoch } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch),
+        Commands::Desire { id, value, no_epoch } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch),
         Commands::Resolve { id, actual_at } => werk::commands::resolve::cmd_resolve(&output, id, actual_at),
         Commands::Release { id, reason } => {
             werk::commands::release::cmd_release(&output, id, reason)

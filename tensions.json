@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-23T11:28:08Z",
+  "flushed_at": "2026-03-23T11:33:59Z",
   "summary": {
     "active": 31,
     "released": 3,
@@ -74,7 +74,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Note commands restructured as noun-verb subcommands (note add/rm/list). Retraction via soft-delete: note_retracted mutation preserves audit trail. Old 'notes' command absorbed into 'note list'. All 839 tests pass.",
+      "actual": "Note commands restructured as noun-verb subcommands (note add/rm/list). Retraction via note_retracted mutation. All tests pass. Ready to resolve.",
       "created_at": "2026-03-18T19:23:04.293990+00:00",
       "desired": "Note deletion capability: delete or soft-delete notes that were added to the wrong tension",
       "horizon": "2026-04",
@@ -470,7 +470,7 @@
       "status": "Active"
     },
     {
-      "actual": "Reality and desire commands are disconnected from epochs entirely. No prompt, no auto-epoch, no epoch-span mutation queries. Ghost geometry doesn't build through normal use.",
+      "actual": "Reality and desire commands now auto-create epoch boundaries. Before applying the update, the current state (desire, reality, children) is snapshotted as the ending delta. --no-epoch flag available for minor corrections. Epoch count shown in output. Ghost geometry builds through normal use.",
       "created_at": "2026-03-23T11:20:05.501259+00:00",
       "desired": "Reality and desire updates create epoch boundaries — the ghost geometry builds through normal use, mutations are queryable per epoch span",
       "horizon": "2026-05",
