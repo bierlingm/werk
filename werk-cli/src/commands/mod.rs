@@ -12,6 +12,7 @@ pub mod desire;
 pub mod diff;
 pub mod epoch;
 pub mod flush;
+pub mod ground;
 pub mod health;
 pub mod hold;
 pub mod horizon;
@@ -31,6 +32,7 @@ pub mod rm;
 pub mod run;
 pub mod show;
 pub mod snooze;
+pub mod survey;
 pub mod trajectory;
 pub mod tree;
 pub mod watch;
@@ -57,10 +59,10 @@ pub enum Commands {
 
     /// Create a new tension.
     Add {
-        /// The desired state (what you want).
+        /// The desired outcome (what you want).
         desired: Option<String>,
 
-        /// The actual state (current reality).
+        /// The current reality (where things stand).
         actual: Option<String>,
 
         /// Parent tension ID (creates child tension).
@@ -143,7 +145,7 @@ pub enum Commands {
         /// Tension ID or prefix.
         id: String,
 
-        /// New actual state (opens $EDITOR if omitted).
+        /// New reality (opens $EDITOR if omitted).
         value: Option<String>,
 
         /// Skip epoch creation (for minor corrections).
@@ -261,13 +263,33 @@ pub enum Commands {
         command: NoteCommand,
     },
 
-    /// Show system health summary (phase distribution, movement ratios, alerts).
+    /// Show system health summary (structural statistics, temporal alerts).
     Health,
 
     /// Show behavioral pattern insights from mutation history.
     Insights {
         /// Analysis window in days.
         #[arg(long, default_value = "30")]
+        days: i64,
+    },
+
+    /// The Napoleonic field survey — all tensions organized by temporal urgency.
+    ///
+    /// Navigate time, see structure. Shows overdue steps, upcoming deadlines,
+    /// held steps, and recently resolved across the entire field.
+    Survey {
+        /// Temporal frame in days (default: 14).
+        #[arg(long, default_value = "14")]
+        days: i64,
+    },
+
+    /// Ground mode — the debrief and study surface.
+    ///
+    /// Shows field statistics, epoch history, and recent gestures.
+    /// Where you study your own patterns when you're not flying.
+    Ground {
+        /// Lookback window in days (default: 7).
+        #[arg(long, default_value = "7")]
         days: i64,
     },
 
@@ -292,15 +314,11 @@ pub enum Commands {
         #[arg(long)]
         neglected: bool,
 
-        /// Show only stagnant tensions (no movement).
+        /// Show only stagnant tensions (overdue with no recent activity).
         #[arg(long)]
         stagnant: bool,
 
-        /// Filter by phase (G, A, C, M).
-        #[arg(long)]
-        phase: Option<String>,
-
-        /// Sort by field (urgency, phase, name, horizon).
+        /// Sort by field (urgency, name, deadline).
         #[arg(long, default_value = "urgency")]
         sort: String,
     },

@@ -159,7 +159,7 @@ pub fn cmd_reality(
                 .get_epochs(&tension.id)
                 .map_err(WerkError::StoreError)?
                 .len();
-            println!("  Epoch {} recorded (phase transition)", epoch_count);
+            println!("  Epoch {} recorded (epoch boundary)", epoch_count);
         }
     }
 

@@ -1,22 +1,21 @@
 //! Store wrapper with convenience methods.
 //!
 //! Provides a thin layer over Store that handles parent snapshot capture
-//! during tension creation. Previously contained dynamics computation
-//! and event emission — those speculative computations have been removed.
+//! during tension creation.
 
-use crate::dynamics::compute_urgency;
+use crate::temporal::compute_urgency;
 use crate::events::{EventBus};
 use crate::horizon::Horizon;
 use crate::store::Store;
 use crate::tension::Tension;
 
 /// Store wrapper with event bus and convenience methods.
-pub struct DynamicsEngine {
+pub struct Engine {
     store: Store,
     bus: EventBus,
 }
 
-impl DynamicsEngine {
+impl Engine {
     /// Create a new engine with an in-memory store.
     pub fn new_in_memory() -> Result<Self, crate::store::StoreError> {
         let mut store = Store::new_in_memory()?;
@@ -216,7 +215,7 @@ impl DynamicsEngine {
     }
 
     /// Get urgency for a tension (convenience method).
-    pub fn compute_urgency(&self, tension: &Tension) -> Option<crate::dynamics::Urgency> {
+    pub fn compute_urgency(&self, tension: &Tension) -> Option<crate::temporal::Urgency> {
         compute_urgency(tension, chrono::Utc::now())
     }
 }
@@ -227,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_engine_creates_tension() {
-        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        let mut engine = Engine::new_in_memory().unwrap();
         let t = engine.create_tension("goal", "reality").unwrap();
         assert_eq!(t.desired, "goal");
         assert_eq!(t.actual, "reality");
@@ -235,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_engine_creates_tension_with_parent() {
-        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        let mut engine = Engine::new_in_memory().unwrap();
         let parent = engine.create_tension("big goal", "starting point").unwrap();
         let child = engine
             .create_tension_with_parent("sub goal", "sub reality", Some(parent.id.clone()))
@@ -245,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_engine_creates_tension_full_with_horizon() {
-        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        let mut engine = Engine::new_in_memory().unwrap();
         let h = Horizon::new_month(2026, 6).unwrap();
         let t = engine
             .create_tension_full("goal", "reality", None, Some(h))
@@ -255,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_engine_update_horizon() {
-        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        let mut engine = Engine::new_in_memory().unwrap();
         let t = engine.create_tension("goal", "reality").unwrap();
         let h = Horizon::new_month(2026, 6).unwrap();
         engine.update_horizon(&t.id, Some(h)).unwrap();
@@ -265,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_engine_store_access() {
-        let mut engine = DynamicsEngine::new_in_memory().unwrap();
+        let mut engine = Engine::new_in_memory().unwrap();
         let t = engine.create_tension("goal", "reality").unwrap();
         let found = engine.store().get_tension(&t.id).unwrap();
         assert!(found.is_some());

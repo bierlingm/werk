@@ -1,6 +1,6 @@
-//! Shared computation helpers for CLI commands.
+//! JSON serialization types for CLI output.
 //!
-//! Provides JSON serialization types for tension info, mutation info,
+//! Provides serializable types for tension info, mutation info,
 //! and horizon data used by show, context, and run commands.
 
 use chrono::{DateTime, Utc};

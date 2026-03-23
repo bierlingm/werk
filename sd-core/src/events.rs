@@ -19,7 +19,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-use crate::dynamics::HorizonDriftType;
+use crate::temporal::HorizonDriftType;
 
 #[cfg(test)]
 use crate::tension::TensionStatus;

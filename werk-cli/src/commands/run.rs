@@ -8,7 +8,7 @@
 
 use crate::commands::config::Config;
 use crate::commands::context::ContextResult;
-use crate::dynamics::{
+use crate::serialize::{
     mutation_to_info, node_to_tension_info, tension_to_info,
     MutationInfo, TensionInfo,
 };
@@ -18,7 +18,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use werk_shared::truncate;
 use chrono::Utc;
-use sd_core::{compute_urgency, project_tension, DynamicsEngine, Mutation, ProjectionThresholds, Tension, TensionStatus};
+use sd_core::{compute_urgency, project_tension, Engine, Mutation, ProjectionThresholds, Tension, TensionStatus};
 use std::io::Write;
 use std::process::Stdio;
 
@@ -38,8 +38,8 @@ pub fn cmd_run(
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
-    // Create DynamicsEngine from store
-    let mut engine = DynamicsEngine::with_store(store);
+    // Create Engine from store
+    let mut engine = Engine::with_store(store);
 
     // Get all tensions for prefix resolution
     let all_tensions = engine
@@ -80,7 +80,7 @@ pub fn cmd_run(
 fn run_one_shot(
     output: &Output,
     workspace: &Workspace,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     tension: &Tension,
     all_tensions: &[Tension],
     prompt: &str,
@@ -178,7 +178,7 @@ fn run_one_shot(
 fn run_system(
     output: &Output,
     workspace: &Workspace,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     all_tensions: &[Tension],
     prompt: &str,
     no_suggest: bool,
@@ -288,7 +288,7 @@ fn run_system(
 fn run_decompose(
     output: &Output,
     workspace: &Workspace,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     tension: &Tension,
     all_tensions: &[Tension],
     no_suggest: bool,
@@ -327,7 +327,7 @@ fn run_decompose(
          Actual: {}\n  \
          Horizon: {}\n\n\
          Break this into 3-7 concrete sub-tensions. Each should be:\n\
-         - A specific gap between desired and actual state\n\
+         - A specific gap between desired outcome and current reality\n\
          - Small enough to make progress on within days\n\
          - Together they should cover the full scope of the parent\n\n\
          IMPORTANT: Respond in YAML format with two sections:\n\
@@ -386,7 +386,7 @@ fn run_decompose(
 /// Interactive mode: launch agent subprocess with context piped to stdin.
 fn run_interactive(
     workspace: &Workspace,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     tension: &Tension,
     all_tensions: &[Tension],
     command: &[String],
@@ -518,7 +518,7 @@ fn run_interactive(
 
 /// Build a markdown context string for agent consumption in one-shot mode.
 pub fn build_context_markdown(
-    _engine: &mut DynamicsEngine,
+    _engine: &mut Engine,
     tension: &Tension,
     all_tensions: &[Tension],
 ) -> String {
@@ -625,7 +625,7 @@ fn extract_update_suggestion(response: &str) -> Option<String> {
 /// Handle a suggested reality update — auto-apply in non-interactive CLI mode.
 fn handle_update_suggestion(
     _output: &Output,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     tension: &Tension,
     suggestion: &str,
 ) -> Result<(), WerkError> {
@@ -641,7 +641,7 @@ fn handle_update_suggestion(
 /// Handle a structured YAML response with mutations.
 fn handle_structured_response(
     _output: &Output,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     tension: &Tension,
     response: StructuredResponse,
     no_suggest: bool,
@@ -687,24 +687,30 @@ fn handle_structured_response(
     Ok(())
 }
 
-/// Apply a list of mutations to the store.
+/// Apply a list of mutations to the store, grouped as a single gesture.
 fn apply_mutations(
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     _tension: &Tension,
     mutations: &[crate::agent_response::Mutation],
 ) -> Result<(), WerkError> {
+    // Agent mutations are sessionless gestures — the whole set is one gesture
+    let _ = engine.store_mut().begin_gesture(Some("agent run"));
+
     let mut applied = 0;
     for mutation in mutations {
         apply_single_mutation(engine, mutation)?;
         applied += 1;
     }
+
+    let _ = engine.store_mut().end_gesture();
+
     println!("Applied {} change(s).", applied);
     Ok(())
 }
 
 /// Apply a single mutation to the store.
 fn apply_single_mutation(
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     mutation: &crate::agent_response::Mutation,
 ) -> Result<(), WerkError> {
     use crate::agent_response::Mutation as AgentMutation;

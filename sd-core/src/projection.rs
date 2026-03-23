@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use crate::dynamics::{compute_urgency, gap_magnitude};
+use crate::temporal::{compute_urgency, gap_magnitude};
 use crate::mutation::Mutation;
 use crate::tension::{Tension, TensionStatus};
 

@@ -8,7 +8,6 @@
 // This crate has zero instrument dependencies. Instruments subscribe
 // and react to events.
 
-pub mod dynamics;
 pub mod engine;
 pub mod events;
 pub mod frontier;
@@ -22,11 +21,7 @@ pub mod tree;
 
 // Re-export commonly used types
 pub use frontier::{ClosureProgress, Frontier, FrontierStep, compute_frontier};
-pub use dynamics::{
-    HorizonDrift, HorizonDriftType, Urgency,
-    compute_urgency, detect_horizon_drift, gap_magnitude,
-};
-pub use engine::DynamicsEngine;
+pub use engine::Engine;
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
@@ -37,9 +32,11 @@ pub use projection::{
 };
 pub use store::{EpochRecord, Store, StoreError};
 pub use temporal::{
-    ContainmentViolation, CriticalPath, ImpliedWindow, SequencingPressure, TemporalSignals,
-    compute_implied_windows, compute_temporal_signals, detect_containment_violations,
-    detect_critical_path, detect_critical_path_recursive, detect_sequencing_pressure,
+    ContainmentViolation, CriticalPath, HorizonDrift, HorizonDriftType, ImpliedWindow,
+    SequencingPressure, TemporalSignals, Urgency,
+    compute_implied_windows, compute_temporal_signals, compute_urgency,
+    detect_containment_violations, detect_critical_path, detect_critical_path_recursive,
+    detect_horizon_drift, detect_sequencing_pressure, gap_magnitude,
 };
 pub use tension::{SdError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};

@@ -100,9 +100,8 @@ fn main() {
             urgent,
             neglected,
             stagnant,
-            phase,
             sort,
-        } => werk::commands::list::cmd_list(&output, all, urgent, neglected, stagnant, phase, sort),
+        } => werk::commands::list::cmd_list(&output, all, urgent, neglected, stagnant, sort),
         Commands::Tree {
             open,
             all,
@@ -111,6 +110,8 @@ fn main() {
         } => werk::commands::tree::cmd_tree(&output, open, all, resolved, released),
         Commands::Health => werk::commands::health::cmd_health(&output),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
+        Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
+        Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),
         Commands::Diff { since } => werk::commands::diff::cmd_diff(&output, since),
         Commands::Trajectory { id, collisions } => {
             werk::commands::trajectory::cmd_trajectory(&output, id, collisions)
