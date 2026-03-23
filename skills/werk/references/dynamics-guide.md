@@ -1,50 +1,67 @@
-# Structural Dynamics Interpretation Guide
+# Interpreting What the Instrument Reveals
 
-When reading `werk context <id>` output, here's how to interpret the 13 dynamics:
+The instrument computes three categories of output. They are not equivalent and should not be treated the same way.
 
-## Phase (creative_cycle_phase)
-- **Germination**: Few mutations, low convergence. The tension is still forming. Don't push — help clarify desire and reality.
-- **Assimilation**: Active mutations, convergence increasing. Being worked on. Look at whether movement is genuine or just busy.
-- **Completion**: High convergence, gap narrowing. Nearing resolution. Check for last-mile resistance.
-- **Momentum**: Multiple resolved children, sustained activity. On fire. Rare. Celebrate but watch for burnout.
+## Facts (directly observable, always display-worthy)
 
-## Tendency (structural_tendency)
-- **Advancing**: Consistent forward motion. Reality moving toward desire. Good.
-- **Oscillating**: Back and forth. Advance then retreat. The ouroboros pattern. Ask: what makes you retreat each time?
-- **Stagnant**: No movement. The tension declared but not tended. Ask: is this still wanted?
+**Urgency** — elapsed fraction of the deadline window. 0.0 = just entered. 1.0 = at deadline. >1.0 = overdue. A fact, not a judgment.
 
-## Conflict
-When present: two sibling tensions compete for the same resources (time, energy, attention). Name both tensions. Ask which one actually matters more right now.
+**Overdue** — deadline passed, step unresolved. A fact.
 
-## Neglect
-When present: children exist but aren't being tended. The parent tension is active but the actual work isn't happening. Ask: are these children still the right decomposition?
+**Horizon drift** — whether deadlines have moved:
+- Stable: hasn't moved
+- Tightening: moving closer (commitment increasing)
+- Postponement / repeated postponement: slipping (the goal is retreating)
 
-## Oscillation (reversals)
-High reversal count (3+): the person keeps changing direction. Look for the compensating strategy — what pattern substitutes for genuine progress? Common: start something new when the current thing gets hard.
+## Signals (facts recognized as action-relevant, surfaced by exception)
 
-## Compensating Strategy
-- **Tolerable conflict**: Living with the tension rather than resolving it. "I'll get to it."
-- **Conflict manipulation**: Creating artificial urgency or drama to avoid the real issue.
-- **Willpower manipulation**: Trying to force progress through brute effort. Burns out.
+**Sequencing pressure** — a step ordered later has an earlier deadline than a preceding step. The order says "wait" but the deadline says "now." Not necessarily wrong — may reflect genuine real-world pressure.
 
-## Magnitude
-- High (>0.7): Large gap. The desire is far from reality. Check if the desire is too ambitious or the reality assessment too harsh.
-- Medium (0.4-0.7): Working gap. Normal.
-- Low (<0.4): Close to resolution. Push for completion.
+**Critical path** — a child whose deadline crowds the parent's deadline. The bottleneck in the theory of closure. Recursive: if the bottleneck has children, their bottleneck is also on the critical path.
 
-## Orientation
-- **Creative**: Generative mutations (new desires, new children). Building.
-- **Problem-solving**: Reactive mutations (updating reality, adjusting). Fixing.
-- **Reactive**: Mostly status changes and external responses. Not driving.
+**Containment violation** — a child's deadline exceeds the parent's. The instrument offers pathways: keep as-is, clip to parent, promote to sibling, extend parent.
 
-## Horizon Drift
-- **Tightening**: Deadlines moving closer. Commitment increasing.
-- **Postponement/Repeated postponement**: Deadlines slipping. The goal is retreating.
-- **Stable**: Deadline hasn't moved. Good discipline or hasn't been tested.
+## Dynamics (theories of meaning — interpretations, not assertions)
+
+These are proposed readings of patterns in the user's action and structure. The instrument proposes; the user disposes. Most are hidden by default and live in ground mode.
+
+**Phase** — where in the creative cycle the tension sits:
+- Germination: few mutations, still forming. Don't push.
+- Assimilation: active work. Check whether movement is genuine or just busy.
+- Completion: gap narrowing. Watch for last-mile resistance.
+- Momentum: sustained resolution. Rare.
+
+**Tendency** — the shape of the trace:
+- Advancing: consistent forward motion
+- Oscillating: advance then retreat, the ouroboros pattern
+- Stagnant: declared but not tended
+
+**Magnitude** — child-resolution rate. What fraction of the theory of closure is accomplished.
+
+**Conflict** — sibling tensions competing for the same resources. Name both. Ask which actually matters more right now.
+
+**Neglect** — children exist but aren't being tended. The parent is active but the actual work isn't happening.
+
+**Compensating strategy** — the structural lie substituting for progress:
+- Tolerable conflict: living with the tension rather than resolving it
+- Conflict manipulation: creating artificial urgency to avoid the real issue
+- Willpower manipulation: trying to force progress through brute effort
+
+**Orientation** — the nature of mutations:
+- Creative: generative (new desires, new children). Building.
+- Problem-solving: reactive (updating reality, adjusting). Fixing.
+- Reactive: mostly status changes. Not driving.
 
 ## Combination Patterns
-- **Conflict + Oscillation**: At war AND losing. The hardest pattern. Name both sides.
-- **High magnitude + Shallow assimilation**: Reaching for something you haven't internalized.
-- **Neglect + Active parent**: Overreach. The parent moves but the children starve.
-- **No conflict + Advancing**: Rare alignment. Note it explicitly.
-- **Compensating strategy present**: The lie IS the reading. This is the sharpest diagnostic.
+
+- **Conflict + Oscillation**: at war AND losing. The hardest pattern.
+- **High magnitude + stagnant**: large gap, no movement. Either the desire is too ambitious or reality assessment too harsh.
+- **Neglect + active parent**: overreach. Parent moves but children starve.
+- **Compensating strategy present**: the lie IS the reading. The sharpest diagnostic.
+- **No conflict + advancing**: rare alignment. Note it.
+
+## Confidence Tiers
+
+- **High-confidence facts**: surface automatically when actionable
+- **Medium-confidence theories**: surface as questions at thresholds
+- **Low-confidence interpretations**: live in ground mode — accessible during debrief, not during flight

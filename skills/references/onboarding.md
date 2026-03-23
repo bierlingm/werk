@@ -1,6 +1,6 @@
 # Onboarding Guide
 
-When someone is new to werk, walk them through this sequence. Don't dump everything at once. One step at a time.
+When someone is new to werk, walk them through this sequence. One step at a time.
 
 ## Step 1: The First Tension
 
@@ -18,25 +18,23 @@ werk add "Run a marathon by July" "Can run 5k. Haven't trained consistently in m
 ## Step 2: See It
 
 ```bash
-werk
+werk tree
 ```
 
-Open the TUI. They see their tension with a ◇ glyph (germination — new, still forming). Press Space to gaze. They see desire and reality facing each other. The gap bar.
+They see their tension. Desire on one line, reality implied by the gap. Most people have never seen this explicitly — the structural tension between what they want and what's true, held in a form they can return to.
 
-This is the moment: desire on one line, reality on the other. The gap computed. Most people have never seen this explicitly.
+## Step 3: Theory of Closure
 
-## Step 3: The Tree
-
-Ask: "What would need to be true for this to happen?" Those are children.
+Ask: "What would need to be true for this to happen?" Those are children — the composed bridge from reality to desire.
 
 ```bash
 werk add -p <id> "Training plan chosen and printed" "Haven't researched plans yet"
 werk add -p <id> "Run 3x/week for 4 consecutive weeks" "Currently running 1x/week"
 ```
 
-Now press `l` in the TUI to descend. The children appear. The parent is the header.
+These are hypotheses, not commitments. They may be wrong. They exist to make the theory of closure explicit and revisable.
 
-## Step 4: Update Reality
+## Step 4: Update Reality (SITREP)
 
 Something changes in the real world. Record it:
 
@@ -44,35 +42,18 @@ Something changes in the real world. Record it:
 werk reality <id> "Chose Hal Higdon Novice 1 plan. Printed. On the fridge."
 ```
 
-The TUI updates. The activity trail gets a ● dot. The dynamics start computing.
+This is one of the most important gestures — grounding the instrument in what's actually happening. The quality of this compression (honesty, precision, completeness) affects every downstream interpretation.
 
-## Step 5: The Agent
+## Step 5: The Frontier
 
-When they're stuck or want perspective:
+As steps get resolved, the frontier of action advances. The operating envelope — the window around the frontier — shows what's action-relevant now: overdue steps, the next committed step, held steps awaiting commitment, recently resolved steps.
 
-In the TUI: press `@` on a tension, type "What pattern do you see?"
-
-Or from CLI:
-```bash
-werk run <id> "I keep skipping my long runs. What's going on?"
-```
-
-The agent receives all 13 dynamics and responds within the structure. Not generic advice — structural observation.
-
-## Step 6: The Daimon
-
-When they're ready for ambient monitoring:
-
-```bash
-werk watch --daemon
-```
-
-The daimon watches. When neglect sets in, when oscillation spikes, when a horizon passes — it notices and stores an observation. Next time they open werk, the insights are waiting.
+The envelope is where the user lands on opening. Everything else radiates outward from it.
 
 ## What NOT to Do
 
-- Don't explain all 13 dynamics up front. Let them discover.
+- Don't explain all dynamics up front. Let them discover through use.
 - Don't create 20 tensions on day one. Start with 1-3.
 - Don't push horizons. Some tensions don't need deadlines.
 - Don't resolve things for them. The human decides.
-- Don't treat werk like a task manager. It's not about checking boxes. It's about holding the gap between desire and reality as a creative force.
+- Don't treat werk like a task manager. It holds structural tension as creative force, not checkboxes.
