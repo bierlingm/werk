@@ -717,8 +717,8 @@ fn test_json_schema_identical_tree_show() {
         "Show JSON should have overdue field"
     );
     assert!(
-        show_json.get("closure_resolved").is_some(),
-        "Show JSON should have closure_resolved field"
+        show_json.get("frontier").is_some(),
+        "Show JSON should have frontier field"
     );
 }
 
@@ -1779,8 +1779,7 @@ fn test_context_show_json_consistent_fields() {
     // Show should have factual temporal fields
     assert!(show_json.get("urgency").is_some(), "Show should have urgency");
     assert!(show_json.get("overdue").is_some(), "Show should have overdue");
-    assert!(show_json.get("closure_resolved").is_some(), "Show should have closure_resolved");
-    assert!(show_json.get("closure_total").is_some(), "Show should have closure_total");
+    assert!(show_json.get("frontier").is_some(), "Show should have frontier");
     assert!(show_json.get("temporal").is_some(), "Show should have temporal");
 
     // Core tension fields should match between show and context
