@@ -49,8 +49,9 @@ fn test_show_json_has_temporal_signals() {
     // Should have temporal signals
     assert!(json["temporal"].is_object(), "should have temporal signals");
 
-    // Should have closure
-    assert!(json["closure_total"].is_number(), "should have closure_total");
+    // Should have frontier with closure progress
+    assert!(json["frontier"].is_object(), "should have frontier");
+    assert!(json["frontier"]["closure_progress"].is_object(), "should have closure_progress");
 
     // Should NOT have dynamics field
     assert!(json.get("dynamics").is_none(), "dynamics field should not exist");

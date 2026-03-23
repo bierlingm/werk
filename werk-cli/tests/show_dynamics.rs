@@ -123,8 +123,8 @@ fn test_show_displays_closure_for_parent() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    assert_eq!(json["closure_total"].as_u64(), Some(2));
-    assert_eq!(json["closure_resolved"].as_u64(), Some(0));
+    assert_eq!(json["frontier"]["closure_progress"]["total"].as_u64(), Some(2));
+    assert_eq!(json["frontier"]["closure_progress"]["resolved"].as_u64(), Some(0));
 }
 
 /// VAL-DISP-009: Show displays last activity
@@ -472,7 +472,7 @@ fn test_show_json_honest_facts() {
 
     assert!(json.get("temporal").is_some(), "Should have temporal");
     assert!(json.get("overdue").is_some(), "Should have overdue");
-    assert!(json.get("closure_total").is_some(), "Should have closure_total");
+    assert!(json.get("frontier").is_some(), "Should have frontier");
 }
 
 /// --json urgency is null when no horizon

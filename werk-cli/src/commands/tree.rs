@@ -190,12 +190,19 @@ pub fn cmd_tree(
     let filtered_ids: std::collections::HashSet<_> =
         filtered_tensions.iter().map(|t| t.id.as_str()).collect();
 
+    /// Compute the display width of a string (ASCII chars = 1, most Unicode = 1).
+    /// This is a simple approximation — good enough for box-drawing and common text.
+    fn display_width(s: &str) -> usize {
+        s.chars().count()
+    }
+
     fn render_tree(
         forest: &Forest,
         root_ids: &[String],
         filtered_ids: &std::collections::HashSet<&str>,
         now: chrono::DateTime<Utc>,
         prefix: &str,
+        term_width: usize,
         lines: &mut Vec<String>,
     ) {
         let mut roots: Vec<_> = root_ids
@@ -216,56 +223,95 @@ pub fn cmd_tree(
             let is_last = i == roots.len() - 1;
             let connector = if is_last { "└── " } else { "├── " };
 
-            // Build line content
-            let mut content = werk_shared::display_id(node.tension.short_code, node.id());
+            // === Left side (plan-facing): id, status, horizon, signals, desired text ===
+            let mut left_prefix_parts = werk_shared::display_id(node.tension.short_code, node.id());
 
             // Status marker (only for non-Active)
             match node.tension.status {
-                TensionStatus::Resolved => content.push_str(" ✓"),
-                TensionStatus::Released => content.push_str(" ~"),
+                TensionStatus::Resolved => left_prefix_parts.push_str(" ✓"),
+                TensionStatus::Released => left_prefix_parts.push_str(" ~"),
                 TensionStatus::Active => {}
             }
 
             // Horizon and overdue
             if let Some(h) = &node.tension.horizon {
-                content.push_str(&format!(" [{}]", h));
+                left_prefix_parts.push_str(&format!(" [{}]", h));
                 if node.tension.status == TensionStatus::Active && h.is_past(now) {
-                    content.push_str(" OVERDUE");
+                    left_prefix_parts.push_str(" OVERDUE");
                 }
             }
 
-            // Containment violation (child deadline exceeds parent)
+            // Containment violation
             if node.tension.status == TensionStatus::Active {
                 if let Some(ref parent_id) = node.tension.parent_id {
                     let violations = detect_containment_violations(forest, parent_id);
                     if violations.iter().any(|v| v.tension_id == node.id()) {
-                        content.push_str(" EXCEEDS_PARENT");
+                        left_prefix_parts.push_str(" EXCEEDS_PARENT");
                     }
                 }
                 // Sequencing pressure
                 if let Some(ref parent_id) = node.tension.parent_id {
                     let pressures = detect_sequencing_pressure(forest, parent_id);
                     if pressures.iter().any(|p| p.tension_id == node.id()) {
-                        content.push_str(" PRESSURE");
+                        left_prefix_parts.push_str(" PRESSURE");
                     }
                 }
             }
 
-            // Desired text
-            content.push(' ');
-            content.push_str(&truncate(&node.tension.desired, 50));
+            left_prefix_parts.push(' ');
 
-            // Theory of closure progress (from ALL children, not just filtered)
+            // === Right side (trace-facing): closure progress, released ===
             let all_children = forest.children(node.id()).unwrap_or_default();
-            if !all_children.is_empty() {
+            let right = if !all_children.is_empty() {
                 let resolved_count = all_children
                     .iter()
                     .filter(|c| c.tension.status == TensionStatus::Resolved)
                     .count();
-                content.push_str(&format!(" [{}/{}]", resolved_count, all_children.len()));
-            }
+                let released_count = all_children
+                    .iter()
+                    .filter(|c| c.tension.status == TensionStatus::Released)
+                    .count();
+                let active_count = all_children.len() - released_count;
+                if released_count > 0 {
+                    format!(" [{}/{}] ({} released)", resolved_count, active_count, released_count)
+                } else {
+                    format!(" [{}/{}]", resolved_count, active_count)
+                }
+            } else {
+                String::new()
+            };
 
-            lines.push(format!("{}{}{}", prefix, connector, content));
+            // Compute available space for desired text
+            let tree_prefix_width = display_width(prefix) + display_width(connector);
+            let left_prefix_width = display_width(&left_prefix_parts);
+            let right_width = display_width(&right);
+            // Reserve: tree prefix + left prefix + at least 10 chars of text + gap + right
+            let min_text = 10;
+            let used = tree_prefix_width + left_prefix_width + right_width + 1; // +1 for gap
+            let available_for_text = if term_width > used {
+                term_width - used
+            } else {
+                min_text
+            };
+            let text_max = available_for_text.max(min_text);
+            let desired_text = truncate(&node.tension.desired, text_max);
+            let desired_width = display_width(&desired_text);
+
+            // Assemble: fill gap between left content and right-aligned trace
+            let left_total = tree_prefix_width + left_prefix_width + desired_width;
+            let line = if !right.is_empty() && term_width > left_total + right_width {
+                let gap = term_width - left_total - right_width;
+                format!(
+                    "{}{}{}{}{}{}",
+                    prefix, connector, left_prefix_parts, desired_text,
+                    " ".repeat(gap), right
+                )
+            } else {
+                // Narrow terminal or no right content — just concatenate
+                format!("{}{}{}{}{}", prefix, connector, left_prefix_parts, desired_text, right)
+            };
+
+            lines.push(line);
 
             // Recurse for children (only those that pass the filter)
             let mut children: Vec<_> = node
@@ -294,11 +340,16 @@ pub fn cmd_tree(
                     filtered_ids,
                     now,
                     &new_prefix,
+                    term_width,
                     lines,
                 );
             }
         }
     }
+
+    let term_width = terminal_size::terminal_size()
+        .map(|(w, _)| w.0 as usize)
+        .unwrap_or(80);
 
     let mut lines = Vec::new();
     render_tree(
@@ -307,6 +358,7 @@ pub fn cmd_tree(
         &filtered_ids,
         now,
         "",
+        term_width,
         &mut lines,
     );
 

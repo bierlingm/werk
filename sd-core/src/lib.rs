@@ -11,6 +11,7 @@
 pub mod dynamics;
 pub mod engine;
 pub mod events;
+pub mod frontier;
 pub mod horizon;
 pub mod mutation;
 pub mod projection;
@@ -20,6 +21,7 @@ pub mod tension;
 pub mod tree;
 
 // Re-export commonly used types
+pub use frontier::{ClosureProgress, Frontier, FrontierStep, compute_frontier};
 pub use dynamics::{
     HorizonDrift, HorizonDriftType, Urgency,
     compute_urgency, detect_horizon_drift, gap_magnitude,

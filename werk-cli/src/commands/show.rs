@@ -6,9 +6,9 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_temporal_signals, compute_urgency, HorizonKind, TensionStatus};
+use sd_core::{compute_frontier, compute_temporal_signals, compute_urgency, HorizonKind, TensionStatus};
 use serde::Serialize;
-use werk_shared::{relative_time, truncate};
+use werk_shared::{display_id, relative_time, truncate};
 
 /// JSON output structure for show command.
 #[derive(Serialize)]
@@ -24,8 +24,7 @@ struct ShowResult {
     horizon_range: Option<HorizonRangeJson>,
     urgency: Option<f64>,
     overdue: bool,
-    closure_resolved: usize,
-    closure_total: usize,
+    frontier: sd_core::Frontier,
     temporal: sd_core::TemporalSignals,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
@@ -81,14 +80,20 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         })
         .collect();
 
-    // Theory of closure progress
-    let closure_total = children.len();
-    let closure_resolved = children
-        .iter()
-        .filter(|c| c.status == "Resolved")
-        .count();
-
     let now = Utc::now();
+
+    // Frontier computation — structural projection of the operating envelope
+    let epochs = store
+        .get_epochs(&tension.id)
+        .map_err(WerkError::StoreError)?;
+    let child_mutations: Vec<(String, Vec<sd_core::Mutation>)> = children
+        .iter()
+        .filter_map(|c| {
+            let muts = store.get_mutations(&c.id).ok()?;
+            Some((c.id.clone(), muts))
+        })
+        .collect();
+    let frontier = compute_frontier(&forest, &tension.id, now, &epochs, &child_mutations);
 
     // Urgency (honest — computed from horizon)
     let urgency = compute_urgency(tension, now);
@@ -133,8 +138,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         }),
         urgency: urgency.as_ref().map(|u| u.value),
         overdue,
-        closure_resolved,
-        closure_total,
+        frontier: frontier.clone(),
         temporal: temporal.clone(),
         mutations: mutation_infos,
         children,
@@ -196,12 +200,17 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         println!();
         println!("Facts:");
 
-        // Theory of closure progress
-        if closure_total > 0 {
-            println!(
-                "  Closure:    {}/{} children resolved",
-                closure_resolved, closure_total
-            );
+        // Closure progress (resolved / active theory, with released parenthetical)
+        let cp = &frontier.closure_progress;
+        if cp.total > 0 {
+            if cp.released > 0 {
+                println!(
+                    "  Closure:    [{}/{}] ({} released)",
+                    cp.resolved, cp.active, cp.released
+                );
+            } else {
+                println!("  Closure:    [{}/{}]", cp.resolved, cp.active);
+            }
         } else {
             println!("  Closure:    no children (leaf tension)");
         }
@@ -290,6 +299,53 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
                 "  VIOLATION:  {} deadline exceeds by {:.0} days",
                 child_display, excess_days
             );
+        }
+
+        // === Frontier (signal by exception) ===
+        if frontier.closure_progress.total > 0 {
+            let has_frontier_signals = frontier.next_step.is_some()
+                || !frontier.overdue.is_empty()
+                || !frontier.held.is_empty()
+                || !frontier.recently_resolved.is_empty();
+
+            if has_frontier_signals {
+                println!();
+                println!("Frontier:");
+
+                // Next step — always show (this is the action vector)
+                if let Some(ref ns) = frontier.next_step {
+                    let ns_display = display_id(ns.short_code, &ns.tension_id);
+                    let overdue_marker = if ns.is_overdue { " OVERDUE" } else { "" };
+                    println!(
+                        "  Next:       {}{} {}",
+                        ns_display, overdue_marker, truncate(&ns.desired, 40)
+                    );
+                }
+
+                // Overdue (other than next step)
+                if !frontier.overdue.is_empty() {
+                    for step in &frontier.overdue {
+                        let step_display = display_id(step.short_code, &step.tension_id);
+                        println!(
+                            "  Overdue:    {} {}",
+                            step_display, truncate(&step.desired, 40)
+                        );
+                    }
+                }
+
+                // Held count
+                if !frontier.held.is_empty() {
+                    println!("  Held:       {} unpositioned", frontier.held.len());
+                }
+
+                // Recently resolved count
+                if !frontier.recently_resolved.is_empty() {
+                    println!(
+                        "  Recent:     {} resolved since last epoch",
+                        frontier.recently_resolved.len()
+                    );
+                }
+            }
         }
 
         // === Children List ===

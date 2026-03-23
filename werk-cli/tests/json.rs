@@ -676,8 +676,7 @@ fn test_show_json_has_honest_fields() {
     // Should have honest fields
     assert!(json.get("id").is_some(), "Should have id");
     assert!(json.get("temporal").is_some(), "Should have temporal signals");
-    assert!(json.get("closure_total").is_some(), "Should have closure_total");
-    assert!(json.get("closure_resolved").is_some(), "Should have closure_resolved");
+    assert!(json.get("frontier").is_some(), "Should have frontier");
     assert!(json.get("overdue").is_some(), "Should have overdue");
 
     // Should NOT have dynamics
