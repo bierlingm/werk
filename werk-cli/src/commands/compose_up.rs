@@ -1,4 +1,4 @@
-//! Compose-up command handler.
+//! Compose command handler.
 //!
 //! Creates a parent tension for one or more existing tensions.
 //! The inverse of decomposing — reveals implicit coherence by
@@ -10,9 +10,9 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
 
-/// JSON output structure for compose-up command.
+/// JSON output structure for compose command.
 #[derive(Serialize)]
-struct ComposeUpResult {
+struct ComposeResult {
     parent_id: String,
     parent_desired: String,
     parent_actual: String,
@@ -66,7 +66,7 @@ pub fn cmd_compose_up(
     }
 
     // The new parent goes where the children currently sit (under first_parent, or root)
-    let _ = store.begin_gesture(Some("compose up"));
+    let _ = store.begin_gesture(Some("compose"));
 
     // Create the new parent tension under the same parent the children had
     let new_parent = store
@@ -87,7 +87,7 @@ pub fn cmd_compose_up(
         .map(|c| werk_shared::display_id(c.short_code, &c.id))
         .collect();
 
-    let result = ComposeUpResult {
+    let result = ComposeResult {
         parent_id: new_parent.id.clone(),
         parent_desired: new_parent.desired.clone(),
         parent_actual: new_parent.actual.clone(),
@@ -101,7 +101,7 @@ pub fn cmd_compose_up(
     } else {
         output
             .success(&format!(
-                "Composed up: created {} as parent of {}",
+                "Composed: created {} as parent of {}",
                 werk_shared::display_id(new_parent.short_code, &new_parent.id),
                 child_displays.join(", ")
             ))

@@ -55,7 +55,7 @@ fn main() {
             parent,
             horizon,
         } => werk::commands::add::cmd_add(&output, desired, actual, parent, horizon),
-        Commands::ComposeUp {
+        Commands::Compose {
             desired,
             actual,
             children,

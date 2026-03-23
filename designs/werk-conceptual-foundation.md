@@ -133,7 +133,9 @@ A **phase transition** is the boundary between epochs — a structural reconfigu
 
 Phase transitions are orthogonal to within-epoch movement. They don't advance along the existing axis; they reconfigure the axis itself.
 
-The ghost geometry is the sequence of epochs — the pyramids laid end to end, each growing from the material of the last.
+Phase transitions can also span tension boundaries. A **split** — recognizing that a tension contains two distinct concerns — creates a phase transition where one delta becomes two deltas in different tensions. Both new tensions share the pre-split history as provenance. The ghost geometry is not always linear; it can fork.
+
+The ghost geometry is the sequence of epochs — the pyramids laid end to end, each growing from the material of the last. When a tension has been split from or merged into another, the ghost geometry shows the connection: the pre-split tension as a shared root, or the pre-merge tensions as converging tributaries.
 
 ### The Instrument's Boundary
 
@@ -144,6 +146,13 @@ The instrument computes **facts** and **signals** from the data it holds. It doe
 - **Dynamics** — phase, tendency, oscillation, conflict, neglect, compensating strategy, orientation — are interpretive frameworks from the structural dynamics *practice*. They require understanding the user's life, intentions, and context that the instrument does not and cannot capture. A human practitioner or AI may apply these frameworks to the facts the instrument surfaces, but the instrument itself does not make these readings.
 
 This boundary is sacred. The instrument surfaces honest facts about what was recorded and when. Interpretation belongs to the practice — the human (possibly aided by AI) reading the structure and recognizing patterns. The instrument holds the structure; the practitioner reads it.
+
+A corollary: **the instrument does not orchestrate agents.** It exposes its affordances — every operative gesture, every readable state — through its interfaces. Agents (human or AI) use those affordances to interact with the structure. The instrument does not launch agents, manage their sessions, prompt them, or monitor their output. It is a structure that can be inhabited, queried, and mutated. How the user invokes external intelligence is outside the instrument's concern.
+
+The instrument's interfaces are:
+- **TUI** — the primary experience. A session. The user inhabits the structure.
+- **CLI** — every operative gesture available as a command. Human-readable text output, structured JSON on request. Sessionless gestures.
+- **Protocol** (MCP or equivalent) — the instrument exposes its gestures as typed tools discoverable by any protocol-capable harness. This is not a separate interface design — it is the same gestures, the same mutations, the same facts, served through a protocol that agents already speak.
 
 The didactic function emerges not from the instrument computing dynamics, but from the structure itself making patterns visible. By returning to an honest record of desire, reality, and action over time, the practitioner develops structural awareness — not because the tool diagnosed their patterns, but because the patterns are there in the data for anyone (human or AI) to read. The consciousness is renewed through the craft, not the instrument's assertions.
 
@@ -179,6 +188,8 @@ The temporal system is built from two user-set primitives and everything else is
 - **Historical lateness**: resolution after deadline — trace data, pattern-level signal across multiple steps
 
 **Pathway palettes for temporal decisions:** When a gesture creates a structural signal (e.g., setting a child deadline beyond parent), the instrument presents a small set of coherent response options at predictable key positions. Options might include: keep as-is, adjust to fit, promote structurally, adjust the parent, or discard. The user selects or dismisses. This generalizes to any gesture that produces a decision fork.
+
+Pathway palettes are **synchronous instrument feedback** — they appear immediately as part of the gesture flow. In the TUI, they are inline option sets. In the CLI, they are printed response options the user selects or dismisses before the command completes. They are distinct from **staging**, which is asynchronous: a set of draft mutations composed in advance (by human or agent), held in a pending state, reviewable and confirmable/rejectable independently. Staging is for deliberate multi-step restructuring or agent-proposed changes held for review. Pathway palettes are for the instrument responding to what just happened.
 
 The fractal quality is structural: each tension with a deadline creates a temporal frame, and its children exist within that frame. Navigating down the tree is navigating into finer temporal granularity.
 
@@ -287,7 +298,7 @@ The instrument's interaction vocabulary is a set of operative gestures:
 
 - **Creating** a tension: articulating a new desire-reality pair
 - **Decomposing**: creating action steps as theory of closure (creating down)
-- **Composing up**: creating a parent for one or more existing tensions (creating up) — the inverse of decomposing, revealing implicit coherence
+- **Composing**: creating a parent for one or more existing tensions (creating up) — the inverse of decomposing, revealing implicit coherence
 - **Positioning**: placing a step in the order of operations (committing it)
 - **Holding**: retaining a step without positional commitment — either removing it from the order, or creating it in a held state from the start (not all steps need to be immediately positioned)
 - **Resolving**: marking a step as accomplished (it becomes reality)
@@ -296,6 +307,8 @@ The instrument's interaction vocabulary is a set of operative gestures:
 - **Evolving desire**: recording how the aim has changed — another narrative beat, this one updating the trajectory
 - **Noting**: articulating an observation, a shift in understanding, a question, or an insight. A note is simultaneously: to notice (perception), to record (compression), and an atomic unit of performance within the instrument (the musical sense). Notes are first-class operative gestures, not secondary annotations.
 - **Reordering**: restructuring the theory of closure
+- **Splitting**: recognizing that a tension contains distinct concerns and dividing it into two or more tensions. The original tension's history becomes shared provenance. The original may be resolved ("split into X and Y"), released ("superseded"), or kept as parent (if it was genuinely the umbrella). A phase transition that changes the identity topology of the structure.
+- **Merging**: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. The absorbed tensions' histories become part of the surviving tension's ghost geometry. Different from composing — composing creates a new parent; merging recognizes identity.
 - **Navigating**: moving through the structure (ascending, descending, scanning)
 
 Each of these is a gesture — a compression of intentionality into enacted form.
@@ -447,8 +460,8 @@ This instrument draws on:
 | **Frontier of action** | The present moment as structural boundary between accomplished reality and remaining theory. Where directed action meets now. |
 | **Gesture** | The unit of meaningful action. A single intentional act that may involve one or more mutations. |
 | **Epoch** | A period of action within a single delta. Stored as a snapshot: desire, reality, and children state at the moment of phase transition. |
-| **Phase transition** | The boundary between epochs — a structural reconfiguration generating a new delta. |
-| **Ghost geometry** | The history of deltas — the shape of directed action over time, visible by scrolling below current reality. |
+| **Phase transition** | The boundary between epochs — a structural reconfiguration generating a new delta. Can occur within a tension (desire/reality shift) or across tensions (split/merge). |
+| **Ghost geometry** | The history of deltas — the shape of directed action over time, visible by scrolling below current reality. Can fork (split) or converge (merge). |
 | **Positioned** | Temporally committed and sequenced within the theory of closure. |
 | **Unpositioned** | Acknowledged but not yet committed to a temporal position. |
 | **Trajectory** | The path of desire through possibility space — forward-looking, projected, subject to revision. |
@@ -472,10 +485,14 @@ This instrument draws on:
 | **Yaw** | Navigation toggle between depth and breadth — descended view ↔ horizon view. |
 | **Session (Run)** | The span from opening the instrument to closing it. Records navigation path, gestures, dwell times. The atomic unit of engagement. Process-scoped: each TUI instance is its own session; CLI and agent mutations are sessionless. |
 | **Ground mode** | The debrief and study surface. Where low-confidence dynamics, telemetry, session history, and coaching-level interpretations live. Not flying — studying. |
-| **Compose up** | The gesture of creating a parent for one or more existing tensions. Reveals implicit coherence. The inverse of decomposing. |
+| **Compose** | The gesture of creating a parent for one or more existing tensions. Reveals implicit coherence. The inverse of decomposing. |
+| **Split** | The gesture of dividing a tension into two or more tensions when distinct concerns are recognized within it. A phase transition that changes the identity topology. The original's history becomes shared provenance of the new tensions. |
+| **Merge** | The gesture of combining multiple tensions into one when they are recognized as the same concern. The absorbed tensions' histories join the surviving tension's ghost geometry. Different from composing (which creates a new parent). |
+| **Provenance** | The lineage relationship between tensions created by split or merge. Not containment (parent-child) but origin — where a tension came from structurally. |
+| **Staging** | Asynchronous draft mutations held in a pending state for review before application. For deliberate multi-step restructuring or agent-proposed changes. Distinct from pathway palettes (which are synchronous). |
 | **Peek** | A read-only partial view of an adjacent context (SHIFT+NAVKEY). Slides the adjacent space into partial visibility without leaving the current context. |
 | **Over/under** | An optional binary flag on an action step indicating above-average or below-average effort/difficulty. Weights resolution velocity calculations. |
-| **Pathway palette** | A small set of coherent response options presented at predictable key positions when a gesture produces a structural signal or decision fork. Always small (3-5 options), always dismissable. |
+| **Pathway palette** | A small set of coherent response options presented at predictable key positions when a gesture produces a structural signal or decision fork. Always small (3-5 options), always dismissable. Synchronous — part of the gesture flow, not deferred. |
 | **Critical path** | A child step whose horizon crowds the parent's horizon deadline. The bottleneck in the theory of closure. |
 | **Sequencing pressure** | When a step ordered later has an earlier horizon than a preceding step. The order says "wait" but the deadline says "now." |
 | **Zoom** | Focus/orientation axis (Enter / SHIFT+Enter). Enter zooms in (higher density, action-ready). SHIFT+Enter zooms out (wider context, intake mode). The fourth navigational axis. |
