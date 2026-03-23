@@ -374,6 +374,12 @@ pub enum Commands {
         command: BatchCommand,
     },
 
+    /// Start the MCP server (stdio transport).
+    ///
+    /// Exposes all operative gestures as MCP tools discoverable by any
+    /// protocol-capable harness. The third interface surface alongside TUI and CLI.
+    Mcp,
+
     /// Destroy the current workspace (deletes the .werk/ directory).
     Nuke {
         /// Confirm deletion (required for safety).
