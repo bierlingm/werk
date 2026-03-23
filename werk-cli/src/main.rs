@@ -52,6 +52,13 @@ fn main() {
             parent,
             horizon,
         } => werk::commands::add::cmd_add(&output, desired, actual, parent, horizon),
+        Commands::ComposeUp {
+            desired,
+            actual,
+            children,
+        } => werk::commands::compose_up::cmd_compose_up(&output, desired, actual, children),
+
+        Commands::Epoch { id, list } => werk::commands::epoch::cmd_epoch(&output, id, list),
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
         Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
         Commands::Reality { id, value } => werk::commands::reality::cmd_reality(&output, id, value),

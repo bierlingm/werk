@@ -5,10 +5,12 @@
 
 pub mod add;
 pub mod batch;
+pub mod compose_up;
 pub mod config;
 pub mod context;
 pub mod desire;
 pub mod diff;
+pub mod epoch;
 pub mod health;
 pub mod hold;
 pub mod horizon;
@@ -68,6 +70,40 @@ pub enum Commands {
         /// Temporal horizon (e.g., "2026", "2026-05", "2026-05-15").
         #[arg(long)]
         horizon: Option<String>,
+    },
+
+    /// Compose up: create a parent for existing tensions.
+    ///
+    /// The inverse of decomposing — reveals implicit coherence by
+    /// composing existing structure upward. All specified children
+    /// must share the same current parent (or all be roots).
+    ///
+    /// Usage: werk compose-up "desired outcome" "current reality" <id1> [id2 ...]
+    #[command(name = "compose-up")]
+    ComposeUp {
+        /// Desired outcome for the new parent tension.
+        desired: String,
+
+        /// Current reality for the new parent tension.
+        actual: String,
+
+        /// IDs of existing tensions to become children of the new parent.
+        #[arg(required = true, num_args = 1..)]
+        children: Vec<String>,
+    },
+
+    /// Mark an epoch boundary for a tension.
+    ///
+    /// Snapshots the current desire, reality, and children state.
+    /// A user-initiated narrative beat when desire or reality shifts
+    /// significantly enough to warrant a new delta.
+    Epoch {
+        /// Tension ID or prefix.
+        id: String,
+
+        /// List existing epochs instead of creating a new one.
+        #[arg(short, long)]
+        list: bool,
     },
 
     /// Set or display the temporal horizon of a tension.
