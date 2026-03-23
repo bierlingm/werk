@@ -80,9 +80,9 @@ pub enum Commands {
     /// composing existing structure upward. All specified children
     /// must share the same current parent (or all be roots).
     ///
-    /// Usage: werk compose-up "desired outcome" "current reality" <id1> [id2 ...]
-    #[command(name = "compose-up")]
-    ComposeUp {
+    /// Usage: werk compose "desired outcome" "current reality" <id1> [id2 ...]
+    #[command(name = "compose")]
+    Compose {
         /// Desired outcome for the new parent tension.
         desired: String,
 
@@ -453,7 +453,7 @@ impl Commands {
         matches!(
             self,
             Commands::Add { .. }
-                | Commands::ComposeUp { .. }
+                | Commands::Compose { .. }
                 | Commands::Reality { .. }
                 | Commands::Desire { .. }
                 | Commands::Resolve { .. }
