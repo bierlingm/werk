@@ -84,8 +84,17 @@ fn main() {
         Commands::Move { id, parent } => werk::commands::move_cmd::cmd_move(&output, id, parent),
         Commands::Hold { id } => werk::commands::hold::cmd_hold(&output, id),
         Commands::Position { id, n } => werk::commands::position::cmd_position(&output, id, n),
-        Commands::Note { arg1, arg2 } => werk::commands::note::cmd_note(&output, arg1, arg2),
-        Commands::Notes { id } => werk::commands::notes::cmd_notes(&output, id),
+        Commands::Note { command } => match command {
+            werk::commands::NoteCommand::Add { arg1, arg2 } => {
+                werk::commands::note::cmd_note_add(&output, arg1, arg2)
+            }
+            werk::commands::NoteCommand::Rm { arg1, arg2 } => {
+                werk::commands::note::cmd_note_rm(&output, arg1, arg2)
+            }
+            werk::commands::NoteCommand::List { id } => {
+                werk::commands::note::cmd_note_list(&output, id)
+            }
+        },
         Commands::List {
             all,
             urgent,

@@ -481,6 +481,7 @@ fn test_note_json_valid() {
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("note")
+        .arg("add")
         .arg(&id)
         .arg("test note")
         .current_dir(dir.path())

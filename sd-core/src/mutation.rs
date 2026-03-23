@@ -205,6 +205,8 @@ fn apply_mutation(
         }
         // Notes are first-class narrative mutations — they don't change tension fields
         "note" => {}
+        // Note retraction — testimony retracted, doesn't change tension fields
+        "note_retracted" => {}
         // Position changes don't affect reconstructed tension state
         "position" => {}
         // Deleted marker — doesn't change reconstructed state

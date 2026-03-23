@@ -1,12 +1,14 @@
-//! Integration tests for `werk move`, `werk note`, and `werk notes` commands.
+//! Integration tests for `werk move` and `werk note` (add/rm/list) commands.
 //!
 //! Tests verify:
 //! - VAL-CRUD-019: Move reparents tension
 //! - VAL-CRUD-020: Move without --parent makes tension a root
 //! - VAL-CRUD-021: Move prevents cycles
-//! - VAL-CRUD-022: Note adds annotation mutation
-//! - VAL-CRUD-023: Note works on resolved/released tensions
-//! - VAL-CRUD-024: General note without tension ID, retrievable via `werk notes`
+//! - VAL-CRUD-022: Note add creates annotation mutation
+//! - VAL-CRUD-023: Note add works on resolved/released tensions
+//! - VAL-CRUD-024: Workspace notes via `werk note add/list`
+//! - VAL-CRUD-025: Note rm retracts testimony (soft-delete)
+//! - VAL-CRUD-026: Retracted notes excluded from note list
 
 use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
@@ -385,12 +387,12 @@ fn test_move_not_found() {
 }
 
 // =============================================================================
-// NOTE command tests
+// NOTE ADD command tests
 // =============================================================================
 
-/// VAL-CRUD-022: `werk note <id> 'text'` creates note mutation (positional ID)
+/// VAL-CRUD-022: `werk note add <id> 'text'` creates note mutation
 #[test]
-fn test_note_on_tension() {
+fn test_note_add_on_tension() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -402,17 +404,16 @@ fn test_note_on_tension() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    // Use positional ID syntax: werk note <id> <text>
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("met with team to discuss approach")
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Note").or(predicate::str::contains("note")));
+        .stdout(predicate::str::contains("note"));
 
-    // Verify mutation was recorded
     let mutations = store.get_mutations(&tension.id).unwrap();
     let note_mutation = mutations.iter().find(|m| m.field() == "note");
     assert!(note_mutation.is_some());
@@ -422,9 +423,9 @@ fn test_note_on_tension() {
     );
 }
 
-/// VAL-CRUD-022: Note works with ID prefix (positional)
+/// VAL-CRUD-022: Note add works with ID prefix
 #[test]
-fn test_note_with_prefix() {
+fn test_note_add_with_prefix() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -437,9 +438,9 @@ fn test_note_with_prefix() {
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
-    // Use positional prefix syntax: werk note <prefix> <text>
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(prefix)
         .arg("test note")
         .current_dir(dir.path())
@@ -450,9 +451,9 @@ fn test_note_with_prefix() {
     assert!(mutations.iter().any(|m| m.field() == "note"));
 }
 
-/// VAL-CRUD-023: Note works on resolved tensions (positional)
+/// VAL-CRUD-023: Note add works on resolved tensions
 #[test]
-fn test_note_on_resolved_tension() {
+fn test_note_add_on_resolved_tension() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -464,14 +465,13 @@ fn test_note_on_resolved_tension() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    // Resolve the tension first
     store
         .update_status(&tension.id, sd_core::TensionStatus::Resolved)
         .unwrap();
 
-    // Note should still work on resolved tension
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("post-resolution reflection")
         .current_dir(dir.path())
@@ -482,9 +482,9 @@ fn test_note_on_resolved_tension() {
     assert!(mutations.iter().any(|m| m.field() == "note"));
 }
 
-/// VAL-CRUD-023: Note works on released tensions (positional)
+/// VAL-CRUD-023: Note add works on released tensions
 #[test]
-fn test_note_on_released_tension() {
+fn test_note_add_on_released_tension() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -496,14 +496,13 @@ fn test_note_on_released_tension() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    // Release the tension first
     store
         .update_status(&tension.id, sd_core::TensionStatus::Released)
         .unwrap();
 
-    // Note should still work on released tension
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("why we abandoned this")
         .current_dir(dir.path())
@@ -514,9 +513,9 @@ fn test_note_on_released_tension() {
     assert!(mutations.iter().any(|m| m.field() == "note"));
 }
 
-/// VAL-CRUD-024: `werk note 'text'` (no ID) creates workspace-level note
+/// VAL-CRUD-024: `werk note add 'text'` (no ID) creates workspace-level note
 #[test]
-fn test_general_note_without_id() {
+fn test_note_add_workspace() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -525,22 +524,18 @@ fn test_general_note_without_id() {
         .assert()
         .success();
 
-    // Note without ID should create workspace-level note
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg("general workspace observation")
         .current_dir(dir.path())
         .assert()
         .success();
-
-    // The workspace should have a way to store general notes
-    // For now, we verify the command succeeds
-    // (Implementation uses a special sentinel tension or separate mechanism)
 }
 
-/// Note on nonexistent tension fails (positional)
+/// Note add on nonexistent tension fails
 #[test]
-fn test_note_not_found() {
+fn test_note_add_not_found() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -549,9 +544,9 @@ fn test_note_not_found() {
         .assert()
         .success();
 
-    // Try to add note to nonexistent tension using positional syntax
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg("ZZZZZZZZZZZZZZZZZZZZZZZZZZ")
         .arg("some note")
         .current_dir(dir.path())
@@ -560,9 +555,9 @@ fn test_note_not_found() {
         .stderr(predicate::str::contains("not found"));
 }
 
-/// --json flag produces valid JSON for note (positional)
+/// --json flag produces valid JSON for note add
 #[test]
-fn test_note_json_output() {
+fn test_note_add_json_output() {
     use serde_json::Value;
 
     let dir = TempDir::new().unwrap();
@@ -579,6 +574,7 @@ fn test_note_json_output() {
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("test note content")
         .current_dir(dir.path())
@@ -595,9 +591,9 @@ fn test_note_json_output() {
     assert!(json.get("note").is_some(), "JSON should have 'note' field");
 }
 
-/// Note with unicode content (positional)
+/// Note add with unicode content
 #[test]
-fn test_note_unicode() {
+fn test_note_add_unicode() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -611,6 +607,7 @@ fn test_note_unicode() {
 
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("Unicode: 写小说 🎵 compose 音楽")
         .current_dir(dir.path())
@@ -625,9 +622,9 @@ fn test_note_unicode() {
     );
 }
 
-/// --json for general note
+/// --json for workspace note add
 #[test]
-fn test_general_note_json_output() {
+fn test_note_add_workspace_json_output() {
     use serde_json::Value;
 
     let dir = TempDir::new().unwrap();
@@ -641,6 +638,7 @@ fn test_general_note_json_output() {
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("note")
+        .arg("add")
         .arg("workspace-level note")
         .current_dir(dir.path())
         .assert()
@@ -675,12 +673,13 @@ fn test_move_requires_workspace() {
 }
 
 #[test]
-fn test_note_requires_workspace() {
+fn test_note_add_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg("text")
         .env("HOME", home.path())
         .current_dir(dir.path())
@@ -688,7 +687,7 @@ fn test_note_requires_workspace() {
         .failure();
 }
 
-/// Multiple notes can be added to same tension (positional)
+/// Multiple notes can be added to same tension
 #[test]
 fn test_multiple_notes() {
     let dir = TempDir::new().unwrap();
@@ -702,18 +701,18 @@ fn test_multiple_notes() {
     let store = sd_core::Store::init(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
-    // Add first note
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("first note")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    // Add second note
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg(&tension.id)
         .arg("second note")
         .current_dir(dir.path())
@@ -791,12 +790,12 @@ fn test_move_between_parents() {
 }
 
 // =============================================================================
-// NOTES command tests (for VAL-CRUD-024)
+// NOTE LIST command tests
 // =============================================================================
 
-/// VAL-CRUD-024: `werk notes` lists general workspace notes
+/// VAL-CRUD-024: `werk note list` lists workspace notes
 #[test]
-fn test_notes_lists_workspace_notes() {
+fn test_note_list_workspace_notes() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -805,25 +804,25 @@ fn test_notes_lists_workspace_notes() {
         .assert()
         .success();
 
-    // Add a general workspace note
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg("first workspace observation")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    // Add another workspace note
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg("second workspace observation")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    // List notes
     cargo_bin_cmd!("werk")
-        .arg("notes")
+        .arg("note")
+        .arg("list")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -833,9 +832,9 @@ fn test_notes_lists_workspace_notes() {
         );
 }
 
-/// `werk notes` on empty workspace shows helpful message
+/// `werk note list` on empty workspace shows helpful message
 #[test]
-fn test_notes_empty_workspace() {
+fn test_note_list_empty_workspace() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -844,18 +843,18 @@ fn test_notes_empty_workspace() {
         .assert()
         .success();
 
-    // List notes when there are none
     cargo_bin_cmd!("werk")
-        .arg("notes")
+        .arg("note")
+        .arg("list")
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("No workspace notes").or(predicate::str::contains("none")).or(predicate::str::contains("0")));
+        .stdout(predicate::str::contains("none"));
 }
 
-/// `werk notes --json` outputs valid JSON
+/// `werk note list --json` outputs valid JSON
 #[test]
-fn test_notes_json_output() {
+fn test_note_list_json_output() {
     use serde_json::Value;
 
     let dir = TempDir::new().unwrap();
@@ -866,18 +865,18 @@ fn test_notes_json_output() {
         .assert()
         .success();
 
-    // Add a workspace note
     cargo_bin_cmd!("werk")
         .arg("note")
+        .arg("add")
         .arg("json test note")
         .current_dir(dir.path())
         .assert()
         .success();
 
-    // Get JSON output
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
-        .arg("notes")
+        .arg("note")
+        .arg("list")
         .current_dir(dir.path())
         .assert()
         .success()
@@ -888,25 +887,270 @@ fn test_notes_json_output() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    assert!(
-        json.get("notes").is_some(),
-        "JSON should have 'notes' field"
-    );
+    assert!(json.get("notes").is_some(), "JSON should have 'notes' field");
     let notes = json.get("notes").unwrap().as_array();
     assert!(notes.is_some(), "'notes' should be an array");
     assert_eq!(notes.unwrap().len(), 1, "Should have one note");
 }
 
-/// `werk notes` requires workspace
+/// `werk note list` requires workspace
 #[test]
-fn test_notes_requires_workspace() {
+fn test_note_list_requires_workspace() {
     let dir = TempDir::new().unwrap();
     let home = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
-        .arg("notes")
+        .arg("note")
+        .arg("list")
         .env("HOME", home.path())
         .current_dir(dir.path())
         .assert()
         .failure();
+}
+
+// =============================================================================
+// NOTE RM (retraction) tests
+// =============================================================================
+
+/// VAL-CRUD-025: `werk note rm <id> <n>` retracts a note
+#[test]
+fn test_note_rm_retracts_note() {
+    let dir = TempDir::new().unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Add two notes
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("add")
+        .arg(&tension.id)
+        .arg("first testimony")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("add")
+        .arg(&tension.id)
+        .arg("second testimony")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Retract note #1
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("rm")
+        .arg(&tension.id)
+        .arg("1")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Retracted").and(predicate::str::contains("first testimony")));
+
+    // Verify note_retracted mutation was recorded
+    let mutations = store.get_mutations(&tension.id).unwrap();
+    let retraction = mutations.iter().find(|m| m.field() == "note_retracted");
+    assert!(retraction.is_some(), "should have note_retracted mutation");
+    assert_eq!(retraction.unwrap().old_value(), Some("first testimony"));
+}
+
+/// VAL-CRUD-026: Retracted notes excluded from note list
+#[test]
+fn test_note_rm_excluded_from_list() {
+    let dir = TempDir::new().unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // Add two notes
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("add")
+        .arg(&tension.id)
+        .arg("keep this")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("add")
+        .arg(&tension.id)
+        .arg("retract this")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Retract note #2
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("rm")
+        .arg(&tension.id)
+        .arg("2")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // List should show only the surviving note, renumbered as #1
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("list")
+        .arg(&tension.id)
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("keep this")
+                .and(predicate::str::contains("retract this").not())
+                .and(predicate::str::contains("(1)")),
+        );
+}
+
+/// Note rm with invalid number fails
+#[test]
+fn test_note_rm_invalid_number() {
+    let dir = TempDir::new().unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    // No notes exist, try to retract #1
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("rm")
+        .arg(&tension.id)
+        .arg("1")
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("does not exist"));
+}
+
+/// Note rm with zero fails
+#[test]
+fn test_note_rm_zero_fails() {
+    let dir = TempDir::new().unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("rm")
+        .arg(&tension.id)
+        .arg("0")
+        .current_dir(dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("1 or greater"));
+}
+
+/// Note rm on workspace notes works
+#[test]
+fn test_note_rm_workspace() {
+    let dir = TempDir::new().unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("add")
+        .arg("workspace observation")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("rm")
+        .arg("1")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Retracted"));
+
+    // Should be empty now
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("list")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("none"));
+}
+
+/// Note rm JSON output
+#[test]
+fn test_note_rm_json_output() {
+    use serde_json::Value;
+
+    let dir = TempDir::new().unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let store = sd_core::Store::init(dir.path()).unwrap();
+    let tension = store.create_tension("goal", "reality").unwrap();
+
+    cargo_bin_cmd!("werk")
+        .arg("note")
+        .arg("add")
+        .arg(&tension.id)
+        .arg("to be retracted")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let output = cargo_bin_cmd!("werk")
+        .arg("--json")
+        .arg("note")
+        .arg("rm")
+        .arg(&tension.id)
+        .arg("1")
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    assert!(json.get("retracted_note").is_some(), "JSON should have 'retracted_note'");
+    assert_eq!(json.get("note_number").unwrap().as_u64(), Some(1));
 }
