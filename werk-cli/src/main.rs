@@ -42,6 +42,9 @@ fn main() {
     let args = Cli::parse();
     let output = Output::new(args.json);
 
+    // Check mutation status before dispatch consumes the command.
+    let is_mutation = args.command.is_mutation();
+
     // Dispatch to subcommand handlers
     let result = match args.command {
         Commands::Init { global } => werk::commands::init::cmd_init(&output, global),
@@ -127,7 +130,12 @@ fn main() {
     };
 
     match result {
-        Ok(()) => std::process::exit(0),
+        Ok(()) => {
+            if is_mutation {
+                werk::commands::flush::autoflush();
+            }
+            std::process::exit(0);
+        }
         Err(e) => {
             if output.is_json() {
                 // Output structured error when --json flag is set

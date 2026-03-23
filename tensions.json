@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-23T10:30:28Z",
+  "flushed_at": "2026-03-23T10:35:05Z",
   "summary": {
-    "active": 32,
+    "active": 30,
     "released": 3,
-    "resolved": 7,
+    "resolved": 9,
     "total": 42
   },
   "tensions": [
@@ -71,7 +71,7 @@
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
       "position": 6,
       "short_code": 6,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "No way to remove notes once added; can only add via 'werk note'",
@@ -365,10 +365,10 @@
       "desired": "tension tree state is flushed to a git-trackable file (JSON/JSONL) in the workspace — manually via a flush command and optionally via autoflush on mutation with debounce (à la beads_rust); git operations remain the users responsibility",
       "horizon": null,
       "id": "01KMCW0RA12YXGSMMSJ8HW6D1X",
-      "parent_id": "01KKYEG1Q480AFWHSVE7B57K2W",
+      "parent_id": null,
       "position": null,
       "short_code": 34,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "no public-facing surface exists; werk is CLI-only and single-user. werk.horse domain is owned but unused (acquired for a different product). werk.bank is the ideal domain but costs $999",

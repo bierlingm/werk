@@ -10,6 +10,7 @@ use chrono::Utc;
 use sd_core::TensionStatus;
 use serde::Serialize;
 use std::io::Write;
+use std::path::PathBuf;
 
 /// The flush output file name, placed at workspace root.
 const FLUSH_FILENAME: &str = "tensions.json";
@@ -46,28 +47,32 @@ struct FlushTension {
     status: String,
 }
 
-pub fn cmd_flush(output: &Output) -> Result<(), WerkError> {
-    let workspace = Workspace::discover()?;
+/// Write tensions.json to the workspace root. Returns (path, count).
+fn flush_to_file(workspace: &Workspace) -> Result<(PathBuf, usize), WerkError> {
     let store = workspace.open_store()?;
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-
     let now = Utc::now();
 
-    // Sort by short_code (deterministic, human-readable order).
-    // Tensions without short_code sort last, then by id.
-    let mut sorted = tensions.clone();
-    sorted.sort_by(|a, b| {
-        match (a.short_code, b.short_code) {
-            (Some(sa), Some(sb)) => sa.cmp(&sb),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.id.cmp(&b.id),
-        }
+    let mut sorted = tensions;
+    sorted.sort_by(|a, b| match (a.short_code, b.short_code) {
+        (Some(sa), Some(sb)) => sa.cmp(&sb),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.id.cmp(&b.id),
     });
 
-    let active = sorted.iter().filter(|t| t.status == TensionStatus::Active).count();
-    let resolved = sorted.iter().filter(|t| t.status == TensionStatus::Resolved).count();
-    let released = sorted.iter().filter(|t| t.status == TensionStatus::Released).count();
+    let active = sorted
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+        .count();
+    let resolved = sorted
+        .iter()
+        .filter(|t| t.status == TensionStatus::Resolved)
+        .count();
+    let released = sorted
+        .iter()
+        .filter(|t| t.status == TensionStatus::Released)
+        .count();
 
     let flush_tensions: Vec<FlushTension> = sorted
         .iter()
@@ -84,22 +89,21 @@ pub fn cmd_flush(output: &Output) -> Result<(), WerkError> {
         })
         .collect();
 
+    let count = sorted.len();
     let state = FlushState {
         flushed_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         summary: FlushSummary {
             active,
             released,
             resolved,
-            total: sorted.len(),
+            total: count,
         },
         tensions: flush_tensions,
     };
 
-    // Serialize with sorted keys and pretty print.
     let json = serde_json::to_string_pretty(&state)
         .map_err(|e| WerkError::IoError(format!("failed to serialize state: {}", e)))?;
 
-    // Write to workspace root.
     let flush_path = workspace.root().join(FLUSH_FILENAME);
     let mut file = std::fs::File::create(&flush_path).map_err(|e| {
         WerkError::IoError(format!("failed to create {}: {}", flush_path.display(), e))
@@ -111,6 +115,13 @@ pub fn cmd_flush(output: &Output) -> Result<(), WerkError> {
         WerkError::IoError(format!("failed to write {}: {}", flush_path.display(), e))
     })?;
 
+    Ok((flush_path, count))
+}
+
+pub fn cmd_flush(output: &Output) -> Result<(), WerkError> {
+    let workspace = Workspace::discover()?;
+    let (flush_path, count) = flush_to_file(&workspace)?;
+
     if output.is_structured() {
         #[derive(Serialize)]
         struct FlushResult {
@@ -119,20 +130,37 @@ pub fn cmd_flush(output: &Output) -> Result<(), WerkError> {
         }
         let result = FlushResult {
             path: flush_path.to_string_lossy().to_string(),
-            tensions: sorted.len(),
+            tensions: count,
         };
-        output.print_structured(&result).map_err(WerkError::IoError)?;
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         output
             .success(&format!(
                 "Flushed {} tensions to {}",
-                sorted.len(),
+                count,
                 flush_path.display()
             ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
     }
 
     Ok(())
+}
+
+/// Autoflush: silently write tensions.json if `flush.auto` config is set to true.
+/// Errors are silently ignored — autoflush should never break a mutation command.
+pub fn autoflush() {
+    let Ok(workspace) = Workspace::discover() else {
+        return;
+    };
+    let Ok(config) = werk_shared::config::Config::load(&workspace) else {
+        return;
+    };
+    if config.get("flush.auto").map(|v| v.as_str()) != Some("true") {
+        return;
+    }
+    let _ = flush_to_file(&workspace);
 }
 
 #[cfg(test)]
@@ -153,7 +181,6 @@ mod tests {
             status: "Active".to_string(),
         };
         let json = serde_json::to_string(&t).unwrap();
-        // Verify keys appear in alphabetical order (serde serializes in struct field order)
         let actual_pos = json.find("\"actual\"").unwrap();
         let created_pos = json.find("\"created_at\"").unwrap();
         let desired_pos = json.find("\"desired\"").unwrap();

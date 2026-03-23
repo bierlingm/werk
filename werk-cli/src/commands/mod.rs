@@ -417,6 +417,32 @@ pub enum Commands {
     },
 }
 
+impl Commands {
+    /// Whether this command mutates tension state (and should trigger autoflush).
+    pub fn is_mutation(&self) -> bool {
+        matches!(
+            self,
+            Commands::Add { .. }
+                | Commands::ComposeUp { .. }
+                | Commands::Reality { .. }
+                | Commands::Desire { .. }
+                | Commands::Resolve { .. }
+                | Commands::Release { .. }
+                | Commands::Reopen { .. }
+                | Commands::Rm { .. }
+                | Commands::Move { .. }
+                | Commands::Hold { .. }
+                | Commands::Position { .. }
+                | Commands::Note { .. }
+                | Commands::Horizon { .. }
+                | Commands::Epoch { .. }
+                | Commands::Snooze { .. }
+                | Commands::Recur { .. }
+                | Commands::Batch { .. }
+        )
+    }
+}
+
 /// Config subcommands.
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
