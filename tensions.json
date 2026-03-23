@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-23T15:56:03Z",
+  "flushed_at": "2026-03-23T17:00:40Z",
   "summary": {
-    "active": 25,
-    "released": 3,
+    "active": 30,
+    "released": 4,
     "resolved": 15,
-    "total": 43
+    "total": 49
   },
   "tensions": [
     {
@@ -109,7 +109,7 @@
     {
       "actual": "CLI has foundation vocabulary (survey, ground, horizon, note testimony, hold/position, compose-up, epoch). JSON output available on all commands. Agent context command exists (context --all, context --urgent, context <id>) with structural data including urgency, staleness, frontier. Batch command applies YAML mutations grouped as one gesture. Agent run command works. However: help output is flat (30+ commands alphabetically, not grouped by gesture type or framework), and there is no zero-argument cold-start orientation for agents. The theory of closure (#21 vocabulary, #27 batch, #25 staging) does not actually address the desire's 'grouped help' or 'machine-readable orientation' requirements — #25 is about agent interaction patterns (propose/confirm), a different concern from CLI optimization for agent consumption.",
       "created_at": "2026-03-19T09:05:44.291553+00:00",
-      "desired": "CLI is optimized for agent interaction — conceptual grounding, grouped help, machine-readable orientation",
+      "desired": "CLI is a complete, honest interface to the structure — foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands",
       "horizon": null,
       "id": "01KM2NFXV3BEFE72FXJ8PHDES6",
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
@@ -250,7 +250,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "SKILL.md rewritten around foundation vocabulary (envelope, frontier, gesture, theory of closure, facts/signals/dynamics distinction). Reference docs updated: dynamics-guide uses three-tier model (facts, signals, dynamics), onboarding uses theory of closure framing, troubleshooting adds structural patterns. Triage and handoff dev-workflow skills created in .claude/skills/. Still needs: wider skill surface design for users and agent participants.",
+      "actual": "SKILL.md and all reference docs rewritten around foundation vocabulary. Instrument/practice boundary sharpened: dynamics belong to the practice, not the instrument — SKILL.md says 'What the Instrument Does NOT Compute', dynamics-guide reframed as practitioner/AI reading guide, foundation doc amended (new 'Instrument's Boundary' section in Part II). Triage and handoff dev-workflow skills created in .claude/skills/. Still needs: wider skill surface design for users and agent participants.",
       "created_at": "2026-03-22T17:54:58.305519+00:00",
       "desired": "skills and documentation updated to reflect foundation — SKILL.md, references, onboarding rewritten around new vocabulary and concepts",
       "horizon": null,
@@ -269,12 +269,12 @@
       "parent_id": "01KKYEFHWKBSC8YV7XYDYXMJ9M",
       "position": null,
       "short_code": 24,
-      "status": "Active"
+      "status": "Released"
     },
     {
-      "actual": "Agent mutations via 'werk run' now grouped under a single gesture (sessionless, description 'agent run'). Batch already grouped. CLI direct-enactment path is solid. Missing: staging/proposal mechanism — write proposed mutations to .werk/pending/ as YAML, 'werk pending' to review, 'werk confirm' to apply (via batch machinery as one gesture), 'werk reject' to discard. This serves both human (complex restructuring staged before commit) and agent (proposals held for user review) cases. Pathway palettes and review surface remain TUI concepts (blocked on #15).",
+      "actual": "No pathway palettes exist in CLI. Gestures that create structural signals (e.g., horizon command setting a child deadline beyond parent) complete silently. No inline response options. Temporal calculus already computes containment violations and sequencing pressure — the detection logic exists, the response options do not.",
       "created_at": "2026-03-22T18:01:08.096275+00:00",
-      "desired": "agent integration rethought — agent mutations grouped as gestures, pathway palettes for agent-proposed changes, review surface aligned with envelope semantics",
+      "desired": "pathway palettes in CLI — when a gesture creates a structural signal (containment violation, sequencing pressure, etc.), the instrument immediately presents response options inline. The user selects or dismisses. Synchronous instrument feedback within the gesture flow.",
       "horizon": null,
       "id": "01KMBBADR0S8K1JHCJYX18JG9G",
       "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
@@ -479,6 +479,72 @@
       "position": null,
       "short_code": 44,
       "status": "Resolved"
+    },
+    {
+      "actual": "No MCP server exists. Affordances exposed only through CLI and JSON output.",
+      "created_at": "2026-03-23T16:17:12.300940+00:00",
+      "desired": "werk exposes its operative gestures as an MCP server",
+      "horizon": null,
+      "id": "01KMDQRV3CD85G7YMVNXKNHCRA",
+      "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
+      "position": null,
+      "short_code": 45,
+      "status": "Active"
+    },
+    {
+      "actual": "No clipboard integration exists in TUI. User must manually retype or remember tension details when switching to an agent session.",
+      "created_at": "2026-03-23T16:17:23.023602+00:00",
+      "desired": "TUI yank — copy tension snapshots to clipboard for handoff to agent sessions",
+      "horizon": null,
+      "id": "01KMDQS5JF4HMF1JABYSTC9F1Y",
+      "parent_id": "01KKYEFHWKBSC8YV7XYDYXMJ9M",
+      "position": null,
+      "short_code": 46,
+      "status": "Active"
+    },
+    {
+      "actual": "Temporal calculus computes properties per-query in temporal.rs but does not monitor or compare across time. Watch daemon has threshold detection coupled to agent invocation — detection logic is valuable, coupling is not.",
+      "created_at": "2026-03-23T16:17:26.119568+00:00",
+      "desired": "threshold detection as independent structural signal logic — urgency crossings, horizon drift, containment violations surfaceable without coupling to any invocation mechanism",
+      "horizon": null,
+      "id": "01KMDQS8K78E0WE210ZRZ768C3",
+      "parent_id": "01KM6K4SBRWNB33S85YJVAKW3B",
+      "position": null,
+      "short_code": 47,
+      "status": "Active"
+    },
+    {
+      "actual": "run exists (975 lines, four modes of agent subprocess orchestration). watch exists (832 lines, background daemon invoking agents at thresholds). Both embody the 1.0 model where the instrument orchestrates agents.",
+      "created_at": "2026-03-23T16:17:27.432218+00:00",
+      "desired": "run and watch commands deleted — agent orchestration removed from the instrument",
+      "horizon": null,
+      "id": "01KMDQS9W822EKV8SZG6F8AEZY",
+      "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
+      "position": null,
+      "short_code": 48,
+      "status": "Active"
+    },
+    {
+      "actual": "No staging mechanism exists. Batch command applies YAML mutations immediately. No concept of pending/draft mutations.",
+      "created_at": "2026-03-23T16:20:48.896644+00:00",
+      "desired": "staging mechanism — propose/pending/confirm/reject for asynchronous draft mutations. Multiple independent proposals, each separately confirmable/rejectable. For complex human restructuring and agent-proposed changes held for review.",
+      "horizon": null,
+      "id": "01KMDQZEM0JZBGMWSGVV4RJ6V4",
+      "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
+      "position": null,
+      "short_code": 49,
+      "status": "Active"
+    },
+    {
+      "actual": "Foundation lists 12 operative gestures, all treating tensions as stable identity containers. Split/merge/restructure are performed ad-hoc through desire rewrites and fresh creates, damaging ghost geometry. No provenance field exists. Epochs are per-tension only — cannot represent phase transitions that span tension boundaries. The #25 split into #25+#49 demonstrated the cost: 6 incoherent epochs on #25, amnesiac #49.",
+      "created_at": "2026-03-23T16:53:57.715157+00:00",
+      "desired": "structural transformation gestures (split, merge, restructure) and cross-tension provenance — the foundation and data model support identity-topology-changing operations with lineage tracking",
+      "horizon": null,
+      "id": "01KMDSW4TKQYW0HFGD3TS5QKV8",
+      "parent_id": "01KM6K4SBRWNB33S85YJVAKW3B",
+      "position": null,
+      "short_code": 50,
+      "status": "Active"
     }
   ]
 }
