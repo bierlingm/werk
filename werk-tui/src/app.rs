@@ -1,7 +1,7 @@
 //! The Operative Instrument application state.
 
 use ftui::widgets::input::TextInput;
-use sd_core::{DynamicsEngine, Store, Tension, TensionStatus};
+use sd_core::{Engine, Store, Tension, TensionStatus};
 use werk_shared::truncate;
 
 use crate::glyphs;
@@ -10,7 +10,7 @@ use crate::vlist::VirtualList;
 
 /// The main application struct.
 pub struct InstrumentApp {
-    pub engine: DynamicsEngine,
+    pub engine: Engine,
 
     // Navigation
     pub parent_id: Option<String>,
@@ -102,7 +102,7 @@ impl Filter {
 impl InstrumentApp {
     /// Create a new app. Starts at the Field (root level).
     pub fn new(store: Store, all_entries: Vec<FieldEntry>) -> Self {
-        let engine = DynamicsEngine::with_store(store);
+        let engine = Engine::with_store(store);
         let total_count = all_entries.len();
         let total_active = all_entries
             .iter()
@@ -157,7 +157,7 @@ impl InstrumentApp {
 
     /// Create an app in empty/welcome state.
     pub fn new_empty() -> Self {
-        let engine = DynamicsEngine::new_in_memory().expect("failed to create in-memory engine");
+        let engine = Engine::new_in_memory().expect("failed to create in-memory engine");
         Self {
             engine,
             parent_id: None,

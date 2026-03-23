@@ -8,7 +8,7 @@ use crate::output::Output;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use clap::Subcommand;
-use sd_core::{DynamicsEngine, Mutation, TensionStatus};
+use sd_core::{Engine, Mutation, TensionStatus};
 
 /// Batch subcommands.
 #[derive(Debug, Subcommand)]
@@ -72,7 +72,7 @@ fn cmd_batch_apply(output: &Output, file: &str, dry_run: bool) -> Result<(), Wer
     // Discover workspace and open store
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
-    let mut engine = DynamicsEngine::with_store(store);
+    let mut engine = Engine::with_store(store);
 
     // Begin a single gesture for the entire batch — a batch IS one gesture
     if !dry_run {
@@ -211,7 +211,7 @@ fn parse_mutations(content: &str) -> Result<Vec<AgentMutation>, WerkError> {
 }
 
 /// Validate a mutation without applying it.
-fn validate_mutation(engine: &DynamicsEngine, mutation: &AgentMutation) -> Result<(), WerkError> {
+fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), WerkError> {
     match mutation {
         AgentMutation::UpdateActual { tension_id, .. }
         | AgentMutation::AddNote { tension_id, .. }
@@ -286,7 +286,7 @@ fn validate_mutation(engine: &DynamicsEngine, mutation: &AgentMutation) -> Resul
 
 /// Apply a single mutation to the store.
 fn apply_single_mutation(
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     mutation: &AgentMutation,
 ) -> Result<(), WerkError> {
     match mutation {

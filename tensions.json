@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-23T11:56:18Z",
+  "flushed_at": "2026-03-23T14:28:34Z",
   "summary": {
-    "active": 29,
+    "active": 25,
     "released": 3,
-    "resolved": 11,
+    "resolved": 15,
     "total": 43
   },
   "tensions": [
@@ -118,7 +118,7 @@
       "status": "Active"
     },
     {
-      "actual": "CLI human-facing output aligned with foundation vocabulary: Reality (not Actual), Deadline (not Horizon) in show/add/compose-up/horizon commands. CLI aliases added: werk actual → reality, werk deadline → horizon. JSON keys and struct fields unchanged (backward compatible). Remaining: TUI labels (blocked on TUI rebuild), agent prompt templates in run.rs still use old labels.",
+      "actual": "CLI human-facing output fully aligned with foundation vocabulary: Reality (not Actual), Deadline (not Horizon) in show/add/compose-up/horizon commands. CLI aliases: werk actual → reality, werk deadline → horizon. --phase filter removed from list. 'phase transition' → 'epoch boundary'. Agent prompts updated. DynamicsEngine renamed to Engine. dynamics.rs consolidated into temporal.rs (sd-core), renamed to serialize.rs (CLI). JSON keys and struct fields unchanged (backward compatible). Remaining: TUI labels (blocked on TUI rebuild).",
       "created_at": "2026-03-19T09:06:08.110060+00:00",
       "desired": "consistent terminology across CLI, TUI, and agent-facing documentation — unambiguous names for the werkspace, its contents, and the operations on them",
       "horizon": null,
@@ -126,7 +126,7 @@
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
       "position": 3,
       "short_code": 11,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Three design system documents (33KB Claude, 26KB Codex, 9KB Gemini) and three reflection documents collected in werk-design-inputs/. Two prior design docs also available. No synthesis started. Agent flywheel methodology (agent-flywheel.com) identified as process reference.",
@@ -184,7 +184,7 @@
       "status": "Active"
     },
     {
-      "actual": "sd-core/src/temporal.rs implements all four computed temporal properties: implied execution window, sequencing pressure, critical path (recursive), containment violation. compute_temporal_signals convenience function computes all signals for a tension in both directions. Wired into werk show (Facts section: Window, PRESSURE, CRITICAL, VIOLATION by exception; JSON: full temporal object) and werk tree (EXCEEDS_PARENT, PRESSURE markers; JSON booleans). 17 new tests, all 1115 tests pass. Urgency computation (pre-existing) remains in dynamics.rs.",
+      "actual": "Calculus of time fully consolidated in temporal.rs: urgency, horizon drift, gap magnitude moved from dynamics.rs; implied window, sequencing pressure, critical path (recursive), containment violation already there. dynamics.rs deleted. DynamicsEngine renamed to Engine. CLI dynamics.rs renamed to serialize.rs. All imports updated. 859 tests pass.",
       "created_at": "2026-03-22T17:42:59.294268+00:00",
       "desired": "calculus of time implemented — implied execution window, urgency from deadline windows, sequencing pressure, critical path (recursive), containment violation detection",
       "horizon": null,
@@ -192,7 +192,7 @@
       "parent_id": "01KM6K4SBRWNB33S85YJVAKW3B",
       "position": null,
       "short_code": 17,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "survey view conceptually defined in foundation document but no concrete layout, no implementation",
@@ -228,7 +228,7 @@
       "status": "Active"
     },
     {
-      "actual": "CLI has 30+ commands. hold, position, compose-up, and epoch commands added. Missing: ground, survey commands. Existing commands use old terminology in places. 'run' command exists but refers to agent invocation, not sessions.",
+      "actual": "CLI has 30+ commands. hold, position, compose-up, epoch, survey, and ground commands added. Old terminology cleaned: 'phase distribution' removed from health description, --phase filter removed from list, 'phase transition' → 'epoch boundary' in reality/desire output, 'actual state' → 'current reality' in help text, agent prompts updated. 'run' command still refers to agent invocation, not sessions (by design — sessions are TUI-scoped). Sort options updated to urgency/name/deadline.",
       "created_at": "2026-03-22T17:54:39.427176+00:00",
       "desired": "CLI commands aligned with foundation vocabulary — compose-up, hold/position, ground, survey, epoch marking, run tracking commands added; old commands updated to use new terminology",
       "horizon": null,
@@ -236,7 +236,7 @@
       "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
       "position": null,
       "short_code": 21,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "All speculative dynamics removed from sd-core. dynamics.rs gutted from 9401 to 686 lines — keeps only Urgency, HorizonDrift, gap_magnitude (binary). engine.rs gutted from 2266 to 277 lines — keeps Store wrapper with parent snapshot capture, no dynamics computation. events.rs gutted from ~1050 to 507 lines — keeps state change events, removes 11 dynamics transition event types (ConflictDetected, LifecycleTransition, OscillationDetected, etc.). lib.rs exports cleaned (99 to 43 lines). strsim dependency removed. CLI dynamics.rs adapter gutted — removed DynamicsJson and all speculative types, keeps only TensionInfo/MutationInfo helpers. show/context/run/health/insights/watch commands updated to use honest facts only. JSON output drops dynamics field entirely. 881 tests pass, net -15,095 lines.",
@@ -272,7 +272,7 @@
       "status": "Active"
     },
     {
-      "actual": "agent integration works (werk run, @, context). Agent mutations are individual, not grouped. No pathway palette for reviewing proposals. Review mode exists in TUI but predates foundation",
+      "actual": "Agent mutations via 'werk run' now grouped under a single gesture (sessionless, description 'agent run'). Batch already grouped. CLI direct-enactment path is solid. Missing: staging/proposal mechanism — write proposed mutations to .werk/pending/ as YAML, 'werk pending' to review, 'werk confirm' to apply (via batch machinery as one gesture), 'werk reject' to discard. This serves both human (complex restructuring staged before commit) and agent (proposals held for user review) cases. Pathway palettes and review surface remain TUI concepts (blocked on #15).",
       "created_at": "2026-03-22T18:01:08.096275+00:00",
       "desired": "agent integration rethought — agent mutations grouped as gestures, pathway palettes for agent-proposed changes, review surface aligned with envelope semantics",
       "horizon": null,
@@ -357,7 +357,7 @@
       "parent_id": "01KKYEFHWKBSC8YV7XYDYXMJ9M",
       "position": null,
       "short_code": 32,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "werk flush command implemented: writes tensions.json to workspace root with all tensions as raw structural data (id, short_code, desired, actual, status, parent_id, position, horizon, created_at), deterministic output (sorted by short_code, alphabetical keys), pretty-printed for git diff readability; autoflush deferred to v1.1",

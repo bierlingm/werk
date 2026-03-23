@@ -1,6 +1,6 @@
 //! Show command handler.
 
-use crate::dynamics::HorizonRangeJson;
+use crate::serialize::HorizonRangeJson;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;

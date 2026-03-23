@@ -9,7 +9,7 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_urgency, detect_horizon_drift, DynamicsEngine, TensionStatus};
+use sd_core::{compute_urgency, detect_horizon_drift, Engine, TensionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -284,7 +284,7 @@ pub fn mark_insight_reviewed(path: &Path) -> Result<(), WerkError> {
 // Snapshot + diff logic
 // ============================================================================
 
-fn snapshot_tension(engine: &mut DynamicsEngine, tension_id: &str) -> Option<TensionSnapshot> {
+fn snapshot_tension(engine: &mut Engine, tension_id: &str) -> Option<TensionSnapshot> {
     let tension = engine.store().get_tension(tension_id).ok()??;
     let now = Utc::now();
     let urgency = compute_urgency(&tension, now).map(|u| u.value);
@@ -373,7 +373,7 @@ fn detect_crossings(
 
 fn build_watch_prompt(
     crossing: &ThresholdCrossing,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     all_tensions: &[sd_core::Tension],
 ) -> String {
     let tension = all_tensions.iter().find(|t| t.id == crossing.tension_id);
@@ -412,7 +412,7 @@ fn build_watch_prompt(
 
 fn invoke_agent_for_crossing(
     workspace: &Workspace,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
     crossing: &ThresholdCrossing,
     all_tensions: &[sd_core::Tension],
 ) -> Result<PendingInsight, WerkError> {
@@ -455,7 +455,7 @@ fn invoke_agent_for_crossing(
 
 fn run_single_check(
     workspace: &Workspace,
-    engine: &mut DynamicsEngine,
+    engine: &mut Engine,
 ) -> Result<usize, WerkError> {
     ensure_watch_dirs(workspace)?;
 
@@ -588,7 +588,7 @@ fn cmd_watch_foreground(output: &Output, workspace: &Workspace) -> Result<(), We
         .unwrap_or(30);
 
     let store = workspace.open_store()?;
-    let mut engine = DynamicsEngine::with_store(store);
+    let mut engine = Engine::with_store(store);
 
     let _ = output.info(&format!("watching every {} minutes. Ctrl-C to stop.", interval_minutes));
     let _ = output.info("running initial check...");
@@ -604,7 +604,7 @@ fn cmd_watch_foreground(output: &Output, workspace: &Workspace) -> Result<(), We
         // Re-open store to pick up external changes
         match workspace.open_store() {
             Ok(store) => {
-                engine = DynamicsEngine::with_store(store);
+                engine = Engine::with_store(store);
                 match run_single_check(workspace, &mut engine) {
                     Ok(n) => {
                         let now = Utc::now().format("%H:%M:%S");

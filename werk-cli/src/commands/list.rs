@@ -70,7 +70,6 @@ pub fn cmd_list(
     urgent: bool,
     neglected: bool,
     stagnant: bool,
-    phase: Option<String>,
     sort: String,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
@@ -147,11 +146,6 @@ pub fn cmd_list(
     // They now filter on overdue (as a proxy for neglect/stagnation)
     if neglected || stagnant {
         rows.retain(|r| r.overdue);
-    }
-
-    if let Some(ref _phase_filter) = phase {
-        // Phase filtering removed — old dynamics phases are not honest.
-        // This is a no-op until phase computation is rebuilt.
     }
 
     // Sort

@@ -1,6 +1,6 @@
 //! Context command handler.
 
-use crate::dynamics::{
+use crate::serialize::{
     mutation_to_info, node_to_tension_info, tension_to_info,
     MutationInfo, TensionInfo,
 };

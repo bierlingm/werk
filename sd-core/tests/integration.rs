@@ -5,7 +5,7 @@
 
 use chrono::Utc;
 use sd_core::{
-    DynamicsEngine, Event, EventBus, Forest, Store, Tension, TensionStatus,
+    Engine, Event, EventBus, Forest, Store, Tension, TensionStatus,
     compute_urgency, detect_horizon_drift,
 };
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn test_full_tension_lifecycle() {
-    let mut engine = DynamicsEngine::new_in_memory().unwrap();
+    let mut engine = Engine::new_in_memory().unwrap();
 
     // Create a tension
     let t = engine.create_tension("write a novel", "have an outline").unwrap();
@@ -42,7 +42,7 @@ fn test_full_tension_lifecycle() {
 
 #[test]
 fn test_store_emits_events_through_engine() {
-    let mut engine = DynamicsEngine::new_in_memory().unwrap();
+    let mut engine = Engine::new_in_memory().unwrap();
     let bus = EventBus::new();
     engine.set_event_bus(bus.clone());
 
@@ -146,7 +146,7 @@ fn test_temporal_signals_with_forest() {
 
 #[test]
 fn test_engine_captures_parent_snapshots() {
-    let mut engine = DynamicsEngine::new_in_memory().unwrap();
+    let mut engine = Engine::new_in_memory().unwrap();
 
     let parent = engine.create_tension("big goal", "starting point").unwrap();
     let child = engine

@@ -7,7 +7,7 @@
 
 pub mod agent_response;
 pub mod commands;
-pub mod dynamics;
+pub mod serialize;
 pub mod editor;
 pub mod output;
 
