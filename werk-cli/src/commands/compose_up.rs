@@ -107,7 +107,7 @@ pub fn cmd_compose_up(
             ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Desired: {}", &new_parent.desired);
-        println!("  Actual:  {}", &new_parent.actual);
+        println!("  Reality: {}", &new_parent.actual);
         if let Some(pid) = &first_parent {
             let parent_display = tensions
                 .iter()

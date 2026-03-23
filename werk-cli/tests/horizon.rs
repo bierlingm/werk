@@ -32,7 +32,7 @@ fn test_add_with_horizon_month() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Created tension"))
-        .stdout(predicate::str::contains("Horizon: 2026-05"));
+        .stdout(predicate::str::contains("Deadline: 2026-05"));
 
     // Verify with --json
     let output = cargo_bin_cmd!("werk")
@@ -308,7 +308,7 @@ fn test_horizon_display() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Horizon: 2026-05"))
+        .stdout(predicate::str::contains("Deadline: 2026-05"))
         .stdout(predicate::str::contains("Urgency:"));
 }
 
@@ -559,7 +559,7 @@ fn test_show_with_horizon() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Horizon:"))
+        .stdout(predicate::str::contains("Deadline:"))
         .stdout(predicate::str::contains("2026-05"));
 }
 

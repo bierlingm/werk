@@ -253,8 +253,8 @@ fn test_show_readable() {
         stdout
     );
     assert!(
-        stdout.contains("Actual:"),
-        "Output should contain 'Actual:', got: {}",
+        stdout.contains("Reality:"),
+        "Output should contain 'Reality:', got: {}",
         stdout
     );
     assert!(

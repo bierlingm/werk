@@ -46,7 +46,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             } else {
                 Some(Horizon::parse(&new_value).map_err(|e| {
                     WerkError::InvalidInput(format!(
-                        "Invalid horizon '{}': {}. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z",
+                        "Invalid deadline '{}': {}. Examples: 2026, 2026-05, 2026-05-15, 2026-05-15T14:00:00Z",
                         new_value, e
                     ))
                 })?)
@@ -55,7 +55,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             // Check status - only Active tensions can have horizon updated
             if tension.status != TensionStatus::Active {
                 return Err(WerkError::InvalidInput(format!(
-                    "cannot update horizon on {} tension (must be Active)",
+                    "cannot update deadline on {} tension (must be Active)",
                     tension.status
                 )));
             }
@@ -103,14 +103,14 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                     Some(h) => {
                         output
                             .success(&format!(
-                                "Set horizon for tension {} to {}",
+                                "Set deadline for tension {} to {}",
                                 werk_shared::display_id(tension.short_code, &tension.id), h
                             ))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                     None => {
                         output
-                            .success(&format!("Cleared horizon for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
+                            .success(&format!("Cleared deadline for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                 }
@@ -148,7 +148,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
 
                 match &tension.horizon {
                     Some(h) => {
-                        println!("  Horizon: {}", h);
+                        println!("  Deadline: {}", h);
 
                         // Human interpretation
                         let interpretation = match h.kind() {
@@ -169,7 +169,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                         }
                     }
                     None => {
-                        println!("  Horizon:    None");
+                        println!("  Deadline:   None");
                     }
                 }
             }

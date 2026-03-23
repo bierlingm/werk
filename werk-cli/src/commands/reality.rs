@@ -98,7 +98,7 @@ pub fn cmd_reality(output: &Output, id: String, value: Option<String>) -> Result
     } else {
         // Human-readable output
         output
-            .success(&format!("Updated actual for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
+            .success(&format!("Updated reality for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Old:  {}", &result.old_actual);
         println!("  New:  {}", &result.actual);
