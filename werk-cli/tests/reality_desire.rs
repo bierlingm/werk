@@ -40,7 +40,7 @@ fn test_reality_updates_actual() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Updated actual"));
+        .stdout(predicate::str::contains("Updated reality"));
 
     // Verify the actual was updated
     let updated = store.get_tension(&tension_id).unwrap().unwrap();

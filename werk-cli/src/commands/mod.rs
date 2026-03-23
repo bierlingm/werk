@@ -106,7 +106,8 @@ pub enum Commands {
         list: bool,
     },
 
-    /// Set or display the temporal horizon of a tension.
+    /// Set or display the deadline of a tension.
+    #[command(alias = "deadline")]
     Horizon {
         /// Tension ID or prefix.
         id: String,
@@ -122,7 +123,8 @@ pub enum Commands {
         id: String,
     },
 
-    /// Update the actual state of a tension.
+    /// Update the current reality of a tension.
+    #[command(alias = "actual")]
     Reality {
         /// Tension ID or prefix.
         id: String,

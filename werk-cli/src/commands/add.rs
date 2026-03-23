@@ -109,13 +109,13 @@ pub fn cmd_add(
             ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Desired: {}", &tension.desired);
-        println!("  Actual:  {}", &tension.actual);
+        println!("  Reality: {}", &tension.actual);
         println!("  Status:  {}", &tension.status);
         if let Some(pid) = &tension.parent_id {
             println!("  Parent:  {}", pid);
         }
         if let Some(h) = &tension.horizon {
-            println!("  Horizon: {}", h);
+            println!("  Deadline: {}", h);
         }
     }
 

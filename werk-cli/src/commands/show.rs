@@ -47,6 +47,9 @@ struct ChildInfo {
     desired: String,
     status: String,
     position: Option<i32>,
+    /// When this child was resolved or released (for sort ordering).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completion_ts: Option<DateTime<Utc>>,
 }
 
 pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
@@ -68,27 +71,56 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
     let forest = sd_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
-    // Get children with short codes, sorted: positioned (by position) → held → resolved → released
-    let mut children: Vec<ChildInfo> = forest
-        .children(&tension.id)
-        .unwrap_or_default()
+    // Collect raw children and their mutations (needed for both sorting and frontier)
+    let raw_children = forest.children(&tension.id).unwrap_or_default();
+    let child_mutations: Vec<(String, Vec<sd_core::Mutation>)> = raw_children
         .iter()
-        .map(|child| ChildInfo {
-            id: child.id().to_string(),
-            short_code: child.tension.short_code,
-            desired: truncate(&child.tension.desired, 40),
-            status: child.tension.status.to_string(),
-            position: child.tension.position,
+        .filter_map(|c| {
+            let muts = store.get_mutations(&c.id()).ok()?;
+            Some((c.id().to_string(), muts))
+        })
+        .collect();
+
+    // Build children sorted: positioned (by position) → held → resolved/released (by completion date)
+    let mut children: Vec<ChildInfo> = raw_children
+        .iter()
+        .map(|child| {
+            // Find completion timestamp from mutations (last status→Resolved or status→Released)
+            let completion_ts = child_mutations
+                .iter()
+                .find(|(id, _)| id == child.id())
+                .and_then(|(_, muts)| {
+                    muts.iter()
+                        .rev()
+                        .find(|m| {
+                            m.field() == "status"
+                                && (m.new_value() == "Resolved" || m.new_value() == "Released")
+                        })
+                        .map(|m| m.timestamp())
+                });
+            ChildInfo {
+                id: child.id().to_string(),
+                short_code: child.tension.short_code,
+                desired: truncate(&child.tension.desired, 40),
+                status: child.tension.status.to_string(),
+                position: child.tension.position,
+                completion_ts,
+            }
         })
         .collect();
     children.sort_by(|a, b| {
-        fn sort_key(c: &ChildInfo) -> (u8, i32) {
+        fn sort_key(c: &ChildInfo) -> (u8, i64, i32) {
             match (c.status.as_str(), c.position) {
-                (_, Some(pos)) if c.status == "Active" => (0, pos),
-                ("Active", None) => (1, 0),
-                ("Resolved", _) => (2, 0),
-                ("Released", _) => (3, 0),
-                _ => (4, 0),
+                // Positioned active children first, ordered by position
+                (_, Some(pos)) if c.status == "Active" => (0, 0, pos),
+                // Held active children second
+                ("Active", None) => (1, 0, 0),
+                // Resolved and released together, ordered by completion date
+                ("Resolved" | "Released", _) => {
+                    let ts = c.completion_ts.map(|t| t.timestamp()).unwrap_or(i64::MAX);
+                    (2, ts, 0)
+                }
+                _ => (3, 0, 0),
             }
         }
         sort_key(a).cmp(&sort_key(b))
@@ -100,13 +132,6 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
     let epochs = store
         .get_epochs(&tension.id)
         .map_err(WerkError::StoreError)?;
-    let child_mutations: Vec<(String, Vec<sd_core::Mutation>)> = children
-        .iter()
-        .filter_map(|c| {
-            let muts = store.get_mutations(&c.id).ok()?;
-            Some((c.id.clone(), muts))
-        })
-        .collect();
     let frontier = compute_frontier(&forest, &tension.id, now, &epochs, &child_mutations);
 
     // Urgency (honest — computed from horizon)
@@ -166,7 +191,7 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         // Human-readable output
         println!("Tension {}", werk_shared::display_id(tension.short_code, &tension.id));
         println!("  Desired:    {}", &tension.desired);
-        println!("  Actual:     {}", &tension.actual);
+        println!("  Reality:    {}", &tension.actual);
         println!("  Status:     {}", &tension.status);
         println!(
             "  Created:    {}",
@@ -199,13 +224,13 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             let days_str = if days_remaining > 0 {
                 format!(", {} days remaining", days_remaining)
             } else if days_remaining == 0 {
-                ", today is the horizon".to_string()
+                ", today is the deadline".to_string()
             } else {
-                format!(", {} days past horizon", -days_remaining)
+                format!(", {} days past deadline", -days_remaining)
             };
 
             println!(
-                "  Horizon:    {} ({}{})",
+                "  Deadline:   {} ({}{})",
                 &horizon_str, &interpretation, &days_str
             );
         }
@@ -234,11 +259,11 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             let pct = (urg.value * 100.0).min(999.0);
             if overdue {
                 let days_past = (-urg.time_remaining as f64 / 86400.0).ceil() as i64;
-                println!("  Urgency:    OVERDUE ({} days past horizon)", days_past);
+                println!("  Urgency:    OVERDUE ({} days past deadline)", days_past);
             } else {
                 let days_left = (urg.time_remaining as f64 / 86400.0).floor() as i64;
                 println!(
-                    "  Urgency:    {:.0}% of horizon elapsed ({} days remaining)",
+                    "  Urgency:    {:.0}% of deadline elapsed ({} days remaining)",
                     pct, days_left
                 );
             }
