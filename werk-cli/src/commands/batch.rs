@@ -2,7 +2,7 @@
 //!
 //! Apply or validate mutations in bulk from a YAML file or stdin.
 
-use crate::agent_response::{Mutation as AgentMutation, StructuredResponse};
+use werk_shared::BatchMutation;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
@@ -175,48 +175,23 @@ fn cmd_batch_apply(output: &Output, file: &str, dry_run: bool) -> Result<(), Wer
 
 /// Parse mutations from YAML content.
 ///
-/// Supports two formats:
-/// 1. StructuredResponse format (with `mutations` and `response` keys, between `---` markers)
-/// 2. Raw YAML array of mutations (bare list without wrapping)
-fn parse_mutations(content: &str) -> Result<Vec<AgentMutation>, WerkError> {
-    // First try StructuredResponse format (with --- markers)
-    if let Some(structured) = StructuredResponse::from_response(content) {
-        return Ok(structured.mutations);
-    }
-
-    // Wrap in --- markers and add a dummy response, then try again
-    let wrapped = format!(
-        "---\nmutations:\n{}\nresponse: \"batch import\"\n---",
-        content.trim()
-    );
-    if let Some(structured) = StructuredResponse::from_response(&wrapped) {
-        return Ok(structured.mutations);
-    }
-
-    // Try parsing as a StructuredResponse directly (no --- markers needed)
-    if let Ok(structured) = serde_yaml::from_str::<StructuredResponse>(content) {
-        return Ok(structured.mutations);
-    }
-
-    // Try parsing as a bare array of mutations
-    if let Ok(mutations) = serde_yaml::from_str::<Vec<AgentMutation>>(content) {
-        return Ok(mutations);
-    }
-
-    Err(WerkError::InvalidInput(
-        "could not parse YAML as mutations. Expected either a StructuredResponse \
-         (with 'mutations' and 'response' keys) or a bare list of mutation objects."
-            .to_string(),
-    ))
+/// Expects a YAML list of mutation objects, each with an `action` tag.
+fn parse_mutations(content: &str) -> Result<Vec<BatchMutation>, WerkError> {
+    serde_yaml::from_str::<Vec<BatchMutation>>(content).map_err(|e| {
+        WerkError::InvalidInput(format!(
+            "could not parse YAML as mutations: {}. Expected a YAML list of mutation objects.",
+            e
+        ))
+    })
 }
 
 /// Validate a mutation without applying it.
-fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), WerkError> {
+fn validate_mutation(engine: &Engine, mutation: &BatchMutation) -> Result<(), WerkError> {
     match mutation {
-        AgentMutation::UpdateActual { tension_id, .. }
-        | AgentMutation::AddNote { tension_id, .. }
-        | AgentMutation::UpdateStatus { tension_id, .. }
-        | AgentMutation::UpdateDesired { tension_id, .. } => {
+        BatchMutation::UpdateActual { tension_id, .. }
+        | BatchMutation::AddNote { tension_id, .. }
+        | BatchMutation::UpdateStatus { tension_id, .. }
+        | BatchMutation::UpdateDesired { tension_id, .. } => {
             // Check that the tension exists
             let tensions = engine
                 .store()
@@ -229,7 +204,7 @@ fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), We
                 )));
             }
         }
-        AgentMutation::CreateChild { parent_id, .. } => {
+        BatchMutation::CreateChild { parent_id, .. } => {
             let tensions = engine
                 .store()
                 .list_tensions()
@@ -241,8 +216,8 @@ fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), We
                 )));
             }
         }
-        AgentMutation::SetHorizon { tension_id, .. }
-        | AgentMutation::MoveTension { tension_id, .. } => {
+        BatchMutation::SetHorizon { tension_id, .. }
+        | BatchMutation::MoveTension { tension_id, .. } => {
             let tensions = engine
                 .store()
                 .list_tensions()
@@ -254,7 +229,7 @@ fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), We
                 )));
             }
         }
-        AgentMutation::CreateParent { child_id, .. } => {
+        BatchMutation::CreateParent { child_id, .. } => {
             let tensions = engine
                 .store()
                 .list_tensions()
@@ -269,7 +244,7 @@ fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), We
     }
 
     // Validate status values for UpdateStatus
-    if let AgentMutation::UpdateStatus { new_status, .. } = mutation {
+    if let BatchMutation::UpdateStatus { new_status, .. } = mutation {
         match new_status.to_lowercase().as_str() {
             "resolved" | "released" | "active" => {}
             other => {
@@ -287,10 +262,10 @@ fn validate_mutation(engine: &Engine, mutation: &AgentMutation) -> Result<(), We
 /// Apply a single mutation to the store.
 fn apply_single_mutation(
     engine: &mut Engine,
-    mutation: &AgentMutation,
+    mutation: &BatchMutation,
 ) -> Result<(), WerkError> {
     match mutation {
-        AgentMutation::UpdateActual {
+        BatchMutation::UpdateActual {
             tension_id,
             new_value,
             ..
@@ -300,7 +275,7 @@ fn apply_single_mutation(
                 .update_actual(tension_id, new_value)
                 .map_err(WerkError::SdError)?;
         }
-        AgentMutation::CreateChild {
+        BatchMutation::CreateChild {
             parent_id,
             desired,
             actual,
@@ -311,7 +286,7 @@ fn apply_single_mutation(
                 .create_tension_with_parent(desired, actual, Some(parent_id.clone()))
                 .map_err(WerkError::SdError)?;
         }
-        AgentMutation::AddNote {
+        BatchMutation::AddNote {
             tension_id, text, ..
         } => {
             engine
@@ -325,7 +300,7 @@ fn apply_single_mutation(
                 ))
                 .map_err(WerkError::SdError)?;
         }
-        AgentMutation::UpdateStatus {
+        BatchMutation::UpdateStatus {
             tension_id,
             new_status,
             ..
@@ -346,7 +321,7 @@ fn apply_single_mutation(
                 .update_status(tension_id, status)
                 .map_err(WerkError::SdError)?;
         }
-        AgentMutation::UpdateDesired {
+        BatchMutation::UpdateDesired {
             tension_id,
             new_value,
             ..
@@ -356,17 +331,17 @@ fn apply_single_mutation(
                 .update_desired(tension_id, new_value)
                 .map_err(WerkError::SdError)?;
         }
-        AgentMutation::SetHorizon { tension_id, horizon, .. } => {
+        BatchMutation::SetHorizon { tension_id, horizon, .. } => {
             if let Ok(h) = sd_core::Horizon::parse(horizon) {
                 engine.update_horizon(tension_id, Some(h))
                     .map_err(WerkError::SdError)?;
             }
         }
-        AgentMutation::MoveTension { tension_id, new_parent_id, .. } => {
+        BatchMutation::MoveTension { tension_id, new_parent_id, .. } => {
             engine.update_parent(tension_id, new_parent_id.as_deref())
                 .map_err(WerkError::SdError)?;
         }
-        AgentMutation::CreateParent { child_id, desired, actual, .. } => {
+        BatchMutation::CreateParent { child_id, desired, actual, .. } => {
             let current_parent = engine.store().get_tension(child_id)
                 .ok().flatten().and_then(|t| t.parent_id.clone());
             let parent = engine.create_tension_with_parent(desired, actual, current_parent)

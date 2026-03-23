@@ -5,7 +5,6 @@
 // The practitioner's workspace. Practice, presence, oracle.
 // Built on sd-core. Maximally opinionated.
 
-pub mod agent_response;
 pub mod commands;
 pub mod serialize;
 pub mod editor;

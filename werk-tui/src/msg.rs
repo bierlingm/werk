@@ -36,14 +36,6 @@ pub enum Msg {
     /// Raw event passthrough — carries full modifier info for TextInput widget.
     RawEvent(Event),
 
-    // Agent
-    InvokeAgent,
-    AgentClipboard,
-    AgentResponse(Result<String, String>),
-
-    // Insights
-    OpenInsights,
-
     // Chrome
     ToggleHelp,
     Search,

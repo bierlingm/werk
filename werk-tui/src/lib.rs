@@ -13,7 +13,6 @@ pub mod update;
 pub mod helpers;
 pub mod horizon;
 pub mod search;
-pub mod agent;
 
 pub use app::InstrumentApp;
 
