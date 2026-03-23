@@ -118,6 +118,17 @@ fn main() {
         }
         Commands::Context { id, all, urgent } => werk::commands::context::cmd_context(&output, id, all, urgent),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
+        Commands::Mcp => {
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| werk::error::WerkError::IoError(format!("failed to create runtime: {}", e)));
+            match rt {
+                Ok(rt) => rt.block_on(async {
+                    werk_mcp::run_server().await
+                        .map_err(|e| werk::error::WerkError::IoError(e.to_string()))
+                }),
+                Err(e) => Err(e),
+            }
+        }
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)
         }

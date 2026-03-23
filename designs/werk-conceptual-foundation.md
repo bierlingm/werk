@@ -47,7 +47,7 @@ Three nested but independent concepts:
 
 **Operating envelope** — an interaction zone. A dynamic window on the stream around the frontier, containing everything action-relevant (overdue steps, next step, held steps, recently resolved). The envelope has extent — bigger when there's more to act on. It is both a container (bounded, demarcated) and a window on the stream (the stream flows through it). The envelope is the primary interaction surface.
 
-**Cursor** — the user's focus point. Where attention and selection currently sit. The cursor can be inside the envelope (working at the frontier), above it (reviewing theory), below it (reviewing trace or ghost geometry), or in the survey view (scanning the field). The envelope persists regardless of cursor position. The frontier persists regardless of both.
+**Cursor** — the user's focus point. Where attention and selection currently sit. The cursor can be inside the envelope (working at the frontier), above it (reviewing theory), below it (reviewing trace or ledger), or in the survey view (scanning the field). The envelope persists regardless of cursor position. The frontier persists regardless of both.
 
 When the user opens the instrument, the cursor lands at the envelope. They look up to see what's next. They look down to see what's done. They look at the top to remember where they're going. They look at the bottom to remember where they stand. They yaw to survey the field across all tensions.
 
@@ -65,7 +65,7 @@ The term "gesture" is chosen deliberately. In an operative tradition (Fernandez)
 
 Gestures, not individual mutations, are the meaningful units for:
 - Undo (undoing a gesture undoes the whole set)
-- History (the ghost geometry is a sequence of gestures)
+- History (the ledger is a sequence of gestures)
 - Interpretation (a gesture is the smallest meaningful event for reading structural patterns)
 
 In the data model, each mutation carries a `gesture_id` linking it to its gesture. A gesture optionally belongs to a session. CLI commands each constitute a single gesture. Batch operations group all their mutations under one gesture. Agent mutations are sessionless gestures.
@@ -103,7 +103,7 @@ A **delta** is a desire-reality pair together with its theory of closure at a sp
 - **Reality** (bottom): the current ground truth, which accumulates accomplished truth as steps complete
 - **Theory of closure** (between): the composed bridge of action steps from reality to desire
 
-Deltas are versioned. When desire transforms or reality shifts signifantly, a new delta is generated. The relationship between consecutive deltas — the progression of pyramids — is the **ghost geometry**: the shape of directed action over time.
+Deltas are versioned. When desire transforms or reality shifts signifantly, a new delta is generated. The relationship between consecutive deltas — the progression of pyramids — is the **ledger**: the shape of directed action over time.
 
 ### Resolution as Transformation
 
@@ -133,9 +133,29 @@ A **phase transition** is the boundary between epochs — a structural reconfigu
 
 Phase transitions are orthogonal to within-epoch movement. They don't advance along the existing axis; they reconfigure the axis itself.
 
-Phase transitions can also span tension boundaries. A **split** — recognizing that a tension contains two distinct concerns — creates a phase transition where one delta becomes two deltas in different tensions. Both new tensions share the pre-split history as provenance. The ghost geometry is not always linear; it can fork.
+Phase transitions can also span tension boundaries. A **split** — recognizing that a tension contains two distinct concerns — creates a phase transition where one delta becomes two deltas in different tensions. Both new tensions share the pre-split history as provenance. The ledger is not always linear; it can fork.
 
-The ghost geometry is the sequence of epochs — the pyramids laid end to end, each growing from the material of the last. When a tension has been split from or merged into another, the ghost geometry shows the connection: the pre-split tension as a shared root, or the pre-merge tensions as converging tributaries.
+The ledger is the sequence of epochs — the pyramids laid end to end, each growing from the material of the last. When a tension has been split from or merged into another, the ledger shows the connection: the pre-split tension as a shared root, or the pre-merge tensions as converging tributaries.
+
+### The Ledger as Compiled Model
+
+The accreted structure (closed epochs, resolved tensions, released tensions, notes, prior deltas) is not inert history — it is *compacted meaning*. Each epoch close, each resolution, each release crystallizes what was once open and uncertain into settled fact. The live structure is the frontier of becoming; the ledger is what has become.
+
+Together, the live structure and the ledger form the complete model of a project — one under revision, one settled. There is an instructive difference between: (a) the "live" structure as it is open at any one moment; (b) the "accreted" structure that is no longer under revision or uncertainty; and (c) whatever external artifacts (code, documents, communications) the project produces. The ledger holds (b) and together with (a) constitutes the full structural record from which (c) can be understood, justified, and contextualized.
+
+This means the ledger should be **queryable as structure** — semantic search across epochs, filtering by topic or term or tension, cross-epoch pattern analysis, reconstruction of decision chains. The ability to ask "show me every epoch that touched this concern" or "what was the theory of closure when we made that decision" transforms the ledger from a log into a *structural resource*.
+
+**Query patterns the ledger should support:**
+- "Show me every epoch that touched [concern/term]" — semantic search across epoch content
+- "What was the theory of closure when we made [decision]?" — point-in-time structural reconstruction
+- "How many times has this tension's desire changed?" — trajectory analysis across epochs
+- "What was released and why?" — released tensions as a queryable semantic category
+- "Timeline of reality updates for [tension]" — trace evolution across all epochs
+- "What was happening in [tension B] when [tension A] had its phase transition?" — cross-tension temporal correlation
+
+**Reference implementation:** Jeffrey Emanuel's `cass` (coding agent session search) demonstrates the architecture: multi-backend search (lexical BM25 + semantic embedding + hybrid RRF fusion) against accumulated session histories; temporal bucketing to show activity evolution; context windows showing surrounding conversation not just matches; relationship discovery linking related sessions; aggregation by category for pattern recognition; field selection allowing summary vs. full content at query time; cross-workspace analysis for patterns across projects. The ledger's query system should achieve equivalent capability against the structural record: every desire, reality, note, resolution, release, epoch boundary, and gesture is searchable, filterable, and correlatable.
+
+The analogy extends: geological strata encode Earth's history in queryable form. A well-kept ledger of accounts tells the full story of an enterprise. Whitehead's perished actual occasions persist as objective data for new occasions of becoming. The ledger is the instrument's memory — not nostalgic, but structurally generative.
 
 ### The Instrument's Boundary
 
@@ -234,7 +254,7 @@ The descended view is the primary reasoning surface for a single tension. The op
 
 The vertical position of steps reflects **order of operations** (structural sequence), not calendar time. Deadlines are shown as annotations on the temporal spine rather than as determinants of vertical position. A step can be first in the order but have a late deadline, or vice versa. The full temporal calculus (two primitives, six computed properties, two recorded facts) is defined in Part II.
 
-Moving the cursor below current reality enters the **ghost geometry**: previous deltas, their theories of closure, what was accomplished and what was abandoned.
+Moving the cursor below current reality enters the **ledger**: previous deltas, their theories of closure, what was accomplished and what was abandoned.
 
 ### The Survey View
 
@@ -308,7 +328,7 @@ The instrument's interaction vocabulary is a set of operative gestures:
 - **Noting**: articulating an observation, a shift in understanding, a question, or an insight. A note is simultaneously: to notice (perception), to record (compression), and an atomic unit of performance within the instrument (the musical sense). Notes are first-class operative gestures, not secondary annotations.
 - **Reordering**: restructuring the theory of closure
 - **Splitting**: recognizing that a tension contains distinct concerns and dividing it into two or more tensions. The original tension's history becomes shared provenance. The original may be resolved ("split into X and Y"), released ("superseded"), or kept as parent (if it was genuinely the umbrella). A phase transition that changes the identity topology of the structure.
-- **Merging**: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. The absorbed tensions' histories become part of the surviving tension's ghost geometry. Different from composing — composing creates a new parent; merging recognizes identity.
+- **Merging**: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. The absorbed tensions' histories become part of the surviving tension's ledger. Different from composing — composing creates a new parent; merging recognizes identity.
 - **Navigating**: moving through the structure (ascending, descending, scanning)
 
 Each of these is a gesture — a compression of intentionality into enacted form.
@@ -317,7 +337,7 @@ Each of these is a gesture — a compression of intentionality into enacted form
 
 The instrument's navigation maps to three independent axes:
 
-**Pitch (↑/↓) — the time axis.** Up moves toward desire/future. Down moves toward reality/past. This is movement within a single tension's descended view — through the order of operations, across the frontier, into the ghost geometry. The primary axis.
+**Pitch (↑/↓) — the time axis.** Up moves toward desire/future. Down moves toward reality/past. This is movement within a single tension's descended view — through the order of operations, across the frontier, into the ledger. The primary axis.
 
 **Roll (←/→) — the structure axis.** Right descends into a selected step (opens its descended view as a new context). Left ascends to the parent tension. This is movement through structural depth — deeper into the theory of closure or back out to the containing context.
 
@@ -352,7 +372,7 @@ This tap/hold distinction maps to physical intuition about movement through door
 
 **Navigation as implicit confirmation:** Moving through a threshold can serve as confirmation of in-progress edits (flick through = commit and proceed). Lingering at the threshold offers explicit choice (commit and proceed, or abandon and return). Escape from the threshold always abandons and returns.
 
-**Screen boundaries as signal space:** The edges of the display are where adjacent spaces press against the current view. The top edge hints at the parent context and desire. The bottom edge hints at the ghost geometry. The left/right edges hint at structural neighbors or the alternative view mode. These are peripheral-vision signals — not focused on, but deviations from normal pop into awareness.
+**Screen boundaries as signal space:** The edges of the display are where adjacent spaces press against the current view. The top edge hints at the parent context and desire. The bottom edge hints at the ledger. The left/right edges hint at structural neighbors or the alternative view mode. These are peripheral-vision signals — not focused on, but deviations from normal pop into awareness.
 
 ---
 
@@ -405,7 +425,7 @@ These are available for configuration, evolution, or removal based on use:
 
 **Frontier visual treatment:** The operating envelope is the primary interaction surface. It's a composite zone centered on the screen containing: next step, held steps, input point, overdue signals, recent resolutions. The cursor rests here by default.
 
-**Ghost geometry access:** Cursor movement below current reality, not literal scrolling. Lazy-loaded. Key combo available for direct jump. Each epoch is a collapsed summary expandable on selection.
+**Ledger access:** Cursor movement below current reality, not literal scrolling. Lazy-loaded. Key combo available for direct jump. Each epoch is a collapsed summary expandable on selection.
 
 **Gesture grouping:** Implicit grouping within a descended view session. Explicit compose mode via key entry for deliberate restructuring. Peeking and suspending for cross-structure reference during composition. Structural review prompts (non-blocking) after composition.
 
@@ -461,7 +481,7 @@ This instrument draws on:
 | **Gesture** | The unit of meaningful action. A single intentional act that may involve one or more mutations. |
 | **Epoch** | A period of action within a single delta. Stored as a snapshot: desire, reality, and children state at the moment of phase transition. |
 | **Phase transition** | The boundary between epochs — a structural reconfiguration generating a new delta. Can occur within a tension (desire/reality shift) or across tensions (split/merge). |
-| **Ghost geometry** | The history of deltas — the shape of directed action over time, visible by scrolling below current reality. Can fork (split) or converge (merge). |
+| **Ledger** | The history of deltas — the accreted record of prior epochs, accessible below current reality. Not dead weight but *compacted meaning*: each closed epoch crystallizes what was once open and uncertain into settled fact. The live structure is the frontier of becoming; the ledger is what has become. Together they form the complete model — one under revision, one settled. The ledger should be queryable as structure (semantic search, filtering by topic/term/tension, cross-epoch pattern analysis), not merely scrollable as history. Can fork (split) or converge (merge). Cf. geological strata, compiled artifacts, Whitehead's perished actual occasions persisting as objective data for new becoming. (Previously "ledger" — renamed for its factual/auditable tone and to escape the spectral metaphor.) |
 | **Positioned** | Temporally committed and sequenced within the theory of closure. |
 | **Unpositioned** | Acknowledged but not yet committed to a temporal position. |
 | **Trajectory** | The path of desire through possibility space — forward-looking, projected, subject to revision. |
@@ -487,7 +507,7 @@ This instrument draws on:
 | **Ground mode** | The debrief and study surface. Where low-confidence dynamics, telemetry, session history, and coaching-level interpretations live. Not flying — studying. |
 | **Compose** | The gesture of creating a parent for one or more existing tensions. Reveals implicit coherence. The inverse of decomposing. |
 | **Split** | The gesture of dividing a tension into two or more tensions when distinct concerns are recognized within it. A phase transition that changes the identity topology. The original's history becomes shared provenance of the new tensions. |
-| **Merge** | The gesture of combining multiple tensions into one when they are recognized as the same concern. The absorbed tensions' histories join the surviving tension's ghost geometry. Different from composing (which creates a new parent). |
+| **Merge** | The gesture of combining multiple tensions into one when they are recognized as the same concern. The absorbed tensions' histories join the surviving tension's ledger. Different from composing (which creates a new parent). |
 | **Provenance** | The lineage relationship between tensions created by split or merge. Not containment (parent-child) but origin — where a tension came from structurally. |
 | **Staging** | Asynchronous draft mutations held in a pending state for review before application. For deliberate multi-step restructuring or agent-proposed changes. Distinct from pathway palettes (which are synchronous). |
 | **Peek** | A read-only partial view of an adjacent context (SHIFT+NAVKEY). Slides the adjacent space into partial visibility without leaving the current context. |
