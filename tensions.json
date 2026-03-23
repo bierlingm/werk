@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-23T11:51:58Z",
+  "flushed_at": "2026-03-23T11:56:18Z",
   "summary": {
-    "active": 31,
+    "active": 29,
     "released": 3,
-    "resolved": 9,
+    "resolved": 11,
     "total": 43
   },
   "tensions": [
@@ -82,7 +82,7 @@
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
       "position": 5,
       "short_code": 7,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Interactive testing complete. Gaze card, help screen, grab-and-drop reordering, temporal alignment, alert truncation, empty descended state, rules width all verified and working. Unicode display width vs char count issue in selected tension background highlight remains. Three-agent design system generation process completed — independent design documents and reflections collected from Claude, Gemini, and Codex for synthesis into definitive visual coherence plan.",
@@ -478,7 +478,7 @@
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
       "position": null,
       "short_code": 44,
-      "status": "Active"
+      "status": "Resolved"
     }
   ]
 }
