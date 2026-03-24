@@ -47,6 +47,55 @@ const MIN_LEFT: usize = 6;
 /// Maximum content width (matches existing render.rs).
 const MAX_CONTENT_WIDTH: u16 = 104;
 /// Left/right margin from screen edges.
+
+// ---------------------------------------------------------------------------
+// Deck configuration (V6)
+// ---------------------------------------------------------------------------
+
+/// Chrome mode controls when visual separators appear.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChromeMode {
+    /// Minimal — no separators, whitespace only.
+    Quiet,
+    /// Default — separators appear when there are 2+ content zones.
+    Adaptive,
+    /// Always show separators and structural markers.
+    Structured,
+}
+
+impl ChromeMode {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "quiet" => Self::Quiet,
+            "structured" => Self::Structured,
+            _ => Self::Adaptive,
+        }
+    }
+}
+
+/// Configuration for deck rendering, read from `deck.*` config keys.
+#[derive(Debug, Clone)]
+pub struct DeckConfig {
+    pub chrome: ChromeMode,
+}
+
+impl Default for DeckConfig {
+    fn default() -> Self {
+        Self {
+            chrome: ChromeMode::Adaptive,
+        }
+    }
+}
+
+impl DeckConfig {
+    /// Load deck config from the werk config system.
+    pub fn load(config: &werk_shared::Config) -> Self {
+        let chrome = config.get("deck.chrome")
+            .map(|v| ChromeMode::from_str(v))
+            .unwrap_or(ChromeMode::Adaptive);
+        Self { chrome }
+    }
+}
 const EDGE_MARGIN: u16 = 2;
 /// Extra indent for held (unpositioned) items (Q22).
 const HELD_INDENT: usize = 2;
@@ -769,13 +818,17 @@ impl InstrumentApp {
                 self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0);
                 my += 1;
             }
-            // Route summary for remaining
+            // Route summary for remaining — includes next deadline if available
             if route_remaining > 0 && my < top_limit {
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
-                let text = if shown_route == 0 {
-                    format!("\u{25B8} {} more in route", frontier.route.len())
-                } else {
-                    format!("\u{25B8} {} more in route", route_remaining)
+                let count = if shown_route == 0 { frontier.route.len() } else { route_remaining };
+                // Find the nearest deadline among compressed route items
+                let next_deadline = frontier.route[shown_route..].iter()
+                    .filter_map(|&idx| self.siblings[idx].horizon_label.as_deref())
+                    .next();
+                let text = match next_deadline {
+                    Some(dl) => format!("\u{25B2} {} remaining \u{00B7} next {}", count, dl),
+                    None => format!("\u{25B2} {} remaining", count),
                 };
                 self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
                 my += 1;
@@ -803,7 +856,12 @@ impl InstrumentApp {
             // --- Console boundary: separates ordered (route+overdue+next) from unordered (held+input) ---
             let has_unordered = !frontier.held.is_empty() || !frontier.accumulated.is_empty();
             let has_ordered = !frontier.route.is_empty() || !frontier.overdue.is_empty() || frontier.next.is_some();
-            if has_unordered && has_ordered && my < top_limit {
+            let show_separator = match self.deck_config.chrome {
+                ChromeMode::Quiet => false,
+                ChromeMode::Adaptive => has_unordered && has_ordered,
+                ChromeMode::Structured => has_ordered || has_unordered,
+            };
+            if show_separator && my < top_limit {
                 let boundary = glyphs::LIGHT_RULE.to_string().repeat(w);
                 render_line(frame, area.x, my, area.width, &[
                     (boundary, STYLES.dim),
