@@ -178,13 +178,19 @@ impl InstrumentApp {
                         self.deck_zoom = crate::deck::ZoomLevel::Normal;
                         self.focused_detail = None;
                     } else if let Some(entry) = self.action_target().cloned() {
-                        // Load focus detail for the selected child
-                        let children = self.engine.store()
+                        // Load focus detail with full FieldEntry children
+                        let now = chrono::Utc::now();
+                        let raw_children = self.engine.store()
                             .get_children(&entry.id)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|c| (c.desired, c.status))
-                            .collect();
+                            .unwrap_or_default();
+                        let child_ids: Vec<&str> = raw_children.iter().map(|c| c.id.as_str()).collect();
+                        let child_counts = self.engine.store()
+                            .count_children_by_parent(&child_ids)
+                            .unwrap_or_default();
+                        let children: Vec<crate::state::FieldEntry> = raw_children.iter().map(|c| {
+                            let cc = child_counts.get(&c.id).copied().unwrap_or(0);
+                            crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
+                        }).collect();
                         let deadline_label = entry.horizon_label.clone();
                         let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
                         self.focused_detail = Some(crate::deck::FocusedDetail {
