@@ -196,7 +196,7 @@ impl InstrumentApp {
             }
             Msg::Char('G') | Msg::JumpBottom => {
                 if self.use_deck && self.parent_id.is_some() {
-                    let frontier = crate::deck::Frontier::compute(&self.siblings, self.trajectory_mode);
+                    let frontier = crate::deck::Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
                     self.deck_cursor.index = frontier.selectable_count().saturating_sub(1);
                 } else {
                     self.vlist.bottom();
@@ -738,18 +738,57 @@ impl InstrumentApp {
             match field {
                 EditField::Desire => {
                     let _ = self.engine.update_desired(tension_id, &buf);
+                    // V5: desire change on the parent tension closes the current epoch
+                    if self.parent_id.as_deref() == Some(tension_id) {
+                        self.close_epoch(tension_id);
+                    }
                 }
                 EditField::Reality => {
                     let _ = self.engine.update_actual(tension_id, &buf);
+                    // V5: reality change on the parent tension closes the current epoch
+                    if self.parent_id.as_deref() == Some(tension_id) {
+                        self.close_epoch(tension_id);
+                    }
                 }
                 EditField::Horizon => {
                     if buf.is_empty() {
                         let _ = self.engine.update_horizon(tension_id, None);
-                    } else if let Ok(h) = crate::horizon::parse_horizon(&buf) {
-                        let _ = self.engine.update_horizon(tension_id, Some(h));
+                    } else {
+                        match crate::horizon::parse_horizon(&buf) {
+                            Ok(h) => { let _ = self.engine.update_horizon(tension_id, Some(h)); }
+                            Err(_) => { self.set_transient(format!("horizon not recognized: {}", buf)); }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// V5: Close the current epoch for a tension by creating an epoch snapshot.
+    /// This captures the current desire/reality and children state.
+    fn close_epoch(&mut self, tension_id: &str) {
+        if let Ok(Some(t)) = self.engine.store().get_tension(tension_id) {
+            let children_json = self.engine.store()
+                .get_children(tension_id)
+                .ok()
+                .map(|children| {
+                    let summaries: Vec<serde_json::Value> = children.iter().map(|c| {
+                        serde_json::json!({
+                            "id": c.id,
+                            "desired": c.desired,
+                            "status": format!("{:?}", c.status),
+                        })
+                    }).collect();
+                    serde_json::json!({"children": summaries}).to_string()
+                });
+
+            let _ = self.engine.store().create_epoch(
+                tension_id,
+                &t.desired,
+                &t.actual,
+                children_json.as_deref(),
+                None, // gesture_id — not tracked in TUI yet
+            );
         }
     }
 

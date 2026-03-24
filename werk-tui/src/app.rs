@@ -75,6 +75,10 @@ pub struct InstrumentApp {
 
     // Trajectory mode (Q30): when true, positioned resolved/released stay on route
     pub trajectory_mode: bool,
+
+    // Epoch boundary (V5): timestamp of the last epoch close for the current parent.
+    // Children resolved/released before this are excluded from accumulated.
+    pub epoch_boundary: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Filter for the field view.
@@ -147,6 +151,7 @@ impl InstrumentApp {
             db_path_cache: None,
             deck_cursor: crate::deck::DeckCursor::default(),
             trajectory_mode: false,
+            epoch_boundary: None,
         };
         app.load_siblings();
         app
@@ -192,6 +197,7 @@ impl InstrumentApp {
             db_path_cache: None,
             deck_cursor: crate::deck::DeckCursor::default(),
             trajectory_mode: false,
+            epoch_boundary: None,
         }
     }
 
@@ -245,6 +251,12 @@ impl InstrumentApp {
 
             // Cache mutation count for deck log indicator
             self.parent_mutation_count = mutations.len();
+
+            // V5: Compute epoch boundary — last epoch timestamp for this tension
+            self.epoch_boundary = self.engine.store()
+                .get_epochs(&parent.id)
+                .ok()
+                .and_then(|epochs| epochs.last().map(|e| e.timestamp));
         } else {
             self.parent_temporal_indicator = String::new();
             self.parent_temporal_urgency = 0.0;
@@ -253,6 +265,7 @@ impl InstrumentApp {
             self.parent_reality_age = None;
             self.grandparent_display = None;
             self.parent_mutation_count = 0;
+            self.epoch_boundary = None;
         }
 
         // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end.
@@ -302,6 +315,9 @@ impl InstrumentApp {
         let last_reality_updates = self.engine.store()
             .get_last_mutation_timestamps(&child_ids, &["actual", "created"])
             .unwrap_or_default();
+        let last_status_changes = self.engine.store()
+            .get_last_mutation_timestamps(&child_ids, &["status"])
+            .unwrap_or_default();
 
         self.siblings = filtered
             .iter()
@@ -311,7 +327,11 @@ impl InstrumentApp {
                     .get(&t.id)
                     .copied()
                     .unwrap_or(t.created_at);
-                FieldEntry::from_tension(t, last_reality_update, child_count, now)
+                let last_status_change = last_status_changes
+                    .get(&t.id)
+                    .copied()
+                    .unwrap_or(t.created_at);
+                FieldEntry::from_tension(t, last_reality_update, child_count, last_status_change, now)
             })
             .collect();
 
