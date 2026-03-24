@@ -4,6 +4,8 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
+use chrono::Utc;
+use sd_core::Mutation;
 use serde::Serialize;
 use werk_shared::{Config, HookEvent, HookRunner};
 
@@ -13,9 +15,11 @@ struct ReopenResult {
     id: String,
     status: String,
     old_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
 }
 
-pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
+pub fn cmd_reopen(output: &Output, id: String, reason: Option<String>) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
     let mut store = workspace.open_store()?;
@@ -53,6 +57,19 @@ pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
     store
         .update_status(&tension.id, sd_core::TensionStatus::Active)
         .map_err(WerkError::SdError)?;
+
+    // Record the reopen reason as a mutation
+    if let Some(ref reason) = reason {
+        store
+            .record_mutation(&Mutation::new(
+                tension.id.clone(),
+                Utc::now(),
+                "reopen_reason".to_owned(),
+                None,
+                reason.clone(),
+            ))
+            .map_err(WerkError::SdError)?;
+    }
     store.end_gesture();
 
     hooks.post_mutation(&event);
@@ -61,6 +78,7 @@ pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
         id: tension.id.clone(),
         status: "Active".to_string(),
         old_status: old_status.to_string(),
+        reason: reason.clone(),
     };
 
     if output.is_structured() {
@@ -72,6 +90,9 @@ pub fn cmd_reopen(output: &Output, id: String) -> Result<(), WerkError> {
             .success(&format!("Reopened tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Status: {} -> Active", old_status);
+        if let Some(ref reason) = reason {
+            println!("  Reason: {}", reason);
+        }
     }
 
     Ok(())

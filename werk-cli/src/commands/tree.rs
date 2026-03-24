@@ -2,6 +2,7 @@
 
 use crate::error::WerkError;
 use crate::output::Output;
+use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::{Forest, TensionStatus, detect_containment_violations, detect_sequencing_pressure};
@@ -52,6 +53,7 @@ enum Filter {
 
 pub fn cmd_tree(
     output: &Output,
+    id: Option<String>,
     _open: bool,
     all: bool,
     resolved: bool,
@@ -64,6 +66,23 @@ pub fn cmd_tree(
 
     let forest = Forest::from_tensions(tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
+
+    // If an ID is provided, resolve it and show subtree
+    let (forest, tensions) = if let Some(ref id_str) = id {
+        let resolver = PrefixResolver::new(tensions.clone());
+        let root_id = resolver.resolve(id_str)?.id.clone();
+        drop(resolver);
+        let sub = forest
+            .subtree(&root_id)
+            .ok_or_else(|| WerkError::InvalidInput(format!("no subtree found for {}", root_id)))?;
+        let sub_tensions: Vec<_> = tensions
+            .into_iter()
+            .filter(|t| sub.find(&t.id).is_some())
+            .collect();
+        (sub, sub_tensions)
+    } else {
+        (forest, tensions)
+    };
 
     let now = Utc::now();
 

@@ -193,6 +193,10 @@ pub enum Commands {
     Reopen {
         /// Tension ID or prefix.
         id: String,
+
+        /// Reason for reopening.
+        #[arg(short, long)]
+        reason: Option<String>,
     },
 
     /// Snooze a tension until a future date.
@@ -323,6 +327,9 @@ pub enum Commands {
 
     /// Display the tension forest as a tree.
     Tree {
+        /// Tension ID or prefix (show subtree under this tension).
+        id: Option<String>,
+
         /// Show only active tensions (default).
         #[arg(short, long)]
         open: bool,
