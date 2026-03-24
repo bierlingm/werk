@@ -430,6 +430,21 @@ impl Store {
                 })?;
         }
 
+        // Indexes for query performance
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mutations_tension_id ON mutations(tension_id)",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create mutations index: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tensions_parent_id ON tensions(parent_id)",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create tensions parent index: {:?}", e))
+        })?;
+
         Ok(())
     }
 
@@ -813,6 +828,85 @@ impl Store {
     }
 
     /// List all tensions in creation order.
+    /// Count total and active tensions without loading all rows.
+    pub fn count_tensions(&self) -> Result<(usize, usize), StoreError> {
+        let conn = self.conn.borrow();
+        let total_rows = conn
+            .query("SELECT COUNT(*) FROM tensions")
+            .map_err(|e| StoreError::DatabaseError(format!("count query failed: {:?}", e)))?;
+        let active_rows = conn
+            .query("SELECT COUNT(*) FROM tensions WHERE status = 'Active'")
+            .map_err(|e| StoreError::DatabaseError(format!("count query failed: {:?}", e)))?;
+
+        let total = total_rows.first()
+            .and_then(|r| r.get(0))
+            .and_then(|v| if let SqliteValue::Integer(n) = v { Some(*n as usize) } else { None })
+            .unwrap_or(0);
+        let active = active_rows.first()
+            .and_then(|r| r.get(0))
+            .and_then(|v| if let SqliteValue::Integer(n) = v { Some(*n as usize) } else { None })
+            .unwrap_or(0);
+
+        Ok((total, active))
+    }
+
+    /// Check which tension IDs have children, returning a set of parent IDs.
+    pub fn get_parent_ids_with_children(&self, parent_ids: &[&str]) -> Result<std::collections::HashSet<String>, StoreError> {
+        if parent_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+        let conn = self.conn.borrow();
+        let placeholders: Vec<String> = (1..=parent_ids.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "SELECT DISTINCT parent_id FROM tensions WHERE parent_id IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<SqliteValue> = parent_ids.iter().map(|id| SqliteValue::Text(id.to_string())).collect();
+        let rows = conn
+            .query_with_params(&sql, &params)
+            .map_err(|e| StoreError::DatabaseError(format!("batch children check failed: {:?}", e)))?;
+
+        let mut result = std::collections::HashSet::new();
+        for row in &rows {
+            if let Some(SqliteValue::Text(pid)) = row.get(0) {
+                result.insert(pid.clone());
+            }
+        }
+        Ok(result)
+    }
+
+    /// Get last mutation timestamp per tension for a batch of tension IDs, filtered by field.
+    pub fn get_last_mutation_timestamps(&self, tension_ids: &[&str], fields: &[&str]) -> Result<std::collections::HashMap<String, chrono::DateTime<chrono::Utc>>, StoreError> {
+        if tension_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let conn = self.conn.borrow();
+        let id_placeholders: Vec<String> = (1..=tension_ids.len()).map(|i| format!("?{}", i)).collect();
+        let field_placeholders: Vec<String> = (tension_ids.len()+1..=tension_ids.len()+fields.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "SELECT tension_id, MAX(timestamp) FROM mutations WHERE tension_id IN ({}) AND field IN ({}) GROUP BY tension_id",
+            id_placeholders.join(", "),
+            field_placeholders.join(", ")
+        );
+        let mut params: Vec<SqliteValue> = tension_ids.iter().map(|id| SqliteValue::Text(id.to_string())).collect();
+        for f in fields {
+            params.push(SqliteValue::Text(f.to_string()));
+        }
+        let rows = conn
+            .query_with_params(&sql, &params)
+            .map_err(|e| StoreError::DatabaseError(format!("batch mutation query failed: {:?}", e)))?;
+
+        let mut result = std::collections::HashMap::new();
+        for row in &rows {
+            if let (Some(SqliteValue::Text(tid)), Some(SqliteValue::Text(ts))) = (row.get(0), row.get(1)) {
+                if let Ok(dt) = ts.parse::<chrono::DateTime<chrono::Utc>>() {
+                    result.insert(tid.clone(), dt);
+                }
+            }
+        }
+        Ok(result)
+    }
+
     pub fn list_tensions(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
