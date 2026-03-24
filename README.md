@@ -1,123 +1,191 @@
 # werk
 
-An operative instrument for the gap between desire and reality.
+An operative instrument for structural dynamics practice.
 
-You want things. You have a reality. The gap between them is a **tension** — and tensions, when held honestly, drive resolution. werk is the instrument for holding them.
+## What werk is
 
-## What it does
+werk holds **structural tensions** — the gap between what you want and what's true. You declare a desired outcome, state the current reality, and the instrument holds the pair. The gap between them is not a problem to solve — it is a force that, when held honestly, drives resolution.
 
-werk tracks **structural tensions** — pairs of desired outcomes and current realities. You declare what you want and what's true. The gap between them generates energy for action. The theory of how to close each gap is composed of **action steps** — ordered, deadlined, held, resolved, or released over time.
+Each tension carries a **theory of closure**: composed action steps that bridge from reality to desire. These are hypotheses — conjectured, ordered, revisable. As steps get resolved, the **frontier of action** advances. The instrument computes temporal facts (urgency, critical path, sequencing pressure) from your deadlines and ordering. It surfaces signals by exception: silence is the default.
 
-The instrument computes temporal dynamics from your deadlines and ordering: urgency, sequencing pressure, critical path, overdue state. It does not guess at your psychology. It tells you what's structurally true about your commitments and their temporal relationships.
+werk does not tell you what to do. It does not interpret your patterns, diagnose your psychology, or compute dynamics like phase, tendency, or conflict. Those belong to the practice — the human (possibly aided by AI) or his coach reading the structure. The instrument holds the honest record. Interpretation is yours.
 
-Then it hands that structure to an AI agent — and the agent serves your declared intentions. Not the reverse.
+Based on [Robert Fritz's structural dynamics](https://www.robertfritz.com/resources/) with influence from Miguel A. Fernandez's work on operative traditions.
 
 ## Install
 
 ```bash
-# With Rust nightly:
-git clone https://github.com/bierlingm/werk
-cargo install --path werk/werk-cli
+# Everything (CLI + TUI + MCP server):
+git clone https://github.com/bierlingm/werk && cd werk
+cargo install --path werk-cli
 
-# Without Rust:
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain nightly -y
-source "$HOME/.cargo/env"
-git clone https://github.com/bierlingm/werk
-cargo install --path werk/werk-cli
+# CLI only (no terminal UI):
+cargo install --path werk-cli --no-default-features
+
+# MCP server only (for AI agent integration):
+cargo install --path werk-cli --no-default-features --features mcp
 ```
+
+Requires [Rust](https://rustup.rs/).
 
 ## Quick start
 
 ```bash
-werk init                                          # create a workspace
-werk add "Ship the novel" "42,000 words. Stuck."   # declare a tension
-werk                                               # open the instrument
+werk init                                            # create a workspace
+werk add "Novel is drafted" "42,000 words. Stuck."   # declare a tension
+werk                                                 # open the instrument
 ```
+
+The instrument stores its data in a `.werk/` directory at your workspace root.
+
+## Three interfaces
+
+werk exposes every gesture through three surfaces. Same mutations, same facts — different modes of engagement.
+
+### TUI
+
+```bash
+werk
+```
+
+The primary experience. You inhabit the structure. The TUI centers on the **operating envelope** — a window around the frontier of action showing what's overdue, what's next, what's held, and what was recently accomplished. This is where you land on opening.
+
+### CLI
+
+Every gesture available as a command. Human-readable text by default, structured JSON with `--json`.
+
+All commands accept tension IDs as `#23` (shorthand), `01ARZ3N4` (ULID prefix, 4+ chars), or full ULID.
+
+```bash
+# Structure
+werk add "desired" "actual"                    # declare a new tension
+werk add -p <id> "desired" "actual"            # add a step to the theory of closure
+werk compose <id> [<id>...]                    # create a parent above existing tensions
+werk desire <id> "new desire"                  # evolve what you're aiming at
+werk reality <id> "new reality"                # record what's actually true now
+werk horizon <id> "2026-04"                    # set a deadline (day, month, quarter, or year)
+werk note <id> "observation"                   # attach a note — context that isn't a state change
+
+# State changes
+werk resolve <id>                              # mark the gap as closed
+werk release --reason "why" <id>               # let go of a tension (requires a reason)
+werk reopen <id>                               # bring back a resolved or released tension
+
+# Organizing
+werk move <id> <new-parent-id>                 # reparent a tension
+werk position <id> <pos>                       # set sequence position (1 = first)
+werk hold <id>                                 # unposition — acknowledged but uncommitted
+werk snooze <id> "+3d"                         # hide until a future date
+werk recur <id> "+1w"                          # auto-reopen on an interval
+werk rm <id>                                   # delete (children move to grandparent)
+
+# Reading
+werk show <id>                                 # full detail — state, children, signals, history
+werk tree                                      # all active tensions as a hierarchy
+werk list [--all|--urgent|--neglected]          # flat list with filtering and sorting
+werk survey                                    # temporal view across all tensions
+werk diff                                      # what changed recently
+werk health                                    # structural statistics and alerts
+werk ground                                    # field-wide debrief — engagement, epochs, gestures
+werk insights                                  # behavioral facts — attention, postponement, activity
+werk context <id>                              # structural context as JSON (for scripts/agents)
+werk trajectory                                # projected completion and urgency collisions
+
+# Epochs (structural snapshots)
+werk epoch <id>                                # mark an epoch boundary (snapshots desire + reality)
+werk epoch <id> --list                         # list all epochs for a tension
+werk epoch <id> --show <n>                     # show what happened during epoch N
+```
+
+### MCP server
+
+```bash
+werk mcp
+```
+
+Protocol surface for AI agents. Starts an [MCP](https://modelcontextprotocol.io/) server on stdio transport, exposing every gesture as a typed tool. Direct library calls — no subprocess overhead.
+
+30 tools organized as:
+- **Read** (11) — show, tree, list, survey, health, ground, diff, context, trajectory, insights, epoch_show
+- **Gesture** (14) — add, compose, reality, desire, resolve, release, reopen, move, hold, position, horizon, rm, snooze, recur
+- **Note** (3) — note_add, note_rm, note_list
+- **Epoch** (2) — epoch, epoch_list
+- **Batch** (1) — apply mutations from YAML
+
+#### Connecting from Claude Code
+
+```bash
+claude mcp add werk -- werk mcp
+```
+
+Or in `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "werk": {
+      "command": "werk",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Any MCP client (Claude Desktop, Cursor, or custom harnesses) connects the same way — point at `werk mcp` on stdio.
 
 ## Core concepts
 
-**Tension** — a desire-reality pair. The gap generates energy for creative action.
+**Tension** — a desire-reality pair. The gap between them generates energy for creative action.
 
-**Theory of closure** — the action steps you compose to bridge from reality to desire. A conjecture about how to cross the gap, subject to revision as you learn.
+**Theory of closure** — the action steps composed to bridge from reality to desire. Each step is a hypothesis about what's needed. The theory is revisable — steps can be wrong, reordered, replaced.
 
-**Frontier of action** — where the present moment meets your theory. What's next, what's overdue, what's recently accomplished. The instrument centers on this.
+**Frontier of action** — where accomplished meets remaining. The present moment's position in the order of operations.
 
-**Gesture** — the unit of meaningful action. Creating, resolving, releasing, updating reality, noting, reordering. Each is a compression of intentionality into enacted form.
+**Operating envelope** — the window around the frontier containing everything action-relevant right now. The primary interaction surface.
 
-**Deadline** and **order of operations** — the two temporal primitives you set. Everything else (urgency, implied execution windows, sequencing pressure, critical path) is computed from these.
+**Gesture** — the unit of meaningful action. One gesture may involve multiple mutations. Gestures are the meaningful units for undo, history, and structural interpretation.
 
-## The TUI
+**Epoch** — a period of action within a stable desire-reality frame. When desire transforms or reality shifts significantly, the current epoch closes and a new one opens. The sequence of epochs forms the tension's **log**.
 
-Run `werk` with no arguments to open the instrument.
-
-The TUI is undergoing a fundamental rebuild around the **operating envelope** — a primary interaction surface centered on the frontier of action. See `designs/werk-conceptual-foundation.md` for the full architectural vision.
-
-## CLI
-
-```bash
-werk add "desired" "actual"           # create a tension
-werk add -p <id> "desired" "actual"   # create a child (action step)
-werk reality <id> "what's true now"   # update reality (a narrative beat)
-werk desire <id> "what you want"      # evolve desire
-werk resolve <id>                     # mark as accomplished
-werk release <id> --reason "why"      # let go
-werk note <id> "observation"          # annotate
-werk tree                             # see the whole structure
-werk show <id>                        # full details on one tension
-werk list                             # list with urgency and phase
-werk health                           # structural health summary
-```
-
-## Agent integration
-
-```bash
-werk run <id> "prompt"                # one-shot agent with full structural context
-werk context <id>                     # JSON export for any agent
-werk watch                            # background daemon monitoring dynamics
-```
-
-Press `@` in the TUI to invoke an agent scoped to the selected tension. The agent receives the full structural context and proposes mutations the user reviews before applying.
+**Deadline** and **order of operations** — the two temporal primitives you set. Everything else (urgency, execution windows, sequencing pressure, critical path) is computed from these.
 
 ## Architecture
 
 ```
-sd-core          Structural dynamics engine (Rust)
-  ├── tension    Core data model
-  ├── mutation   Append-only change log
+sd-core          Structural dynamics engine (Rust library)
+  ├── tension    Desire-reality pairs, status, children
+  ├── mutation   Append-only change log with gesture grouping
   ├── store      SQLite persistence
-  ├── dynamics   Computed structural properties
-  ├── engine     Orchestration + event emission
-  └── horizon    Temporal horizons with variable precision
+  ├── temporal   Urgency, horizon drift, critical path, sequencing pressure
+  ├── frontier   Frontier of action, operating envelope computation
+  ├── engine     Workspace operations + event emission
+  └── horizon    Variable-precision temporal horizons
 
-werk-cli         The practitioner's command-line toolkit
-werk-tui         The operative instrument (terminal UI, built on ftui)
-werk-shared      Shared configuration and workspace management
+werk-shared      Configuration, workspace discovery, hooks, prefix resolution
+werk-cli         Command-line interface
+werk-tui         Terminal UI
+werk-mcp         MCP server for AI agents
 ```
 
 ## Conceptual foundation
 
-The instrument is being redesigned around four frameworks:
+The instrument is organized around four frameworks:
 
-1. **Architecture of Space** — navigational dimensions, the one spatial law (desired above actual), stream and survey views
-2. **Grammar of Action** — operative gestures, state machine, key bindings per state
-3. **Calculus of Time** — deadline and order as primitives, urgency and critical path as computed properties
-4. **Logic of Framing** — what's visible and actionable given context (operating envelope, thresholds, zoom)
+1. **Architecture of Space** — the one spatial law (desired above actual), dimensions, positions, limits
+2. **Grammar of Action** — gesture primitives, state machine, key bindings per state
+3. **Calculus of Time** — two user-set primitives (deadline, order), six computed properties, two recorded facts
+4. **Logic of Framing** — what's visible and actionable given context (envelope, zoom, thresholds)
 
 Full specification: [`designs/werk-conceptual-foundation.md`](designs/werk-conceptual-foundation.md)
 
-## Theoretical foundation
-
-Based on [Robert Fritz's structural dynamics](https://www.robertfritz.com/resources/) — the principle that the gap between desired outcome and current reality creates structural tension that, when held honestly, drives genuine resolution. Influenced by Nicholas Catton's coaching methodology, Miguel A. Fernandez's operative traditions, and the Napoleonic field-of-opportunities strategy.
-
-## Build & test
+## Build and test
 
 ```bash
 cargo build                     # full workspace
 cargo test                      # all tests
+cargo clippy                    # lint
 cargo install --path werk-cli   # install to PATH
 ```
-
-Requires [Rust nightly](https://rustup.rs/). TUI built on [ftui](https://crates.io/crates/ftui).
 
 ## License
 

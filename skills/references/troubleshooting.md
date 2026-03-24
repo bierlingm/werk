@@ -16,6 +16,17 @@ werk walks UP from the current directory to find `.werk/`. Run `werk init` in th
 ## "ambiguous prefix matches multiple tensions"
 Use the short code (e.g., `#23`) or a longer ULID prefix. `werk show <partial>` will list all matches if ambiguous.
 
+## "MCP server not responding"
+
+Check that `werk mcp` starts without error:
+```bash
+echo '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}' | cargo run --bin werk -- mcp
+```
+
+Logs go to stderr. Set `RUST_LOG=debug` for verbose output. The server requires a `.werk/` workspace — run from a directory with an initialized workspace.
+
+If using Claude Code: verify the MCP config points to the correct `Cargo.toml` path and the workspace is accessible from where Claude Code runs.
+
 ## Common Structural Patterns
 
 ### The Oscillator
