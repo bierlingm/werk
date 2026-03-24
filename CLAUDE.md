@@ -10,6 +10,12 @@ Run `cargo run --bin werk -- tree` to see the current tension structure.
 
 Run `cargo run --bin werk -- show <id>` for details on any tension.
 
+## Three Interface Surfaces
+
+- **TUI** — `cargo run --bin werk` (or `werk` if installed). The primary experience. A session.
+- **CLI** — `cargo run --bin werk -- <command>`. Every gesture as a command. Sessionless.
+- **MCP** — `cargo run --bin werk -- mcp`. Protocol surface for AI agents. Stdio transport, 30 tools, direct library calls.
+
 ## The Four Frameworks
 
 1. **Architecture of Space** — dimensions, positions, limits, the one spatial law (desired above actual)

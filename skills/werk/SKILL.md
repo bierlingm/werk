@@ -90,6 +90,18 @@ werk survey                                    # Cross-tension temporal view
 werk ground                                    # Debrief/study surface
 ```
 
+## MCP Tools
+
+The MCP server (`werk mcp`) exposes the same gestures as the CLI through the Model Context Protocol. 30 tools, organized as:
+
+- **Read** (11): `show`, `tree`, `list`, `survey`, `health`, `ground`, `diff`, `context`, `trajectory`, `insights`, `epoch_show`
+- **Gesture** (14): `add`, `compose`, `reality`, `desire`, `resolve`, `release`, `reopen`, `move`, `hold`, `position`, `horizon`, `rm`, `snooze`, `recur`
+- **Note** (3): `note_add`, `note_rm`, `note_list`
+- **Epoch** (2): `epoch`, `epoch_list`
+- **Batch** (1): `batch` — apply YAML mutations
+
+All tools use direct library calls (no subprocess delegation). Parameters mirror CLI arguments. Returns structured JSON.
+
 ## How to Be a Good Participant
 
 ### If they're new
@@ -105,7 +117,8 @@ werk ground                                    # Debrief/study surface
 
 ### If you're working alongside them
 The user may invoke you from within werk or paste structural context into your session. When this happens:
-- You can interact via CLI: `werk show`, `werk reality`, `werk note`, etc.
+- If connected via MCP: use the MCP tools directly (preferred for agents — structured input/output, no subprocess overhead)
+- If not connected via MCP: interact via CLI (`werk show`, `werk reality`, `werk note`, etc.)
 - Update reality honestly — concrete facts, not narratives
 - Propose children as theory of closure when appropriate
 - Respect what's sacred (see foundation doc Part I)

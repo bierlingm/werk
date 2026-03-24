@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-23T22:56:18Z",
+  "flushed_at": "2026-03-24T09:47:29Z",
   "summary": {
-    "active": 29,
+    "active": 34,
     "released": 4,
     "resolved": 17,
-    "total": 50
+    "total": 55
   },
   "tensions": [
     {
@@ -250,7 +250,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "SKILL.md and all reference docs rewritten around foundation vocabulary. Instrument/practice boundary sharpened: dynamics belong to the practice, not the instrument — SKILL.md says 'What the Instrument Does NOT Compute', dynamics-guide reframed as practitioner/AI reading guide, foundation doc amended (new 'Instrument's Boundary' section in Part II). Triage and handoff dev-workflow skills created in .claude/skills/. Still needs: wider skill surface design for users and agent participants.",
+      "actual": "README.md rewritten from scratch (second pass) — reader-perspective comments, correct CLI reference with ID shorthand docs, three interface surfaces, MCP section with config, architecture diagram, log/logbook vocabulary introduced. CLAUDE.md has three surfaces section. Both SKILL.md files have MCP tools section. Troubleshooting has MCP entry. CLI design gaps recorded as #53-#56 under #10. Documentation expansion tracked as #52 under #3.",
       "created_at": "2026-03-22T17:54:58.305519+00:00",
       "desired": "skills and documentation updated to reflect foundation — SKILL.md, references, onboarding rewritten around new vocabulary and concepts",
       "horizon": null,
@@ -555,6 +555,61 @@
       "parent_id": "01KM6K4SBRWNB33S85YJVAKW3B",
       "position": null,
       "short_code": 51,
+      "status": "Active"
+    },
+    {
+      "actual": "README.md covers the essentials. No docs/ directory, no crate-level reference docs, no user guide, no docs site. Foundation doc exists but is a design document, not user-facing documentation.",
+      "created_at": "2026-03-24T08:24:13.415937+00:00",
+      "desired": "werk has a proper documentation surface — reference docs for each crate, user guide, and foundation for a docs site",
+      "horizon": null,
+      "id": "01KMFF3GB7JJ2F3YH2H50QF0W6",
+      "parent_id": "01KKYEFHWKBSC8YV7XYDYXMJ9M",
+      "position": null,
+      "short_code": 52,
+      "status": "Active"
+    },
+    {
+      "actual": "README review surfaced terminology gaps: tree shows the forest (not a subtree), no log/logbook command exists (vocabulary from tui-shaping.md), epoch subcommands use flag style not subcommand style, reading commands (diff/ground/insights/survey/trajectory) have unclear boundaries to new users. Needs systematic terminology pass.",
+      "created_at": "2026-03-24T09:25:20.426640+00:00",
+      "desired": "CLI terminology and command structure reviewed and coherent — tree/forest distinction resolved, log/logbook commands exist, epoch subcommands rationalized, reading commands have clear boundaries",
+      "horizon": null,
+      "id": "01KMFJKDDAG5QXRTFM4VXKWSAC",
+      "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
+      "position": null,
+      "short_code": 53,
+      "status": "Active"
+    },
+    {
+      "actual": "reopen has no --reason flag. release requires --reason but reopen does not. Reopening is a meaningful structural act (circumstances changed, premature resolution, new information) that should be recorded.",
+      "created_at": "2026-03-24T09:25:22.372967+00:00",
+      "desired": "reopen gesture captures a reason — structural record of why something was brought back",
+      "horizon": null,
+      "id": "01KMFJKFA4Y72K1TQHEWTPF7CF",
+      "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
+      "position": null,
+      "short_code": 54,
+      "status": "Active"
+    },
+    {
+      "actual": "position command accepts single tension + position. No way to set a new order wholesale or partially in one gesture. Batch YAML supports SetPosition but no dedicated reorder command.",
+      "created_at": "2026-03-24T09:25:24.640474+00:00",
+      "desired": "batch positioning exists — reorder multiple tensions in one gesture",
+      "horizon": null,
+      "id": "01KMFJKHH0412G0DJXJVZGXPF4",
+      "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
+      "position": null,
+      "short_code": 55,
+      "status": "Active"
+    },
+    {
+      "actual": "tree always shows the full forest. To see structure under a tension you use show, which only displays one level of children. No way to see the full recursive subtree under a specific root.",
+      "created_at": "2026-03-24T09:25:27.015205+00:00",
+      "desired": "tree command can show a subtree under a specific tension",
+      "horizon": null,
+      "id": "01KMFJKKV76FES26PQ0HBT6Q90",
+      "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
+      "position": null,
+      "short_code": 56,
       "status": "Active"
     }
   ]
