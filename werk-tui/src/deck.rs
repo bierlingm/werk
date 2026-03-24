@@ -5,7 +5,7 @@
 //!     rendered in the middle area. Pitch navigation through selectable items.
 
 use ftui::Frame;
-use ftui::layout::Rect;
+use ftui::layout::{Constraint, Flex, Rect};
 use ftui::style::Style;
 use ftui::text::{Line, Span, Text};
 use ftui::widgets::Widget;
@@ -552,19 +552,20 @@ impl InstrumentApp {
         )
     }
 
-    /// Main deck render entry point (V2: frontier + console).
+    /// Main deck render entry point.
     ///
-    /// Layout strategy: render desire zone from the top, reality zone from the bottom,
-    /// middle space is filled with route + console zones.
+    /// Uses Flex layout to split into three vertical zones:
+    /// - Top: breadcrumb + desire + rule (Fixed height)
+    /// - Middle: route + console + accumulated (Fill)
+    /// - Bottom: reality + rule (Fixed height)
     pub fn render_deck(&self, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.deck_content_area(*area);
         let w = area.width as usize;
 
         if w < 20 || area.height < 8 {
-            return; // too small to render
+            return;
         }
 
-        // Get parent tension data (the deck always shows a descended view)
         let parent = match &self.parent_tension {
             Some(p) => p,
             None => {
@@ -573,7 +574,7 @@ impl InstrumentApp {
             }
         };
 
-        // Compute column layout — consider all children's deadline labels for width
+        // --- Column layout for child lines ---
         let deadline_label = self.parent_horizon_label.as_deref();
         let max_child_deadline = self.siblings.iter()
             .filter_map(|s| s.horizon_label.as_deref())
@@ -584,7 +585,6 @@ impl InstrumentApp {
             (None, Some(b)) => Some(b),
             (None, None) => None,
         };
-        // Compute max ID and max age length across all children
         let max_id = self.siblings.iter()
             .filter_map(|s| s.short_code)
             .max()
@@ -595,20 +595,18 @@ impl InstrumentApp {
             .unwrap_or(2);
         let cols = ColumnLayout::compute(w, widest_deadline, max_id, max_age_len);
 
-        // Compute frontier classification
+        // --- Frontier classification ---
         let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
 
-        // --- Phase 1: Measure top and bottom zones ---
-
-        // Top zone: breadcrumb + blank + desire lines + rule
+        // --- Measure zones for Flex layout ---
         let has_breadcrumb = self.grandparent_display.is_some();
         let has_deadline = deadline_label.is_some() && !deadline_label.unwrap_or("").is_empty();
         let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
-        // Reserve space for right-column facts (Q25: ID + →N + age)
         let right_col_reserve = GUTTER + cols.right;
         let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
         let desire_lines = word_wrap(&parent.desired, desire_wrap_width);
-        let _top_height: u16 = {
+
+        let top_height: u16 = {
             let mut h: u16 = 0;
             if has_breadcrumb { h += 1; }
             h += 1; // blank line before desire
@@ -617,8 +615,7 @@ impl InstrumentApp {
             h
         };
 
-        // Bottom zone: reality lines + rule
-        // Reserve space for inline age suffix on last line (" · Nd")
+        // Reality: use Paragraph with word wrap for measurement
         let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
         let reality_age_reserve = if reality_age_str.is_empty() { 0 } else { 3 + reality_age_str.chars().count() };
         let reality_wrap_width = w.saturating_sub(reality_age_reserve);
@@ -637,123 +634,34 @@ impl InstrumentApp {
             h
         };
 
-        // --- Phase 2: Render top zone (pinned to top) ---
+        // === Flex vertical split: top (Fixed) | middle (Fill) | bottom (Fixed) ===
+        let zones = Flex::vertical()
+            .constraints([
+                Constraint::Fixed(top_height),
+                Constraint::Fill,
+                Constraint::Fixed(bottom_height),
+            ])
+            .split(area);
+        let top_zone = zones[0];
+        let middle_zone = zones[1];
+        let bottom_zone = zones[2];
 
-        let mut y = area.y;
+        // === Render top zone (desire anchor) ===
+        self.render_desire_zone(frame, top_zone, w, &cols, parent, &desire_lines,
+            has_breadcrumb, has_deadline, deadline_label.unwrap_or(""));
 
-        // 1. Parent breadcrumb
-        if let Some((ref gp_id, ref gp_desired)) = self.grandparent_display {
-            let breadcrumb = format!(
-                "\u{2190} {} {}",
-                gp_id,
-                truncate_str(gp_desired, cols.main.min(60))
-            );
-            render_line(frame, area.x, y, area.width, &[
-                (pad_left(&cols), STYLES.dim),
-                (breadcrumb, STYLES.dim),
-            ]);
-            y += 1;
-        }
+        // === Render bottom zone (reality anchor) ===
+        self.render_reality_zone(frame, bottom_zone, w, &reality_lines, reality_age_str);
 
-        // Blank line before desire
-        y += 1;
-
-        // 2. Desire text with right-column facts (Q25: zero-padded ID + age)
-        let deadline_str = deadline_label.unwrap_or("");
-        // Desire age: strip " ago" from the relative_time string for compact display
-        let desire_age = self.parent_desire_age.as_deref().unwrap_or("")
-            .trim_end_matches(" ago").to_string();
-        let desire_id = parent.short_code
-            .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
-            .unwrap_or_default();
-        let desire_right = format!("{} {}", desire_id, desire_age);
-        let desire_right_w = desire_right.chars().count();
-
-        for (i, line_text) in desire_lines.iter().enumerate() {
-            let mut spans: Vec<(String, Style)> = Vec::new();
-
-            if has_deadline {
-                let left_content = if i == 0 {
-                    format!("{:<width$}", deadline_str, width = cols.left)
-                } else {
-                    " ".repeat(cols.left)
-                };
-                spans.push((left_content, STYLES.dim));
-                spans.push((" ".repeat(GUTTER), Style::new()));
-            }
-
-            spans.push((line_text.clone(), STYLES.text_bold));
-
-            if i == 0 {
-                // Right-align facts on FIRST line of desire
-                let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + line_text.chars().count();
-                let gap = w.saturating_sub(text_used + desire_right_w);
-                if gap >= GUTTER {
-                    spans.push((" ".repeat(gap), Style::new()));
-                    spans.push((desire_right.clone(), STYLES.dim));
-                }
-            }
-
-            render_line_spans(frame, area.x, y, area.width, &spans);
-            y += 1;
-        }
-
-        // 3. Desire rule
-        let rule = glyphs::HEAVY_RULE.to_string().repeat(w);
-        render_line(frame, area.x, y, area.width, &[
-            (rule, STYLES.dim),
-        ]);
-        y += 1;
-
-        let top_end = y;
-
-        // --- Phase 3: Render bottom zone (pinned to bottom) ---
-
-        let bottom_start = (area.y + area.height).saturating_sub(bottom_height);
-        let mut by = bottom_start;
-
-        if !reality_lines.is_empty() {
-            by += 1;
-
-            let reality_age = self.parent_reality_age.as_deref().unwrap_or("");
-            let last_reality_line = reality_lines.len().saturating_sub(1);
-
-            for (i, line_text) in reality_lines.iter().enumerate() {
-                let mut spans: Vec<(String, Style)> = vec![
-                    (line_text.clone(), STYLES.dim),
-                ];
-
-                if i == last_reality_line && !reality_age.is_empty() {
-                    spans.push((" \u{00B7} ".to_string(), STYLES.dim));
-                    spans.push((reality_age.to_string(), STYLES.dim));
-                }
-
-                render_line_spans(frame, area.x, by, area.width, &spans);
-                by += 1;
-            }
-        }
-
-        // Reality rule
-        let rule = glyphs::RULE.to_string().repeat(w);
-        render_line(frame, area.x, by, area.width, &[
-            (rule, STYLES.dim),
-        ]);
-
-        // --- Phase 4: Middle zone — route + console ---
-        //
-        // Split layout: top-down (route → overdue → next → separator → held → input)
-        // and bottom-up (accumulated, gravitating toward reality).
-        // Any gap between them is breathing space.
-
-        let middle_start = top_end;
-        let middle_end = bottom_start;
-
-        if middle_start >= middle_end {
-            return; // no space for middle zone
+        // === Render middle zone (route + console + accumulated) ===
+        if middle_zone.height == 0 {
+            return;
         }
 
         // Compute space-aware expansion for held/accumulated
-        let middle_lines = (middle_end - middle_start) as usize;
+        let middle_start = middle_zone.y;
+        let middle_end = middle_zone.y + middle_zone.height;
+        let middle_lines = middle_zone.height as usize;
         frontier.compute_expansion(middle_lines);
 
         let cursor_idx = self.deck_cursor.index;
@@ -1063,6 +971,126 @@ impl InstrumentApp {
         ]);
         Paragraph::new(Text::from(line))
             .render(Rect::new(x, y, w as u16, 1), frame);
+    }
+
+    /// Render the desire zone (top anchor): breadcrumb + blank + desire text + rule.
+    fn render_desire_zone(
+        &self,
+        frame: &mut Frame<'_>,
+        zone: Rect,
+        w: usize,
+        cols: &ColumnLayout,
+        parent: &sd_core::Tension,
+        desire_lines: &[String],
+        has_breadcrumb: bool,
+        has_deadline: bool,
+        deadline_str: &str,
+    ) {
+        let mut y = zone.y;
+
+        // Breadcrumb
+        if has_breadcrumb {
+            if let Some((ref gp_id, ref gp_desired)) = self.grandparent_display {
+                let breadcrumb = format!(
+                    "\u{2190} {} {}",
+                    gp_id,
+                    truncate_str(gp_desired, cols.main.min(60))
+                );
+                render_line(frame, zone.x, y, zone.width, &[
+                    (pad_left(cols), STYLES.dim),
+                    (breadcrumb, STYLES.dim),
+                ]);
+                y += 1;
+            }
+        }
+
+        // Blank line
+        y += 1;
+
+        // Desire text with right-column facts
+        let desire_age = self.parent_desire_age.as_deref().unwrap_or("")
+            .trim_end_matches(" ago").to_string();
+        let desire_id = parent.short_code
+            .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
+            .unwrap_or_default();
+        let desire_right = format!("{} {}", desire_id, desire_age);
+        let desire_right_w = desire_right.chars().count();
+
+        for (i, line_text) in desire_lines.iter().enumerate() {
+            if y >= zone.y + zone.height { break; }
+            let mut spans: Vec<(String, Style)> = Vec::new();
+
+            if has_deadline {
+                let left_content = if i == 0 {
+                    format!("{:<width$}", deadline_str, width = cols.left)
+                } else {
+                    " ".repeat(cols.left)
+                };
+                spans.push((left_content, STYLES.dim));
+                spans.push((" ".repeat(GUTTER), Style::new()));
+            }
+
+            spans.push((line_text.clone(), STYLES.text_bold));
+
+            if i == 0 {
+                let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + line_text.chars().count();
+                let gap = w.saturating_sub(text_used + desire_right_w);
+                if gap >= GUTTER {
+                    spans.push((" ".repeat(gap), Style::new()));
+                    spans.push((desire_right.clone(), STYLES.dim));
+                }
+            }
+
+            render_line_spans(frame, zone.x, y, zone.width, &spans);
+            y += 1;
+        }
+
+        // Desire rule
+        if y < zone.y + zone.height {
+            let rule = glyphs::HEAVY_RULE.to_string().repeat(w);
+            render_line(frame, zone.x, y, zone.width, &[(rule, STYLES.dim)]);
+        }
+    }
+
+    /// Render the reality zone (bottom anchor): blank + reality text + rule.
+    /// Uses Paragraph with word wrap for the reality text.
+    fn render_reality_zone(
+        &self,
+        frame: &mut Frame<'_>,
+        zone: Rect,
+        w: usize,
+        reality_lines: &[String],
+        reality_age: &str,
+    ) {
+        if zone.height == 0 { return; }
+
+        // Reality rule at the very bottom of the zone
+        let rule_y = zone.y + zone.height - 1;
+        let rule = glyphs::RULE.to_string().repeat(w);
+        render_line(frame, zone.x, rule_y, zone.width, &[(rule, STYLES.dim)]);
+
+        if reality_lines.is_empty() { return; }
+
+        // Reality text renders above the rule, with a blank line gap
+        let text_start = zone.y + 1; // blank line at top of zone
+        let text_end = rule_y; // stop before rule
+
+        for (i, line_text) in reality_lines.iter().enumerate() {
+            let y = text_start + i as u16;
+            if y >= text_end { break; }
+
+            let mut spans: Vec<(String, Style)> = vec![
+                (line_text.clone(), STYLES.dim),
+            ];
+
+            // Age suffix on last line
+            if i == reality_lines.len() - 1 && !reality_age.is_empty() {
+                spans.push((" \u{00B7} ".to_string(), STYLES.dim));
+                spans.push((reality_age.to_string(), STYLES.dim));
+            }
+
+            render_line_spans(frame, zone.x, y, zone.width, &spans);
+        }
     }
 
     /// Compute frontier with maximum expansion for navigation.
