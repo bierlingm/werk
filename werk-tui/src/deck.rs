@@ -726,11 +726,10 @@ impl InstrumentApp {
         let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
             if let Some(ref detail) = self.focused_detail {
                 let ch = detail.children.len();
-                let blank = if ch > 0 && !detail.actual.is_empty() { 1 } else { 0 };
                 let rl = if detail.actual.is_empty() { 0 } else {
                     word_wrap(&detail.actual, w).len()
                 };
-                ch + blank + rl
+                ch + rl
             } else { 0 }
         } else { 0 };
 
@@ -1285,11 +1284,8 @@ impl InstrumentApp {
             y += 1;
         }
 
-        // Reality (dim, word-wrapped) with blank line before if there are children
+        // Reality (dim, word-wrapped) — no blank line, dim text is visually distinct
         if !detail.actual.is_empty() && y < limit_y {
-            if !detail.children.is_empty() && y < limit_y {
-                y += 1; // blank line between children and reality
-            }
             let avail = limit_y.saturating_sub(y);
             if avail > 0 {
                 let indent_str = " ".repeat(cols.left + GUTTER + child_indent);
