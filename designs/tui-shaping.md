@@ -326,6 +326,17 @@ Accumulated items (resolved/released) now render with most recent nearest the br
 
 **Status:** Implemented.
 
+### Q38: Space (peek) vs Enter (focus) interaction
+
+Space (V8) is inline peek: children + reality appear below the selected item without leaving the list. Enter (V7) is focus zoom: the whole middle zone shows the focused element's detail. They're complementary — Space is a quick glance ("should I descend?"), Enter is a deep dive ("show me everything about this one").
+
+Open question: when focused (Enter), should Space do anything? Options:
+- Space is disabled in focus mode (focus already shows children)
+- Space in focus toggles inline expansion of the focused element's *grandchildren*
+- Space on a focused element's child peeks into that child
+
+**Status:** Open. Evaluate when V8 (peek) is implemented.
+
 ---
 
 ## Requirements (R) — FINAL
