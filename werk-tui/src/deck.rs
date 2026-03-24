@@ -1131,7 +1131,10 @@ impl InstrumentApp {
             .split(zone);
 
         // Reality rule at the bottom
-        let rule_zone = zones.last().unwrap();
+        let rule_zone = match zones.last() {
+            Some(z) => z,
+            None => return, // no space to render
+        };
         let rule = glyphs::RULE.to_string().repeat(w);
         render_line(frame, rule_zone.x, rule_zone.y, rule_zone.width, &[(rule, STYLES.dim)]);
 
