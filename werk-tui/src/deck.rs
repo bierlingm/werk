@@ -722,21 +722,29 @@ impl InstrumentApp {
             return;
         }
 
-        // V7: Focus zoom — render focused element detail instead of normal layout
-        if self.deck_zoom == ZoomLevel::Focus {
+        // V7: measure inline focus detail height to reserve space
+        let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
             if let Some(ref detail) = self.focused_detail {
-                self.render_focus_zone(frame, middle_zone, w, &cols, detail);
-                return;
-            }
-        }
+                let ch = detail.children.len();
+                let rl = if detail.actual.is_empty() { 0 } else {
+                    word_wrap(&detail.actual, w).len()
+                };
+                2 + ch + rl // separator + children + reality + separator
+            } else { 0 }
+        } else { 0 };
 
         // Compute space-aware expansion for held/accumulated
         let middle_start = middle_zone.y;
         let middle_end = middle_zone.y + middle_zone.height;
         let middle_lines = middle_zone.height as usize;
-        frontier.compute_expansion(middle_lines);
+        frontier.compute_expansion(middle_lines.saturating_sub(focus_detail_height));
 
         let cursor_idx = self.deck_cursor.index;
+        let focused_sibling = if self.deck_zoom == ZoomLevel::Focus {
+            self.focused_detail.as_ref().map(|d| d.sibling_index)
+        } else {
+            None
+        };
 
         // === Bottom-up pass: accumulated items (gravity toward reality) ===
         // Render from middle_end upward. We compute positions first, then render.
@@ -774,10 +782,29 @@ impl InstrumentApp {
             }
 
             // Individual accumulated items (shown items above the summary, in order)
+            // V7: if an accumulated item is focused, reserve space for inline detail
+            let _acc_focus_reserve: u16 = if let Some(fi) = focused_sibling {
+                if frontier.accumulated[..shown].contains(&fi) {
+                    focus_detail_height as u16
+                } else { 0 }
+            } else { 0 };
+
             for i in (0..shown).rev() {
                 if acc_top <= middle_start { break; }
-                acc_top -= 1;
+                // Reserve space for focus detail if this is the focused item
                 let sibling_idx = frontier.accumulated[i];
+                if focused_sibling == Some(sibling_idx) {
+                    // Place focus detail first (above the item in render order)
+                    if let Some(ref detail) = self.focused_detail {
+                        let dl = self.render_inline_focus(
+                            frame, area.x, acc_top.saturating_sub(focus_detail_height as u16),
+                            acc_top, w, detail
+                        );
+                        acc_top = acc_top.saturating_sub(dl);
+                    }
+                }
+                if acc_top <= middle_start { break; }
+                acc_top -= 1;
                 let entry = &self.siblings[sibling_idx];
                 let glyph = match entry.status {
                     TensionStatus::Resolved => "\u{2713}",  // ✓
@@ -841,6 +868,12 @@ impl InstrumentApp {
                 let glyph = status_glyph(entry.status);
                 self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0);
                 my += 1;
+                // V7: inline focus expansion
+                if focused_sibling == Some(sibling_idx) {
+                    if let Some(ref detail) = self.focused_detail {
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                    }
+                }
             }
             // Route summary for remaining — includes next deadline if available
             if route_remaining > 0 && my < top_limit {
@@ -865,6 +898,11 @@ impl InstrumentApp {
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
                 self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, true, 0);
                 my += 1;
+                if focused_sibling == Some(sibling_idx) {
+                    if let Some(ref detail) = self.focused_detail {
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                    }
+                }
             }
 
             // --- Next committed step (still part of the ordered sequence) ---
@@ -874,6 +912,11 @@ impl InstrumentApp {
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
                     self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, 0);
                     my += 1;
+                    if focused_sibling == Some(next_idx) {
+                        if let Some(ref detail) = self.focused_detail {
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                        }
+                    }
                 }
             }
 
@@ -903,6 +946,11 @@ impl InstrumentApp {
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
                     self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, HELD_INDENT);
                     my += 1;
+                    if focused_sibling == Some(sibling_idx) {
+                        if let Some(ref detail) = self.focused_detail {
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                        }
+                    }
                 }
                 // Summary for remaining
                 if held_remaining > 0 && my < top_limit {
@@ -1182,151 +1230,59 @@ impl InstrumentApp {
             .render(text_zone, frame);
     }
 
-    /// Render the focus zoom view (V7): one element's detail fills the middle zone.
-    /// The focused item is removed from context. Accumulated stays near reality (bottom-up).
-    /// Context items shown when space allows, compressed when tight.
-    fn render_focus_zone(
+    /// Render inline focus detail below a child line (V7).
+    /// Renders separator, children, and reality starting at `y`.
+    /// Returns the number of lines consumed.
+    fn render_inline_focus(
         &self,
         frame: &mut Frame<'_>,
-        zone: Rect,
+        x: u16,
+        start_y: u16,
+        limit_y: u16,
         w: usize,
-        cols: &ColumnLayout,
         detail: &FocusedDetail,
-    ) {
-        let end = zone.y + zone.height;
-        let frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
-        let focused_idx = detail.sibling_index;
+    ) -> u16 {
+        let mut y = start_y;
 
-        // --- Exclude the focused item from context lists ---
-        let ctx_route: Vec<usize> = frontier.route.iter()
-            .chain(frontier.overdue.iter())
-            .chain(frontier.next.iter())
-            .copied()
-            .filter(|&idx| idx != focused_idx)
-            .collect();
-        let ctx_held: Vec<usize> = frontier.held.iter()
-            .copied()
-            .filter(|&idx| idx != focused_idx)
-            .collect();
-        let ctx_acc: Vec<usize> = frontier.accumulated.iter()
-            .copied()
-            .filter(|&idx| idx != focused_idx)
-            .collect();
+        // Separator below the focused item's line
+        if y >= limit_y { return 0; }
+        let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+        render_line(frame, x, y, w as u16, &[(rule, STYLES.dim)]);
+        y += 1;
 
-        // --- Measure focused detail ---
-        let heading_lines = word_wrap(&detail.desired, w).len() as u16;
-        let children_lines = detail.children.len() as u16;
-        let reality_lines = if detail.actual.is_empty() { 0 } else {
-            word_wrap(&detail.actual, w).len() as u16
-        };
-        let focus_height = heading_lines + 1 + children_lines + 1 + reality_lines;
-
-        // --- Budget for context ---
-        let context_budget = zone.height.saturating_sub(focus_height + 2) as usize;
-        let above_count = ctx_route.len() + ctx_held.len();
-        let below_count = ctx_acc.len();
-        let total_ctx = above_count + below_count;
-        let above_budget = if total_ctx > 0 {
-            (context_budget * above_count) / total_ctx
-        } else { 0 };
-        let below_budget = context_budget.saturating_sub(above_budget);
-
-        // === Bottom-up pass: accumulated near reality ===
-        let mut acc_top = end;
-        if below_count > 0 {
-            if below_budget >= below_count {
-                // Individual accumulated items (bottom-up)
-                for &idx in ctx_acc.iter().rev() {
-                    if acc_top <= zone.y { break; }
-                    acc_top -= 1;
-                    let entry = &self.siblings[idx];
-                    let glyph = status_glyph(entry.status);
-                    self.render_child_line(frame, zone.x, acc_top, w, cols, entry, glyph, false, false, 0);
-                }
-            } else if below_budget >= 1 {
-                acc_top -= 1;
-                let text = format!("\u{25BC} {} accumulated", below_count);
-                self.render_indicator_line(frame, zone.x, acc_top, w, cols, &text, false, STYLES.dim, 0);
-            }
-        }
-
-        let top_limit = acc_top; // don't overlap accumulated
-
-        // === Top-down pass ===
-        let mut y = zone.y;
-
-        // Context above: route + held (excluding focused)
-        if above_count > 0 {
-            if above_budget >= above_count {
-                for &idx in &ctx_route {
-                    if y >= top_limit { break; }
-                    let entry = &self.siblings[idx];
-                    let glyph = status_glyph(entry.status);
-                    self.render_child_line(frame, zone.x, y, w, cols, entry, glyph, false, false, 0);
-                    y += 1;
-                }
-                for &idx in &ctx_held {
-                    if y >= top_limit { break; }
-                    let entry = &self.siblings[idx];
-                    self.render_child_line(frame, zone.x, y, w, cols, entry, "\u{00B7}", false, false, HELD_INDENT);
-                    y += 1;
-                }
-            } else if above_budget >= 1 {
-                let mut parts = Vec::new();
-                if !ctx_route.is_empty() { parts.push(format!("\u{25B2} {} in route", ctx_route.len())); }
-                if !ctx_held.is_empty() { parts.push(format!("{} held", ctx_held.len())); }
-                let text = parts.join(" \u{00B7} ");
-                self.render_indicator_line(frame, zone.x, y, w, cols, &text, false, STYLES.dim, 0);
-                y += 1;
-            }
-        }
-
-        // Blank before focus
-        if y < top_limit { y += 1; }
-
-        // --- Focused element detail ---
-        // Desire heading (bold, word-wrapped)
-        if y < top_limit {
-            let heading_text = Text::from(Line::from(Span::styled(&detail.desired, STYLES.text_bold)));
-            let max_h = top_limit.saturating_sub(y).min(heading_lines + 1);
-            Paragraph::new(heading_text)
-                .wrap(WrapMode::Word)
-                .render(Rect::new(zone.x, y, zone.width, max_h), frame);
-            y += heading_lines;
-        }
-
-        // Separator
-        if y < top_limit {
-            let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
-            render_line(frame, zone.x, y, zone.width, &[(rule, STYLES.dim)]);
-            y += 1;
-        }
-
-        // Children (individual lines)
+        // Children (individual lines with glyphs, indented)
         for (desired, status) in &detail.children {
-            if y >= top_limit.saturating_sub(reality_lines + 1) { break; }
+            if y >= limit_y { break; }
             let glyph = status_glyph(*status);
-            let text = truncate_str(desired, w.saturating_sub(4));
+            let text = truncate_str(desired, w.saturating_sub(6));
             let style = if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim };
-            render_line(frame, zone.x, y, zone.width, &[
-                ("  ".to_string(), STYLES.dim),
+            render_line(frame, x, y, w as u16, &[
+                ("    ".to_string(), STYLES.dim),
                 (format!("{} ", glyph), style),
                 (text, style),
             ]);
             y += 1;
         }
 
-        // Blank before reality
-        if y < top_limit { y += 1; }
-
         // Reality (dim, word-wrapped)
-        if !detail.actual.is_empty() && y < top_limit {
-            let avail = top_limit.saturating_sub(y);
+        if !detail.actual.is_empty() && y < limit_y {
+            let avail = limit_y.saturating_sub(y);
             let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
             Paragraph::new(reality_text)
                 .wrap(WrapMode::Word)
-                .render(Rect::new(zone.x, y, zone.width, avail), frame);
+                .render(Rect::new(x, y, w as u16, avail), frame);
+            let reality_lines = word_wrap(&detail.actual, w).len() as u16;
+            y += reality_lines.min(avail);
         }
+
+        // Separator after detail
+        if y < limit_y {
+            let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+            render_line(frame, x, y, w as u16, &[(rule, STYLES.dim)]);
+            y += 1;
+        }
+
+        y - start_y
     }
 
     /// Compute frontier with maximum expansion for navigation.
