@@ -257,9 +257,44 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Gaze
+            // Space: peek in deck mode, gaze in field mode
             Msg::Char(' ') | Msg::ToggleGaze => {
-                self.toggle_gaze();
+                if self.use_deck && self.parent_id.is_some() {
+                    // V8: peek — inline children preview, lighter than focus
+                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                        // Already peeking/focused — close
+                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                        self.focused_detail = None;
+                    } else if let Some(entry) = self.action_target().cloned() {
+                        if entry.child_count > 0 {
+                            // Load children only (no deep reality for peek)
+                            let now = chrono::Utc::now();
+                            let raw_children = self.engine.store()
+                                .get_children(&entry.id)
+                                .unwrap_or_default();
+                            let child_ids: Vec<&str> = raw_children.iter().map(|c| c.id.as_str()).collect();
+                            let child_counts = self.engine.store()
+                                .count_children_by_parent(&child_ids)
+                                .unwrap_or_default();
+                            let children: Vec<crate::state::FieldEntry> = raw_children.iter().map(|c| {
+                                let cc = child_counts.get(&c.id).copied().unwrap_or(0);
+                                crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
+                            }).collect();
+                            let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
+                            self.focused_detail = Some(crate::deck::FocusedDetail {
+                                sibling_index: sibling_idx,
+                                desired: entry.desired.clone(),
+                                actual: String::new(), // peek = no reality
+                                children,
+                                short_code: entry.short_code,
+                                deadline_label: entry.horizon_label.clone(),
+                            });
+                            self.deck_zoom = crate::deck::ZoomLevel::Focus;
+                        }
+                    }
+                } else {
+                    self.toggle_gaze();
+                }
                 Cmd::none()
             }
             // Tab is reserved for field cycling in edit mode — no action in normal mode
