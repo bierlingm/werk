@@ -326,7 +326,38 @@ Accumulated items (resolved/released) now render with most recent nearest the br
 
 **Status:** Implemented.
 
-### Q38: Space (peek) vs Enter (focus) interaction
+### Q38: Space as multi-select vs peek
+
+Space was initially mapped to peek (inline children preview). But multi-select is more useful: Space toggles selection on items, then batch operations (resolve, release, compose, reorder) apply to all selected. Peek is nice but l/→ descend already shows children. Multi-select is unique capability.
+
+If Space = select: Enter = focus (inline expansion), Space = select for batch action. Clean separation.
+
+**Status:** Open. Redesign Space as multi-select in a future slice.
+
+### Q39: NOW / input point / console design
+
+The `+ ___` input point is wholly underdeveloped. Per the foundation:
+- R2.4: "Input point — space for creating new elements, expandable inline configuration"
+- R2.8: "Empty console is a meaningful state — shows affordances"
+- The console is the action zone at center (R0, R1.3)
+
+The input point should:
+1. **Show available gestures** when cursor rests there: `a` add · `!` desire · `?` reality · `n` note
+2. **Expand on selection** to show a brief context: epoch age, action count since last epoch, next deadline
+3. **Be visually distinct** from child items — it's not a child, it's the frontier itself
+4. **Adapt to state**: empty console (no children) shows creation invitation; active console shows action summary
+
+The NOW marker is the hinge between "what's planned" (above) and "what's done" (below). It should feel like a resting point, not just a blank placeholder.
+
+Design candidates:
+- `── NOW ──` horizontal rule with label (too heavy?)
+- `+ add step` with dim gesture hints (actionable but text-heavy)
+- Just a cursor-highlightable blank line (minimal, current approach)
+- A dynamic summary line: `· epoch 3d old · 2 resolved · next: Mar 30` (informative)
+
+**Status:** Open. Needs design experimentation.
+
+### Q40: Space (peek) vs Enter (focus) — original question
 
 Space (V8) is inline peek: children + reality appear below the selected item without leaving the list. Enter (V7) is focus zoom: the whole middle zone shows the focused element's detail. They're complementary — Space is a quick glance ("should I descend?"), Enter is a deep dive ("show me everything about this one").
 
