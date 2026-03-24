@@ -726,10 +726,11 @@ impl InstrumentApp {
         let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
             if let Some(ref detail) = self.focused_detail {
                 let ch = detail.children.len();
+                let blank = if ch > 0 && !detail.actual.is_empty() { 1 } else { 0 };
                 let rl = if detail.actual.is_empty() { 0 } else {
-                    word_wrap(&detail.actual, w).len() + 1 // +1 for blank line before reality
+                    word_wrap(&detail.actual, w).len()
                 };
-                ch + rl + 1 // children + reality + closing separator
+                ch + blank + rl
             } else { 0 }
         } else { 0 };
 
@@ -797,19 +798,18 @@ impl InstrumentApp {
                 } else { 0 }
             } else { 0 };
 
+            // Track which accumulated items need focus detail rendered after placement
+            let mut acc_focus_y: Option<(u16, u16)> = None; // (start_y, limit_y) for deferred focus render
+
             for i in (0..shown).rev() {
                 if acc_top <= middle_start { break; }
-                // Reserve space for focus detail if this is the focused item
                 let sibling_idx = frontier.accumulated[i];
+                // Reserve extra space for focus detail below the item
                 if focused_sibling == Some(sibling_idx) {
-                    // Place focus detail first (above the item in render order)
-                    if let Some(ref detail) = self.focused_detail {
-                        let dl = self.render_inline_focus(
-                            frame, area.x, acc_top.saturating_sub(focus_detail_height as u16),
-                            acc_top, w, &cols, detail, 0
-                        );
-                        acc_top = acc_top.saturating_sub(dl);
-                    }
+                    let reserve = focus_detail_height as u16;
+                    acc_top = acc_top.saturating_sub(reserve);
+                    // Remember where to render focus detail (below the item line)
+                    acc_focus_y = Some((acc_top, acc_top + reserve));
                 }
                 if acc_top <= middle_start { break; }
                 acc_top -= 1;
@@ -821,6 +821,13 @@ impl InstrumentApp {
                 };
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(sibling_idx);
                 self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
+
+                // Render focus detail below this accumulated item (top-down within reserved space)
+                if focused_sibling == Some(sibling_idx) {
+                    if let (Some((fy_start, fy_limit)), Some(ref detail)) = (acc_focus_y, &self.focused_detail) {
+                        self.render_inline_focus(frame, area.x, acc_top + 1, fy_limit, w, &cols, detail, 0);
+                    }
+                }
             }
         }
 
