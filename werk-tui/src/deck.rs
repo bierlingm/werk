@@ -798,7 +798,7 @@ impl InstrumentApp {
                     if let Some(ref detail) = self.focused_detail {
                         let dl = self.render_inline_focus(
                             frame, area.x, acc_top.saturating_sub(focus_detail_height as u16),
-                            acc_top, w, &cols, detail
+                            acc_top, w, &cols, detail, 0
                         );
                         acc_top = acc_top.saturating_sub(dl);
                     }
@@ -871,7 +871,7 @@ impl InstrumentApp {
                 // V7: inline focus expansion
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
                     }
                 }
             }
@@ -900,7 +900,7 @@ impl InstrumentApp {
                 my += 1;
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
                     }
                 }
             }
@@ -914,21 +914,19 @@ impl InstrumentApp {
                     my += 1;
                     if focused_sibling == Some(next_idx) {
                         if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
                         }
                     }
                 }
             }
 
             // --- Console boundary: separates ordered (route+overdue+next) from unordered (held+input) ---
-            // Suppress when focus detail already provides a closing separator
             let has_unordered = !frontier.held.is_empty() || !frontier.accumulated.is_empty();
             let has_ordered = !frontier.route.is_empty() || !frontier.overdue.is_empty() || frontier.next.is_some();
-            let in_focus = self.deck_zoom == ZoomLevel::Focus;
             let show_separator = match self.deck_config.chrome {
                 ChromeMode::Quiet => false,
-                ChromeMode::Adaptive => has_unordered && has_ordered && !in_focus,
-                ChromeMode::Structured => (has_ordered || has_unordered) && !in_focus,
+                ChromeMode::Adaptive => has_unordered && has_ordered,
+                ChromeMode::Structured => has_ordered || has_unordered,
             };
             if show_separator && my < top_limit {
                 let boundary = glyphs::LIGHT_RULE.to_string().repeat(w);
@@ -950,7 +948,7 @@ impl InstrumentApp {
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
                         }
                     }
                 }
@@ -1234,6 +1232,7 @@ impl InstrumentApp {
 
     /// Render inline focus detail below a child line (V7).
     /// Shows children (with right-column annotations) and reality.
+    /// `parent_indent` is the indent of the parent item (0 for route, HELD_INDENT for held).
     /// Returns the number of lines consumed.
     fn render_inline_focus(
         &self,
@@ -1244,15 +1243,19 @@ impl InstrumentApp {
         w: usize,
         cols: &ColumnLayout,
         detail: &FocusedDetail,
+        parent_indent: usize,
     ) -> u16 {
         let mut y = start_y;
         if y >= limit_y { return 0; }
 
-        // Children rendered with render_child_line (indented, with right-column annotations)
+        // Children indent further than the parent item
+        let child_indent = parent_indent + HELD_INDENT;
+
+        // Children rendered with render_child_line (indented deeper than parent)
         for child in &detail.children {
             if y >= limit_y { break; }
             let glyph = status_glyph(child.status);
-            self.render_child_line(frame, x, y, w, cols, child, glyph, false, false, HELD_INDENT);
+            self.render_child_line(frame, x, y, w, cols, child, glyph, false, false, child_indent);
             y += 1;
         }
 
@@ -1263,20 +1266,18 @@ impl InstrumentApp {
             }
             let avail = limit_y.saturating_sub(y);
             if avail > 0 {
-                let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
-                Paragraph::new(reality_text)
-                    .wrap(WrapMode::Word)
-                    .render(Rect::new(x, y, w as u16, avail), frame);
-                let reality_lines = word_wrap(&detail.actual, w).len() as u16;
-                y += reality_lines.min(avail);
+                let indent_str = " ".repeat(cols.left + GUTTER + child_indent);
+                let text_w = w.saturating_sub(cols.left + GUTTER + child_indent);
+                let reality_lines = word_wrap(&detail.actual, text_w);
+                for line_text in &reality_lines {
+                    if y >= limit_y { break; }
+                    render_line(frame, x, y, w as u16, &[
+                        (indent_str.clone(), STYLES.dim),
+                        (line_text.clone(), STYLES.dim),
+                    ]);
+                    y += 1;
+                }
             }
-        }
-
-        // Single closing separator
-        if y < limit_y {
-            let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
-            render_line(frame, x, y, w as u16, &[(rule, STYLES.dim)]);
-            y += 1;
         }
 
         y - start_y
