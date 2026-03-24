@@ -120,7 +120,11 @@ impl Frontier {
     /// When `trajectory` is true, positioned resolved/released items stay on the route
     /// (shown in-place with their glyphs) instead of moving to accumulated. This gives
     /// a progress view showing the full route including accomplished steps.
-    pub fn compute(siblings: &[FieldEntry], trajectory: bool) -> Self {
+    ///
+    /// When `epoch_boundary` is Some, only resolved/released items whose last status
+    /// change is after the boundary are shown in accumulated. Items from prior epochs
+    /// are hidden (they belong to the log, not the current epoch).
+    pub fn compute(siblings: &[FieldEntry], trajectory: bool, epoch_boundary: Option<chrono::DateTime<chrono::Utc>>) -> Self {
         let mut frontier = Frontier::default();
 
         // Separate into groups
@@ -140,7 +144,14 @@ impl Frontier {
                         // Trajectory mode: positioned resolved/released stay on the route
                         positioned_active.push(i);
                     } else {
-                        frontier.accumulated.push(i);
+                        // V5: only include in accumulated if resolved/released after epoch boundary
+                        let in_current_epoch = match epoch_boundary {
+                            Some(boundary) => entry.last_status_change >= boundary,
+                            None => true, // no epoch boundary = show all (stub behavior)
+                        };
+                        if in_current_epoch {
+                            frontier.accumulated.push(i);
+                        }
                     }
                 }
             }
@@ -585,7 +596,7 @@ impl InstrumentApp {
         let cols = ColumnLayout::compute(w, widest_deadline, max_id, max_age_len);
 
         // Compute frontier classification
-        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode);
+        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
 
         // --- Phase 1: Measure top and bottom zones ---
 
@@ -1057,7 +1068,7 @@ impl InstrumentApp {
     /// Compute frontier with maximum expansion for navigation.
     /// The render path does the precise space-aware expansion.
     pub fn frontier_for_navigation(&self) -> Frontier {
-        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode);
+        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
         // Show all items for navigation — render will compress if needed
         frontier.show_route = frontier.route.len();
         frontier.show_held = frontier.held.len();

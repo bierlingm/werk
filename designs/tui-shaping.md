@@ -302,6 +302,30 @@ Current state: ID + age on first line (Q25). May revert to clean desire with ID 
 
 **Status:** Open. Experiment.
 
+### Q34: Edit overlay vs deck-native INPUT state
+
+The current edit mode (e, !, ?) opens the old field-view overlay — full-screen text input with Tab cycling between desire/reality/horizon. This works functionally but feels disconnected from the deck. The breadboard specifies P3 (INPUT state) as: dimmed deck background (U37), input prompt/label (U36), text field with cursor (U35). This is a visual overhaul of the edit experience, not a logic change. The old overlay can serve until this is built.
+
+**Status:** Open. Visual overhaul deferred — old overlay functional.
+
+### Q35: Horizon edit silent failure
+
+When editing horizon via Tab-cycling and the input doesn't parse, the edit is silently dropped. Now shows a transient error message. But the deeper issue: should horizon be part of the Tab cycle at all in deck mode, or should it be a separate gesture?
+
+**Status:** Partial fix (error feedback added). Interaction design open.
+
+### Q36: Descent into resolved/released tensions
+
+l/→ descends into resolved and released tensions, which lets you explore their sub-structure. This is good behavior — a resolved tension may have interesting internal structure worth reviewing. No change needed.
+
+**Status:** Confirmed as desired behavior.
+
+### Q37: Accumulated ordering — most recent at top
+
+Accumulated items (resolved/released) now render with most recent nearest the breathing space (top of accumulated zone) and oldest nearest reality. This matches the expectation that recent activity is more salient.
+
+**Status:** Implemented.
+
 ---
 
 ## Requirements (R) — FINAL

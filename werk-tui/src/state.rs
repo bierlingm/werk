@@ -25,6 +25,8 @@ pub struct FieldEntry {
     pub short_code: Option<i32>,
     /// Compact age string (e.g. "2d", "3w"). Computed from created_at.
     pub created_age: String,
+    /// Timestamp of the last status change (resolve/release). For epoch filtering.
+    pub last_status_change: chrono::DateTime<chrono::Utc>,
 }
 
 impl FieldEntry {
@@ -32,6 +34,7 @@ impl FieldEntry {
         tension: &sd_core::Tension,
         last_reality_update: chrono::DateTime<chrono::Utc>,
         child_count: usize,
+        last_status_change: chrono::DateTime<chrono::Utc>,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Self {
         let has_children = child_count > 0;
@@ -59,6 +62,7 @@ impl FieldEntry {
             temporal_urgency,
             short_code: tension.short_code,
             created_age,
+            last_status_change,
         }
     }
 }
