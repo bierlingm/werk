@@ -40,6 +40,9 @@ pub struct ShowParam {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TreeParam {
+    /// Tension ID or prefix (omit for full forest).
+    #[serde(default)]
+    pub id: Option<String>,
     /// Filter: "active" (default), "all", "resolved", or "released".
     #[serde(default = "default_active")]
     pub filter: String,
@@ -111,9 +114,6 @@ pub struct TrajectoryParam {
     /// Tension ID or prefix (omit for field-wide).
     #[serde(default)]
     pub id: Option<String>,
-    /// Show urgency collision windows.
-    #[serde(default)]
-    pub collisions: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -180,6 +180,15 @@ pub struct ResolveParam {
     /// When resolution actually happened (e.g., "yesterday", "2026-03-20").
     #[serde(default)]
     pub actual_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReopenParam {
+    /// Tension ID, short code, or ULID prefix.
+    pub id: String,
+    /// Reason for reopening (optional).
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -662,7 +671,7 @@ impl WerkServer {
         json_result(&result)
     }
 
-    #[tool(description = "Display the tension forest as a tree. Shows hierarchy, closure progress, and temporal signals.")]
+    #[tool(description = "Display the tension forest as a tree. Shows hierarchy, closure progress, and temporal signals. Pass an ID to show a subtree.")]
     async fn tree(
         &self,
         Parameters(p): Parameters<TreeParam>,
@@ -671,6 +680,21 @@ impl WerkServer {
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let forest = Forest::from_tensions(tensions.clone()).map_err(|e| err(e.to_string()))?;
         let now = Utc::now();
+
+        // If an ID is provided, resolve and show subtree
+        let (forest, tensions) = if let Some(ref id_str) = p.id {
+            let root = resolve_id(&tensions, id_str)?;
+            let sub = forest
+                .subtree(&root.id)
+                .ok_or_else(|| err(format!("no subtree found for {}", root.id)))?;
+            let sub_tensions: Vec<_> = tensions
+                .into_iter()
+                .filter(|t| sub.find(&t.id).is_some())
+                .collect();
+            (sub, sub_tensions)
+        } else {
+            (forest, tensions)
+        };
 
         let filter_status = match p.filter.as_str() {
             "all" => None,
@@ -1766,7 +1790,7 @@ impl WerkServer {
     #[tool(description = "Reopen a resolved or released tension (set status back to Active).")]
     async fn reopen(
         &self,
-        Parameters(p): Parameters<IdParam>,
+        Parameters(p): Parameters<ReopenParam>,
     ) -> Result<CallToolResult, McpError> {
         let (workspace, mut store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
@@ -1788,6 +1812,18 @@ impl WerkServer {
         store
             .update_status(&tension_id, TensionStatus::Active)
             .map_err(|e| err(e.to_string()))?;
+
+        if let Some(ref reason) = p.reason {
+            store
+                .record_mutation(&Mutation::new(
+                    tension_id.clone(),
+                    Utc::now(),
+                    "reopen_reason".to_owned(),
+                    None,
+                    reason.clone(),
+                ))
+                .map_err(|e| err(e.to_string()))?;
+        }
         store.end_gesture();
 
         hooks.post_mutation(&event);
@@ -1797,6 +1833,7 @@ impl WerkServer {
             "id": tension_id,
             "status": "Active",
             "old_status": old_status.to_string(),
+            "reason": p.reason,
         }))
     }
 

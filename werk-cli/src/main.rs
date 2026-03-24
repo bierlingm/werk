@@ -71,7 +71,7 @@ fn main() {
         Commands::Release { id, reason } => {
             werk::commands::release::cmd_release(&output, id, reason)
         }
-        Commands::Reopen { id } => werk::commands::reopen::cmd_reopen(&output, id),
+        Commands::Reopen { id, reason } => werk::commands::reopen::cmd_reopen(&output, id, reason),
         Commands::Snooze { id, date, clear } => {
             werk::commands::snooze::cmd_snooze(&output, id, date, clear)
         }
@@ -103,11 +103,12 @@ fn main() {
             sort,
         } => werk::commands::list::cmd_list(&output, all, urgent, neglected, stagnant, sort),
         Commands::Tree {
+            id,
             open,
             all,
             resolved,
             released,
-        } => werk::commands::tree::cmd_tree(&output, open, all, resolved, released),
+        } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released),
         Commands::Health => werk::commands::health::cmd_health(&output),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
         Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
