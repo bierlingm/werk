@@ -934,18 +934,59 @@ impl InstrumentApp {
                 }
             }
 
-            // --- Console boundary: separates ordered (route+overdue+next) from unordered (held+input) ---
-            let has_unordered = !frontier.held.is_empty() || !frontier.accumulated.is_empty();
-            let has_ordered = !frontier.route.is_empty() || !frontier.overdue.is_empty() || frontier.next.is_some();
-            let show_separator = match self.deck_config.chrome {
-                ChromeMode::Quiet => false,
-                ChromeMode::Adaptive => has_unordered && has_ordered,
-                ChromeMode::Structured => has_ordered || has_unordered,
-            };
-            if show_separator && my < top_limit {
-                let boundary = glyphs::LIGHT_RULE.to_string().repeat(w);
+            // --- Console header: enriched boundary with structural readouts ---
+            let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
+                || frontier.next.is_some() || !frontier.held.is_empty()
+                || !frontier.accumulated.is_empty();
+            if has_content && my < top_limit {
+                // Build readout: closure · epoch · next deadline
+                let total_children = self.siblings.len();
+                let done_count = self.siblings.iter()
+                    .filter(|s| s.status == TensionStatus::Resolved || s.status == TensionStatus::Released)
+                    .count();
+                let epoch_str = self.epoch_boundary.map(|boundary| {
+                    let delta = chrono::Utc::now().signed_duration_since(boundary);
+                    let hours = delta.num_hours();
+                    if hours < 1 { "fresh".to_string() }
+                    else if hours < 24 { format!("epoch {}h", hours) }
+                    else { format!("epoch {}d", delta.num_days()) }
+                });
+                let next_dl = frontier.route.iter()
+                    .chain(frontier.next.iter())
+                    .filter_map(|&idx| self.siblings.get(idx))
+                    .filter_map(|s| s.horizon_label.as_deref())
+                    .next();
+
+                let mut readout_parts: Vec<String> = Vec::new();
+                if total_children > 0 {
+                    readout_parts.push(format!("{}/{}", done_count, total_children));
+                }
+                if let Some(ref ep) = epoch_str {
+                    readout_parts.push(ep.clone());
+                }
+                if let Some(dl) = next_dl {
+                    readout_parts.push(format!("next {}", dl));
+                }
+                if frontier.overdue.len() > 0 {
+                    readout_parts.push(format!("\u{26A0} {} overdue", frontier.overdue.len()));
+                }
+
+                let readout = readout_parts.join(" \u{00B7} ");
+
+                // Center the readout in a rule line: ┄┄ readout ┄┄
+                let rule_char = glyphs::LIGHT_RULE.to_string();
+                let readout_w = readout.chars().count();
+                let pad_total = w.saturating_sub(readout_w + 4); // 2 spaces + 2 rule segments
+                let left_rules = pad_total / 2;
+                let right_rules = pad_total - left_rules;
+                let header = format!(
+                    "{} {} {}",
+                    rule_char.repeat(left_rules),
+                    readout,
+                    rule_char.repeat(right_rules),
+                );
                 render_line(frame, area.x, my, area.width, &[
-                    (boundary, STYLES.dim),
+                    (header, STYLES.dim),
                 ]);
                 my += 1;
             }
@@ -991,72 +1032,16 @@ impl InstrumentApp {
             }
         }
 
-        // --- Console / NOW line — live structural readout ---
+        // --- Input line: the action surface at the console's heart ---
         if my < top_limit {
             let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
 
-            // Build context-aware console content
-            let total_children = self.siblings.len();
-            let done_count = self.siblings.iter()
-                .filter(|s| s.status == TensionStatus::Resolved || s.status == TensionStatus::Released)
-                .count();
-            let overdue_count = frontier.overdue.len();
-
-            // Epoch age
-            let epoch_age = self.epoch_boundary.map(|boundary| {
-                let delta = chrono::Utc::now().signed_duration_since(boundary);
-                let hours = delta.num_hours();
-                if hours < 1 { "just now".to_string() }
-                else if hours < 24 { format!("{}h", hours) }
-                else { format!("{}d", delta.num_days()) }
-            });
-
-            // Next deadline from route
-            let next_deadline = frontier.route.iter()
-                .chain(frontier.next.iter())
-                .filter_map(|&idx| self.siblings.get(idx))
-                .filter_map(|s| s.horizon_label.as_deref())
-                .next();
-
-            // Reality staleness
-            let reality_stale = self.parent_reality_age.as_deref()
-                .unwrap_or("")
-                .trim_end_matches(" ago");
-
-            // Compose the NOW line
-            let mut parts: Vec<String> = Vec::new();
-
-            if total_children == 0 {
-                parts.push("no steps yet".to_string());
-            } else {
-                // Closure fraction
-                parts.push(format!("{}/{}", done_count, total_children));
-
-                // Overdue warning
-                if overdue_count > 0 {
-                    parts.push(format!("\u{26A0} {} overdue", overdue_count));
-                }
-
-                // Epoch freshness
-                match &epoch_age {
-                    Some(age) if age == "just now" => parts.push("fresh epoch".to_string()),
-                    Some(age) => parts.push(format!("epoch {}", age)),
-                    None => {} // no epochs yet
-                }
-
-                // Next deadline
-                if let Some(dl) = next_deadline {
-                    parts.push(format!("next {}", dl));
-                }
-            }
-
-            let now_text = format!("NOW  {}", parts.join(" \u{00B7} "));
-
-            // When cursor is here, show gesture hints
             let content = if is_selected {
-                format!("{}  \u{2502} a add \u{00B7} n note", now_text)
+                // Active: show available gestures
+                "\u{25B8} a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality".to_string()
             } else {
-                now_text
+                // Resting: minimal affordance
+                "\u{25B8} ___".to_string()
             };
 
             let style = if is_selected {
