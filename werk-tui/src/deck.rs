@@ -755,8 +755,16 @@ impl InstrumentApp {
             let shown = frontier.show_accumulated.min(frontier.accumulated.len());
             let remaining = frontier.accumulated.len() - shown;
 
-            // Summary line (rendered closest to reality, at the bottom of accumulated)
-            if remaining > 0 {
+            // Remaining: show individually if only 1, else summary
+            if remaining == 1 {
+                // Show the single remaining item instead of a summary
+                acc_top -= 1;
+                let sibling_idx = frontier.accumulated[shown];
+                let entry = &self.siblings[sibling_idx];
+                let glyph = status_glyph(entry.status);
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
+                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
+            } else if remaining > 1 {
                 acc_top -= 1;
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
 
@@ -952,8 +960,19 @@ impl InstrumentApp {
                         }
                     }
                 }
-                // Summary for remaining
-                if held_remaining > 0 && my < top_limit {
+                // Remaining: show individually if only 1, else summary
+                if held_remaining == 1 && my < top_limit {
+                    let sibling_idx = frontier.held[shown_held];
+                    let entry = &self.siblings[sibling_idx];
+                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, HELD_INDENT);
+                    my += 1;
+                    if focused_sibling == Some(sibling_idx) {
+                        if let Some(ref detail) = self.focused_detail {
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
+                        }
+                    }
+                } else if held_remaining > 1 && my < top_limit {
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
                     let text = if shown_held == 0 {
                         format!("\u{00B7} {} held", frontier.held.len())
