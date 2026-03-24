@@ -991,17 +991,82 @@ impl InstrumentApp {
             }
         }
 
-        // --- Input point ---
+        // --- Console / NOW line — live structural readout ---
         if my < top_limit {
             let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
+
+            // Build context-aware console content
+            let total_children = self.siblings.len();
+            let done_count = self.siblings.iter()
+                .filter(|s| s.status == TensionStatus::Resolved || s.status == TensionStatus::Released)
+                .count();
+            let overdue_count = frontier.overdue.len();
+
+            // Epoch age
+            let epoch_age = self.epoch_boundary.map(|boundary| {
+                let delta = chrono::Utc::now().signed_duration_since(boundary);
+                let hours = delta.num_hours();
+                if hours < 1 { "just now".to_string() }
+                else if hours < 24 { format!("{}h", hours) }
+                else { format!("{}d", delta.num_days()) }
+            });
+
+            // Next deadline from route
+            let next_deadline = frontier.route.iter()
+                .chain(frontier.next.iter())
+                .filter_map(|&idx| self.siblings.get(idx))
+                .filter_map(|s| s.horizon_label.as_deref())
+                .next();
+
+            // Reality staleness
+            let reality_stale = self.parent_reality_age.as_deref()
+                .unwrap_or("")
+                .trim_end_matches(" ago");
+
+            // Compose the NOW line
+            let mut parts: Vec<String> = Vec::new();
+
+            if total_children == 0 {
+                parts.push("no steps yet".to_string());
+            } else {
+                // Closure fraction
+                parts.push(format!("{}/{}", done_count, total_children));
+
+                // Overdue warning
+                if overdue_count > 0 {
+                    parts.push(format!("\u{26A0} {} overdue", overdue_count));
+                }
+
+                // Epoch freshness
+                match &epoch_age {
+                    Some(age) if age == "just now" => parts.push("fresh epoch".to_string()),
+                    Some(age) => parts.push(format!("epoch {}", age)),
+                    None => {} // no epochs yet
+                }
+
+                // Next deadline
+                if let Some(dl) = next_deadline {
+                    parts.push(format!("next {}", dl));
+                }
+            }
+
+            let now_text = format!("NOW  {}", parts.join(" \u{00B7} "));
+
+            // When cursor is here, show gesture hints
+            let content = if is_selected {
+                format!("{}  \u{2502} a add \u{00B7} n note", now_text)
+            } else {
+                now_text
+            };
+
             let style = if is_selected {
-                Style::new().fg(CLR_DIM).bg(CLR_SELECTED_BG)
+                STYLES.selected
             } else {
                 STYLES.dim
             };
+
             let prefix_len = cols.left + GUTTER;
-            let content = "+ ___";
-            let pad_right = w.saturating_sub(prefix_len + content.len());
+            let pad_right = w.saturating_sub(prefix_len + content.chars().count());
             let line = Line::from_spans([
                 Span::styled(" ".repeat(prefix_len), style),
                 Span::styled(content, style),
