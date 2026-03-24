@@ -129,6 +129,11 @@ impl InstrumentApp {
             // Navigation
             Msg::Char('k') | Msg::Up => {
                 if self.use_deck && self.parent_id.is_some() {
+                    // Clear focus on cursor move
+                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                        self.focused_detail = None;
+                    }
                     self.deck_pitch_up();
                 } else {
                     self.vlist.up();
@@ -138,6 +143,11 @@ impl InstrumentApp {
             }
             Msg::Char('j') | Msg::Down => {
                 if self.use_deck && self.parent_id.is_some() {
+                    // Clear focus on cursor move
+                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                        self.focused_detail = None;
+                    }
                     self.deck_pitch_down();
                 } else {
                     self.vlist.down();
@@ -225,6 +235,8 @@ impl InstrumentApp {
 
             Msg::Char('g') | Msg::JumpTop => {
                 if self.use_deck && self.parent_id.is_some() {
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
                     self.deck_cursor.index = 0;
                 } else {
                     self.vlist.top();
@@ -234,6 +246,8 @@ impl InstrumentApp {
             }
             Msg::Char('G') | Msg::JumpBottom => {
                 if self.use_deck && self.parent_id.is_some() {
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
                     let frontier = crate::deck::Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
                     self.deck_cursor.index = frontier.selectable_count().saturating_sub(1);
                 } else {
