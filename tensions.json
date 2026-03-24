@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-24T09:47:29Z",
+  "flushed_at": "2026-03-24T14:38:27Z",
   "summary": {
-    "active": 34,
+    "active": 32,
     "released": 4,
-    "resolved": 17,
+    "resolved": 19,
     "total": 55
   },
   "tensions": [
@@ -33,7 +33,7 @@
       "actual": "TUI rendering layer rebuilt on ftui (Panel, Paragraph, StatusLine, TextInput). Gaze card is the visual anchor. Grab-and-drop reordering, temporal indicators, alert system, edit mode, search/move overlays, agent prompt, insight review all working. Unicode width issues in selected state highlight remain. Three independent design systems produced by Claude, Gemini, and Codex agents — each explored ftui and werk from scratch and wrote a comprehensive design system document plus reflection on gaps and decision hierarchy. All collected in werk-design-inputs/ for synthesis. Next: synthesize the three designs into a definitive design system, then implement.",
       "created_at": "2026-03-17T17:46:14.291476+00:00",
       "desired": "werk is a FrankenTUI-first application where the terminal interface is the primary experience",
-      "horizon": null,
+      "horizon": "2026-05-30",
       "id": "01KKYEFHWKBSC8YV7XYDYXMJ9M",
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
       "position": 1,
@@ -162,7 +162,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "TUI exists with field chart layout, gaze cards, temporal indicators; none of the new conceptual architecture (envelope, thresholds, pitch/roll/yaw, ground mode) is implemented",
+      "actual": "V1+V2 implemented. Deck view: 4-zone layout (desire/route/console/reality), frontier computation classifying children, gradual compression (route/held/accumulated compress progressively), zero-padded IDs in aligned sub-columns, pitch navigation (j/k), roll descent (l). Performance: DB indexes added, N+1 queries eliminated, render-path queries cached. 28 design questions captured in shaping doc. Next: accumulated items gravity toward reality (Q24), V3 roll navigation polish, V4 gestures.",
       "created_at": "2026-03-20T21:42:13.937724+00:00",
       "desired": "TUI rebuilt around the operating envelope as primary interaction surface — frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access",
       "horizon": null,
@@ -250,7 +250,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "README.md rewritten from scratch (second pass) — reader-perspective comments, correct CLI reference with ID shorthand docs, three interface surfaces, MCP section with config, architecture diagram, log/logbook vocabulary introduced. CLAUDE.md has three surfaces section. Both SKILL.md files have MCP tools section. Troubleshooting has MCP entry. CLI design gaps recorded as #53-#56 under #10. Documentation expansion tracked as #52 under #3.",
+      "actual": "README install section fixed — removed fictional feature flags. CLI design gaps #53-#56 recorded under #10, two now resolved (#54 reopen --reason, #56 tree subtree). Docs expansion tracked as #52.",
       "created_at": "2026-03-22T17:54:58.305519+00:00",
       "desired": "skills and documentation updated to reflect foundation — SKILL.md, references, onboarding rewritten around new vocabulary and concepts",
       "horizon": null,
@@ -580,7 +580,7 @@
       "status": "Active"
     },
     {
-      "actual": "reopen has no --reason flag. release requires --reason but reopen does not. Reopening is a meaningful structural act (circumstances changed, premature resolution, new information) that should be recorded.",
+      "actual": "`reopen --reason` implemented. Records reason as a reopen_reason mutation within the gesture. Both CLI and MCP surfaces support it. Pattern follows release --reason.",
       "created_at": "2026-03-24T09:25:22.372967+00:00",
       "desired": "reopen gesture captures a reason — structural record of why something was brought back",
       "horizon": null,
@@ -588,7 +588,7 @@
       "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
       "position": null,
       "short_code": 54,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "position command accepts single tension + position. No way to set a new order wholesale or partially in one gesture. Batch YAML supports SetPosition but no dedicated reorder command.",
@@ -602,7 +602,7 @@
       "status": "Active"
     },
     {
-      "actual": "tree always shows the full forest. To see structure under a tension you use show, which only displays one level of children. No way to see the full recursive subtree under a specific root.",
+      "actual": "Implemented. `tree <id>` shows the subtree under a specific tension. Works via Forest::subtree(). Both CLI and MCP surfaces support it.",
       "created_at": "2026-03-24T09:25:27.015205+00:00",
       "desired": "tree command can show a subtree under a specific tension",
       "horizon": null,
@@ -610,7 +610,7 @@
       "parent_id": "01KM2NFXV3BEFE72FXJ8PHDES6",
       "position": null,
       "short_code": 56,
-      "status": "Active"
+      "status": "Resolved"
     }
   ]
 }
