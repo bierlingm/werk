@@ -7,7 +7,8 @@
 use ftui::Frame;
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::style::Style;
-use ftui::text::{Line, Span, Text};
+use ftui::text::{Line, Span, Text, WrapMode};
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
 
@@ -43,8 +44,6 @@ pub struct ColumnLayout {
 const GUTTER: usize = 2;
 /// Minimum left column width (enough for "Mar 30").
 const MIN_LEFT: usize = 6;
-/// Right column budget: " NN → NNd" ~ 10 chars.
-const RIGHT_BUDGET: usize = 10;
 /// Maximum content width (matches existing render.rs).
 const MAX_CONTENT_WIDTH: u16 = 104;
 /// Left/right margin from screen edges.
@@ -616,19 +615,19 @@ impl InstrumentApp {
         };
 
         // Reality: use Paragraph with word wrap for measurement
+        // Reality: measure height for Flex constraint (Paragraph handles actual wrapping)
         let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
         let reality_age_reserve = if reality_age_str.is_empty() { 0 } else { 3 + reality_age_str.chars().count() };
-        let reality_wrap_width = w.saturating_sub(reality_age_reserve);
-        let reality_lines = if parent.actual.is_empty() {
-            vec![]
+        let reality_line_count = if parent.actual.is_empty() {
+            0u16
         } else {
-            word_wrap(&parent.actual, reality_wrap_width)
+            word_wrap(&parent.actual, w.saturating_sub(reality_age_reserve)).len() as u16
         };
         let bottom_height: u16 = {
             let mut h: u16 = 0;
-            if !reality_lines.is_empty() {
+            if reality_line_count > 0 {
                 h += 1; // blank line before reality
-                h += reality_lines.len() as u16;
+                h += reality_line_count;
             }
             h += 1; // reality rule
             h
@@ -651,7 +650,7 @@ impl InstrumentApp {
             has_breadcrumb, has_deadline, deadline_label.unwrap_or(""));
 
         // === Render bottom zone (reality anchor) ===
-        self.render_reality_zone(frame, bottom_zone, w, &reality_lines, reality_age_str);
+        self.render_reality_zone(frame, bottom_zone, w, parent, reality_age_str);
 
         // === Render middle zone (route + console + accumulated) ===
         if middle_zone.height == 0 {
@@ -1041,7 +1040,7 @@ impl InstrumentApp {
                 }
             }
 
-            render_line_spans(frame, zone.x, y, zone.width, &spans);
+            render_line(frame, zone.x, y, zone.width, &spans);
             y += 1;
         }
 
@@ -1052,45 +1051,50 @@ impl InstrumentApp {
         }
     }
 
-    /// Render the reality zone (bottom anchor): blank + reality text + rule.
-    /// Uses Paragraph with word wrap for the reality text.
+    /// Render the reality zone (bottom anchor): blank + reality text (word-wrapped) + rule.
     fn render_reality_zone(
         &self,
         frame: &mut Frame<'_>,
         zone: Rect,
         w: usize,
-        reality_lines: &[String],
+        parent: &sd_core::Tension,
         reality_age: &str,
     ) {
         if zone.height == 0 { return; }
 
-        // Reality rule at the very bottom of the zone
-        let rule_y = zone.y + zone.height - 1;
+        // Use Flex to split: [blank line] [reality text] [rule]
+        let has_reality = !parent.actual.is_empty();
+        let zones = Flex::vertical()
+            .constraints(if has_reality {
+                vec![Constraint::Fixed(1), Constraint::Fill, Constraint::Fixed(1)]
+            } else {
+                vec![Constraint::Fill, Constraint::Fixed(1)]
+            })
+            .split(zone);
+
+        // Reality rule at the bottom
+        let rule_zone = zones.last().unwrap();
         let rule = glyphs::RULE.to_string().repeat(w);
-        render_line(frame, zone.x, rule_y, zone.width, &[(rule, STYLES.dim)]);
+        render_line(frame, rule_zone.x, rule_zone.y, rule_zone.width, &[(rule, STYLES.dim)]);
 
-        if reality_lines.is_empty() { return; }
+        if !has_reality { return; }
 
-        // Reality text renders above the rule, with a blank line gap
-        let text_start = zone.y + 1; // blank line at top of zone
-        let text_end = rule_y; // stop before rule
+        // Reality text with word wrap via Paragraph
+        let text_zone = zones[1];
+        if text_zone.height == 0 { return; }
 
-        for (i, line_text) in reality_lines.iter().enumerate() {
-            let y = text_start + i as u16;
-            if y >= text_end { break; }
-
-            let mut spans: Vec<(String, Style)> = vec![
-                (line_text.clone(), STYLES.dim),
-            ];
-
-            // Age suffix on last line
-            if i == reality_lines.len() - 1 && !reality_age.is_empty() {
-                spans.push((" \u{00B7} ".to_string(), STYLES.dim));
-                spans.push((reality_age.to_string(), STYLES.dim));
-            }
-
-            render_line_spans(frame, zone.x, y, zone.width, &spans);
+        // Build text with age suffix inline
+        // Build a single Line with reality text + age suffix; Paragraph wraps it
+        let mut spans = vec![Span::styled(&parent.actual, STYLES.dim)];
+        if !reality_age.is_empty() {
+            spans.push(Span::styled(" \u{00B7} ", STYLES.dim));
+            spans.push(Span::styled(reality_age, STYLES.dim));
         }
+        let reality_text = Text::from(Line::from_spans(spans));
+
+        Paragraph::new(reality_text)
+            .wrap(WrapMode::Word)
+            .render(text_zone, frame);
     }
 
     /// Compute frontier with maximum expansion for navigation.
@@ -1128,36 +1132,25 @@ impl InstrumentApp {
         frontier.cursor_target(self.deck_cursor.index).sibling_index()
     }
 
-    /// Render the deck bottom bar — replaces the old lever in deck mode.
-    /// Shows: log indicator (left), trajectory mode (center if active), help (right).
-    /// Aligned to the same content area as the deck itself.
+    /// Render the deck bottom bar using ftui StatusLine.
     pub fn render_deck_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
-        // Match the deck content area margins
         let content = self.deck_content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
+        let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
-        let left = if self.parent_mutation_count > 0 {
+        // Build dynamic text, then borrow for StatusLine
+        let events_text = if self.parent_mutation_count > 0 {
             format!("\u{2193} {} prior events", self.parent_mutation_count)
         } else {
             String::new()
         };
 
-        let right = "? help".to_string();
+        let mut bar = StatusLine::new().style(STYLES.lever);
+        if !events_text.is_empty() {
+            bar = bar.left(StatusItem::text(&events_text));
+        }
+        bar = bar.right(StatusItem::text("? help"));
 
-        let w = content.width as usize;
-        let left_w = left.chars().count();
-        let right_w = right.chars().count();
-
-        let bar = {
-            let pad = w.saturating_sub(left_w + right_w);
-            format!("{}{}{}", left, " ".repeat(pad), right)
-        };
-
-        let edge_pad = " ".repeat(content.x.saturating_sub(area.x) as usize);
-        let line = Line::from(Span::styled(
-            format!("{}{}", edge_pad, bar),
-            STYLES.lever,
-        ));
-        Paragraph::new(Text::from(line)).render(*area, frame);
+        bar.render(bar_area, frame);
     }
 }
 
@@ -1176,17 +1169,11 @@ fn status_glyph(status: TensionStatus) -> &'static str {
     }
 }
 
+/// Render a single styled line at (x, y) using Paragraph.
 fn render_line(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, parts: &[(String, Style)]) {
     let spans: Vec<Span> = parts.iter().map(|(text, style)| Span::styled(text.clone(), *style)).collect();
-    let line = Line::from_spans(spans);
-    Paragraph::new(Text::from(line)).render(Rect::new(x, y, width, 1), frame);
-}
-
-/// Render a single line from a vec of styled string pairs.
-fn render_line_spans(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, parts: &[(String, Style)]) {
-    let spans: Vec<Span> = parts.iter().map(|(text, style)| Span::styled(text.clone(), *style)).collect();
-    let line = Line::from_spans(spans);
-    Paragraph::new(Text::from(line)).render(Rect::new(x, y, width, 1), frame);
+    Paragraph::new(Text::from(Line::from_spans(spans)))
+        .render(Rect::new(x, y, width, 1), frame);
 }
 
 /// Left padding string (empty left column).
