@@ -36,6 +36,9 @@ pub enum Msg {
     /// Raw event passthrough — carries full modifier info for TextInput widget.
     RawEvent(Event),
 
+    // Zoom
+    ShiftSubmit, // Shift+Enter — orient zoom (V9)
+
     // Chrome
     ToggleHelp,
     Search,
@@ -70,6 +73,7 @@ impl From<Event> for Msg {
                     KeyCode::Char(c) if key.modifiers == Modifiers::NONE || key.modifiers == Modifiers::SHIFT => {
                         Msg::Char(c)
                     }
+                    KeyCode::Enter if key.shift() => Msg::ShiftSubmit,
                     KeyCode::Enter => Msg::Submit,
                     KeyCode::Escape => Msg::Cancel,
                     KeyCode::Backspace => Msg::Backspace,
