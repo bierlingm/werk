@@ -96,15 +96,35 @@ pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     use ftui::App;
 
-    match load_field() {
+    // Install panic handler that restores terminal before printing the panic.
+    // Without this, a panic leaves the terminal in raw mode and may corrupt the DB WAL.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Attempt to restore terminal to normal mode
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stderr(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::cursor::Show,
+        );
+        // Print panic info to stderr so the user sees it
+        default_hook(info);
+        eprintln!("\nwerk TUI crashed. Your data is backed up in .werk/backups/");
+    }));
+
+    let result = match load_field() {
         Ok((store, entries)) => {
             let app = InstrumentApp::new(store, entries);
-            App::fullscreen(app).run()?;
+            App::fullscreen(app).run()
         }
         Err(_) => {
             let app = InstrumentApp::new_empty();
-            App::fullscreen(app).run()?;
+            App::fullscreen(app).run()
         }
-    }
-    Ok(())
+    };
+
+    // Restore default panic hook
+    let _ = std::panic::take_hook();
+
+    result.map_err(|e| e.into())
 }
