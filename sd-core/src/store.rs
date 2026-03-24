@@ -851,25 +851,26 @@ impl Store {
     }
 
     /// Check which tension IDs have children, returning a set of parent IDs.
-    pub fn get_parent_ids_with_children(&self, parent_ids: &[&str]) -> Result<std::collections::HashSet<String>, StoreError> {
+    /// Count children per parent for a batch of tension IDs.
+    pub fn count_children_by_parent(&self, parent_ids: &[&str]) -> Result<std::collections::HashMap<String, usize>, StoreError> {
         if parent_ids.is_empty() {
-            return Ok(std::collections::HashSet::new());
+            return Ok(std::collections::HashMap::new());
         }
         let conn = self.conn.borrow();
         let placeholders: Vec<String> = (1..=parent_ids.len()).map(|i| format!("?{}", i)).collect();
         let sql = format!(
-            "SELECT DISTINCT parent_id FROM tensions WHERE parent_id IN ({})",
+            "SELECT parent_id, COUNT(*) FROM tensions WHERE parent_id IN ({}) GROUP BY parent_id",
             placeholders.join(", ")
         );
         let params: Vec<SqliteValue> = parent_ids.iter().map(|id| SqliteValue::Text(id.to_string())).collect();
         let rows = conn
             .query_with_params(&sql, &params)
-            .map_err(|e| StoreError::DatabaseError(format!("batch children check failed: {:?}", e)))?;
+            .map_err(|e| StoreError::DatabaseError(format!("batch children count failed: {:?}", e)))?;
 
-        let mut result = std::collections::HashSet::new();
+        let mut result = std::collections::HashMap::new();
         for row in &rows {
-            if let Some(SqliteValue::Text(pid)) = row.get(0) {
-                result.insert(pid.clone());
+            if let (Some(SqliteValue::Text(pid)), Some(SqliteValue::Integer(count))) = (row.get(0), row.get(1)) {
+                result.insert(pid.clone(), *count as usize);
             }
         }
         Ok(result)

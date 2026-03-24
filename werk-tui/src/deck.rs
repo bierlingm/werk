@@ -49,6 +49,8 @@ const RIGHT_BUDGET: usize = 10;
 const MAX_CONTENT_WIDTH: u16 = 104;
 /// Left/right margin from screen edges.
 const EDGE_MARGIN: u16 = 2;
+/// Extra indent for held (unpositioned) items (Q22).
+const HELD_INDENT: usize = 2;
 
 impl ColumnLayout {
     /// Compute column layout from the current data in view.
@@ -114,7 +116,11 @@ impl Frontier {
     ///
     /// Siblings are sorted: positioned DESC first (highest position = furthest future),
     /// then unpositioned. Position 1 is the FIRST/nearest step.
-    pub fn compute(siblings: &[FieldEntry]) -> Self {
+    ///
+    /// When `trajectory` is true, positioned resolved/released items stay on the route
+    /// (shown in-place with their glyphs) instead of moving to accumulated. This gives
+    /// a progress view showing the full route including accomplished steps.
+    pub fn compute(siblings: &[FieldEntry], trajectory: bool) -> Self {
         let mut frontier = Frontier::default();
 
         // Separate into groups
@@ -130,7 +136,12 @@ impl Frontier {
                     }
                 }
                 TensionStatus::Resolved | TensionStatus::Released => {
-                    frontier.accumulated.push(i);
+                    if trajectory && entry.position.is_some() {
+                        // Trajectory mode: positioned resolved/released stay on the route
+                        positioned_active.push(i);
+                    } else {
+                        frontier.accumulated.push(i);
+                    }
                 }
             }
         }
@@ -181,55 +192,89 @@ impl Frontier {
     }
 
     /// Determine how many route/held/accumulated items to show individually.
-    /// Gradually compresses: shows as many as fit, with a summary line for the rest.
-    /// Priority: overdue + next (always shown) > route > held > accumulated.
+    ///
+    /// Two-pass algorithm:
+    /// 1. Reserve 1 summary line per non-empty compressible category (guarantees
+    ///    every category stays visible even under extreme compression).
+    /// 2. Distribute remaining space by priority: route first, held second,
+    ///    accumulated last. Each category upgrades from summary → partial → full.
     pub fn compute_expansion(&mut self, available_lines: usize) {
         // Fixed items: overdue (always shown fully), next, input point, separator
+        let has_ordered = !self.route.is_empty() || !self.overdue.is_empty() || self.next.is_some();
+        let has_unordered = !self.held.is_empty() || !self.accumulated.is_empty();
         let fixed = self.overdue.len()
             + if self.next.is_some() { 1 } else { 0 }
             + 1  // input point
-            + if !self.route.is_empty() || !self.overdue.is_empty() || self.next.is_some() { 1 } else { 0 }; // separator
+            + if has_ordered && has_unordered { 1 } else { 0 }; // separator
 
         let mut free = available_lines.saturating_sub(fixed);
 
-        // Route: show as many as fit, priority 1
-        if !self.route.is_empty() {
-            if free >= self.route.len() {
-                self.show_route = self.route.len();
-                free -= self.route.len();
-            } else if free >= 2 {
-                self.show_route = free - 1; // -1 for summary
-                free = 0;
+        // Pass 1: reserve 1 summary line per non-empty category
+        let has_route = !self.route.is_empty();
+        let has_held = !self.held.is_empty();
+        let has_accumulated = !self.accumulated.is_empty();
+        let reserved = (if has_route { 1 } else { 0 })
+            + (if has_held { 1 } else { 0 })
+            + (if has_accumulated { 1 } else { 0 });
+
+        if free < reserved {
+            // Not enough space even for summaries — show what fits in priority order
+            // (accumulated summary first since it compresses first, but route summary
+            // is most valuable). Give each what we can.
+            self.show_route = 0;
+            self.show_held = 0;
+            self.show_accumulated = 0;
+            // Even here, the summaries will render if my < middle_end in the render loop
+            return;
+        }
+
+        // Deduct reserved lines — these are guaranteed summary slots
+        free -= reserved;
+
+        // Pass 2: distribute remaining space by priority (route > held > accumulated)
+        // Each category can upgrade: summary (0 shown) → partial → full.
+        // Upgrading from summary to N items costs N lines (the summary line is already reserved,
+        // but showing items replaces it — so showing all N items costs N-1 extra if N == count,
+        // or N extra if we still need a summary for the remainder).
+
+        // Route
+        if has_route {
+            let count = self.route.len();
+            if free >= count {
+                // Show all — reclaim the reserved summary line
+                self.show_route = count;
+                free -= count - 1; // -1 because summary line is freed
             } else if free >= 1 {
-                self.show_route = 0; // just summary
+                // Show some + summary (summary already reserved)
+                self.show_route = free;
                 free = 0;
             } else {
                 self.show_route = 0;
             }
-        } else {
-            self.show_route = 0;
         }
 
-        // Held: priority 2
-        if !self.held.is_empty() {
-            if free >= self.held.len() {
-                self.show_held = self.held.len();
-                free -= self.held.len();
-            } else if free >= 2 {
-                self.show_held = free - 1;
+        // Held
+        if has_held {
+            let count = self.held.len();
+            if free >= count {
+                self.show_held = count;
+                free -= count - 1;
+            } else if free >= 1 {
+                self.show_held = free;
                 free = 0;
             } else {
                 self.show_held = 0;
-                free = free.saturating_sub(1);
             }
         }
 
-        // Accumulated: priority 3
-        if !self.accumulated.is_empty() {
-            if free >= self.accumulated.len() {
-                self.show_accumulated = self.accumulated.len();
-            } else if free >= 2 {
-                self.show_accumulated = free - 1;
+        // Accumulated
+        if has_accumulated {
+            let count = self.accumulated.len();
+            if free >= count {
+                self.show_accumulated = count;
+                // free -= count - 1; // not needed, last category
+            } else if free >= 1 {
+                self.show_accumulated = free;
             } else {
                 self.show_accumulated = 0;
             }
@@ -536,7 +581,7 @@ impl InstrumentApp {
         let cols = ColumnLayout::compute(w, widest_deadline, max_id, max_age_len);
 
         // Compute frontier classification
-        let mut frontier = Frontier::compute(&self.siblings);
+        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode);
 
         // --- Phase 1: Measure top and bottom zones ---
 
@@ -544,12 +589,9 @@ impl InstrumentApp {
         let has_breadcrumb = self.grandparent_display.is_some();
         let has_deadline = deadline_label.is_some() && !deadline_label.unwrap_or("").is_empty();
         let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
-        // Reserve space for inline age suffix (" · Nd ago") on the last line
-        let age_suffix_reserve = {
-            let age = self.parent_desire_age.as_deref().unwrap_or("");
-            if age.is_empty() { 0 } else { 3 + age.chars().count() } // " · " + age
-        };
-        let desire_wrap_width = w.saturating_sub(desire_indent + age_suffix_reserve);
+        // Reserve space for right-column facts (Q25: ID + →N + age)
+        let right_col_reserve = GUTTER + cols.right;
+        let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
         let desire_lines = word_wrap(&parent.desired, desire_wrap_width);
         let _top_height: u16 = {
             let mut h: u16 = 0;
@@ -561,7 +603,10 @@ impl InstrumentApp {
         };
 
         // Bottom zone: reality lines + rule
-        let reality_wrap_width = w;
+        // Reserve space for inline age suffix on last line (" · Nd")
+        let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
+        let reality_age_reserve = if reality_age_str.is_empty() { 0 } else { 3 + reality_age_str.chars().count() };
+        let reality_wrap_width = w.saturating_sub(reality_age_reserve);
         let reality_lines = if parent.actual.is_empty() {
             vec![]
         } else {
@@ -598,10 +643,15 @@ impl InstrumentApp {
         // Blank line before desire
         y += 1;
 
-        // 2. Desire text with inline age after last line
+        // 2. Desire text with right-column facts (Q25: zero-padded ID + age)
         let deadline_str = deadline_label.unwrap_or("");
-        let age_str = self.parent_desire_age.as_deref().unwrap_or("");
-        let last_desire_line = desire_lines.len().saturating_sub(1);
+        // Compact age (no "ago") to match children's right column
+        let desire_age = glyphs::compact_age(parent.created_at, chrono::Utc::now());
+        let desire_id = parent.short_code
+            .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
+            .unwrap_or_default();
+        let desire_right = format!("{} {}", desire_id, desire_age);
+        let desire_right_w = desire_right.chars().count();
 
         for (i, line_text) in desire_lines.iter().enumerate() {
             let mut spans: Vec<(String, Style)> = Vec::new();
@@ -618,9 +668,14 @@ impl InstrumentApp {
 
             spans.push((line_text.clone(), STYLES.text_bold));
 
-            if i == last_desire_line && !age_str.is_empty() {
-                spans.push((" \u{00B7} ".to_string(), STYLES.dim));
-                spans.push((age_str.to_string(), STYLES.dim));
+            if i == 0 {
+                // Right-align facts on FIRST line of desire
+                let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + line_text.chars().count();
+                let gap = w.saturating_sub(text_used + desire_right_w);
+                if gap >= GUTTER {
+                    spans.push((" ".repeat(gap), Style::new()));
+                    spans.push((desire_right.clone(), STYLES.dim));
+                }
             }
 
             render_line_spans(frame, area.x, y, area.width, &spans);
@@ -669,6 +724,10 @@ impl InstrumentApp {
         ]);
 
         // --- Phase 4: Middle zone — route + console ---
+        //
+        // Split layout: top-down (route → overdue → next → separator → held → input)
+        // and bottom-up (accumulated, gravitating toward reality).
+        // Any gap between them is breathing space.
 
         let middle_start = top_end;
         let middle_end = bottom_start;
@@ -681,132 +740,20 @@ impl InstrumentApp {
         let middle_lines = (middle_end - middle_start) as usize;
         frontier.compute_expansion(middle_lines);
 
-        // Navigation helpers always expand (frontier_for_navigation).
-        // Render uses the precise space-aware expansion computed above.
-
         let cursor_idx = self.deck_cursor.index;
-        let mut my = middle_start;
 
-        // --- Route zone (gradual: show N individually, summary for rest) ---
-        let shown_route = frontier.show_route.min(frontier.route.len());
-        for i in 0..shown_route {
-            if my >= middle_end { break; }
-            let sibling_idx = frontier.route[i];
-            let entry = &self.siblings[sibling_idx];
-            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Route(sibling_idx);
-            self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25B8}", is_selected, false);
-            my += 1;
-        }
-        // Route summary for remaining
-        let route_remaining = frontier.route.len() - shown_route;
-        if route_remaining > 0 && my < middle_end {
-            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
-            let text = if shown_route == 0 {
-                format!("\u{25B8} {} more in route", frontier.route.len())
-            } else {
-                format!("\u{25B8} {} more in route", route_remaining)
-            };
-            self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim);
-            my += 1;
-        }
+        // === Bottom-up pass: accumulated items (gravity toward reality) ===
+        // Render from middle_end upward. We compute positions first, then render.
 
-        // --- Overdue steps (part of the action sequence, above the separator) ---
-        for &sibling_idx in &frontier.overdue {
-            if my >= middle_end { break; }
-            let entry = &self.siblings[sibling_idx];
-            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
-            self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25B8}", is_selected, true);
-            my += 1;
-        }
+        let mut acc_top = middle_end; // will be decremented as we place accumulated items
 
-        // --- Next committed step (still part of the ordered sequence) ---
-        if let Some(next_idx) = frontier.next {
-            if my < middle_end {
-                let entry = &self.siblings[next_idx];
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25B8}", is_selected, false);
-                my += 1;
-            }
-        }
-
-        // --- Console boundary: separates ordered (route+overdue+next) from unordered (held+input+accumulated) ---
-        let has_unordered = !frontier.held.is_empty() || !frontier.accumulated.is_empty();
-        let has_ordered = !frontier.route.is_empty() || !frontier.overdue.is_empty() || frontier.next.is_some();
-        if has_unordered && has_ordered && my < middle_end {
-            let boundary = glyphs::LIGHT_RULE.to_string().repeat(w);
-            render_line(frame, area.x, my, area.width, &[
-                (boundary, STYLES.dim),
-            ]);
-            my += 1;
-        }
-
-        // --- Held items (gradual: show N individually, summary for rest) ---
-        if !frontier.held.is_empty() && my < middle_end {
-            let shown = frontier.show_held.min(frontier.held.len());
-            // Individual items
-            for i in 0..shown {
-                if my >= middle_end { break; }
-                let sibling_idx = frontier.held[i];
-                let entry = &self.siblings[sibling_idx];
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false);
-                my += 1;
-            }
-            // Summary for remaining
-            let remaining = frontier.held.len() - shown;
-            if remaining > 0 && my < middle_end {
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
-                let text = if shown == 0 {
-                    format!("\u{00B7} {} held", frontier.held.len())
-                } else {
-                    format!("\u{00B7} {} more held", remaining)
-                };
-                self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim);
-                my += 1;
-            }
-        }
-
-        // --- Input point ---
-        if my < middle_end {
-            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
-            let style = if is_selected {
-                Style::new().fg(CLR_DIM).bg(CLR_SELECTED_BG)
-            } else {
-                STYLES.dim
-            };
-            let prefix_len = cols.left + GUTTER;
-            let content = "+ ___";
-            let pad_right = w.saturating_sub(prefix_len + content.len());
-            let line = Line::from_spans([
-                Span::styled(" ".repeat(prefix_len), style),
-                Span::styled(content, style),
-                Span::styled(" ".repeat(pad_right), style),
-            ]);
-            Paragraph::new(Text::from(line))
-                .render(Rect::new(area.x, my, area.width, 1), frame);
-            my += 1;
-        }
-
-        // --- Accumulated items (gradual: show N individually, summary for rest) ---
-        if !frontier.accumulated.is_empty() && my < middle_end {
+        if !frontier.accumulated.is_empty() {
             let shown = frontier.show_accumulated.min(frontier.accumulated.len());
-            // Individual items
-            for i in 0..shown {
-                if my >= middle_end { break; }
-                let sibling_idx = frontier.accumulated[i];
-                let entry = &self.siblings[sibling_idx];
-                let glyph = match entry.status {
-                    TensionStatus::Resolved => "\u{2713}",  // ✓
-                    TensionStatus::Released => "~",
-                    _ => "\u{00B7}",
-                };
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(sibling_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false);
-                my += 1;
-            }
-            // Summary for remaining
             let remaining = frontier.accumulated.len() - shown;
-            if remaining > 0 && my < middle_end {
+
+            // Summary line (rendered closest to reality, at the bottom of accumulated)
+            if remaining > 0 {
+                acc_top -= 1;
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
 
                 let remaining_resolved = frontier.accumulated[shown..].iter()
@@ -827,15 +774,168 @@ impl InstrumentApp {
                     parts.push(format!("{} more", remaining));
                 }
                 let acc_text = parts.join(" \u{00B7} ");
-                self.render_indicator_line(frame, area.x, my, w, &cols, &acc_text, is_selected, STYLES.dim);
+                self.render_indicator_line(frame, area.x, acc_top, w, &cols, &acc_text, is_selected, STYLES.dim, 0);
+            }
+
+            // Individual accumulated items (shown items above the summary, in order)
+            for i in (0..shown).rev() {
+                if acc_top <= middle_start { break; }
+                acc_top -= 1;
+                let sibling_idx = frontier.accumulated[i];
+                let entry = &self.siblings[sibling_idx];
+                let glyph = match entry.status {
+                    TensionStatus::Resolved => "\u{2713}",  // ✓
+                    TensionStatus::Released => "~",
+                    _ => "\u{00B7}",
+                };
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(sibling_idx);
+                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
             }
         }
 
-        // --- Console boundary (bottom) ---
-        // Omitted for now — the reality rule serves as the bottom boundary.
+        // The top-down section must not overlap with the accumulated section
+        let top_limit = acc_top;
+        let mut my = middle_start;
+
+        // === Top-down pass: route → overdue → next → separator → held → input ===
+
+        // --- Q28: Check if route and held both fully compressed → unified summary ---
+        let shown_route = frontier.show_route.min(frontier.route.len());
+        let route_remaining = frontier.route.len() - shown_route;
+        let shown_held = frontier.show_held.min(frontier.held.len());
+        let held_remaining = frontier.held.len() - shown_held;
+        let unified_summary = shown_route == 0 && route_remaining > 0
+            && shown_held == 0 && held_remaining > 0;
+
+        if unified_summary && my < top_limit {
+            // Merge route + held into one summary line above NOW (Q28)
+            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary
+                || frontier.cursor_target(cursor_idx) == CursorTarget::Held;
+            let text = format!(
+                "\u{25B8} {} route \u{00B7} {} held",
+                frontier.route.len(),
+                frontier.held.len()
+            );
+            self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
+            my += 1;
+
+            // Overdue and next still render even when unified
+            for &sibling_idx in &frontier.overdue {
+                if my >= top_limit { break; }
+                let entry = &self.siblings[sibling_idx];
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, true, 0);
+                my += 1;
+            }
+            if let Some(next_idx) = frontier.next {
+                if my < top_limit {
+                    let entry = &self.siblings[next_idx];
+                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, 0);
+                    my += 1;
+                }
+            }
+        } else {
+            // --- Route zone (gradual: show N individually, summary for rest) ---
+            for i in 0..shown_route {
+                if my >= top_limit { break; }
+                let sibling_idx = frontier.route[i];
+                let entry = &self.siblings[sibling_idx];
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Route(sibling_idx);
+                let glyph = status_glyph(entry.status);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0);
+                my += 1;
+            }
+            // Route summary for remaining
+            if route_remaining > 0 && my < top_limit {
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
+                let text = if shown_route == 0 {
+                    format!("\u{25B8} {} more in route", frontier.route.len())
+                } else {
+                    format!("\u{25B8} {} more in route", route_remaining)
+                };
+                self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
+                my += 1;
+            }
+
+            // --- Overdue steps (part of the action sequence, above the separator) ---
+            for &sibling_idx in &frontier.overdue {
+                if my >= top_limit { break; }
+                let entry = &self.siblings[sibling_idx];
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, true, 0);
+                my += 1;
+            }
+
+            // --- Next committed step (still part of the ordered sequence) ---
+            if let Some(next_idx) = frontier.next {
+                if my < top_limit {
+                    let entry = &self.siblings[next_idx];
+                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, 0);
+                    my += 1;
+                }
+            }
+
+            // --- Console boundary: separates ordered (route+overdue+next) from unordered (held+input) ---
+            let has_unordered = !frontier.held.is_empty() || !frontier.accumulated.is_empty();
+            let has_ordered = !frontier.route.is_empty() || !frontier.overdue.is_empty() || frontier.next.is_some();
+            if has_unordered && has_ordered && my < top_limit {
+                let boundary = glyphs::LIGHT_RULE.to_string().repeat(w);
+                render_line(frame, area.x, my, area.width, &[
+                    (boundary, STYLES.dim),
+                ]);
+                my += 1;
+            }
+
+            // --- Held items (gradual: show N individually, summary for rest) ---
+            if !frontier.held.is_empty() && my < top_limit {
+                // Individual items
+                for i in 0..shown_held {
+                    if my >= top_limit { break; }
+                    let sibling_idx = frontier.held[i];
+                    let entry = &self.siblings[sibling_idx];
+                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, HELD_INDENT);
+                    my += 1;
+                }
+                // Summary for remaining
+                if held_remaining > 0 && my < top_limit {
+                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
+                    let text = if shown_held == 0 {
+                        format!("\u{00B7} {} held", frontier.held.len())
+                    } else {
+                        format!("\u{00B7} {} more held", held_remaining)
+                    };
+                    self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, HELD_INDENT);
+                    my += 1;
+                }
+            }
+        }
+
+        // --- Input point ---
+        if my < top_limit {
+            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
+            let style = if is_selected {
+                Style::new().fg(CLR_DIM).bg(CLR_SELECTED_BG)
+            } else {
+                STYLES.dim
+            };
+            let prefix_len = cols.left + GUTTER;
+            let content = "+ ___";
+            let pad_right = w.saturating_sub(prefix_len + content.len());
+            let line = Line::from_spans([
+                Span::styled(" ".repeat(prefix_len), style),
+                Span::styled(content, style),
+                Span::styled(" ".repeat(pad_right), style),
+            ]);
+            Paragraph::new(Text::from(line))
+                .render(Rect::new(area.x, my, area.width, 1), frame);
+        }
     }
 
     /// Render a single child line in the 3-column layout.
+    /// `extra_indent` adds chars before the glyph (used for held items, Q22).
     fn render_child_line(
         &self,
         frame: &mut Frame<'_>,
@@ -847,6 +947,7 @@ impl InstrumentApp {
         glyph: &str,
         is_selected: bool,
         is_overdue: bool,
+        extra_indent: usize,
     ) {
         let is_done = entry.status == TensionStatus::Resolved
             || entry.status == TensionStatus::Released;
@@ -876,7 +977,7 @@ impl InstrumentApp {
             .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
             .unwrap_or_else(|| entry.id[..cols.id_width.min(entry.id.len())].to_string());
 
-        let arrow = if entry.has_children { "\u{2192}" } else { " " }; // → or space
+        let arrow = if entry.child_count > 0 { "\u{2192}" } else { " " };
 
         let age_str = format!("{:>width$}", entry.created_age, width = cols.age_width);
 
@@ -886,7 +987,7 @@ impl InstrumentApp {
         let glyph_w = 2; // glyph + space
         let right_w = right_str.chars().count();
         let text_budget = w
-            .saturating_sub(cols.left + GUTTER + glyph_w + GUTTER + right_w);
+            .saturating_sub(cols.left + GUTTER + extra_indent + glyph_w + GUTTER + right_w);
         let main_text = truncate_str(&entry.desired, text_budget);
 
         // Build the line
@@ -896,12 +997,12 @@ impl InstrumentApp {
         let right_style = if is_selected { base_style } else { STYLES.dim };
 
         spans.push(Span::styled(left_padded, left_style));
-        spans.push(Span::styled(" ".repeat(GUTTER), base_style));
+        spans.push(Span::styled(" ".repeat(GUTTER + extra_indent), base_style));
         spans.push(Span::styled(format!("{} ", glyph), glyph_style));
         spans.push(Span::styled(&main_text, base_style));
 
         // Pad between text and right sub-columns
-        let used: usize = cols.left + GUTTER + glyph_w + main_text.chars().count();
+        let used: usize = cols.left + GUTTER + extra_indent + glyph_w + main_text.chars().count();
         let gap = w.saturating_sub(used + right_w);
         spans.push(Span::styled(" ".repeat(gap), base_style));
         spans.push(Span::styled(right_str, right_style));
@@ -918,6 +1019,7 @@ impl InstrumentApp {
     }
 
     /// Render an indicator line (held, accumulated) in the deck.
+    /// `extra_indent` adds chars before the text (used for held items, Q22).
     fn render_indicator_line(
         &self,
         frame: &mut Frame<'_>,
@@ -928,6 +1030,7 @@ impl InstrumentApp {
         text: &str,
         is_selected: bool,
         _base_style: Style,
+        extra_indent: usize,
     ) {
         let style = if is_selected {
             STYLES.selected
@@ -935,7 +1038,7 @@ impl InstrumentApp {
             STYLES.dim
         };
 
-        let prefix_len = cols.left + GUTTER;
+        let prefix_len = cols.left + GUTTER + extra_indent;
         let pad_right = w.saturating_sub(prefix_len + text.chars().count());
         let line = Line::from_spans([
             Span::styled(" ".repeat(prefix_len), style),
@@ -948,8 +1051,8 @@ impl InstrumentApp {
 
     /// Compute frontier with maximum expansion for navigation.
     /// The render path does the precise space-aware expansion.
-    fn frontier_for_navigation(&self) -> Frontier {
-        let mut frontier = Frontier::compute(&self.siblings);
+    pub fn frontier_for_navigation(&self) -> Frontier {
+        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode);
         // Show all items for navigation — render will compress if needed
         frontier.show_route = frontier.route.len();
         frontier.show_held = frontier.held.len();
@@ -982,20 +1085,13 @@ impl InstrumentApp {
     }
 
     /// Render the deck bottom bar — replaces the old lever in deck mode.
-    /// Shows: short code (left), log indicator (center), help (right).
+    /// Shows: log indicator (left), trajectory mode (center if active), help (right).
     /// Aligned to the same content area as the deck itself.
     pub fn render_deck_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
         // Match the deck content area margins
         let content = self.deck_content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
 
-        let left = if let Some(ref parent) = self.parent_tension {
-            let id = werk_shared::display_id(parent.short_code, &parent.id);
-            id
-        } else {
-            "werk".to_string()
-        };
-
-        let center = if self.parent_mutation_count > 0 {
+        let left = if self.parent_mutation_count > 0 {
             format!("\u{2193} {} prior events", self.parent_mutation_count)
         } else {
             String::new()
@@ -1005,17 +1101,11 @@ impl InstrumentApp {
 
         let w = content.width as usize;
         let left_w = left.chars().count();
-        let center_w = center.chars().count();
         let right_w = right.chars().count();
 
-        let bar = if center.is_empty() {
+        let bar = {
             let pad = w.saturating_sub(left_w + right_w);
             format!("{}{}{}", left, " ".repeat(pad), right)
-        } else {
-            let remaining = w.saturating_sub(left_w + center_w + right_w);
-            let pl = remaining / 2;
-            let pr = remaining.saturating_sub(pl);
-            format!("{}{}{}{}{}", left, " ".repeat(pl), center, " ".repeat(pr), right)
         };
 
         let edge_pad = " ".repeat(content.x.saturating_sub(area.x) as usize);
@@ -1032,6 +1122,16 @@ impl InstrumentApp {
 // ---------------------------------------------------------------------------
 
 /// Render a single line from styled string pairs.
+/// Return the appropriate glyph for a tension's status.
+/// All items get a glyph for visual rhythm — · for active, ✓ for resolved, ~ for released.
+fn status_glyph(status: TensionStatus) -> &'static str {
+    match status {
+        TensionStatus::Active => "\u{00B7}",     // · subtle bullet
+        TensionStatus::Resolved => "\u{2713}",   // ✓
+        TensionStatus::Released => "~",
+    }
+}
+
 fn render_line(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, parts: &[(String, Style)]) {
     let spans: Vec<Span> = parts.iter().map(|(text, style)| Span::styled(text.clone(), *style)).collect();
     let line = Line::from_spans(spans);

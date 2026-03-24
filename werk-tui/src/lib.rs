@@ -48,7 +48,7 @@ pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
     let entries: Vec<FieldEntry> = tensions
         .iter()
         .map(|t| {
-            let has_children = child_counts.get(&t.id).copied().unwrap_or(0) > 0;
+            let child_count = child_counts.get(&t.id).copied().unwrap_or(0);
             let last_reality_update = store
                 .get_mutations(&t.id)
                 .unwrap_or_default()
@@ -57,7 +57,7 @@ pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
                 .find(|m| m.field() == "actual" || m.field() == "created")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(t.created_at);
-            FieldEntry::from_tension(t, last_reality_update, has_children, now)
+            FieldEntry::from_tension(t, last_reality_update, child_count, now)
         })
         .collect();
 
