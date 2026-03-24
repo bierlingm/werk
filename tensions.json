@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-24T17:54:45Z",
+  "flushed_at": "2026-03-24T22:06:22Z",
   "summary": {
-    "active": 33,
+    "active": 34,
     "released": 5,
     "resolved": 23,
-    "total": 61
+    "total": 62
   },
   "tensions": [
     {
@@ -162,7 +162,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "V1-V6 implemented. Deck view: 4-zone layout (desire/route/console/reality), frontier computation, gradual compression with configurable chrome (deck.chrome: quiet/adaptive/structured), epoch mechanics (desire/reality edits close epochs, accumulated clears), pitch/roll navigation with cursor memory, quick-edit gestures (!/? for desire/reality), trajectory toggle (Shift+T). ftui integration: Flex layout for zones, Paragraph with WrapMode::Word for reality, StatusLine for bottom bar. Performance: DB indexes, batch queries, lightweight epoch timestamp query. 37 design questions tracked (Q1-Q37). Next: V7 focus zoom.",
+      "actual": "V1-V8 implemented. Deck view with 4-zone layout, frontier computation, gradual compression, configurable chrome, epoch mechanics, pitch/roll navigation with cursor memory, quick-edit gestures, trajectory toggle, focus zoom (inline expansion on Enter), peek (Space for children preview), live console zone with enriched header readouts and active input line. ftui integration: Flex layout, Paragraph word wrap, StatusLine. Panic handler, flush sanity check, TUI startup backup, 18 E2E tests. 40 design questions tracked. Next: console refinement, V9 orient zoom.",
       "created_at": "2026-03-24T17:52:26.323765+00:00",
       "desired": "TUI rebuilt around the operating envelope as primary interaction surface — frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access",
       "horizon": null,
@@ -677,6 +677,17 @@
       "position": null,
       "short_code": 61,
       "status": "Resolved"
+    },
+    {
+      "actual": "Skinner sent a formal collaboration proposal (WERK_WATERLIGHT_COLLABORATION_PROPOSAL.html). Response sent clarifying: Surface A already works via survey --json; Surface B maps onto hooks (post_create/post_resolve/post_mutation); Surface C is AI composition not instrument coupling. Conversation is live. No commitments made. Hook payload design (#50) identified as concrete deliverable on our side.",
+      "created_at": "2026-03-24T20:30:15.346756+00:00",
+      "desired": "Waterlight collaboration has a clear shape — what Mist gets from werk's structural urgency, what the hook contract looks like, and how AI composition (not functional coupling) handles the interpretive layer",
+      "horizon": null,
+      "id": "01KMGRMX9JAF284M1NP0AYGTAF",
+      "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
+      "position": null,
+      "short_code": 62,
+      "status": "Active"
     }
   ]
 }
