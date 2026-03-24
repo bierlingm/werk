@@ -6,6 +6,7 @@
 // Built on sd-core. Maximally opinionated.
 
 pub mod commands;
+pub mod palette;
 pub mod serialize;
 pub mod editor;
 pub mod output;

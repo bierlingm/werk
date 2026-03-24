@@ -2,6 +2,7 @@
 
 use crate::error::WerkError;
 use crate::output::Output;
+use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
@@ -11,6 +12,8 @@ struct PositionResult {
     id: String,
     previous_position: Option<i32>,
     new_position: i32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    signals: Vec<palette::Palette>,
 }
 
 pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError> {
@@ -35,17 +38,8 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
         .map_err(WerkError::SdError)?;
     store.end_gesture();
 
-    let result = PositionResult {
-        id: tension.id.clone(),
-        previous_position: old_position,
-        new_position: n,
-    };
-
-    if output.is_structured() {
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
-    } else {
+    // Print success message before palette (human mode)
+    if !output.is_structured() {
         match old_position {
             Some(p) => {
                 output
@@ -64,6 +58,21 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
         }
+    }
+
+    // Pathway palette: detect sequencing pressure after position change
+    let signals = palette::check_sequencing_after_position(output, &mut store, &tension.id)?;
+
+    if output.is_structured() {
+        let result = PositionResult {
+            id: tension.id.clone(),
+            previous_position: old_position,
+            new_position: n,
+            signals,
+        };
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     }
 
     Ok(())
