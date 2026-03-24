@@ -15,15 +15,8 @@ Based on [Robert Fritz's structural dynamics](https://www.robertfritz.com/resour
 ## Install
 
 ```bash
-# Everything (CLI + TUI + MCP server):
 git clone https://github.com/bierlingm/werk && cd werk
 cargo install --path werk-cli
-
-# CLI only (no terminal UI):
-cargo install --path werk-cli --no-default-features
-
-# MCP server only (for AI agent integration):
-cargo install --path werk-cli --no-default-features --features mcp
 ```
 
 Requires [Rust](https://rustup.rs/).
