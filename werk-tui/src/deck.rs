@@ -557,8 +557,8 @@ pub struct FocusedDetail {
     pub desired: String,
     /// The focused child's reality text.
     pub actual: String,
-    /// The focused child's children (desire + status).
-    pub children: Vec<(String, TensionStatus)>,
+    /// The focused child's children as FieldEntries (for render_child_line).
+    pub children: Vec<FieldEntry>,
     /// The focused child's short code.
     pub short_code: Option<i32>,
     /// The focused child's deadline label.
@@ -727,9 +727,9 @@ impl InstrumentApp {
             if let Some(ref detail) = self.focused_detail {
                 let ch = detail.children.len();
                 let rl = if detail.actual.is_empty() { 0 } else {
-                    word_wrap(&detail.actual, w).len()
+                    word_wrap(&detail.actual, w).len() + 1 // +1 for blank line before reality
                 };
-                2 + ch + rl // separator + children + reality + separator
+                ch + rl + 1 // children + reality + closing separator
             } else { 0 }
         } else { 0 };
 
@@ -798,7 +798,7 @@ impl InstrumentApp {
                     if let Some(ref detail) = self.focused_detail {
                         let dl = self.render_inline_focus(
                             frame, area.x, acc_top.saturating_sub(focus_detail_height as u16),
-                            acc_top, w, detail
+                            acc_top, w, &cols, detail
                         );
                         acc_top = acc_top.saturating_sub(dl);
                     }
@@ -871,7 +871,7 @@ impl InstrumentApp {
                 // V7: inline focus expansion
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
                     }
                 }
             }
@@ -900,7 +900,7 @@ impl InstrumentApp {
                 my += 1;
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
                     }
                 }
             }
@@ -914,19 +914,21 @@ impl InstrumentApp {
                     my += 1;
                     if focused_sibling == Some(next_idx) {
                         if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
                         }
                     }
                 }
             }
 
             // --- Console boundary: separates ordered (route+overdue+next) from unordered (held+input) ---
+            // Suppress when focus detail already provides a closing separator
             let has_unordered = !frontier.held.is_empty() || !frontier.accumulated.is_empty();
             let has_ordered = !frontier.route.is_empty() || !frontier.overdue.is_empty() || frontier.next.is_some();
+            let in_focus = self.deck_zoom == ZoomLevel::Focus;
             let show_separator = match self.deck_config.chrome {
                 ChromeMode::Quiet => false,
-                ChromeMode::Adaptive => has_unordered && has_ordered,
-                ChromeMode::Structured => has_ordered || has_unordered,
+                ChromeMode::Adaptive => has_unordered && has_ordered && !in_focus,
+                ChromeMode::Structured => (has_ordered || has_unordered) && !in_focus,
             };
             if show_separator && my < top_limit {
                 let boundary = glyphs::LIGHT_RULE.to_string().repeat(w);
@@ -948,7 +950,7 @@ impl InstrumentApp {
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, detail);
+                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail);
                         }
                     }
                 }
@@ -1231,7 +1233,7 @@ impl InstrumentApp {
     }
 
     /// Render inline focus detail below a child line (V7).
-    /// Renders separator, children, and reality starting at `y`.
+    /// Shows children (with right-column annotations) and reality.
     /// Returns the number of lines consumed.
     fn render_inline_focus(
         &self,
@@ -1240,42 +1242,37 @@ impl InstrumentApp {
         start_y: u16,
         limit_y: u16,
         w: usize,
+        cols: &ColumnLayout,
         detail: &FocusedDetail,
     ) -> u16 {
         let mut y = start_y;
-
-        // Separator below the focused item's line
         if y >= limit_y { return 0; }
-        let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
-        render_line(frame, x, y, w as u16, &[(rule, STYLES.dim)]);
-        y += 1;
 
-        // Children (individual lines with glyphs, indented)
-        for (desired, status) in &detail.children {
+        // Children rendered with render_child_line (indented, with right-column annotations)
+        for child in &detail.children {
             if y >= limit_y { break; }
-            let glyph = status_glyph(*status);
-            let text = truncate_str(desired, w.saturating_sub(6));
-            let style = if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim };
-            render_line(frame, x, y, w as u16, &[
-                ("    ".to_string(), STYLES.dim),
-                (format!("{} ", glyph), style),
-                (text, style),
-            ]);
+            let glyph = status_glyph(child.status);
+            self.render_child_line(frame, x, y, w, cols, child, glyph, false, false, HELD_INDENT);
             y += 1;
         }
 
-        // Reality (dim, word-wrapped)
+        // Reality (dim, word-wrapped) with blank line before if there are children
         if !detail.actual.is_empty() && y < limit_y {
+            if !detail.children.is_empty() && y < limit_y {
+                y += 1; // blank line between children and reality
+            }
             let avail = limit_y.saturating_sub(y);
-            let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
-            Paragraph::new(reality_text)
-                .wrap(WrapMode::Word)
-                .render(Rect::new(x, y, w as u16, avail), frame);
-            let reality_lines = word_wrap(&detail.actual, w).len() as u16;
-            y += reality_lines.min(avail);
+            if avail > 0 {
+                let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
+                Paragraph::new(reality_text)
+                    .wrap(WrapMode::Word)
+                    .render(Rect::new(x, y, w as u16, avail), frame);
+                let reality_lines = word_wrap(&detail.actual, w).len() as u16;
+                y += reality_lines.min(avail);
+            }
         }
 
-        // Separator after detail
+        // Single closing separator
         if y < limit_y {
             let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
             render_line(frame, x, y, w as u16, &[(rule, STYLES.dim)]);
