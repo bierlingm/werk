@@ -1183,8 +1183,8 @@ impl InstrumentApp {
     }
 
     /// Render the focus zoom view (V7): one element's detail fills the middle zone.
-    /// Context items (route, held, accumulated) shown when space allows;
-    /// compressed to indicators when tight.
+    /// The focused item is removed from context. Accumulated stays near reality (bottom-up).
+    /// Context items shown when space allows, compressed when tight.
     fn render_focus_zone(
         &self,
         frame: &mut Frame<'_>,
@@ -1195,81 +1195,100 @@ impl InstrumentApp {
     ) {
         let end = zone.y + zone.height;
         let frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
+        let focused_idx = detail.sibling_index;
 
-        // --- Measure the focused detail's minimum height ---
+        // --- Exclude the focused item from context lists ---
+        let ctx_route: Vec<usize> = frontier.route.iter()
+            .chain(frontier.overdue.iter())
+            .chain(frontier.next.iter())
+            .copied()
+            .filter(|&idx| idx != focused_idx)
+            .collect();
+        let ctx_held: Vec<usize> = frontier.held.iter()
+            .copied()
+            .filter(|&idx| idx != focused_idx)
+            .collect();
+        let ctx_acc: Vec<usize> = frontier.accumulated.iter()
+            .copied()
+            .filter(|&idx| idx != focused_idx)
+            .collect();
+
+        // --- Measure focused detail ---
         let heading_lines = word_wrap(&detail.desired, w).len() as u16;
         let children_lines = detail.children.len() as u16;
         let reality_lines = if detail.actual.is_empty() { 0 } else {
             word_wrap(&detail.actual, w).len() as u16
         };
-        // Focus detail needs: heading + separator + children + blank + reality
         let focus_height = heading_lines + 1 + children_lines + 1 + reality_lines;
 
-        // --- Calculate available space for context ---
-        let total_lines = zone.height;
-        let context_budget = total_lines.saturating_sub(focus_height + 2); // +2 for blank lines around focus
-
-        // Count context items
-        let route_items = frontier.route.len() + frontier.overdue.len()
-            + if frontier.next.is_some() { 1 } else { 0 };
-        let held_items = frontier.held.len();
-        let acc_items = frontier.accumulated.len();
-
-        // Decide what to show: individual items if they fit, summary otherwise
-        let show_above = route_items + held_items;
-        let show_below = acc_items;
-        let above_budget = if show_above + show_below > 0 {
-            (context_budget as usize * show_above) / (show_above + show_below).max(1)
+        // --- Budget for context ---
+        let context_budget = zone.height.saturating_sub(focus_height + 2) as usize;
+        let above_count = ctx_route.len() + ctx_held.len();
+        let below_count = ctx_acc.len();
+        let total_ctx = above_count + below_count;
+        let above_budget = if total_ctx > 0 {
+            (context_budget * above_count) / total_ctx
         } else { 0 };
-        let below_budget = context_budget.saturating_sub(above_budget as u16) as usize;
+        let below_budget = context_budget.saturating_sub(above_budget);
 
-        // --- Render top-down ---
+        // === Bottom-up pass: accumulated near reality ===
+        let mut acc_top = end;
+        if below_count > 0 {
+            if below_budget >= below_count {
+                // Individual accumulated items (bottom-up)
+                for &idx in ctx_acc.iter().rev() {
+                    if acc_top <= zone.y { break; }
+                    acc_top -= 1;
+                    let entry = &self.siblings[idx];
+                    let glyph = status_glyph(entry.status);
+                    self.render_child_line(frame, zone.x, acc_top, w, cols, entry, glyph, false, false, 0);
+                }
+            } else if below_budget >= 1 {
+                acc_top -= 1;
+                let text = format!("\u{25BC} {} accumulated", below_count);
+                self.render_indicator_line(frame, zone.x, acc_top, w, cols, &text, false, STYLES.dim, 0);
+            }
+        }
+
+        let top_limit = acc_top; // don't overlap accumulated
+
+        // === Top-down pass ===
         let mut y = zone.y;
 
-        // Context above: show individual items if they fit, else summary
-        if show_above > 0 {
-            if above_budget >= show_above {
-                // Show individual route items (dim, one line each)
-                for &idx in frontier.route.iter().chain(frontier.overdue.iter()) {
-                    if y >= end { break; }
+        // Context above: route + held (excluding focused)
+        if above_count > 0 {
+            if above_budget >= above_count {
+                for &idx in &ctx_route {
+                    if y >= top_limit { break; }
                     let entry = &self.siblings[idx];
                     let glyph = status_glyph(entry.status);
                     self.render_child_line(frame, zone.x, y, w, cols, entry, glyph, false, false, 0);
                     y += 1;
                 }
-                if let Some(next_idx) = frontier.next {
-                    if y < end {
-                        let entry = &self.siblings[next_idx];
-                        self.render_child_line(frame, zone.x, y, w, cols, entry, "\u{00B7}", false, false, 0);
-                        y += 1;
-                    }
-                }
-                for &idx in &frontier.held {
-                    if y < end {
-                        let entry = &self.siblings[idx];
-                        self.render_child_line(frame, zone.x, y, w, cols, entry, "\u{00B7}", false, false, HELD_INDENT);
-                        y += 1;
-                    }
+                for &idx in &ctx_held {
+                    if y >= top_limit { break; }
+                    let entry = &self.siblings[idx];
+                    self.render_child_line(frame, zone.x, y, w, cols, entry, "\u{00B7}", false, false, HELD_INDENT);
+                    y += 1;
                 }
             } else if above_budget >= 1 {
-                // Summary line
                 let mut parts = Vec::new();
-                if route_items > 0 { parts.push(format!("\u{25B2} {} in route", route_items)); }
-                if held_items > 0 { parts.push(format!("{} held", held_items)); }
+                if !ctx_route.is_empty() { parts.push(format!("\u{25B2} {} in route", ctx_route.len())); }
+                if !ctx_held.is_empty() { parts.push(format!("{} held", ctx_held.len())); }
                 let text = parts.join(" \u{00B7} ");
                 self.render_indicator_line(frame, zone.x, y, w, cols, &text, false, STYLES.dim, 0);
                 y += 1;
             }
         }
 
-        // Blank line before focus
-        if y < end { y += 1; }
+        // Blank before focus
+        if y < top_limit { y += 1; }
 
-        // --- Focused element ---
-        // Heading: desire text (bold, word-wrapped)
-        if y < end {
+        // --- Focused element detail ---
+        // Desire heading (bold, word-wrapped)
+        if y < top_limit {
             let heading_text = Text::from(Line::from(Span::styled(&detail.desired, STYLES.text_bold)));
-            let max_h = end.saturating_sub(y).min(heading_lines + 1);
+            let max_h = top_limit.saturating_sub(y).min(heading_lines + 1);
             Paragraph::new(heading_text)
                 .wrap(WrapMode::Word)
                 .render(Rect::new(zone.x, y, zone.width, max_h), frame);
@@ -1277,7 +1296,7 @@ impl InstrumentApp {
         }
 
         // Separator
-        if y < end {
+        if y < top_limit {
             let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
             render_line(frame, zone.x, y, zone.width, &[(rule, STYLES.dim)]);
             y += 1;
@@ -1285,7 +1304,7 @@ impl InstrumentApp {
 
         // Children (individual lines)
         for (desired, status) in &detail.children {
-            if y >= end.saturating_sub(reality_lines + 2) { break; }
+            if y >= top_limit.saturating_sub(reality_lines + 1) { break; }
             let glyph = status_glyph(*status);
             let text = truncate_str(desired, w.saturating_sub(4));
             let style = if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim };
@@ -1298,39 +1317,15 @@ impl InstrumentApp {
         }
 
         // Blank before reality
-        if y < end { y += 1; }
+        if y < top_limit { y += 1; }
 
-        // Reality (dim, word-wrapped) — leave room for bottom context
-        let bottom_context_lines: u16 = if show_below > 0 { 1.min(below_budget as u16 + 1) } else { 0 };
-        if !detail.actual.is_empty() && y < end.saturating_sub(bottom_context_lines) {
-            let avail = end.saturating_sub(y + bottom_context_lines);
+        // Reality (dim, word-wrapped)
+        if !detail.actual.is_empty() && y < top_limit {
+            let avail = top_limit.saturating_sub(y);
             let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
             Paragraph::new(reality_text)
                 .wrap(WrapMode::Word)
                 .render(Rect::new(zone.x, y, zone.width, avail), frame);
-            y += reality_lines.min(avail);
-        }
-
-        // Blank after reality
-        if y < end { y += 1; }
-
-        // --- Context below: accumulated ---
-        if acc_items > 0 && y < end {
-            let remaining = (end - y) as usize;
-            if remaining >= acc_items {
-                // Show individual accumulated items
-                for &idx in &frontier.accumulated {
-                    if y >= end { break; }
-                    let entry = &self.siblings[idx];
-                    let glyph = status_glyph(entry.status);
-                    self.render_child_line(frame, zone.x, y, w, cols, entry, glyph, false, false, 0);
-                    y += 1;
-                }
-            } else {
-                // Summary
-                let text = format!("\u{25BC} {} accumulated", acc_items);
-                self.render_indicator_line(frame, zone.x, y, w, cols, &text, false, STYLES.dim, 0);
-            }
         }
     }
 
