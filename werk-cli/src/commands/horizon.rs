@@ -2,6 +2,7 @@
 
 use crate::error::WerkError;
 use crate::output::Output;
+use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
@@ -15,6 +16,8 @@ struct HorizonResult {
     id: String,
     horizon: Option<String>,
     old_horizon: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    signals: Vec<palette::Palette>,
 }
 
 /// JSON output structure for horizon display.
@@ -88,17 +91,8 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
 
             hooks.post_mutation(&event);
 
-            let result = HorizonResult {
-                id: tension.id.clone(),
-                horizon: horizon_parsed.as_ref().map(|h| h.to_string()),
-                old_horizon,
-            };
-
-            if output.is_structured() {
-                output
-                    .print_structured(&result)
-                    .map_err(WerkError::IoError)?;
-            } else {
+            // Print success message before palette (human mode)
+            if !output.is_structured() {
                 match &horizon_parsed {
                     Some(h) => {
                         output
@@ -114,6 +108,25 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                 }
+            }
+
+            // Pathway palette: detect containment violations after horizon change
+            let signals = if horizon_parsed.is_some() {
+                palette::check_containment_after_horizon(output, &mut store, &tension.id)?
+            } else {
+                vec![]
+            };
+
+            if output.is_structured() {
+                let result = HorizonResult {
+                    id: tension.id.clone(),
+                    horizon: horizon_parsed.as_ref().map(|h| h.to_string()),
+                    old_horizon,
+                    signals,
+                };
+                output
+                    .print_structured(&result)
+                    .map_err(WerkError::IoError)?;
             }
 
             Ok(())

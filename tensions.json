@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-24T14:38:27Z",
+  "flushed_at": "2026-03-24T16:21:26Z",
   "summary": {
-    "active": 32,
-    "released": 4,
-    "resolved": 19,
-    "total": 55
+    "active": 33,
+    "released": 5,
+    "resolved": 20,
+    "total": 58
   },
   "tensions": [
     {
@@ -272,7 +272,7 @@
       "status": "Released"
     },
     {
-      "actual": "No pathway palettes exist in CLI. Gestures that create structural signals (e.g., horizon command setting a child deadline beyond parent) complete silently. No inline response options. Temporal calculus already computes containment violations and sequencing pressure — the detection logic exists, the response options do not.",
+      "actual": "Pathway palettes implemented in CLI for horizon (containment violations) and position (sequencing pressure). Shared palette infrastructure in werk-shared/src/palette.rs: data types (Palette, PaletteOption, PaletteChoice, PaletteContext), builders (containment_palette, sequencing_palette), applicators (apply_choice), and detection helpers (detect_containment_palettes, detect_sequencing_palettes). CLI presentation layer in werk-cli/src/palette.rs: three-mode presentation (interactive terminal with numbered options, piped stdin prints signal to stderr, JSON mode returns structured data without blocking). JSON response includes signals array with action keys for programmatic handling. Each palette response recorded as its own gesture. Not yet integrated into add or move commands. TUI integration ready: werk-shared types importable by any surface, TUI will use ftui for presentation.",
       "created_at": "2026-03-22T18:01:08.096275+00:00",
       "desired": "pathway palettes in CLI — when a gesture creates a structural signal (containment violation, sequencing pressure, etc.), the instrument immediately presents response options inline. The user selects or dismisses. Synchronous instrument feedback within the gesture flow.",
       "horizon": null,
@@ -393,9 +393,9 @@
       "status": "Active"
     },
     {
-      "actual": "business foundation document drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
+      "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
       "created_at": "2026-03-23T10:27:28.391530+00:00",
-      "desired": "werk has a sustainable business model that funds continued development while remaining true to the conceptual foundation",
+      "desired": "werk has a sustainable business model that funds continued development while remaining fundamentally true to the conceptual foundation",
       "horizon": null,
       "id": "01KMD3RF07ZPPVBMVND8RGZ6C5",
       "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
@@ -440,7 +440,7 @@
       "actual": "integration points mapped in business foundation doc; no implementation; Statecraft website already lists werk as a tool",
       "created_at": "2026-03-23T10:27:51.834164+00:00",
       "desired": "werk integrates naturally with Statecraft services, Modern Minuteman operations, and Spikes feedback loops",
-      "horizon": null,
+      "horizon": "2026-04-07",
       "id": "01KMD3S5WTSJ75HEZYPBEY8159",
       "parent_id": "01KMD3RF07ZPPVBMVND8RGZ6C5",
       "position": null,
@@ -611,6 +611,39 @@
       "position": null,
       "short_code": 56,
       "status": "Resolved"
+    },
+    {
+      "actual": "CLI human-facing output fully aligned with foundation vocabulary: Reality (not Actual), Deadline (not Horizon) in show/add/compose-up/horizon commands. CLI aliases: werk actual → reality, werk deadline → horizon. --phase filter removed from list. 'phase transition' → 'epoch boundary'. Agent prompts updated. DynamicsEngine renamed to Engine. dynamics.rs consolidated into temporal.rs (sd-core), renamed to serialize.rs (CLI). JSON keys and struct fields unchanged (backward compatible). Remaining: TUI labels (blocked on TUI rebuild).",
+      "created_at": "2026-03-24T15:44:44.122209+00:00",
+      "desired": "test",
+      "horizon": null,
+      "id": "01KMG8A3JTJYHWSJ8ZSVAGGZ0F",
+      "parent_id": "01KM2NGN3E1JS453MSM0ZC8A2R",
+      "position": null,
+      "short_code": 57,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Conceptual foundation exists and is partially implemented. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: implied execution window, urgency, sequencing pressure, critical path (recursive), containment violation — all computed in sd-core. Frontier projection: operating envelope partitions children into next/overdue/held/remaining/resolved. Three interface surfaces operational: TUI (functional but pre-foundation), CLI (30+ commands with foundation vocabulary, JSON on all commands), MCP (werk mcp — 30 tools via rmcp/stdio, same gestures as CLI). Cooperative dynamics remain unexplored.",
+      "created_at": "2026-03-24T15:51:46.448953+00:00",
+      "desired": "test",
+      "horizon": null,
+      "id": "01KMG8Q00G5VZES0STHGFEPTGH",
+      "parent_id": "01KKYEFBB60Z6FHHP7EX8BBS14",
+      "position": null,
+      "short_code": 58,
+      "status": "Released"
+    },
+    {
+      "actual": "Shared palette infrastructure exists in werk-shared (types, builders, applicators, detection). No TUI presentation layer yet. Blocked on envelope rebuild (#15 V3+).",
+      "created_at": "2026-03-24T16:21:25.815859+00:00",
+      "desired": "pathway palettes in TUI — inline option sets presented via ftui when gestures create structural signals (containment violations, sequencing pressure). Uses shared palette types from werk-shared. The TUI analog of CLI pathway palettes.",
+      "horizon": null,
+      "id": "01KMGAD9NQM5GYT8WN30JS7SJ3",
+      "parent_id": "01KM6K5TNHR3T8S91RZKENNXG7",
+      "position": null,
+      "short_code": 59,
+      "status": "Active"
     }
   ]
 }
