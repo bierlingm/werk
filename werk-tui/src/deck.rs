@@ -831,33 +831,21 @@ impl InstrumentApp {
             && shown_held == 0 && held_remaining > 0;
 
         if unified_summary && my < top_limit {
-            // Merge route + held into one summary line above NOW (Q28)
+            // Merge route + next + held into one summary line above NOW (Q28)
+            // Next and overdue are absorbed into the route count
+            let total_route = frontier.route.len()
+                + frontier.overdue.len()
+                + if frontier.next.is_some() { 1 } else { 0 };
             let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary
-                || frontier.cursor_target(cursor_idx) == CursorTarget::Held;
+                || frontier.cursor_target(cursor_idx) == CursorTarget::Held
+                || frontier.cursor_target(cursor_idx) == CursorTarget::Next(frontier.next.unwrap_or(0));
             let text = format!(
                 "\u{25B8} {} route \u{00B7} {} held",
-                frontier.route.len(),
+                total_route,
                 frontier.held.len()
             );
             self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
             my += 1;
-
-            // Overdue and next still render even when unified
-            for &sibling_idx in &frontier.overdue {
-                if my >= top_limit { break; }
-                let entry = &self.siblings[sibling_idx];
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, true, 0);
-                my += 1;
-            }
-            if let Some(next_idx) = frontier.next {
-                if my < top_limit {
-                    let entry = &self.siblings[next_idx];
-                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, 0);
-                    my += 1;
-                }
-            }
         } else {
             // --- Route zone (gradual: show N individually, summary for rest) ---
             for i in 0..shown_route {
