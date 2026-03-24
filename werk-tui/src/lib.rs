@@ -26,6 +26,33 @@ use crate::state::FieldEntry;
 /// Load all tensions from the workspace and compute activity.
 pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
     let workspace = Workspace::discover().map_err(|e| e.to_string())?;
+
+    // Pre-session backup: copy sd.db before opening so a crash can be recovered from
+    let db_path = workspace.root().join(".werk").join("sd.db");
+    if db_path.exists() {
+        let backup_dir = workspace.root().join(".werk").join("backups");
+        let _ = std::fs::create_dir_all(&backup_dir);
+        let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+        let backup_path = backup_dir.join(format!("sd.db.{}", timestamp));
+        // Only back up if no recent backup exists (avoid duplicate backups within same minute)
+        if !backup_path.exists() {
+            let _ = std::fs::copy(&db_path, &backup_path);
+        }
+        // Prune old backups: keep last 10
+        if let Ok(entries) = std::fs::read_dir(&backup_dir) {
+            let mut db_backups: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("sd.db."))
+                .collect();
+            db_backups.sort_by_key(|e| e.file_name());
+            if db_backups.len() > 10 {
+                for old in &db_backups[..db_backups.len() - 10] {
+                    let _ = std::fs::remove_file(old.path());
+                }
+            }
+        }
+    }
+
     let store = workspace.open_store().map_err(|e| e.to_string())?;
 
     let tensions = store

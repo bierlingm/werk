@@ -90,6 +90,41 @@ fn flush_to_file(workspace: &Workspace) -> Result<(PathBuf, usize), WerkError> {
         .collect();
 
     let count = sorted.len();
+
+    // SAFETY: refuse to overwrite tensions.json if tension count drops dramatically.
+    // This prevents a corrupt/empty DB from destroying good data.
+    let flush_path = workspace.root().join(FLUSH_FILENAME);
+    if flush_path.exists() {
+        if let Ok(existing) = std::fs::read_to_string(&flush_path) {
+            if let Ok(existing_val) = serde_json::from_str::<serde_json::Value>(&existing) {
+                if let Some(old_total) = existing_val["summary"]["total"].as_u64() {
+                    let old_total = old_total as usize;
+                    if old_total > 0 && count == 0 {
+                        return Err(WerkError::IoError(format!(
+                            "SAFETY: refusing to overwrite tensions.json with 0 tensions (was {}). \
+                             If intentional, delete tensions.json first.", old_total
+                        )));
+                    }
+                    if old_total > 5 && count < old_total / 2 {
+                        return Err(WerkError::IoError(format!(
+                            "SAFETY: refusing to overwrite tensions.json: count dropped from {} to {}. \
+                             If intentional, delete tensions.json first.", old_total, count
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    // Back up tensions.json before overwriting
+    if flush_path.exists() {
+        let backup_dir = workspace.root().join(".werk").join("backups");
+        let _ = std::fs::create_dir_all(&backup_dir);
+        let timestamp = now.format("%Y%m%dT%H%M%SZ");
+        let backup_path = backup_dir.join(format!("tensions.{}.json", timestamp));
+        let _ = std::fs::copy(&flush_path, &backup_path);
+    }
+
     let state = FlushState {
         flushed_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         summary: FlushSummary {
@@ -104,7 +139,6 @@ fn flush_to_file(workspace: &Workspace) -> Result<(PathBuf, usize), WerkError> {
     let json = serde_json::to_string_pretty(&state)
         .map_err(|e| WerkError::IoError(format!("failed to serialize state: {}", e)))?;
 
-    let flush_path = workspace.root().join(FLUSH_FILENAME);
     let mut file = std::fs::File::create(&flush_path).map_err(|e| {
         WerkError::IoError(format!("failed to create {}: {}", flush_path.display(), e))
     })?;
