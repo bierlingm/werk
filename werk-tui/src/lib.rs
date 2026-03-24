@@ -9,6 +9,7 @@ pub mod theme;
 pub mod msg;
 pub mod app;
 pub mod render;
+pub mod deck;
 pub mod update;
 pub mod helpers;
 pub mod horizon;

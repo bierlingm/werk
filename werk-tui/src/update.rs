@@ -68,6 +68,9 @@ impl Model for InstrumentApp {
             && !matches!(self.input_mode, InputMode::Adding(_))
         {
             self.render_empty(&rects[0], frame);
+        } else if self.use_deck && self.parent_id.is_some() {
+            // New deck rendering (V1+) for descended views
+            self.render_deck(&rects[0], frame);
         } else if self.siblings.is_empty() && self.parent_id.is_some() {
             // Descended into a tension with no children — render_field handles this
             self.render_field(&rects[0], frame);
@@ -93,8 +96,12 @@ impl Model for InstrumentApp {
             _ => {}
         }
 
-        // Lever
-        self.render_lever(&rects[1], frame);
+        // Bottom bar: deck bar in deck mode, old lever otherwise
+        if self.use_deck && self.parent_id.is_some() {
+            self.render_deck_bar(&rects[1], frame);
+        } else {
+            self.render_lever(&rects[1], frame);
+        }
 
         // Hints — show contextual hints for input modes
         if show_hints {
@@ -121,13 +128,21 @@ impl InstrumentApp {
         match msg {
             // Navigation
             Msg::Char('k') | Msg::Up => {
-                self.vlist.up();
-                self.close_gaze();
+                if self.use_deck && self.parent_id.is_some() {
+                    self.deck_pitch_up();
+                } else {
+                    self.vlist.up();
+                    self.close_gaze();
+                }
                 Cmd::none()
             }
             Msg::Char('j') | Msg::Down => {
-                self.vlist.down();
-                self.close_gaze();
+                if self.use_deck && self.parent_id.is_some() {
+                    self.deck_pitch_down();
+                } else {
+                    self.vlist.down();
+                    self.close_gaze();
+                }
                 Cmd::none()
             }
 
@@ -143,10 +158,23 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            Msg::Char('l') | Msg::Submit | Msg::Descend => {
-                // Descend into any tension — gaze or not, with children or not
-                // (descending into a childless tension shows empty with "a" to add)
-                if let Some(entry) = self.action_target().cloned() {
+            Msg::Char('l') | Msg::Descend => {
+                // Roll right: descend into selected tension
+                if self.use_deck && self.parent_id.is_some() {
+                    if let Some(idx) = self.deck_selected_sibling_index() {
+                        let id = self.siblings[idx].id.clone();
+                        self.descend(&id);
+                    }
+                } else if let Some(entry) = self.action_target().cloned() {
+                    self.descend(&entry.id);
+                }
+                Cmd::none()
+            }
+            Msg::Submit => {
+                if self.use_deck && self.parent_id.is_some() {
+                    // Enter in deck mode = focus zoom (V7 — not yet implemented)
+                    self.set_transient("focus zoom: not yet");
+                } else if let Some(entry) = self.action_target().cloned() {
                     self.descend(&entry.id);
                 }
                 Cmd::none()
@@ -159,13 +187,22 @@ impl InstrumentApp {
             }
 
             Msg::Char('g') | Msg::JumpTop => {
-                self.vlist.top();
-                self.close_gaze();
+                if self.use_deck && self.parent_id.is_some() {
+                    self.deck_cursor.index = 0;
+                } else {
+                    self.vlist.top();
+                    self.close_gaze();
+                }
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
-                self.vlist.bottom();
-                self.close_gaze();
+                if self.use_deck && self.parent_id.is_some() {
+                    let frontier = crate::deck::Frontier::compute(&self.siblings);
+                    self.deck_cursor.index = frontier.selectable_count().saturating_sub(1);
+                } else {
+                    self.vlist.bottom();
+                    self.close_gaze();
+                }
                 Cmd::none()
             }
 
@@ -325,6 +362,13 @@ impl InstrumentApp {
                     self.input_buffer.clear();
                     self.search_state = Some(crate::search::SearchState::new());
                 }
+                Cmd::none()
+            }
+
+            // Toggle deck view (new V1 rendering)
+            Msg::Char('D') => {
+                self.use_deck = !self.use_deck;
+                self.set_transient(if self.use_deck { "deck view" } else { "field view" });
                 Cmd::none()
             }
 

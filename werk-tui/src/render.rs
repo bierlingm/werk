@@ -819,19 +819,30 @@ impl InstrumentApp {
             }
         }
 
-        let crumbs = &self.breadcrumb_cache;
-        let left_text = if crumbs.is_empty() {
-            " werk".to_string()
+        let left_text = if self.use_deck && self.parent_id.is_some() {
+            // Deck mode: minimal lever — tension ID only, breadcrumb is in the deck itself
+            if let Some(ref parent) = self.parent_tension {
+                let id = werk_shared::display_id(parent.short_code, &parent.id);
+                format!(" {}", id)
+            } else {
+                " werk".to_string()
+            }
         } else {
-            let path: String = crumbs
-                .iter()
-                .map(|(glyph, name)| {
-                    let short = truncate(name, 20);
-                    format!("{} {}", glyph, short)
-                })
-                .collect::<Vec<_>>()
-                .join(" \u{203A} "); // ›
-            format!(" {}", path)
+            // Old field view: full breadcrumb path
+            let crumbs = &self.breadcrumb_cache;
+            if crumbs.is_empty() {
+                " werk".to_string()
+            } else {
+                let path: String = crumbs
+                    .iter()
+                    .map(|(glyph, name)| {
+                        let short = truncate(name, 20);
+                        format!("{} {}", glyph, short)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" \u{203A} "); // ›
+                format!(" {}", path)
+            }
         };
 
         let mut right_parts: Vec<String> = Vec::new();

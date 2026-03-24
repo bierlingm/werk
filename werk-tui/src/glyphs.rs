@@ -202,6 +202,25 @@ pub fn gap_bar(magnitude: f64, width: usize) -> String {
     )
 }
 
+/// Compact age string for the deck right column.
+/// Returns e.g. "2d", "3w", "1mo" — no "ago" suffix, minimal width.
+pub fn compact_age(from: chrono::DateTime<chrono::Utc>, now: chrono::DateTime<chrono::Utc>) -> String {
+    let delta = now.signed_duration_since(from);
+    let hours = delta.num_hours();
+    let days = delta.num_days();
+    let weeks = delta.num_weeks();
+
+    if hours < 24 {
+        format!("{}h", hours.max(0))
+    } else if days < 14 {
+        format!("{}d", days)
+    } else if weeks < 9 {
+        format!("{}w", weeks)
+    } else {
+        format!("{}mo", days / 30)
+    }
+}
+
 // Separator constants
 pub const LIGHT_RULE: char = '\u{2504}'; // ┄
 pub const RULE: char = '\u{2500}';       // ─
