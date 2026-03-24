@@ -202,6 +202,14 @@ impl InstrumentApp {
                 }
                 Cmd::none()
             }
+            // Shift+Enter — orient zoom (V9 placeholder)
+            Msg::ShiftSubmit => {
+                if self.use_deck && self.parent_id.is_some() {
+                    self.set_transient("orient zoom: coming soon");
+                }
+                Cmd::none()
+            }
+
             Msg::Char('h') | Msg::Backspace | Msg::Ascend => {
                 if self.parent_id.is_some() {
                     self.ascend();

@@ -1183,7 +1183,8 @@ impl InstrumentApp {
     }
 
     /// Render the focus zoom view (V7): one element's detail fills the middle zone.
-    /// Shows: compressed indicator above, focused desire, children, reality, compressed below.
+    /// Context items (route, held, accumulated) shown when space allows;
+    /// compressed to indicators when tight.
     fn render_focus_zone(
         &self,
         frame: &mut Frame<'_>,
@@ -1192,53 +1193,88 @@ impl InstrumentApp {
         cols: &ColumnLayout,
         detail: &FocusedDetail,
     ) {
-        let mut y = zone.y;
         let end = zone.y + zone.height;
-
-        // Top compressed indicator: what's above the focused element
         let frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
-        let above_count = frontier.route.len()
-            + frontier.overdue.len()
+
+        // --- Measure the focused detail's minimum height ---
+        let heading_lines = word_wrap(&detail.desired, w).len() as u16;
+        let children_lines = detail.children.len() as u16;
+        let reality_lines = if detail.actual.is_empty() { 0 } else {
+            word_wrap(&detail.actual, w).len() as u16
+        };
+        // Focus detail needs: heading + separator + children + blank + reality
+        let focus_height = heading_lines + 1 + children_lines + 1 + reality_lines;
+
+        // --- Calculate available space for context ---
+        let total_lines = zone.height;
+        let context_budget = total_lines.saturating_sub(focus_height + 2); // +2 for blank lines around focus
+
+        // Count context items
+        let route_items = frontier.route.len() + frontier.overdue.len()
             + if frontier.next.is_some() { 1 } else { 0 };
-        let held_count = frontier.held.len();
-        if above_count > 0 || held_count > 0 {
-            let mut parts = Vec::new();
-            if above_count > 0 {
-                parts.push(format!("\u{25B2} {} in route", above_count));
+        let held_items = frontier.held.len();
+        let acc_items = frontier.accumulated.len();
+
+        // Decide what to show: individual items if they fit, summary otherwise
+        let show_above = route_items + held_items;
+        let show_below = acc_items;
+        let above_budget = if show_above + show_below > 0 {
+            (context_budget as usize * show_above) / (show_above + show_below).max(1)
+        } else { 0 };
+        let below_budget = context_budget.saturating_sub(above_budget as u16) as usize;
+
+        // --- Render top-down ---
+        let mut y = zone.y;
+
+        // Context above: show individual items if they fit, else summary
+        if show_above > 0 {
+            if above_budget >= show_above {
+                // Show individual route items (dim, one line each)
+                for &idx in frontier.route.iter().chain(frontier.overdue.iter()) {
+                    if y >= end { break; }
+                    let entry = &self.siblings[idx];
+                    let glyph = status_glyph(entry.status);
+                    self.render_child_line(frame, zone.x, y, w, cols, entry, glyph, false, false, 0);
+                    y += 1;
+                }
+                if let Some(next_idx) = frontier.next {
+                    if y < end {
+                        let entry = &self.siblings[next_idx];
+                        self.render_child_line(frame, zone.x, y, w, cols, entry, "\u{00B7}", false, false, 0);
+                        y += 1;
+                    }
+                }
+                for &idx in &frontier.held {
+                    if y < end {
+                        let entry = &self.siblings[idx];
+                        self.render_child_line(frame, zone.x, y, w, cols, entry, "\u{00B7}", false, false, HELD_INDENT);
+                        y += 1;
+                    }
+                }
+            } else if above_budget >= 1 {
+                // Summary line
+                let mut parts = Vec::new();
+                if route_items > 0 { parts.push(format!("\u{25B2} {} in route", route_items)); }
+                if held_items > 0 { parts.push(format!("{} held", held_items)); }
+                let text = parts.join(" \u{00B7} ");
+                self.render_indicator_line(frame, zone.x, y, w, cols, &text, false, STYLES.dim, 0);
+                y += 1;
             }
-            if held_count > 0 {
-                parts.push(format!("{} held", held_count));
-            }
-            let text = parts.join(" \u{00B7} ");
-            render_line(frame, zone.x, y, zone.width, &[
-                (" ".repeat(cols.left + GUTTER).to_string(), STYLES.dim),
-                (text, STYLES.dim),
-            ]);
-            y += 1;
         }
 
-        // Blank line
+        // Blank line before focus
         if y < end { y += 1; }
 
-        // Focused element heading: deadline + desire text (bold)
-        let id_str = detail.short_code
-            .map(|sc| format!("#{}", sc))
-            .unwrap_or_default();
-        let heading = if let Some(ref dl) = detail.deadline_label {
-            format!("{} {} {}", dl, detail.desired, id_str)
-        } else {
-            format!("{} {}", detail.desired, id_str)
-        };
-
-        // Use Paragraph with word wrap for the heading
-        let heading_text = Text::from(Line::from(Span::styled(&heading, STYLES.text_bold)));
-        let heading_area = Rect::new(zone.x, y, zone.width, end.saturating_sub(y).min(4));
-        Paragraph::new(heading_text)
-            .wrap(WrapMode::Word)
-            .render(heading_area, frame);
-        // Estimate wrapped height (max 4 lines for heading)
-        let heading_lines = (heading.chars().count() as u16 / zone.width.max(1) + 1).min(4);
-        y += heading_lines;
+        // --- Focused element ---
+        // Heading: desire text (bold, word-wrapped)
+        if y < end {
+            let heading_text = Text::from(Line::from(Span::styled(&detail.desired, STYLES.text_bold)));
+            let max_h = end.saturating_sub(y).min(heading_lines + 1);
+            Paragraph::new(heading_text)
+                .wrap(WrapMode::Word)
+                .render(Rect::new(zone.x, y, zone.width, max_h), frame);
+            y += heading_lines;
+        }
 
         // Separator
         if y < end {
@@ -1247,41 +1283,54 @@ impl InstrumentApp {
             y += 1;
         }
 
-        // Children list (individual lines with glyphs)
+        // Children (individual lines)
         for (desired, status) in &detail.children {
-            if y >= end.saturating_sub(4) { break; } // leave room for reality
+            if y >= end.saturating_sub(reality_lines + 2) { break; }
             let glyph = status_glyph(*status);
             let text = truncate_str(desired, w.saturating_sub(4));
+            let style = if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim };
             render_line(frame, zone.x, y, zone.width, &[
                 ("  ".to_string(), STYLES.dim),
-                (format!("{} ", glyph), if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim }),
-                (text, if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim }),
+                (format!("{} ", glyph), style),
+                (text, style),
             ]);
             y += 1;
         }
 
-        // Blank line before reality
+        // Blank before reality
         if y < end { y += 1; }
 
-        // Focused element reality (dim, word-wrapped)
-        if !detail.actual.is_empty() && y < end {
-            let reality_area = Rect::new(zone.x, y, zone.width, end.saturating_sub(y + 1));
+        // Reality (dim, word-wrapped) — leave room for bottom context
+        let bottom_context_lines: u16 = if show_below > 0 { 1.min(below_budget as u16 + 1) } else { 0 };
+        if !detail.actual.is_empty() && y < end.saturating_sub(bottom_context_lines) {
+            let avail = end.saturating_sub(y + bottom_context_lines);
             let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
             Paragraph::new(reality_text)
                 .wrap(WrapMode::Word)
-                .render(reality_area, frame);
-            // Don't need to track y further — reality fills remaining space
+                .render(Rect::new(zone.x, y, zone.width, avail), frame);
+            y += reality_lines.min(avail);
         }
 
-        // Bottom compressed indicator at the very bottom of the zone
-        let acc_count = frontier.accumulated.len();
-        if acc_count > 0 {
-            let bottom_y = end.saturating_sub(1);
-            let text = format!("\u{25BC} {} accumulated", acc_count);
-            render_line(frame, zone.x, bottom_y, zone.width, &[
-                (" ".repeat(cols.left + GUTTER).to_string(), STYLES.dim),
-                (text, STYLES.dim),
-            ]);
+        // Blank after reality
+        if y < end { y += 1; }
+
+        // --- Context below: accumulated ---
+        if acc_items > 0 && y < end {
+            let remaining = (end - y) as usize;
+            if remaining >= acc_items {
+                // Show individual accumulated items
+                for &idx in &frontier.accumulated {
+                    if y >= end { break; }
+                    let entry = &self.siblings[idx];
+                    let glyph = status_glyph(entry.status);
+                    self.render_child_line(frame, zone.x, y, w, cols, entry, glyph, false, false, 0);
+                    y += 1;
+                }
+            } else {
+                // Summary
+                let text = format!("\u{25BC} {} accumulated", acc_items);
+                self.render_indicator_line(frame, zone.x, y, w, cols, &text, false, STYLES.dim, 0);
+            }
         }
     }
 
