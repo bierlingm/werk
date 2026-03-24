@@ -252,11 +252,11 @@ impl InstrumentApp {
             // Cache mutation count for deck log indicator
             self.parent_mutation_count = mutations.len();
 
-            // V5: Compute epoch boundary — last epoch timestamp for this tension
+            // V5: Compute epoch boundary — last epoch timestamp (lightweight query)
             self.epoch_boundary = self.engine.store()
-                .get_epochs(&parent.id)
+                .get_last_epoch_timestamp(&parent.id)
                 .ok()
-                .and_then(|epochs| epochs.last().map(|e| e.timestamp));
+                .flatten();
         } else {
             self.parent_temporal_indicator = String::new();
             self.parent_temporal_urgency = 0.0;
@@ -307,7 +307,7 @@ impl InstrumentApp {
             });
         }
 
-        // Batch queries: count children per tension, and get last mutation timestamps
+        // Batch queries: count children and get mutation timestamps
         let child_ids: Vec<&str> = filtered.iter().map(|t| t.id.as_str()).collect();
         let children_counts = self.engine.store()
             .count_children_by_parent(&child_ids)

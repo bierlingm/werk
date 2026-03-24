@@ -2173,6 +2173,27 @@ impl Store {
         }
         Ok(epochs)
     }
+
+    /// Get the timestamp of the last epoch for a tension (lightweight, no full record load).
+    pub fn get_last_epoch_timestamp(&self, tension_id: &str) -> Result<Option<DateTime<Utc>>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT MAX(timestamp) FROM epochs WHERE tension_id = ?1",
+                &[SqliteValue::Text(tension_id.to_owned())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        if let Some(row) = rows.first() {
+            if let Some(SqliteValue::Text(ts)) = row.get(0) {
+                let dt = DateTime::parse_from_rfc3339(ts)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::DatabaseError(format!("invalid timestamp: {}", e)))?;
+                return Ok(Some(dt));
+            }
+        }
+        Ok(None)
+    }
 }
 
 /// A record of an epoch snapshot.
