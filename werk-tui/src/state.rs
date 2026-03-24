@@ -19,6 +19,10 @@ pub struct FieldEntry {
     pub temporal_indicator: String,
     /// Urgency level 0.0-1.0 for coloring the temporal indicator.
     pub temporal_urgency: f64,
+    /// Short numeric code for display (e.g. #3). None for ULIDs without a short code.
+    pub short_code: Option<i32>,
+    /// Compact age string (e.g. "2d", "3w"). Computed from created_at.
+    pub created_age: String,
 }
 
 impl FieldEntry {
@@ -36,6 +40,8 @@ impl FieldEntry {
         let horizon_label = tension.horizon.as_ref()
             .map(|h| crate::glyphs::compact_horizon(h, now_year));
 
+        let created_age = crate::glyphs::compact_age(tension.created_at, now);
+
         Self {
             id: tension.id.clone(),
             desired: tension.desired.clone(),
@@ -47,6 +53,8 @@ impl FieldEntry {
             horizon_label,
             temporal_indicator,
             temporal_urgency,
+            short_code: tension.short_code,
+            created_age,
         }
     }
 }

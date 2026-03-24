@@ -61,6 +61,17 @@ pub struct InstrumentApp {
 
     // Reordering — stores original positions for cancel
     pub reorder_original: Vec<(String, Option<i32>)>,
+
+    // Deck mode toggle — when true, use the new deck rendering (V1+)
+    pub use_deck: bool,
+
+    // Deck cached data — computed during load_siblings, not during render
+    pub grandparent_display: Option<(String, String)>, // (display_id, desired text)
+    pub parent_mutation_count: usize,
+    pub db_path_cache: Option<std::path::PathBuf>,
+
+    // Deck cursor — V2: tracks position in the frontier's flat selectable list
+    pub deck_cursor: crate::deck::DeckCursor,
 }
 
 /// Filter for the field view.
@@ -127,6 +138,11 @@ impl InstrumentApp {
             alerts: Vec::new(),
             alert_cursor: 0,
             reorder_original: Vec::new(),
+            use_deck: true,
+            grandparent_display: None,
+            parent_mutation_count: 0,
+            db_path_cache: None,
+            deck_cursor: crate::deck::DeckCursor::default(),
         };
         app.load_siblings();
         app
@@ -166,6 +182,11 @@ impl InstrumentApp {
             alerts: Vec::new(),
             alert_cursor: 0,
             reorder_original: Vec::new(),
+            use_deck: true,
+            grandparent_display: None,
+            parent_mutation_count: 0,
+            db_path_cache: None,
+            deck_cursor: crate::deck::DeckCursor::default(),
         }
     }
 
@@ -210,20 +231,40 @@ impl InstrumentApp {
 
             self.parent_desire_age = Some(crate::glyphs::relative_time(last_desire, now));
             self.parent_reality_age = Some(crate::glyphs::relative_time(last_reality, now));
+            // Cache grandparent display for deck breadcrumb
+            self.grandparent_display = parent.parent_id.as_ref().and_then(|gp_id| {
+                self.engine.store().get_tension(gp_id).ok().flatten().map(|gp| {
+                    (werk_shared::display_id(gp.short_code, &gp.id), gp.desired.clone())
+                })
+            });
+
+            // Cache mutation count for deck log indicator
+            self.parent_mutation_count = mutations.len();
         } else {
             self.parent_temporal_indicator = String::new();
             self.parent_temporal_urgency = 0.0;
             self.parent_horizon_label = None;
             self.parent_desire_age = None;
             self.parent_reality_age = None;
+            self.grandparent_display = None;
+            self.parent_mutation_count = 0;
         }
 
-        // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end
+        // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end.
+        // In deck mode, always include all children so the frontier can classify
+        // resolved/released into accumulated. The field view uses the filter as before.
+        let in_deck = self.use_deck && self.parent_id.is_some();
         let mut filtered: Vec<_> = tensions
             .iter()
-            .filter(|t| match self.filter {
-                Filter::Active => t.status == TensionStatus::Active,
-                Filter::All => true,
+            .filter(|t| {
+                if in_deck {
+                    true // deck needs all children for frontier classification
+                } else {
+                    match self.filter {
+                        Filter::Active => t.status == TensionStatus::Active,
+                        Filter::All => true,
+                    }
+                }
             })
             .cloned()
             .collect();
@@ -248,23 +289,22 @@ impl InstrumentApp {
             });
         }
 
+        // Batch queries: check which children have children, and get last mutation timestamps
+        let child_ids: Vec<&str> = filtered.iter().map(|t| t.id.as_str()).collect();
+        let parents_with_children = self.engine.store()
+            .get_parent_ids_with_children(&child_ids)
+            .unwrap_or_default();
+        let last_reality_updates = self.engine.store()
+            .get_last_mutation_timestamps(&child_ids, &["actual", "created"])
+            .unwrap_or_default();
+
         self.siblings = filtered
             .iter()
             .map(|t| {
-                let has_children = !self
-                    .engine
-                    .store()
-                    .get_children(&t.id)
-                    .unwrap_or_default()
-                    .is_empty();
-                // Find last reality update from mutation history
-                let last_reality_update = self.engine.store()
-                    .get_mutations(&t.id)
-                    .unwrap_or_default()
-                    .iter()
-                    .rev()
-                    .find(|m| m.field() == "actual" || m.field() == "created")
-                    .map(|m| m.timestamp().to_owned())
+                let has_children = parents_with_children.contains(&t.id);
+                let last_reality_update = last_reality_updates
+                    .get(&t.id)
+                    .copied()
                     .unwrap_or(t.created_at);
                 FieldEntry::from_tension(t, last_reality_update, has_children, now)
             })
@@ -295,16 +335,21 @@ impl InstrumentApp {
             }
         }
 
-        // Update totals
-        let all = self.engine.store().list_tensions().unwrap_or_default();
-        self.total_count = all.len();
-        self.total_active = all.iter().filter(|t| t.status == TensionStatus::Active).count();
+        // Update totals (COUNT queries, not loading all rows)
+        let (total, active) = self.engine.store().count_tensions().unwrap_or((0, 0));
+        self.total_count = total;
+        self.total_active = active;
 
         // Refresh breadcrumb cache
         self.breadcrumb_cache = self.breadcrumb();
 
         // Compute alerts
         self.compute_alerts();
+
+        // Reset deck cursor for V2 frontier navigation
+        if self.use_deck && self.parent_id.is_some() {
+            self.deck_cursor_reset();
+        }
     }
 
     /// Compute stateless alerts from current tension state.
@@ -404,9 +449,13 @@ impl InstrumentApp {
         self.siblings.get(self.vlist.cursor)
     }
 
-    /// The action target: gazed tension if gaze is active, else selected.
+    /// The action target: in deck mode uses deck cursor; otherwise gazed tension if gaze
+    /// is active, else vlist selected.
     pub fn action_target(&self) -> Option<&FieldEntry> {
-        if let Some(ref gaze) = self.gaze {
+        if self.use_deck && self.parent_id.is_some() {
+            self.deck_selected_sibling_index()
+                .and_then(|idx| self.siblings.get(idx))
+        } else if let Some(ref gaze) = self.gaze {
             self.siblings.get(gaze.index)
         } else {
             self.selected_entry()
@@ -757,21 +806,24 @@ impl InstrumentApp {
     /// Check if the database file has been modified since last check.
     /// Returns true if data should be reloaded.
     pub fn db_has_changed(&mut self) -> bool {
-        let db_path = std::env::current_dir()
-            .ok()
-            .and_then(|mut d| {
-                loop {
-                    let candidate = d.join(".werk").join("sd.db");
-                    if candidate.exists() {
-                        return Some(candidate);
+        // Cache the db path on first call to avoid walking the filesystem every tick
+        if self.db_path_cache.is_none() {
+            self.db_path_cache = std::env::current_dir()
+                .ok()
+                .and_then(|mut d| {
+                    loop {
+                        let candidate = d.join(".werk").join("sd.db");
+                        if candidate.exists() {
+                            return Some(candidate);
+                        }
+                        if !d.pop() {
+                            return None;
+                        }
                     }
-                    if !d.pop() {
-                        return None;
-                    }
-                }
-            });
+                });
+        }
 
-        if let Some(path) = db_path {
+        if let Some(ref path) = self.db_path_cache {
             if let Ok(meta) = std::fs::metadata(&path) {
                 if let Ok(modified) = meta.modified() {
                     let changed = self.db_modified.map(|prev| modified != prev).unwrap_or(true);
