@@ -79,6 +79,9 @@ pub struct InstrumentApp {
     // Epoch boundary (V5): timestamp of the last epoch close for the current parent.
     // Children resolved/released before this are excluded from accumulated.
     pub epoch_boundary: Option<chrono::DateTime<chrono::Utc>>,
+
+    // Deck configuration (V6): read from deck.* config keys.
+    pub deck_config: crate::deck::DeckConfig,
 }
 
 /// Filter for the field view.
@@ -152,6 +155,15 @@ impl InstrumentApp {
             deck_cursor: crate::deck::DeckCursor::default(),
             trajectory_mode: false,
             epoch_boundary: None,
+            deck_config: {
+                // Load deck config from workspace config.toml
+                let config_path = std::env::current_dir()
+                    .ok()
+                    .map(|d| d.join(".werk").join("config.toml"))
+                    .unwrap_or_default();
+                let config = werk_shared::Config::load_from_path(&config_path).unwrap_or_default();
+                crate::deck::DeckConfig::load(&config)
+            },
         };
         app.load_siblings();
         app
@@ -198,6 +210,7 @@ impl InstrumentApp {
             deck_cursor: crate::deck::DeckCursor::default(),
             trajectory_mode: false,
             epoch_boundary: None,
+            deck_config: crate::deck::DeckConfig::default(),
         }
     }
 
