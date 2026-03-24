@@ -172,7 +172,31 @@ impl InstrumentApp {
             }
             Msg::Submit => {
                 if self.use_deck && self.parent_id.is_some() {
-                    // Enter in deck mode = focus zoom (V7). No-op until implemented.
+                    // V7: Enter toggles focus zoom on the selected element
+                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                        // Already focused — unfocus
+                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                        self.focused_detail = None;
+                    } else if let Some(entry) = self.action_target().cloned() {
+                        // Load focus detail for the selected child
+                        let children = self.engine.store()
+                            .get_children(&entry.id)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|c| (c.desired, c.status))
+                            .collect();
+                        let deadline_label = entry.horizon_label.clone();
+                        let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
+                        self.focused_detail = Some(crate::deck::FocusedDetail {
+                            sibling_index: sibling_idx,
+                            desired: entry.desired.clone(),
+                            actual: entry.actual.clone(),
+                            children,
+                            short_code: entry.short_code,
+                            deadline_label,
+                        });
+                        self.deck_zoom = crate::deck::ZoomLevel::Focus;
+                    }
                 } else if let Some(entry) = self.action_target().cloned() {
                     self.descend(&entry.id);
                 }
@@ -477,7 +501,11 @@ impl InstrumentApp {
             // Quit
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             Msg::Cancel => {
-                if self.gaze.is_some() {
+                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                    // V7: Esc exits focus zoom
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
+                } else if self.gaze.is_some() {
                     self.close_gaze();
                 }
                 Cmd::none()

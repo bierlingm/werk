@@ -543,10 +543,26 @@ impl DeckCursor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZoomLevel {
     Normal,
-    #[allow(dead_code)]
     Focus,
     #[allow(dead_code)]
     Orient,
+}
+
+/// Detail for a focused element (V7).
+#[derive(Debug, Clone)]
+pub struct FocusedDetail {
+    /// The sibling index of the focused element.
+    pub sibling_index: usize,
+    /// The focused child's desire text.
+    pub desired: String,
+    /// The focused child's reality text.
+    pub actual: String,
+    /// The focused child's children (desire + status).
+    pub children: Vec<(String, TensionStatus)>,
+    /// The focused child's short code.
+    pub short_code: Option<i32>,
+    /// The focused child's deadline label.
+    pub deadline_label: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -701,9 +717,17 @@ impl InstrumentApp {
         // === Render bottom zone (reality anchor) ===
         self.render_reality_zone(frame, bottom_zone, w, parent, reality_age_str);
 
-        // === Render middle zone (route + console + accumulated) ===
+        // === Render middle zone ===
         if middle_zone.height == 0 {
             return;
+        }
+
+        // V7: Focus zoom — render focused element detail instead of normal layout
+        if self.deck_zoom == ZoomLevel::Focus {
+            if let Some(ref detail) = self.focused_detail {
+                self.render_focus_zone(frame, middle_zone, w, &cols, detail);
+                return;
+            }
         }
 
         // Compute space-aware expansion for held/accumulated
@@ -1156,6 +1180,109 @@ impl InstrumentApp {
         Paragraph::new(reality_text)
             .wrap(WrapMode::Word)
             .render(text_zone, frame);
+    }
+
+    /// Render the focus zoom view (V7): one element's detail fills the middle zone.
+    /// Shows: compressed indicator above, focused desire, children, reality, compressed below.
+    fn render_focus_zone(
+        &self,
+        frame: &mut Frame<'_>,
+        zone: Rect,
+        w: usize,
+        cols: &ColumnLayout,
+        detail: &FocusedDetail,
+    ) {
+        let mut y = zone.y;
+        let end = zone.y + zone.height;
+
+        // Top compressed indicator: what's above the focused element
+        let frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
+        let above_count = frontier.route.len()
+            + frontier.overdue.len()
+            + if frontier.next.is_some() { 1 } else { 0 };
+        let held_count = frontier.held.len();
+        if above_count > 0 || held_count > 0 {
+            let mut parts = Vec::new();
+            if above_count > 0 {
+                parts.push(format!("\u{25B2} {} in route", above_count));
+            }
+            if held_count > 0 {
+                parts.push(format!("{} held", held_count));
+            }
+            let text = parts.join(" \u{00B7} ");
+            render_line(frame, zone.x, y, zone.width, &[
+                (" ".repeat(cols.left + GUTTER).to_string(), STYLES.dim),
+                (text, STYLES.dim),
+            ]);
+            y += 1;
+        }
+
+        // Blank line
+        if y < end { y += 1; }
+
+        // Focused element heading: deadline + desire text (bold)
+        let id_str = detail.short_code
+            .map(|sc| format!("#{}", sc))
+            .unwrap_or_default();
+        let heading = if let Some(ref dl) = detail.deadline_label {
+            format!("{} {} {}", dl, detail.desired, id_str)
+        } else {
+            format!("{} {}", detail.desired, id_str)
+        };
+
+        // Use Paragraph with word wrap for the heading
+        let heading_text = Text::from(Line::from(Span::styled(&heading, STYLES.text_bold)));
+        let heading_area = Rect::new(zone.x, y, zone.width, end.saturating_sub(y).min(4));
+        Paragraph::new(heading_text)
+            .wrap(WrapMode::Word)
+            .render(heading_area, frame);
+        // Estimate wrapped height (max 4 lines for heading)
+        let heading_lines = (heading.chars().count() as u16 / zone.width.max(1) + 1).min(4);
+        y += heading_lines;
+
+        // Separator
+        if y < end {
+            let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+            render_line(frame, zone.x, y, zone.width, &[(rule, STYLES.dim)]);
+            y += 1;
+        }
+
+        // Children list (individual lines with glyphs)
+        for (desired, status) in &detail.children {
+            if y >= end.saturating_sub(4) { break; } // leave room for reality
+            let glyph = status_glyph(*status);
+            let text = truncate_str(desired, w.saturating_sub(4));
+            render_line(frame, zone.x, y, zone.width, &[
+                ("  ".to_string(), STYLES.dim),
+                (format!("{} ", glyph), if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim }),
+                (text, if *status == TensionStatus::Active { STYLES.text } else { STYLES.dim }),
+            ]);
+            y += 1;
+        }
+
+        // Blank line before reality
+        if y < end { y += 1; }
+
+        // Focused element reality (dim, word-wrapped)
+        if !detail.actual.is_empty() && y < end {
+            let reality_area = Rect::new(zone.x, y, zone.width, end.saturating_sub(y + 1));
+            let reality_text = Text::from(Line::from(Span::styled(&detail.actual, STYLES.dim)));
+            Paragraph::new(reality_text)
+                .wrap(WrapMode::Word)
+                .render(reality_area, frame);
+            // Don't need to track y further — reality fills remaining space
+        }
+
+        // Bottom compressed indicator at the very bottom of the zone
+        let acc_count = frontier.accumulated.len();
+        if acc_count > 0 {
+            let bottom_y = end.saturating_sub(1);
+            let text = format!("\u{25BC} {} accumulated", acc_count);
+            render_line(frame, zone.x, bottom_y, zone.width, &[
+                (" ".repeat(cols.left + GUTTER).to_string(), STYLES.dim),
+                (text, STYLES.dim),
+            ]);
+        }
     }
 
     /// Compute frontier with maximum expansion for navigation.

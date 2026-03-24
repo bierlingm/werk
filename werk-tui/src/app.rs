@@ -82,6 +82,10 @@ pub struct InstrumentApp {
 
     // Deck configuration (V6): read from deck.* config keys.
     pub deck_config: crate::deck::DeckConfig,
+
+    // Focus zoom (V7): detail of the currently focused child.
+    pub deck_zoom: crate::deck::ZoomLevel,
+    pub focused_detail: Option<crate::deck::FocusedDetail>,
 }
 
 /// Filter for the field view.
@@ -164,6 +168,8 @@ impl InstrumentApp {
                 let config = werk_shared::Config::load_from_path(&config_path).unwrap_or_default();
                 crate::deck::DeckConfig::load(&config)
             },
+            deck_zoom: crate::deck::ZoomLevel::Normal,
+            focused_detail: None,
         };
         app.load_siblings();
         app
@@ -211,6 +217,8 @@ impl InstrumentApp {
             trajectory_mode: false,
             epoch_boundary: None,
             deck_config: crate::deck::DeckConfig::default(),
+            deck_zoom: crate::deck::ZoomLevel::Normal,
+            focused_detail: None,
         }
     }
 
