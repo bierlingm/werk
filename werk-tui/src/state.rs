@@ -10,6 +10,8 @@ pub struct FieldEntry {
     pub actual: String,
     pub status: TensionStatus,
     pub has_children: bool,
+    /// Number of children (for →N indicator in deck).
+    pub child_count: usize,
     pub parent_id: Option<String>,
     /// Explicit ordering position among siblings. None means unpositioned.
     pub position: Option<i32>,
@@ -29,9 +31,10 @@ impl FieldEntry {
     pub fn from_tension(
         tension: &sd_core::Tension,
         last_reality_update: chrono::DateTime<chrono::Utc>,
-        has_children: bool,
+        child_count: usize,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Self {
+        let has_children = child_count > 0;
         let horizon_end = tension.horizon.as_ref().map(|h| h.range_end());
         let (temporal_indicator, temporal_urgency) =
             crate::glyphs::temporal_indicator(last_reality_update, horizon_end, now);
@@ -50,6 +53,7 @@ impl FieldEntry {
             actual: tension.actual.clone(),
             status: tension.status,
             has_children,
+            child_count,
             parent_id: tension.parent_id.clone(),
             position: tension.position,
             horizon_label,

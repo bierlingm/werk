@@ -172,8 +172,7 @@ impl InstrumentApp {
             }
             Msg::Submit => {
                 if self.use_deck && self.parent_id.is_some() {
-                    // Enter in deck mode = focus zoom (V7 — not yet implemented)
-                    self.set_transient("focus zoom: not yet");
+                    // Enter in deck mode = focus zoom (V7). No-op until implemented.
                 } else if let Some(entry) = self.action_target().cloned() {
                     self.descend(&entry.id);
                 }
@@ -197,7 +196,7 @@ impl InstrumentApp {
             }
             Msg::Char('G') | Msg::JumpBottom => {
                 if self.use_deck && self.parent_id.is_some() {
-                    let frontier = crate::deck::Frontier::compute(&self.siblings);
+                    let frontier = crate::deck::Frontier::compute(&self.siblings, self.trajectory_mode);
                     self.deck_cursor.index = frontier.selectable_count().saturating_sub(1);
                 } else {
                     self.vlist.bottom();
@@ -372,6 +371,16 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Toggle trajectory mode (Q30: resolved stay in-place on route)
+            Msg::Char('T') => {
+                if self.use_deck && self.parent_id.is_some() {
+                    self.trajectory_mode = !self.trajectory_mode;
+                    self.set_transient(if self.trajectory_mode { "trajectory view" } else { "frontier view" });
+                    self.deck_cursor_reset();
+                }
+                Cmd::none()
+            }
+
             // Filter
             Msg::Char('f') | Msg::CycleFilter => {
                 self.filter = self.filter.cycle();
@@ -380,9 +389,44 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Help
+            // In deck mode: ? = edit parent reality (V4 quick-edit)
+            // In field mode: ? = help
             Msg::Char('?') | Msg::ToggleHelp => {
-                self.input_mode = InputMode::Help;
+                if self.use_deck && self.parent_id.is_some() {
+                    if let Some(ref pid) = self.parent_id.clone() {
+                        let actual = self.parent_tension.as_ref()
+                            .map(|t| t.actual.clone()).unwrap_or_default();
+                        self.input_buffer = actual.clone();
+                        self.text_input.set_value(&actual);
+                        self.text_input.set_focused(true);
+                        self.text_input.select_all();
+                        self.input_mode = InputMode::Editing {
+                            tension_id: pid.clone(),
+                            field: EditField::Reality,
+                        };
+                    }
+                } else {
+                    self.input_mode = InputMode::Help;
+                }
+                Cmd::none()
+            }
+
+            // In deck mode: ! = edit parent desire (V4 quick-edit)
+            Msg::Char('!') => {
+                if self.use_deck && self.parent_id.is_some() {
+                    if let Some(ref pid) = self.parent_id.clone() {
+                        let desired = self.parent_tension.as_ref()
+                            .map(|t| t.desired.clone()).unwrap_or_default();
+                        self.input_buffer = desired.clone();
+                        self.text_input.set_value(&desired);
+                        self.text_input.set_focused(true);
+                        self.text_input.select_all();
+                        self.input_mode = InputMode::Editing {
+                            tension_id: pid.clone(),
+                            field: EditField::Desire,
+                        };
+                    }
+                }
                 Cmd::none()
             }
 

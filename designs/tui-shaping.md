@@ -212,7 +212,7 @@ Possible WezTerm padding below the last rendered line. Not a werk issue — term
 
 The old TUI indented held (unpositioned) steps to the right, visually distinguishing them from positioned steps. Consider adding 2-3 char extra indent for held items.
 
-**Status:** Open. Cosmetic experiment.
+**Status:** Implemented. 2-char extra indent (HELD_INDENT constant) applied to held items and their summary.
 
 ### Q23: Separator position — ordered vs unordered
 
@@ -224,13 +224,13 @@ The console boundary separator separates ordered items (route + overdue + next) 
 
 Resolved/released/notes are facts — they belong closer to reality than to NOW. Layout: route+next (top, ordered theory) → held+input (middle, frontier) → [breathing room / stats surface] → accumulated (bottom, facts settling toward reality).
 
-**Status:** Open. Experiment in V6 (compression) or separate refinement.
+**Status:** Implemented. Accumulated renders bottom-up from middle_end (just above reality). Breathing space between input point and accumulated.
 
 ### Q25: Desire right-column treatment (revisit inline age)
 
 Try: desire uses the right column like its children — ID, children count/arrow, age. E.g.: `Jun    desire text...    2 →5  1d`
 
-**Status:** Open. Experiment.
+**Status:** Implemented. Desire line shows ID + →N + age in the right column, matching children layout.
 
 ### Q26: Notes in the deck
 
@@ -246,7 +246,7 @@ The accumulated zone (resolved, released, notes) could be called "path" — the 
 
 When route and held are both compressed, their summaries could merge into one line: `▸ 3 more route · 2 held` — a single line capturing everything between desire and the input point. Reduces chrome, maintains information.
 
-**Status:** Open. Implement after gradual compression is stable.
+**Status:** Implemented. When both route and held are fully compressed, renders `▸ N route · N held` as one line.
 
 ### Q29: Compression priority order
 
@@ -257,7 +257,50 @@ When space is tight, compression should proceed in this order (first to compress
 
 Currently the priority is route > held > accumulated (route compresses last). But the user observed that once accumulated is fully compressed to a summary line, that line should NOT be pushed off-screen — instead held should start compressing, then route. The summary lines for each category should always remain visible if the category has items.
 
-**Status:** Open. Fix in compute_expansion — ensure summary lines always fit before compressing the next category.
+**Status:** Implemented. Two-pass algorithm: first reserves 1 summary line per non-empty category, then distributes remaining space by priority (route > held > accumulated). No summary gets pushed off-screen.
+
+### Q30: Resolved steps shown in-place on the route ("trajectory view")
+
+The old field view shows resolved/released steps in-place alongside active ones. This provides different information from the deck's separation into accumulated: you see the full route including what's been accomplished, giving a trajectory/progress sense. Could be a useful alternate viewing mode — toggle between "frontier" (deck default: resolved moves to accumulated) and "trajectory" (resolved stays in position). Possibly a Shift+T toggle or a `deck.resolved` config setting.
+
+**Status:** Implemented as Shift+T toggle. Key combo is placeholder — the function is useful, binding TBD.
+
+### Q31: Meta data visibility across zoom levels
+
+What traces/signals/facts should be visible at each zoom level?
+- **Normal zoom** (current): ID, →, age in right column. Could this be too much? The right column currently shows on every child line.
+- **Orient zoom** (V9): parent context, siblings, grandchild counts. This is where structural signals (→N counts, ordinals, deviance annotations) arguably belong — orient is "stepping back to see it in the room."
+- **Focus zoom** (V7): full detail of one element. All facts shown.
+
+Option A: Normal shows only text + deadline (minimal), orient adds right-column traces.
+Option B: Normal shows right column as now, orient adds *more* (ordinals, grandchild counts, deviance).
+Option C: Configurable per `deck.chrome` setting.
+
+The question is whether the right column is noise at normal zoom or essential wayfinding. Age and → help decide whether to descend; ID is for reference. But they consume horizontal space on every line.
+
+**Status:** Open. Evaluate after orient zoom (V9) is implemented.
+
+### Q32: Gestures on resolved/released tensions
+
+Creating a child under a resolved tension succeeds but leaves the parent resolved — a structural inconsistency (the closure fraction ignores it, the parent claims "done" while having active sub-structure). Options:
+- **Auto-reopen:** Creating a child under a resolved tension auto-reopens it (simple, may be surprising)
+- **Pathway palette:** "This tension is resolved. Reopen it first?" with options [reopen + create] [cancel]
+- **Block:** Prevent child creation on resolved/released tensions entirely (too restrictive — you might want to decompose a resolved insight)
+
+The right answer is probably the pathway palette (V4/V8 scope) — it's a structural signal that deserves a conscious decision, not an automatic one.
+
+**Status:** Open. Address in V4 (gestures) or V8 (signals).
+
+### Q33: Desire line right-column treatment
+
+The desire is an anchor (bold, wide-wrapping), not a list item. Putting ID + age on the first line creates visual awkwardness — it looks crammed compared to children's naturally-spaced right columns. Options:
+- **Drop from desire:** ID lives only on the bottom bar or breadcrumb. Desire stays clean bold text.
+- **Below the rule:** A subtle `02 · 6d` annotation line between desire rule and route.
+- **Left column companion:** `Jun  02  6d` next to the deadline.
+
+Current state: ID + age on first line (Q25). May revert to clean desire with ID elsewhere.
+
+**Status:** Open. Experiment.
 
 ---
 

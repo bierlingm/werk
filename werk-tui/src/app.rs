@@ -72,6 +72,9 @@ pub struct InstrumentApp {
 
     // Deck cursor — V2: tracks position in the frontier's flat selectable list
     pub deck_cursor: crate::deck::DeckCursor,
+
+    // Trajectory mode (Q30): when true, positioned resolved/released stay on route
+    pub trajectory_mode: bool,
 }
 
 /// Filter for the field view.
@@ -143,6 +146,7 @@ impl InstrumentApp {
             parent_mutation_count: 0,
             db_path_cache: None,
             deck_cursor: crate::deck::DeckCursor::default(),
+            trajectory_mode: false,
         };
         app.load_siblings();
         app
@@ -187,6 +191,7 @@ impl InstrumentApp {
             parent_mutation_count: 0,
             db_path_cache: None,
             deck_cursor: crate::deck::DeckCursor::default(),
+            trajectory_mode: false,
         }
     }
 
@@ -289,10 +294,10 @@ impl InstrumentApp {
             });
         }
 
-        // Batch queries: check which children have children, and get last mutation timestamps
+        // Batch queries: count children per tension, and get last mutation timestamps
         let child_ids: Vec<&str> = filtered.iter().map(|t| t.id.as_str()).collect();
-        let parents_with_children = self.engine.store()
-            .get_parent_ids_with_children(&child_ids)
+        let children_counts = self.engine.store()
+            .count_children_by_parent(&child_ids)
             .unwrap_or_default();
         let last_reality_updates = self.engine.store()
             .get_last_mutation_timestamps(&child_ids, &["actual", "created"])
@@ -301,12 +306,12 @@ impl InstrumentApp {
         self.siblings = filtered
             .iter()
             .map(|t| {
-                let has_children = parents_with_children.contains(&t.id);
+                let child_count = children_counts.get(&t.id).copied().unwrap_or(0);
                 let last_reality_update = last_reality_updates
                     .get(&t.id)
                     .copied()
                     .unwrap_or(t.created_at);
-                FieldEntry::from_tension(t, last_reality_update, has_children, now)
+                FieldEntry::from_tension(t, last_reality_update, child_count, now)
             })
             .collect();
 
@@ -346,9 +351,10 @@ impl InstrumentApp {
         // Compute alerts
         self.compute_alerts();
 
-        // Reset deck cursor for V2 frontier navigation
+        // Clamp deck cursor to valid range after reload (don't reset — preserves position)
         if self.use_deck && self.parent_id.is_some() {
-            self.deck_cursor_reset();
+            let frontier = self.frontier_for_navigation();
+            self.deck_cursor.clamp(frontier.selectable_count());
         }
     }
 
@@ -416,6 +422,7 @@ impl InstrumentApp {
         self.gaze_data = None;
         self.full_gaze_data = None;
         self.vlist.cursor = 0;
+        self.deck_cursor_reset();
     }
 
     /// Ascend to parent level. Cursor lands on the tension we just left.
@@ -440,7 +447,23 @@ impl InstrumentApp {
         if let Some(ref old_pid) = old_parent_id {
             if let Some(idx) = self.siblings.iter().position(|s| s.id == *old_pid) {
                 self.vlist.cursor = idx;
+                // In deck mode, find this sibling in the frontier and set cursor there
+                if self.use_deck && self.parent_id.is_some() {
+                    let frontier = self.frontier_for_navigation();
+                    // Search through all cursor positions to find one pointing to this sibling
+                    let count = frontier.selectable_count();
+                    for ci in 0..count {
+                        if let Some(si) = frontier.cursor_target(ci).sibling_index() {
+                            if si == idx {
+                                self.deck_cursor.index = ci;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
+        } else {
+            self.deck_cursor_reset();
         }
     }
 
