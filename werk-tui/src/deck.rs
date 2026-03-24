@@ -875,11 +875,23 @@ impl InstrumentApp {
                     }
                 }
             }
-            // Route summary for remaining — includes next deadline if available
-            if route_remaining > 0 && my < top_limit {
+            // Route: show remaining items individually if only 1, else summary
+            if route_remaining == 1 && my < top_limit {
+                // Just show the single remaining item — a summary for 1 is silly
+                let sibling_idx = frontier.route[shown_route];
+                let entry = &self.siblings[sibling_idx];
+                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
+                let glyph = status_glyph(entry.status);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0);
+                my += 1;
+                if focused_sibling == Some(sibling_idx) {
+                    if let Some(ref detail) = self.focused_detail {
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                    }
+                }
+            } else if route_remaining > 1 && my < top_limit {
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
                 let count = if shown_route == 0 { frontier.route.len() } else { route_remaining };
-                // Find the nearest deadline among compressed route items
                 let next_deadline = frontier.route[shown_route..].iter()
                     .filter_map(|&idx| self.siblings[idx].horizon_label.as_deref())
                     .next();
