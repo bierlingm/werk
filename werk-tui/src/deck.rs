@@ -188,6 +188,10 @@ impl Frontier {
             pa.cmp(&pb)
         });
 
+        // Reverse accumulated so most recent (last in siblings) appears first
+        // in the vec → renders at top of accumulated zone (nearest breathing space)
+        frontier.accumulated.reverse();
+
         frontier
     }
 
@@ -645,8 +649,9 @@ impl InstrumentApp {
 
         // 2. Desire text with right-column facts (Q25: zero-padded ID + age)
         let deadline_str = deadline_label.unwrap_or("");
-        // Compact age (no "ago") to match children's right column
-        let desire_age = glyphs::compact_age(parent.created_at, chrono::Utc::now());
+        // Desire age: strip " ago" from the relative_time string for compact display
+        let desire_age = self.parent_desire_age.as_deref().unwrap_or("")
+            .trim_end_matches(" ago").to_string();
         let desire_id = parent.short_code
             .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
             .unwrap_or_default();
