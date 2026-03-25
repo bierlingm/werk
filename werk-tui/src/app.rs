@@ -696,12 +696,18 @@ impl InstrumentApp {
 
     /// Recompute the cached frontier from current siblings and expansion lines.
     /// Called after load_siblings and whenever siblings are mutated.
+    /// During reorder mode, uses from_raw_order to show items in array order
+    /// instead of classifying by stale position fields.
     pub fn recompute_frontier(&mut self) {
-        let mut frontier = crate::deck::Frontier::compute(
-            &self.siblings,
-            self.trajectory_mode,
-            self.epoch_boundary,
-        );
+        let mut frontier = if matches!(self.input_mode, InputMode::Reordering { .. }) {
+            crate::deck::Frontier::from_raw_order(&self.siblings, self.epoch_boundary)
+        } else {
+            crate::deck::Frontier::compute(
+                &self.siblings,
+                self.trajectory_mode,
+                self.epoch_boundary,
+            )
+        };
         frontier.compute_expansion(self.last_render_lines.get());
         self.cached_frontier = Some(frontier);
     }

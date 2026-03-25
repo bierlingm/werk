@@ -254,6 +254,39 @@ impl Frontier {
         frontier
     }
 
+    /// Build a frontier for reorder mode: all active items go into `route`
+    /// in their current array order (ignoring position fields). Resolved/released
+    /// go to `accumulated` filtered by epoch boundary. No overdue classification.
+    pub fn from_raw_order(siblings: &[FieldEntry], epoch_boundary: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        let mut frontier = Frontier::default();
+
+        for (i, entry) in siblings.iter().enumerate() {
+            match entry.status {
+                TensionStatus::Active => {
+                    frontier.route.push(i);
+                }
+                TensionStatus::Resolved | TensionStatus::Released => {
+                    let in_current_epoch = match epoch_boundary {
+                        Some(boundary) => entry.last_status_change >= boundary,
+                        None => true,
+                    };
+                    if in_current_epoch {
+                        frontier.accumulated.push(i);
+                    }
+                }
+            }
+        }
+
+        // Last active item in array order is closest to the frontier
+        if let Some(&last) = frontier.route.last() {
+            frontier.next = Some(last);
+            frontier.route.pop();
+        }
+
+        frontier.accumulated.reverse();
+        frontier
+    }
+
     /// Determine how many route/held/accumulated items to show individually.
     ///
     /// Two-pass algorithm:
@@ -649,7 +682,13 @@ impl InstrumentApp {
 
         // --- Frontier classification (use cached, or compute fresh) ---
         let mut frontier = self.cached_frontier.clone()
-            .unwrap_or_else(|| Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary));
+            .unwrap_or_else(|| {
+                if matches!(self.input_mode, crate::state::InputMode::Reordering { .. }) {
+                    Frontier::from_raw_order(&self.siblings, self.epoch_boundary)
+                } else {
+                    Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary)
+                }
+            });
 
         // --- Measure zones for Flex layout ---
         let has_breadcrumb = self.grandparent_display.is_some();
