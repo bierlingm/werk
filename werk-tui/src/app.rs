@@ -86,6 +86,9 @@ pub struct InstrumentApp {
     // Focus zoom (V7): detail of the currently focused child.
     pub deck_zoom: crate::deck::ZoomLevel,
     pub focused_detail: Option<crate::deck::FocusedDetail>,
+
+    // Session telemetry — records every significant action for debugging.
+    pub session_log: crate::session_log::SessionLog,
 }
 
 /// Filter for the field view.
@@ -170,6 +173,7 @@ impl InstrumentApp {
             },
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
+            session_log: crate::session_log::SessionLog::new(),
         };
         app.load_siblings();
         app
@@ -219,6 +223,7 @@ impl InstrumentApp {
             deck_config: crate::deck::DeckConfig::default(),
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
+            session_log: crate::session_log::SessionLog::new(),
         }
     }
 
@@ -457,6 +462,7 @@ impl InstrumentApp {
 
     /// Descend into a tension's children.
     pub fn descend(&mut self, id: &str) {
+        self.session_log.record(crate::session_log::Category::Nav, format!("DESCEND into {}", id));
         self.parent_id = Some(id.to_string());
         self.load_siblings();
         self.gaze = None;
@@ -468,6 +474,7 @@ impl InstrumentApp {
 
     /// Ascend to parent level. Cursor lands on the tension we just left.
     pub fn ascend(&mut self) {
+        self.session_log.record(crate::session_log::Category::Nav, format!("ASCEND from {:?}", self.parent_id));
         let old_parent_id = self.parent_id.take();
 
         // Close gaze
@@ -669,7 +676,19 @@ impl InstrumentApp {
             .map(|s| (s.id.clone(), s.position))
             .collect();
 
-        self.input_mode = InputMode::Reordering { tension_id };
+        self.input_mode = InputMode::Reordering { tension_id: tension_id.clone() };
+
+        // Telemetry: log entry with state snapshot
+        use crate::session_log::Category;
+        let positions: Vec<String> = self.siblings.iter()
+            .filter(|s| s.status == TensionStatus::Active)
+            .map(|s| format!("{}:{}", s.short_code.unwrap_or(-1),
+                s.position.map(|p| p.to_string()).unwrap_or_else(|| "held".into())))
+            .collect();
+        self.session_log.record(Category::Reorder,
+            format!("ENTER cursor={} id={} deck_cursor={} positions=[{}]",
+                cursor, &tension_id, self.deck_cursor.index, positions.join(", ")));
+
         // Close gaze if open
         if self.gaze.is_some() {
             self.gaze = None;
@@ -681,97 +700,76 @@ impl InstrumentApp {
     }
 
     /// Move the grabbed tension up one position (toward desire).
-    /// Handles three cases:
-    /// - Within positioned: swap position values
-    /// - Within held: swap array entries (held have no position order)
-    /// - Held → positioned (promote): assign position, shift others up
+    ///
+    /// During reorder, we only swap array entries — nothing else.
+    /// No position sync, no frontier recompute, no deck cursor remapping.
+    /// The vlist cursor IS the truth. Positions are derived on commit.
     pub fn reorder_move_up(&mut self) {
-        if self.siblings.is_empty() || self.vlist.cursor == 0 { return; }
+        if self.siblings.is_empty() || self.vlist.cursor == 0 {
+            self.session_log.record(crate::session_log::Category::Reorder,
+                format!("MOVE_UP blocked: empty={} cursor={}", self.siblings.is_empty(), self.vlist.cursor));
+            return;
+        }
         let cursor = self.vlist.cursor;
 
-        // Block moving into/past resolved/released items
-        if self.siblings[cursor - 1].status != TensionStatus::Active { return; }
-
-        let cur_positioned = self.siblings[cursor].position.is_some();
-        let nbr_positioned = self.siblings[cursor - 1].position.is_some();
-
-        if cur_positioned && nbr_positioned {
-            // Both positioned: swap position values
-            let pos_a = self.siblings[cursor].position;
-            let pos_b = self.siblings[cursor - 1].position;
-            self.siblings[cursor].position = pos_b;
-            self.siblings[cursor - 1].position = pos_a;
-        } else if !cur_positioned && nbr_positioned {
-            // Held item moving into positioned zone: promote
-            // Give it the neighbor's position, shift neighbor down by 1
-            let nbr_pos = self.siblings[cursor - 1].position.unwrap_or(1);
-            self.siblings[cursor].position = Some(nbr_pos);
-            self.siblings[cursor - 1].position = Some(nbr_pos.saturating_sub(1).max(1));
-        } else if cur_positioned && !nbr_positioned {
-            // Positioned item moving into held zone: demote
-            self.siblings[cursor].position = None;
-            // Neighbor stays None (both now held)
+        if self.siblings[cursor - 1].status != TensionStatus::Active {
+            self.session_log.record(crate::session_log::Category::Reorder,
+                format!("MOVE_UP blocked: neighbor[{}] status={:?}", cursor - 1, self.siblings[cursor - 1].status));
+            return;
         }
-        // Both held: just swap array entries, no position changes needed
 
         self.siblings.swap(cursor, cursor - 1);
         self.vlist.cursor = cursor - 1;
 
-        if self.use_deck && self.parent_id.is_some() {
-            self.deck_cursor_to_sibling(cursor - 1);
-        }
+        self.session_log.record(crate::session_log::Category::Reorder,
+            format!("MOVE_UP {} → {} vlist_cursor={}", cursor, cursor - 1, self.vlist.cursor));
     }
 
     /// Move the grabbed tension down one position (toward reality).
-    /// Handles three cases:
-    /// - Within positioned: swap position values
-    /// - Within held: swap array entries
-    /// - Positioned → held (demote): remove position
+    ///
+    /// During reorder, we only swap array entries — nothing else.
     pub fn reorder_move_down(&mut self) {
-        if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 { return; }
+        if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 {
+            self.session_log.record(crate::session_log::Category::Reorder,
+                format!("MOVE_DOWN blocked: empty={} cursor={} len={}", self.siblings.is_empty(), self.vlist.cursor, self.siblings.len()));
+            return;
+        }
         let cursor = self.vlist.cursor;
 
-        // Block moving into/past resolved/released items
-        if self.siblings[cursor + 1].status != TensionStatus::Active { return; }
-
-        let cur_positioned = self.siblings[cursor].position.is_some();
-        let nbr_positioned = self.siblings[cursor + 1].position.is_some();
-
-        if cur_positioned && nbr_positioned {
-            // Both positioned: swap position values
-            let pos_a = self.siblings[cursor].position;
-            let pos_b = self.siblings[cursor + 1].position;
-            self.siblings[cursor].position = pos_b;
-            self.siblings[cursor + 1].position = pos_a;
-        } else if cur_positioned && !nbr_positioned {
-            // Positioned item moving into held zone: demote
-            self.siblings[cursor].position = None;
-        } else if !cur_positioned && nbr_positioned {
-            // Held item moving past a positioned item: swap positions
-            let nbr_pos = self.siblings[cursor + 1].position;
-            self.siblings[cursor].position = nbr_pos;
-            self.siblings[cursor + 1].position = None;
+        if self.siblings[cursor + 1].status != TensionStatus::Active {
+            self.session_log.record(crate::session_log::Category::Reorder,
+                format!("MOVE_DOWN blocked: neighbor[{}] status={:?}", cursor + 1, self.siblings[cursor + 1].status));
+            return;
         }
-        // Both held: just swap array entries
 
         self.siblings.swap(cursor, cursor + 1);
         self.vlist.cursor = cursor + 1;
 
-        if self.use_deck && self.parent_id.is_some() {
-            self.deck_cursor_to_sibling(cursor + 1);
-        }
+        self.session_log.record(crate::session_log::Category::Reorder,
+            format!("MOVE_DOWN {} → {} vlist_cursor={}", cursor, cursor + 1, self.vlist.cursor));
     }
 
     /// Commit the reorder: write final positions to engine as a single logical action.
-    /// Preserves the positioned/unpositioned boundary. Moving a tension below the
-    /// boundary unpositions it; moving one above positions it.
+    /// Derives positions from final array order. The boundary between positioned
+    /// and held shifts if the grabbed item crossed it.
     pub fn reorder_commit(&mut self) {
         let tension_id = match &self.input_mode {
             InputMode::Reordering { tension_id } => tension_id.clone(),
             _ => String::new(),
         };
 
-        // Count how many items were originally positioned
+        // Telemetry: log commit with final array state
+        use crate::session_log::Category;
+        let final_order: Vec<String> = self.siblings.iter()
+            .filter(|s| s.status == TensionStatus::Active)
+            .map(|s| format!("{}:{}", s.short_code.unwrap_or(-1),
+                s.position.map(|p| p.to_string()).unwrap_or_else(|| "held".into())))
+            .collect();
+        self.session_log.record(Category::Reorder,
+            format!("COMMIT id={} vlist_cursor={} final_order=[{}]",
+                &tension_id, self.vlist.cursor, final_order.join(", ")));
+
+        // Count how many active items were originally positioned
         let originally_positioned = self.reorder_original.iter()
             .filter(|(_, pos)| pos.is_some())
             .count();
@@ -780,38 +778,41 @@ impl InstrumentApp {
         let grabbed_was_positioned = self.reorder_original.iter()
             .any(|(id, pos)| id == &tension_id && pos.is_some());
 
-        // Find where the grabbed tension ended up
-        let grabbed_index = self.siblings.iter()
+        // Find where the grabbed tension ended up among active items
+        let grabbed_active_index = self.siblings.iter()
+            .filter(|s| s.status == TensionStatus::Active)
             .position(|s| s.id == tension_id)
             .unwrap_or(0);
 
         // Compute the boundary: how many items should be positioned in the result.
-        // The boundary is the original count, adjusted if the grabbed item crossed it.
-        let boundary = if grabbed_was_positioned && grabbed_index >= originally_positioned {
-            // Grabbed item moved out of positioned group → boundary shrinks by 1
+        let boundary = if grabbed_was_positioned && grabbed_active_index >= originally_positioned {
             originally_positioned.saturating_sub(1)
-        } else if !grabbed_was_positioned && grabbed_index < originally_positioned {
-            // Grabbed item moved into positioned group → boundary grows by 1
+        } else if !grabbed_was_positioned && grabbed_active_index < originally_positioned {
             originally_positioned + 1
         } else {
             originally_positioned
         };
 
-        // Assign positions above boundary, None below
-        for (i, sibling) in self.siblings.iter().enumerate() {
-            if i < boundary {
-                let pos = (boundary - i) as i32;
+        // Assign positions to active items based on array order.
+        let mut active_idx = 0usize;
+        for sibling in self.siblings.iter() {
+            if sibling.status != TensionStatus::Active {
+                continue;
+            }
+            if active_idx < boundary {
+                let pos = (boundary - active_idx) as i32;
                 let _ = self.engine.update_position(&sibling.id, Some(pos));
             } else {
                 let _ = self.engine.update_position(&sibling.id, None);
             }
+            active_idx += 1;
         }
 
         self.reorder_original.clear();
         self.input_mode = InputMode::Normal;
         self.load_siblings();
 
-        // Restore cursor to the moved tension (both vlist and deck cursor)
+        // Restore cursor to the moved tension
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
             if self.use_deck && self.parent_id.is_some() {
@@ -823,13 +824,13 @@ impl InstrumentApp {
 
     /// Cancel the reorder: restore original positions and cursor.
     pub fn reorder_cancel(&mut self) {
-        // Get the original tension ID to restore cursor
+        self.session_log.record(crate::session_log::Category::Reorder, "CANCEL");
+
         let tension_id = match &self.input_mode {
             InputMode::Reordering { tension_id } => tension_id.clone(),
             _ => String::new(),
         };
 
-        // Restore original positions from snapshot
         for (id, pos) in &self.reorder_original {
             let _ = self.engine.update_position(id, *pos);
         }
@@ -837,7 +838,6 @@ impl InstrumentApp {
         self.input_mode = InputMode::Normal;
         self.load_siblings();
 
-        // Restore cursor to the original tension (both vlist and deck cursor)
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
             if self.use_deck && self.parent_id.is_some() {
@@ -1031,4 +1031,20 @@ impl InstrumentApp {
         self.transient = Some(TransientMessage::new(text));
     }
 
+    /// Dump the session log to .werk/session.log.
+    pub fn dump_session_log(&mut self) {
+        self.session_log.record(crate::session_log::Category::Session, "log dumped by user");
+        match self.session_log.dump_to_file() {
+            Ok(path) => self.set_transient(format!("log \u{2192} {}", path.display())),
+            Err(e) => self.set_transient(format!("log dump failed: {}", e)),
+        }
+    }
+}
+
+impl Drop for InstrumentApp {
+    fn drop(&mut self) {
+        self.session_log.record(crate::session_log::Category::Session,
+            format!("session ended ({} events)", self.session_log.total_count()));
+        let _ = self.session_log.dump_to_file();
+    }
 }
