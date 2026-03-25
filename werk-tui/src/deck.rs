@@ -767,14 +767,19 @@ impl InstrumentApp {
             } else { 0 }
         } else { 0 };
 
-        // Compute space-aware expansion for held/accumulated.
-        // Focus detail renders inline below the focused item but does NOT reduce
-        // expansion — it uses empty space in the middle zone naturally. This prevents
-        // the focused item from collapsing into a summary when focused.
+        // Compute space-aware expansion.
+        // Focus detail takes space from accumulated (last priority) but never from
+        // held, so the focused item can't collapse into a summary.
         let middle_start = middle_zone.y;
         let middle_end = middle_zone.y + middle_zone.height;
         let middle_lines = middle_zone.height as usize;
         frontier.compute_expansion(middle_lines);
+
+        // If focus is active, reduce accumulated to make room for the detail.
+        if focus_detail_height > 0 {
+            let acc_budget = frontier.show_accumulated.saturating_sub(focus_detail_height);
+            frontier.show_accumulated = acc_budget;
+        }
         // Cache expansion lines so navigation uses the same value
         self.last_render_lines.set(middle_lines);
 
@@ -880,8 +885,19 @@ impl InstrumentApp {
             }
         }
 
-        // The top-down section must not overlap with the accumulated section
-        let top_limit = acc_top;
+        // The top-down section must not overlap with the accumulated section.
+        // Guarantee at least enough room for: held items/summary + console + input point.
+        let min_top_space: u16 = {
+            let mut h: u16 = 1; // input point (always)
+            h += 2; // console header + breathing
+            if !frontier.held.is_empty() {
+                let shown = frontier.show_held.min(frontier.held.len());
+                h += shown as u16;
+                if shown < frontier.held.len() { h += 1; } // summary
+            }
+            h
+        };
+        let top_limit = acc_top.max(middle_start + min_top_space);
         let mut my = middle_start;
 
         // === Top-down pass: route → overdue → next → separator → held → input ===
