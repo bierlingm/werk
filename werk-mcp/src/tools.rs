@@ -139,6 +139,9 @@ pub struct AddParam {
     /// Temporal horizon (e.g., "2026", "2026-05", "2026-05-15").
     #[serde(default)]
     pub horizon: Option<String>,
+    /// Optional palette response action key. If creating a child with horizon triggers a containment violation, this action is applied automatically.
+    #[serde(default)]
+    pub palette_response: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -206,6 +209,9 @@ pub struct MoveParam {
     /// New parent ID (omit to make root).
     #[serde(default)]
     pub parent: Option<String>,
+    /// Optional palette response action key. If the move creates a containment violation, this action is applied automatically.
+    #[serde(default)]
+    pub palette_response: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -214,6 +220,9 @@ pub struct PositionParam {
     pub id: String,
     /// Position number (1-based).
     pub position: i32,
+    /// Optional palette response action key (e.g., "swap_positions", "move_before", "hold_tension"). If sequencing pressure is detected, this action is applied automatically.
+    #[serde(default)]
+    pub palette_response: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -223,6 +232,9 @@ pub struct HorizonParam {
     /// New horizon value, "none" to clear, or omit to display current.
     #[serde(default)]
     pub value: Option<String>,
+    /// Optional palette response action key (e.g., "clip_child", "extend_parent", "promote_child", "remove_child_deadline"). If a containment violation is detected, this action is applied automatically instead of returning signals for separate handling.
+    #[serde(default)]
+    pub palette_response: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -434,6 +446,75 @@ fn load_hooks(workspace: &Workspace) -> HookRunner {
     Config::load(workspace)
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop())
+}
+
+/// Detect containment palettes after a horizon change, optionally applying a pre-selected response.
+///
+/// Returns (palette_json_array, applied_action_description).
+fn mcp_check_containment(
+    store: &mut sd_core::Store,
+    tension_id: &str,
+    palette_response: Option<&str>,
+) -> Result<(Vec<serde_json::Value>, Option<String>), McpError> {
+    let detected = werk_shared::detect_containment_palettes(store, tension_id)
+        .map_err(werk_err)?;
+
+    let mut palette_json = Vec::new();
+    let mut applied_desc = None;
+
+    for (palette, ctx) in detected {
+        let palette_val = serde_json::to_value(&palette).unwrap_or(serde_json::Value::Null);
+        palette_json.push(palette_val);
+
+        // If a palette_response was provided, find the matching action and apply it
+        if let Some(response_action) = palette_response {
+            if let Some(idx) = palette.options.iter().position(|o| o.action == response_action) {
+                let choice = if response_action == "dismiss" {
+                    werk_shared::PaletteChoice::Dismissed
+                } else {
+                    werk_shared::PaletteChoice::Selected(idx)
+                };
+                if let Ok(Some(desc)) = werk_shared::apply_choice(store, &ctx, &choice) {
+                    applied_desc = Some(desc);
+                }
+            }
+        }
+    }
+
+    Ok((palette_json, applied_desc))
+}
+
+/// Detect sequencing palettes after a position change, optionally applying a pre-selected response.
+fn mcp_check_sequencing(
+    store: &mut sd_core::Store,
+    tension_id: &str,
+    palette_response: Option<&str>,
+) -> Result<(Vec<serde_json::Value>, Option<String>), McpError> {
+    let detected = werk_shared::detect_sequencing_palettes(store, tension_id)
+        .map_err(werk_err)?;
+
+    let mut palette_json = Vec::new();
+    let mut applied_desc = None;
+
+    for (palette, ctx) in detected {
+        let palette_val = serde_json::to_value(&palette).unwrap_or(serde_json::Value::Null);
+        palette_json.push(palette_val);
+
+        if let Some(response_action) = palette_response {
+            if let Some(idx) = palette.options.iter().position(|o| o.action == response_action) {
+                let choice = if response_action == "dismiss" {
+                    werk_shared::PaletteChoice::Dismissed
+                } else {
+                    werk_shared::PaletteChoice::Selected(idx)
+                };
+                if let Ok(Some(desc)) = werk_shared::apply_choice(store, &ctx, &choice) {
+                    applied_desc = Some(desc);
+                }
+            }
+        }
+    }
+
+    Ok((palette_json, applied_desc))
 }
 
 fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, McpError> {
@@ -1461,13 +1542,20 @@ impl WerkServer {
 
         let _ = store.begin_gesture(Some("create tension"));
         let tension = store
-            .create_tension_full(&p.desired, &p.actual, parent_id.clone(), horizon_parsed)
+            .create_tension_full(&p.desired, &p.actual, parent_id.clone(), horizon_parsed.clone())
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
 
+        // Detect containment palettes if child created with horizon under a parent
+        let (signals, applied) = if horizon_parsed.is_some() && tension.parent_id.is_some() {
+            mcp_check_containment(&mut store, &tension.id, p.palette_response.as_deref())?
+        } else {
+            (vec![], None)
+        };
+
         autoflush(&workspace);
 
-        json_result(&serde_json::json!({
+        let mut result = serde_json::json!({
             "id": tension.id,
             "short_code": tension.short_code,
             "desired": tension.desired,
@@ -1475,7 +1563,14 @@ impl WerkServer {
             "status": tension.status.to_string(),
             "parent_id": parent_id,
             "horizon": tension.horizon.as_ref().map(|h| h.to_string()),
-        }))
+        });
+        if !signals.is_empty() {
+            result["signals"] = serde_json::Value::Array(signals);
+        }
+        if let Some(desc) = applied {
+            result["palette_applied"] = serde_json::Value::String(desc);
+        }
+        json_result(&result)
     }
 
     #[tool(description = "Compose up: create a parent for existing tensions. Reveals implicit coherence by composing structure upward.")]
@@ -1861,12 +1956,26 @@ impl WerkServer {
             .map_err(|e| err(e.to_string()))?;
         engine.store_mut().end_gesture();
 
+        // Detect containment palettes after reparenting
+        let (signals, applied) = if new_parent_id.is_some() {
+            mcp_check_containment(engine.store_mut(), &tension_id, p.palette_response.as_deref())?
+        } else {
+            (vec![], None)
+        };
+
         autoflush(&workspace);
 
-        json_result(&serde_json::json!({
+        let mut result = serde_json::json!({
             "id": tension_id,
             "parent_id": new_parent_id,
-        }))
+        });
+        if !signals.is_empty() {
+            result["signals"] = serde_json::Value::Array(signals);
+        }
+        if let Some(desc) = applied {
+            result["palette_applied"] = serde_json::Value::String(desc);
+        }
+        json_result(&result)
     }
 
     #[tool(description = "Remove a tension from the sequence (set to held/unpositioned).")]
@@ -1928,13 +2037,27 @@ impl WerkServer {
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
 
+        // Detect sequencing palettes, optionally apply pre-selected response
+        let (signals, applied) = mcp_check_sequencing(
+            &mut store,
+            &tension_id,
+            p.palette_response.as_deref(),
+        )?;
+
         autoflush(&workspace);
 
-        json_result(&serde_json::json!({
+        let mut result = serde_json::json!({
             "id": tension_id,
             "position": p.position,
             "old_position": old_pos,
-        }))
+        });
+        if !signals.is_empty() {
+            result["signals"] = serde_json::Value::Array(signals);
+        }
+        if let Some(desc) = applied {
+            result["palette_applied"] = serde_json::Value::String(desc);
+        }
+        json_result(&result)
     }
 
     #[tool(description = "Set or clear the deadline (horizon) of a tension. Omit value to display current. Use 'none' to clear.")]
@@ -1979,11 +2102,26 @@ impl WerkServer {
                     .update_horizon(&tension_id, Some(h))
                     .map_err(|e| err(e.to_string()))?;
                 engine.store_mut().end_gesture();
+
+                // Detect containment palettes, optionally apply pre-selected response
+                let (signals, applied) = mcp_check_containment(
+                    engine.store_mut(),
+                    &tension_id,
+                    p.palette_response.as_deref(),
+                )?;
+
                 autoflush(&workspace);
-                json_result(&serde_json::json!({
+                let mut result = serde_json::json!({
                     "id": tension_id,
                     "horizon": val,
-                }))
+                });
+                if !signals.is_empty() {
+                    result["signals"] = serde_json::Value::Array(signals);
+                }
+                if let Some(desc) = applied {
+                    result["palette_applied"] = serde_json::Value::String(desc);
+                }
+                json_result(&result)
             }
         }
     }
