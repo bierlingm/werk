@@ -1,23 +1,12 @@
 {
-  "flushed_at": "2026-03-25T14:29:43Z",
+  "flushed_at": "2026-03-25T15:53:00Z",
   "summary": {
-    "active": 33,
-    "released": 5,
-    "resolved": 27,
-    "total": 65
+    "active": 40,
+    "released": 2,
+    "resolved": 26,
+    "total": 68
   },
   "tensions": [
-    {
-      "actual": "test actual",
-      "created_at": "2026-03-24T17:52:25.867575+00:00",
-      "desired": "test desired",
-      "horizon": "2026-05",
-      "id": "01KMGFKXRBN622G3VRNZ7193S6",
-      "parent_id": null,
-      "position": null,
-      "short_code": 1,
-      "status": "Released"
-    },
     {
       "actual": "Conceptual foundation exists and is partially implemented. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: implied execution window, urgency, sequencing pressure, critical path (recursive), containment violation — all computed in sd-core. Frontier projection: operating envelope partitions children into next/overdue/held/remaining/resolved. Three interface surfaces operational: TUI (functional but pre-foundation), CLI (30+ commands with foundation vocabulary, JSON on all commands), MCP (werk mcp — 30 tools via rmcp/stdio, same gestures as CLI). Cooperative dynamics remain unexplored.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
@@ -47,7 +36,7 @@
       "horizon": null,
       "id": "01KMGFKXTZYXZJ6ZQQXB632771",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": 2,
+      "position": null,
       "short_code": 4,
       "status": "Active"
     },
@@ -96,17 +85,6 @@
       "status": "Released"
     },
     {
-      "actual": "test",
-      "created_at": "2026-03-24T17:52:26.099143+00:00",
-      "desired": "test",
-      "horizon": "2026-03-20",
-      "id": "01KMGFKXZK3CT66C5GXEEH3R7B",
-      "parent_id": null,
-      "position": 1,
-      "short_code": 9,
-      "status": "Released"
-    },
-    {
       "actual": "CLI has foundation vocabulary (survey, ground, horizon, note testimony, hold/position, compose, epoch). JSON output on all commands. Context command provides structural JSON (context --all, --urgent, <id>) with urgency, staleness, frontier. Batch applies YAML mutations grouped as one gesture. run/watch deleted. Agent orchestration vocabulary purged. `werk mcp` subcommand starts stdio MCP server — the protocol surface. Remaining gaps: help output is flat (30+ commands alphabetically), no grouped help by framework.",
       "created_at": "2026-03-24T17:52:26.147317+00:00",
       "desired": "CLI is a complete, honest interface to the structure — foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands",
@@ -146,7 +124,7 @@
       "horizon": null,
       "id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": null,
+      "position": 1,
       "short_code": 13,
       "status": "Active"
     },
@@ -332,7 +310,7 @@
       "desired": "epoch creation has a trigger path — CLI or TUI prompts 'start a new epoch?' when desire/reality changes, snapshotting the current delta",
       "horizon": null,
       "id": "01KMGFKYSX6XVT54YP35H0KYMT",
-      "parent_id": null,
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 30,
       "status": "Active"
@@ -343,7 +321,7 @@
       "desired": "session lifecycle is clear — TUI instances manage their own sessions, CLI commands operate sessionless, agent mutations are sessionless gestures. Multiple concurrent TUI panes are independent sessions.",
       "horizon": null,
       "id": "01KMGFKYTGGJVZSQGZ1PNPZ719",
-      "parent_id": null,
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 31,
       "status": "Active"
@@ -393,7 +371,7 @@
       "status": "Active"
     },
     {
-      "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
+      "actual": "exploration phase — building for self first, others who want it second. Business model unclear: license could work, but core question is what people would actually pay for. Need cash, so practical paths matter more than elegant models. Interested in setup-call / donation / build-something-obviously-valuable approaches. Supermirror.app and jsm CLI as reference models. No revenue, no pricing, no public presence beyond statecraft.systems listing. Target: first $1000 through practical means.",
       "created_at": "2026-03-24T17:52:27.203679+00:00",
       "desired": "werk has a sustainable business model that funds continued development while remaining fundamentally true to the conceptual foundation",
       "horizon": null,
@@ -440,7 +418,7 @@
       "actual": "integration points mapped in business foundation doc; no implementation; Statecraft website already lists werk as a tool",
       "created_at": "2026-03-24T17:52:27.396784+00:00",
       "desired": "werk integrates naturally with Statecraft services, Modern Minuteman operations, and Spikes feedback loops",
-      "horizon": "2026-04-07",
+      "horizon": null,
       "id": "01KMGFKZ84CCZYFSN7XX0539AX",
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
@@ -613,28 +591,6 @@
       "status": "Resolved"
     },
     {
-      "actual": "CLI human-facing output fully aligned with foundation vocabulary: Reality (not Actual), Deadline (not Horizon) in show/add/compose-up/horizon commands. CLI aliases: werk actual → reality, werk deadline → horizon. --phase filter removed from list. 'phase transition' → 'epoch boundary'. Agent prompts updated. DynamicsEngine renamed to Engine. dynamics.rs consolidated into temporal.rs (sd-core), renamed to serialize.rs (CLI). JSON keys and struct fields unchanged (backward compatible). Remaining: TUI labels (blocked on TUI rebuild).",
-      "created_at": "2026-03-24T17:52:29.057702+00:00",
-      "desired": "test",
-      "horizon": null,
-      "id": "01KMGFM0W1P899FJ9W684SBCNK",
-      "parent_id": "01KMGFKY22485AC0SWWX40M5QA",
-      "position": null,
-      "short_code": 56,
-      "status": "Resolved"
-    },
-    {
-      "actual": "Conceptual foundation exists and is partially implemented. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: implied execution window, urgency, sequencing pressure, critical path (recursive), containment violation — all computed in sd-core. Frontier projection: operating envelope partitions children into next/overdue/held/remaining/resolved. Three interface surfaces operational: TUI (functional but pre-foundation), CLI (30+ commands with foundation vocabulary, JSON on all commands), MCP (werk mcp — 30 tools via rmcp/stdio, same gestures as CLI). Cooperative dynamics remain unexplored.",
-      "created_at": "2026-03-24T17:52:29.237102+00:00",
-      "desired": "test",
-      "horizon": null,
-      "id": "01KMGFM11NN9W4Z5JTNSNRYF0G",
-      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": null,
-      "short_code": 57,
-      "status": "Released"
-    },
-    {
       "actual": "Shared palette infrastructure exists in werk-shared (types, builders, applicators, detection). No TUI presentation layer yet. Blocked on envelope rebuild (#15 V3+).",
       "created_at": "2026-03-24T17:52:29.496367+00:00",
       "desired": "pathway palettes in TUI — inline option sets presented via ftui when gestures create structural signals (containment violations, sequencing pressure). Uses shared palette types from werk-shared. The TUI analog of CLI pathway palettes.",
@@ -720,6 +676,83 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 65,
+      "status": "Active"
+    },
+    {
+      "actual": "no definition yet; Statecraft website lists werk as a tool but the integration shape is unspecified",
+      "created_at": "2026-03-25T15:40:07.819880+00:00",
+      "desired": "Statecraft integration point is defined — what a client session looks like when werk is the structural layer, shared tree vs export vs live view",
+      "horizon": null,
+      "id": "01KMJTECRB48A2H9D1TRVQH3YJ",
+      "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX",
+      "position": null,
+      "short_code": 66,
+      "status": "Active"
+    },
+    {
+      "actual": "no definition; MM operates but werk isn't part of that workflow yet",
+      "created_at": "2026-03-25T15:40:17.292065+00:00",
+      "desired": "Modern Minuteman operations use werk as the planning instrument — what operations means here, whether it's the task backbone for MM content production",
+      "horizon": null,
+      "id": "01KMJTEP0C5FWFETZ3389CZC4J",
+      "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX",
+      "position": null,
+      "short_code": 67,
+      "status": "Active"
+    },
+    {
+      "actual": "no definition; Spikes exists as a concept but no signal pathway to werk is designed",
+      "created_at": "2026-03-25T15:40:19.090544+00:00",
+      "desired": "Spikes feedback loops connect to werk tensions — how audience signal maps back to structural tensions, whether via hook or ingest or manual",
+      "horizon": null,
+      "id": "01KMJTEQRJA6WVX0K3Z3PRZB3F",
+      "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX",
+      "position": null,
+      "short_code": 68,
+      "status": "Active"
+    },
+    {
+      "actual": "three candidate paths identified: setup calls (service), donations (requires public presence first), build something obviously valuable (product). No validation on any path yet.",
+      "created_at": "2026-03-25T15:52:39.283174+00:00",
+      "desired": "first $1000 earned through practical means — proving someone will pay for what werk enables",
+      "horizon": null,
+      "id": "01KMJV5AKKY3H468YCS52WD640",
+      "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
+      "position": 1,
+      "short_code": 69,
+      "status": "Active"
+    },
+    {
+      "actual": "no offering exists; would need a price, a booking mechanism, and at least one person to pitch it to",
+      "created_at": "2026-03-25T15:52:51.667490+00:00",
+      "desired": "setup calls offered — install werk, walk through structural dynamics, configure a tension tree for someone's real project",
+      "horizon": null,
+      "id": "01KMJV5PPKA66E225CP5PKN2EW",
+      "parent_id": "01KMJV5AKKY3H468YCS52WD640",
+      "position": null,
+      "short_code": 70,
+      "status": "Active"
+    },
+    {
+      "actual": "candidates: werk-as-claude-skill (zero install SD practice), hosted structural audit, productized tension tree session. Nothing built or validated.",
+      "created_at": "2026-03-25T15:52:53.277041+00:00",
+      "desired": "something obviously valuable is built and priced — a packaged product or skill that people encounter and want to pay for",
+      "horizon": null,
+      "id": "01KMJV5R8XJQEX12XE3KEH8332",
+      "parent_id": "01KMJV5AKKY3H468YCS52WD640",
+      "position": null,
+      "short_code": 71,
+      "status": "Active"
+    },
+    {
+      "actual": "depends on #37; no public visibility yet beyond statecraft.systems listing",
+      "created_at": "2026-03-25T15:52:55.153190+00:00",
+      "desired": "public presence exists sufficient for donations/sponsors to flow",
+      "horizon": null,
+      "id": "01KMJV5T3H5TRHKRXND86GVQPK",
+      "parent_id": "01KMJV5AKKY3H468YCS52WD640",
+      "position": null,
+      "short_code": 72,
       "status": "Active"
     }
   ]
