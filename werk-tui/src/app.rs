@@ -263,8 +263,16 @@ impl InstrumentApp {
         }
 
         // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end.
-        // Always include all children so the frontier can classify them.
-        let mut filtered: Vec<_> = tensions.to_vec();
+        // Descended views include all children for frontier classification.
+        // Root level shows only active (resolved/released root tensions are historical).
+        let mut filtered: Vec<_> = if self.parent_id.is_some() {
+            tensions.to_vec()
+        } else {
+            tensions.iter()
+                .filter(|t| t.status == TensionStatus::Active)
+                .cloned()
+                .collect()
+        };
 
         // The SQL already gives us positioned DESC first, then unpositioned by created_at.
         // Re-sort only the unpositioned group by horizon range_end (deadline).
