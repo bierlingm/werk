@@ -647,8 +647,9 @@ impl InstrumentApp {
             .unwrap_or(2);
         let cols = ColumnLayout::compute(w, widest_deadline, max_id, max_age_len);
 
-        // --- Frontier classification ---
-        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
+        // --- Frontier classification (use cached, or compute fresh) ---
+        let mut frontier = self.cached_frontier.clone()
+            .unwrap_or_else(|| Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary));
 
         // --- Measure zones for Flex layout ---
         let has_breadcrumb = self.grandparent_display.is_some();
@@ -732,7 +733,7 @@ impl InstrumentApp {
         let middle_lines = middle_zone.height as usize;
         let expansion_lines = middle_lines.saturating_sub(focus_detail_height);
         frontier.compute_expansion(expansion_lines);
-        // Cache for navigation so cursor and render agree on selectables
+        // Cache expansion lines so navigation uses the same value
         self.last_render_lines.set(expansion_lines);
 
         // During reorder, the grabbed item is tracked by vlist.cursor (sibling index).
@@ -1454,36 +1455,28 @@ impl InstrumentApp {
         y - start_y
     }
 
-    /// Compute frontier with the same expansion as the last render.
-    /// This ensures navigation and rendering agree on which items are selectable.
-    pub fn frontier_for_navigation(&self) -> Frontier {
-        let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
-        frontier.compute_expansion(self.last_render_lines.get());
-        frontier
-    }
-
     /// Handle pitch up (k / Up) in deck mode.
     pub fn deck_pitch_up(&mut self) {
-        let frontier = self.frontier_for_navigation();
-        self.deck_cursor.pitch_up(frontier.selectable_count());
+        let count = self.ensure_frontier().selectable_count();
+        self.deck_cursor.pitch_up(count);
     }
 
     /// Handle pitch down (j / Down) in deck mode.
     pub fn deck_pitch_down(&mut self) {
-        let frontier = self.frontier_for_navigation();
-        self.deck_cursor.pitch_down(frontier.selectable_count());
+        let count = self.ensure_frontier().selectable_count();
+        self.deck_cursor.pitch_down(count);
     }
 
     /// Reset deck cursor to default position after data reload.
     pub fn deck_cursor_reset(&mut self) {
-        let frontier = self.frontier_for_navigation();
-        self.deck_cursor.index = frontier.default_cursor();
+        let default = self.ensure_frontier().default_cursor();
+        self.deck_cursor.index = default;
     }
 
     /// Set deck cursor to point at a specific sibling index.
     /// Falls back to default cursor if the sibling isn't visible.
     pub fn deck_cursor_to_sibling(&mut self, sibling_idx: usize) {
-        let frontier = self.frontier_for_navigation();
+        let frontier = self.ensure_frontier();
         if let Some(cursor_idx) = frontier.cursor_for_sibling(sibling_idx) {
             self.deck_cursor.index = cursor_idx;
         } else {
@@ -1493,8 +1486,8 @@ impl InstrumentApp {
 
     /// Get the sibling index the deck cursor currently points to (if any).
     pub fn deck_selected_sibling_index(&self) -> Option<usize> {
-        let frontier = self.frontier_for_navigation();
-        frontier.cursor_target(self.deck_cursor.index).sibling_index()
+        let frontier = self.cached_frontier.as_ref()?;
+        Some(frontier.cursor_target(self.deck_cursor.index).sibling_index()?)
     }
 
     /// Render the deck bottom bar using ftui StatusLine.
@@ -1505,7 +1498,10 @@ impl InstrumentApp {
 
         // S6: Context-sensitive hints — only in Normal input mode
         let hints_text = if matches!(self.input_mode, crate::state::InputMode::Normal) {
-            let frontier = self.frontier_for_navigation();
+            let frontier = match self.cached_frontier.as_ref() {
+                Some(f) => f,
+                None => { return; }
+            };
             let target = frontier.cursor_target(self.deck_cursor.index);
             match target {
                 CursorTarget::Route(_) | CursorTarget::Next(_) =>

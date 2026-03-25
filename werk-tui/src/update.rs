@@ -268,8 +268,8 @@ impl InstrumentApp {
                 if self.use_deck && self.parent_id.is_some() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
-                    let frontier = crate::deck::Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
-                    self.deck_cursor.index = frontier.selectable_count().saturating_sub(1);
+                    let count = self.ensure_frontier().selectable_count();
+                    self.deck_cursor.index = count.saturating_sub(1);
                 } else {
                     self.vlist.bottom();
                     self.close_gaze();
