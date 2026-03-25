@@ -54,7 +54,7 @@ fn test_context_outputs_valid_json() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -103,7 +103,7 @@ fn test_context_tension_has_all_fields() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("desired state", "actual state")
         .unwrap();
@@ -151,7 +151,7 @@ fn test_context_has_projection() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -185,7 +185,7 @@ fn test_context_mutations_chronological() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Add several mutations
@@ -242,7 +242,7 @@ fn test_context_ancestors_root_first() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create chain: A -> B -> C -> D
     let a = store.create_tension("A goal", "A reality").unwrap();
@@ -307,7 +307,7 @@ fn test_context_siblings_exclude_self() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create parent with 3 children
     let parent = store
@@ -377,7 +377,7 @@ fn test_context_root_empty_ancestors() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let root = store.create_tension("root goal", "root reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -413,7 +413,7 @@ fn test_context_root_siblings_are_other_roots() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create 3 root tensions
     let r1 = store.create_tension("R1 goal", "R1 reality").unwrap();
@@ -468,7 +468,7 @@ fn test_context_leaf_empty_children() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create chain with leaf
     let parent = store
@@ -515,7 +515,7 @@ fn test_context_preserves_unicode() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("写小说 🎵", "有大纲").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -557,7 +557,7 @@ fn test_context_escapes_special_chars() {
 
     // Note: We test that JSON parsing succeeds with special chars
     // The store handles the actual content
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("goal with \"quotes\"", "reality with\nnewline")
         .unwrap();
@@ -633,7 +633,7 @@ fn test_context_ambiguous_prefix_error() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create two tensions with same starting characters (we'll use prefix matching)
     let _t1 = store.create_tension("goal1", "reality1").unwrap();
@@ -668,7 +668,7 @@ fn test_context_prefix_resolution() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Use first 8 characters as prefix
@@ -710,7 +710,7 @@ fn test_context_always_json() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Call without --json flag

@@ -29,7 +29,7 @@ fn test_show_json_has_temporal_signals() {
         .success();
 
     // Create via Store directly for reliable ID
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let h = sd_core::Horizon::new_month(2027, 6).unwrap();
     let tension = store.create_tension_full("test goal", "test reality", None, Some(h)).unwrap();
 
@@ -67,7 +67,7 @@ fn test_show_json_no_urgency_without_horizon() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("no horizon goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")

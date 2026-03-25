@@ -68,6 +68,7 @@ use chrono::{DateTime, Utc};
 use fsqlite::Connection;
 use fsqlite_types::value::SqliteValue;
 use std::cell::RefCell;
+use std::fs::File;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -102,6 +103,10 @@ pub enum StoreError {
     /// Transaction failed and was rolled back.
     #[error("transaction rolled back: {0}")]
     TransactionRolledBack(String),
+
+    /// Another process holds the store lock.
+    #[error("store is locked by another process — only one werk process can write at a time")]
+    StoreLocked,
 }
 
 /// Convert StoreError to SdError for use in operations that return SdError.
@@ -114,8 +119,11 @@ impl From<StoreError> for SdError {
 /// The persistent store for tensions and mutations.
 ///
 /// Uses fsqlite for storage. Note: fsqlite's Connection uses Rc internally,
-/// so Store cannot be sent between threads. For concurrent access, open
-/// multiple Store instances to the same file-based database.
+/// so Store cannot be sent between threads.
+///
+/// File-based stores acquire an exclusive lock (`sd.db.lock`) so only one
+/// process can write at a time. The lock is held for the lifetime of the
+/// Store and released on drop.
 ///
 /// # Events
 ///
@@ -130,6 +138,9 @@ pub struct Store {
     active_gesture_id: Option<String>,
     /// Pending actual_at timestamp for the next mutation(s). Supports "I did this yesterday."
     pending_actual_at: Option<DateTime<Utc>>,
+    /// Holds the exclusive file lock for the lifetime of this Store.
+    /// None for in-memory stores.
+    _lock_file: Option<File>,
 }
 
 impl Store {
@@ -137,7 +148,50 @@ impl Store {
     ///
     /// Creates `.werk/sd.db` with the correct schema. Idempotent —
     /// opening an existing database preserves data.
+    ///
+    /// Acquires an exclusive file lock so only one process can write
+    /// at a time. Returns `StoreError::StoreLocked` if another process
+    /// already holds the lock.
     pub fn init(path: &std::path::Path) -> Result<Self, StoreError> {
+        let werk_dir = path.join(".werk");
+        std::fs::create_dir_all(&werk_dir).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                StoreError::PermissionDenied(format!("{}", werk_dir.display()))
+            } else {
+                StoreError::IoError(format!("failed to create .werk directory: {}", e))
+            }
+        })?;
+
+        let lock_file = Self::acquire_lock(&werk_dir)?;
+
+        let db_path = werk_dir.join("sd.db");
+
+        // Back up the database before opening (rotates, keeps last 10)
+        if db_path.exists() {
+            Self::backup_db(&werk_dir, &db_path);
+        }
+
+        let db_path_str = db_path.to_string_lossy().into_owned();
+        let conn = Connection::open(db_path_str)
+            .map_err(|e| StoreError::DatabaseError(format!("failed to open database: {:?}", e)))?;
+
+        let store = Self {
+            conn: Rc::new(RefCell::new(conn)),
+            path: Some(db_path),
+            event_bus: None,
+            active_gesture_id: None,
+            pending_actual_at: None,
+            _lock_file: Some(lock_file),
+        };
+        store.create_schema()?;
+        Ok(store)
+    }
+
+    /// Initialize a store without acquiring a file lock.
+    ///
+    /// Intended for tests and read-only tooling that should not contend
+    /// with a running TUI.
+    pub fn init_unlocked(path: &std::path::Path) -> Result<Self, StoreError> {
         let werk_dir = path.join(".werk");
         std::fs::create_dir_all(&werk_dir).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
@@ -158,6 +212,7 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
+            _lock_file: None,
         };
         store.create_schema()?;
         Ok(store)
@@ -184,6 +239,7 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
+            _lock_file: None,
         };
         store.create_schema()?;
         Ok(store)
@@ -208,6 +264,41 @@ impl Store {
         // Fall back to ~/.werk/
         let home = dirs::home_dir().ok_or(StoreError::DiscoveryError)?;
         Ok(home.join(".werk"))
+    }
+
+    fn acquire_lock(werk_dir: &std::path::Path) -> Result<File, StoreError> {
+        use fs4::fs_std::FileExt;
+        let lock_path = werk_dir.join("sd.db.lock");
+        let lock_file = File::create(&lock_path).map_err(|e| {
+            StoreError::IoError(format!("failed to create lock file: {}", e))
+        })?;
+        match lock_file.try_lock_exclusive() {
+            Ok(true) => Ok(lock_file),
+            Ok(false) => Err(StoreError::StoreLocked),
+            Err(e) => Err(StoreError::IoError(format!("failed to acquire lock: {}", e))),
+        }
+    }
+
+    fn backup_db(werk_dir: &std::path::Path, db_path: &std::path::Path) {
+        let backup_dir = werk_dir.join("backups");
+        let _ = std::fs::create_dir_all(&backup_dir);
+        let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+        let backup_path = backup_dir.join(format!("sd.db.{}", timestamp));
+        if !backup_path.exists() {
+            let _ = std::fs::copy(db_path, &backup_path);
+        }
+        if let Ok(entries) = std::fs::read_dir(&backup_dir) {
+            let mut db_backups: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("sd.db."))
+                .collect();
+            db_backups.sort_by_key(|e| e.file_name());
+            if db_backups.len() > 10 {
+                for entry in &db_backups[..db_backups.len() - 10] {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
     }
 
     fn create_schema(&self) -> Result<(), StoreError> {
@@ -297,7 +388,7 @@ impl Store {
             // PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
             // Column 1 is the name
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "horizon"
+                &**s == "horizon"
             } else {
                 false
             }
@@ -312,7 +403,7 @@ impl Store {
 
         let has_position = columns.iter().any(|row| {
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "position"
+                &**s == "position"
             } else {
                 false
             }
@@ -327,7 +418,7 @@ impl Store {
 
         let has_parent_desired_snapshot = columns.iter().any(|row| {
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "parent_desired_snapshot"
+                &**s == "parent_desired_snapshot"
             } else {
                 false
             }
@@ -347,7 +438,7 @@ impl Store {
         // Migration: Add short_code to tensions
         let has_short_code = columns.iter().any(|row| {
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "short_code"
+                &**s == "short_code"
             } else {
                 false
             }
@@ -369,7 +460,7 @@ impl Store {
                         "UPDATE tensions SET short_code = ?1 WHERE id = ?2",
                         &[
                             SqliteValue::Integer((i + 1) as i64),
-                            SqliteValue::Text(tid.clone()),
+                            SqliteValue::Text(tid.to_string().into()),
                         ],
                     ).map_err(|e| {
                         StoreError::DatabaseError(format!("failed to backfill short_code: {:?}", e))
@@ -381,7 +472,7 @@ impl Store {
         // Migration: Add parent_snapshot_json to tensions
         let has_parent_snapshot_json = columns.iter().any(|row| {
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "parent_snapshot_json"
+                &**s == "parent_snapshot_json"
             } else {
                 false
             }
@@ -402,7 +493,7 @@ impl Store {
 
         let has_gesture_id = mutation_columns.iter().any(|row| {
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "gesture_id"
+                &**s == "gesture_id"
             } else {
                 false
             }
@@ -417,7 +508,7 @@ impl Store {
 
         let has_actual_at = mutation_columns.iter().any(|row| {
             if let Some(SqliteValue::Text(s)) = row.get(1) {
-                s == "actual_at"
+                &**s == "actual_at"
             } else {
                 false
             }
@@ -606,17 +697,17 @@ impl Store {
         conn.execute_with_params(
             "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             &[
-                SqliteValue::Text(tension.id.clone()),
-                SqliteValue::Text(tension.desired.clone()),
-                SqliteValue::Text(tension.actual.clone()),
+                SqliteValue::Text(tension.id.to_string().into()),
+                SqliteValue::Text(tension.desired.to_string().into()),
+                SqliteValue::Text(tension.actual.to_string().into()),
                 match &tension.parent_id {
-                    Some(pid) => SqliteValue::Text(pid.clone()),
+                    Some(pid) => SqliteValue::Text(pid.to_string().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(tension.created_at.to_rfc3339()),
-                SqliteValue::Text(tension.status.to_string()),
+                SqliteValue::Text(tension.created_at.to_rfc3339().into()),
+                SqliteValue::Text(tension.status.to_string().into()),
                 match &tension.horizon {
-                    Some(h) => SqliteValue::Text(h.to_string()),
+                    Some(h) => SqliteValue::Text(h.to_string().into()),
                     None => SqliteValue::Null,
                 },
                 match tension.position {
@@ -624,15 +715,15 @@ impl Store {
                     None => SqliteValue::Null,
                 },
                 match &tension.parent_desired_snapshot {
-                    Some(s) => SqliteValue::Text(s.clone()),
+                    Some(s) => SqliteValue::Text(s.to_string().into()),
                     None => SqliteValue::Null,
                 },
                 match &tension.parent_actual_snapshot {
-                    Some(s) => SqliteValue::Text(s.clone()),
+                    Some(s) => SqliteValue::Text(s.to_string().into()),
                     None => SqliteValue::Null,
                 },
                 match &tension.parent_snapshot_json {
-                    Some(s) => SqliteValue::Text(s.clone()),
+                    Some(s) => SqliteValue::Text(s.to_string().into()),
                     None => SqliteValue::Null,
                 },
                 match tension.short_code {
@@ -662,20 +753,20 @@ impl Store {
         conn.execute_with_params(
             "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[
-                SqliteValue::Text(mutation.tension_id().to_owned()),
-                SqliteValue::Text(mutation.timestamp().to_rfc3339()),
-                SqliteValue::Text(mutation.field().to_owned()),
+                SqliteValue::Text(mutation.tension_id().to_owned().into()),
+                SqliteValue::Text(mutation.timestamp().to_rfc3339().into()),
+                SqliteValue::Text(mutation.field().to_owned().into()),
                 match mutation.old_value() {
-                    Some(v) => SqliteValue::Text(v.to_owned()),
+                    Some(v) => SqliteValue::Text(v.to_owned().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(mutation.new_value().to_owned()),
+                SqliteValue::Text(mutation.new_value().to_owned().into()),
                 match &effective_gesture_id {
-                    Some(g) => SqliteValue::Text(g.clone()),
+                    Some(g) => SqliteValue::Text(g.to_string().into()),
                     None => SqliteValue::Null,
                 },
                 match effective_actual_at {
-                    Some(t) => SqliteValue::Text(t.to_rfc3339()),
+                    Some(t) => SqliteValue::Text(t.to_rfc3339().into()),
                     None => SqliteValue::Null,
                 },
             ],
@@ -692,7 +783,7 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code FROM tensions WHERE id = ?1",
-                &[SqliteValue::Text(id.to_owned())],
+                &[SqliteValue::Text(id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
@@ -702,11 +793,11 @@ impl Store {
 
         let row = &rows[0];
         let id = match row.get(0) {
-            Some(SqliteValue::Text(s)) => s.clone(),
+            Some(SqliteValue::Text(s)) => s.to_string(),
             _ => return Err(StoreError::DatabaseError("invalid id column".to_owned())),
         };
         let desired = match row.get(1) {
-            Some(SqliteValue::Text(s)) => s.clone(),
+            Some(SqliteValue::Text(s)) => s.to_string(),
             _ => {
                 return Err(StoreError::DatabaseError(
                     "invalid desired column".to_owned(),
@@ -714,7 +805,7 @@ impl Store {
             }
         };
         let actual = match row.get(2) {
-            Some(SqliteValue::Text(s)) => s.clone(),
+            Some(SqliteValue::Text(s)) => s.to_string(),
             _ => {
                 return Err(StoreError::DatabaseError(
                     "invalid actual column".to_owned(),
@@ -722,7 +813,7 @@ impl Store {
             }
         };
         let parent_id = match row.get(3) {
-            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Text(s)) => Some(s.to_string()),
             Some(SqliteValue::Null) | None => None,
             _ => {
                 return Err(StoreError::DatabaseError(
@@ -731,7 +822,7 @@ impl Store {
             }
         };
         let created_at_str = match row.get(4) {
-            Some(SqliteValue::Text(s)) => s.clone(),
+            Some(SqliteValue::Text(s)) => s.to_string(),
             _ => {
                 return Err(StoreError::DatabaseError(
                     "invalid created_at column".to_owned(),
@@ -743,7 +834,7 @@ impl Store {
             .map_err(|e| StoreError::DatabaseError(format!("invalid created_at: {}", e)))?;
 
         let status_str = match row.get(5) {
-            Some(SqliteValue::Text(s)) => s.clone(),
+            Some(SqliteValue::Text(s)) => s.to_string(),
             _ => {
                 return Err(StoreError::DatabaseError(
                     "invalid status column".to_owned(),
@@ -785,21 +876,21 @@ impl Store {
 
         // Parse parent_desired_snapshot (column 8)
         let parent_desired_snapshot = match row.get(8) {
-            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Text(s)) => Some(s.to_string()),
             Some(SqliteValue::Null) | None => None,
             _ => None,
         };
 
         // Parse parent_actual_snapshot (column 9)
         let parent_actual_snapshot = match row.get(9) {
-            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Text(s)) => Some(s.to_string()),
             Some(SqliteValue::Null) | None => None,
             _ => None,
         };
 
         // Parse parent_snapshot_json (column 10)
         let parent_snapshot_json = match row.get(10) {
-            Some(SqliteValue::Text(s)) => Some(s.clone()),
+            Some(SqliteValue::Text(s)) => Some(s.to_string()),
             Some(SqliteValue::Null) | None => None,
             _ => None,
         };
@@ -862,7 +953,7 @@ impl Store {
             "SELECT parent_id, COUNT(*) FROM tensions WHERE parent_id IN ({}) GROUP BY parent_id",
             placeholders.join(", ")
         );
-        let params: Vec<SqliteValue> = parent_ids.iter().map(|id| SqliteValue::Text(id.to_string())).collect();
+        let params: Vec<SqliteValue> = parent_ids.iter().map(|id| SqliteValue::Text(id.to_string().into())).collect();
         let rows = conn
             .query_with_params(&sql, &params)
             .map_err(|e| StoreError::DatabaseError(format!("batch children count failed: {:?}", e)))?;
@@ -870,7 +961,7 @@ impl Store {
         let mut result = std::collections::HashMap::new();
         for row in &rows {
             if let (Some(SqliteValue::Text(pid)), Some(SqliteValue::Integer(count))) = (row.get(0), row.get(1)) {
-                result.insert(pid.clone(), *count as usize);
+                result.insert(pid.to_string(), *count as usize);
             }
         }
         Ok(result)
@@ -889,9 +980,9 @@ impl Store {
             id_placeholders.join(", "),
             field_placeholders.join(", ")
         );
-        let mut params: Vec<SqliteValue> = tension_ids.iter().map(|id| SqliteValue::Text(id.to_string())).collect();
+        let mut params: Vec<SqliteValue> = tension_ids.iter().map(|id| SqliteValue::Text(id.to_string().into())).collect();
         for f in fields {
-            params.push(SqliteValue::Text(f.to_string()));
+            params.push(SqliteValue::Text(f.to_string().into()));
         }
         let rows = conn
             .query_with_params(&sql, &params)
@@ -901,7 +992,7 @@ impl Store {
         for row in &rows {
             if let (Some(SqliteValue::Text(tid)), Some(SqliteValue::Text(ts))) = (row.get(0), row.get(1)) {
                 if let Ok(dt) = ts.parse::<chrono::DateTime<chrono::Utc>>() {
-                    result.insert(tid.clone(), dt);
+                    result.insert(tid.to_string(), dt);
                 }
             }
         }
@@ -933,7 +1024,7 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code FROM tensions WHERE parent_id = ?1 ORDER BY position DESC NULLS LAST, created_at ASC",
-                &[SqliteValue::Text(parent_id.to_owned())],
+                &[SqliteValue::Text(parent_id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
@@ -987,11 +1078,11 @@ impl Store {
         let mut tensions = Vec::new();
         for row in &rows {
             let id = match row.get(0) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid id column".to_owned())),
             };
             let desired = match row.get(1) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid desired column".to_owned(),
@@ -999,7 +1090,7 @@ impl Store {
                 }
             };
             let actual = match row.get(2) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid actual column".to_owned(),
@@ -1007,7 +1098,7 @@ impl Store {
                 }
             };
             let parent_id = match row.get(3) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => {
                     return Err(StoreError::DatabaseError(
@@ -1016,7 +1107,7 @@ impl Store {
                 }
             };
             let created_at_str = match row.get(4) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid created_at column".to_owned(),
@@ -1028,7 +1119,7 @@ impl Store {
                 .map_err(|e| StoreError::DatabaseError(format!("invalid created_at: {}", e)))?;
 
             let status_str = match row.get(5) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid status column".to_owned(),
@@ -1071,21 +1162,21 @@ impl Store {
 
             // Parse parent_desired_snapshot (column 8)
             let parent_desired_snapshot = match row.get(8) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
 
             // Parse parent_actual_snapshot (column 9)
             let parent_actual_snapshot = match row.get(9) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
 
             // Parse parent_snapshot_json (column 10)
             let parent_snapshot_json = match row.get(10) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
@@ -1367,7 +1458,7 @@ impl Store {
                             // Update child's parent_id to null
                             conn.execute_with_params(
                                 "UPDATE tensions SET parent_id = NULL WHERE id = ?1",
-                                &[SqliteValue::Text(child.id.clone())],
+                                &[SqliteValue::Text(child.id.to_string().into())],
                             )
                             .map_err(|e| {
                                 SdError::ValidationError(format!(
@@ -1521,18 +1612,18 @@ impl Store {
         conn.execute_with_params(
             "UPDATE tensions SET desired = ?1, actual = ?2, parent_id = ?3, status = ?4, horizon = ?5 WHERE id = ?6",
             &[
-                SqliteValue::Text(tension.desired.clone()),
-                SqliteValue::Text(tension.actual.clone()),
+                SqliteValue::Text(tension.desired.to_string().into()),
+                SqliteValue::Text(tension.actual.to_string().into()),
                 match &tension.parent_id {
-                    Some(pid) => SqliteValue::Text(pid.clone()),
+                    Some(pid) => SqliteValue::Text(pid.to_string().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(tension.status.to_string()),
+                SqliteValue::Text(tension.status.to_string().into()),
                 match &tension.horizon {
-                    Some(h) => SqliteValue::Text(h.to_string()),
+                    Some(h) => SqliteValue::Text(h.to_string().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(tension.id.clone()),
+                SqliteValue::Text(tension.id.to_string().into()),
             ],
         )
         .map_err(|e| SdError::ValidationError(format!("failed to update tension: {:?}", e)))?;
@@ -1553,20 +1644,20 @@ impl Store {
         conn.execute_with_params(
             "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[
-                SqliteValue::Text(mutation.tension_id().to_owned()),
-                SqliteValue::Text(mutation.timestamp().to_rfc3339()),
-                SqliteValue::Text(mutation.field().to_owned()),
+                SqliteValue::Text(mutation.tension_id().to_owned().into()),
+                SqliteValue::Text(mutation.timestamp().to_rfc3339().into()),
+                SqliteValue::Text(mutation.field().to_owned().into()),
                 match mutation.old_value() {
-                    Some(v) => SqliteValue::Text(v.to_owned()),
+                    Some(v) => SqliteValue::Text(v.to_owned().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(mutation.new_value().to_owned()),
+                SqliteValue::Text(mutation.new_value().to_owned().into()),
                 match &effective_gesture_id {
-                    Some(g) => SqliteValue::Text(g.clone()),
+                    Some(g) => SqliteValue::Text(g.to_string().into()),
                     None => SqliteValue::Null,
                 },
                 match effective_actual_at {
-                    Some(t) => SqliteValue::Text(t.to_rfc3339()),
+                    Some(t) => SqliteValue::Text(t.to_rfc3339().into()),
                     None => SqliteValue::Null,
                 },
             ],
@@ -1581,7 +1672,7 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations WHERE tension_id = ?1 ORDER BY timestamp ASC",
-                &[SqliteValue::Text(tension_id.to_owned())],
+                &[SqliteValue::Text(tension_id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
@@ -1611,8 +1702,8 @@ impl Store {
             .query_with_params(
                 "SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp ASC",
                 &[
-                    SqliteValue::Text(start.to_rfc3339()),
-                    SqliteValue::Text(end.to_rfc3339()),
+                    SqliteValue::Text(start.to_rfc3339().into()),
+                    SqliteValue::Text(end.to_rfc3339().into()),
                 ],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -1624,7 +1715,7 @@ impl Store {
         let mut mutations = Vec::new();
         for row in &rows {
             let tension_id = match row.get(0) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid tension_id column".to_owned(),
@@ -1632,7 +1723,7 @@ impl Store {
                 }
             };
             let timestamp_str = match row.get(1) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid timestamp column".to_owned(),
@@ -1644,11 +1735,11 @@ impl Store {
                 .map_err(|e| StoreError::DatabaseError(format!("invalid timestamp: {}", e)))?;
 
             let field = match row.get(2) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid field column".to_owned())),
             };
             let old_value = match row.get(3) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => {
                     return Err(StoreError::DatabaseError(
@@ -1657,7 +1748,7 @@ impl Store {
                 }
             };
             let new_value = match row.get(4) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => {
                     return Err(StoreError::DatabaseError(
                         "invalid new_value column".to_owned(),
@@ -1666,7 +1757,7 @@ impl Store {
             };
 
             let gesture_id = match row.get(5) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
@@ -1852,10 +1943,10 @@ impl Store {
                         "UPDATE tensions SET parent_id = ?1 WHERE id = ?2",
                         &[
                             match &grandparent_id {
-                                Some(gp) => SqliteValue::Text(gp.clone()),
+                                Some(gp) => SqliteValue::Text(gp.to_string().into()),
                                 None => SqliteValue::Null,
                             },
-                            SqliteValue::Text(child.id.clone()),
+                            SqliteValue::Text(child.id.to_string().into()),
                         ],
                     )
                     .map_err(|e| {
@@ -1878,7 +1969,7 @@ impl Store {
                 // Delete the tension
                 conn.execute_with_params(
                     "DELETE FROM tensions WHERE id = ?1",
-                    &[SqliteValue::Text(tension.id.clone())],
+                    &[SqliteValue::Text(tension.id.to_string().into())],
                 )
                 .map_err(|e| {
                     SdError::ValidationError(format!("failed to delete tension: {:?}", e))
@@ -1936,7 +2027,7 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT position FROM tensions WHERE id = ?1",
-                &[SqliteValue::Text(id.to_owned())],
+                &[SqliteValue::Text(id.to_owned().into())],
             )
             .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
 
@@ -1957,7 +2048,7 @@ impl Store {
                     Some(p) => SqliteValue::Integer(p as i64),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(id.to_owned()),
+                SqliteValue::Text(id.to_owned().into()),
             ],
         )
         .map_err(|e| SdError::ValidationError(format!("failed to update position: {:?}", e)))?;
@@ -1996,8 +2087,8 @@ impl Store {
         conn.execute_with_params(
             "INSERT INTO sessions (id, started_at) VALUES (?1, ?2)",
             &[
-                SqliteValue::Text(id.clone()),
-                SqliteValue::Text(now.to_rfc3339()),
+                SqliteValue::Text(id.to_string().into()),
+                SqliteValue::Text(now.to_rfc3339().into()),
             ],
         )
         .map_err(|e| StoreError::DatabaseError(format!("failed to start session: {:?}", e)))?;
@@ -2011,12 +2102,12 @@ impl Store {
         conn.execute_with_params(
             "UPDATE sessions SET ended_at = ?1, summary_note = ?2 WHERE id = ?3",
             &[
-                SqliteValue::Text(now.to_rfc3339()),
+                SqliteValue::Text(now.to_rfc3339().into()),
                 match summary_note {
-                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(id.to_owned()),
+                SqliteValue::Text(id.to_owned().into()),
             ],
         )
         .map_err(|e| StoreError::DatabaseError(format!("failed to end session: {:?}", e)))?;
@@ -2033,7 +2124,7 @@ impl Store {
             return Ok(None);
         }
         match rows[0].get(0) {
-            Some(SqliteValue::Text(s)) => Ok(Some(s.clone())),
+            Some(SqliteValue::Text(s)) => Ok(Some(s.to_string())),
             _ => Ok(None),
         }
     }
@@ -2052,14 +2143,14 @@ impl Store {
         conn.execute_with_params(
             "INSERT INTO gestures (id, session_id, timestamp, description) VALUES (?1, ?2, ?3, ?4)",
             &[
-                SqliteValue::Text(id.clone()),
+                SqliteValue::Text(id.to_string().into()),
                 match session_id {
-                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
                     None => SqliteValue::Null,
                 },
-                SqliteValue::Text(now.to_rfc3339()),
+                SqliteValue::Text(now.to_rfc3339().into()),
                 match description {
-                    Some(d) => SqliteValue::Text(d.to_owned()),
+                    Some(d) => SqliteValue::Text(d.to_owned().into()),
                     None => SqliteValue::Null,
                 },
             ],
@@ -2074,7 +2165,7 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at FROM mutations WHERE gesture_id = ?1 ORDER BY timestamp ASC",
-                &[SqliteValue::Text(gesture_id.to_owned())],
+                &[SqliteValue::Text(gesture_id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
         self.parse_mutation_rows(rows)
@@ -2097,17 +2188,17 @@ impl Store {
         conn.execute_with_params(
             "INSERT INTO epochs (id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             &[
-                SqliteValue::Text(id.clone()),
-                SqliteValue::Text(tension_id.to_owned()),
-                SqliteValue::Text(now.to_rfc3339()),
-                SqliteValue::Text(desire_snapshot.to_owned()),
-                SqliteValue::Text(reality_snapshot.to_owned()),
+                SqliteValue::Text(id.to_string().into()),
+                SqliteValue::Text(tension_id.to_owned().into()),
+                SqliteValue::Text(now.to_rfc3339().into()),
+                SqliteValue::Text(desire_snapshot.to_owned().into()),
+                SqliteValue::Text(reality_snapshot.to_owned().into()),
                 match children_snapshot_json {
-                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
                     None => SqliteValue::Null,
                 },
                 match trigger_gesture_id {
-                    Some(s) => SqliteValue::Text(s.to_owned()),
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
                     None => SqliteValue::Null,
                 },
             ],
@@ -2122,42 +2213,42 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id FROM epochs WHERE tension_id = ?1 ORDER BY timestamp ASC",
-                &[SqliteValue::Text(tension_id.to_owned())],
+                &[SqliteValue::Text(tension_id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         let mut epochs = Vec::new();
         for row in &rows {
             let id = match row.get(0) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid epoch id".to_owned())),
             };
             let tid = match row.get(1) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid epoch tension_id".to_owned())),
             };
             let ts_str = match row.get(2) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid epoch timestamp".to_owned())),
             };
             let timestamp = DateTime::parse_from_rfc3339(&ts_str)
                 .map(|dt| dt.with_timezone(&Utc))
                 .map_err(|e| StoreError::DatabaseError(format!("invalid epoch timestamp: {}", e)))?;
             let desire = match row.get(3) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid epoch desire_snapshot".to_owned())),
             };
             let reality = match row.get(4) {
-                Some(SqliteValue::Text(s)) => s.clone(),
+                Some(SqliteValue::Text(s)) => s.to_string(),
                 _ => return Err(StoreError::DatabaseError("invalid epoch reality_snapshot".to_owned())),
             };
             let children_json = match row.get(5) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
             let trigger = match row.get(6) {
-                Some(SqliteValue::Text(s)) => Some(s.clone()),
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
@@ -2180,7 +2271,7 @@ impl Store {
         let rows = conn
             .query_with_params(
                 "SELECT MAX(timestamp) FROM epochs WHERE tension_id = ?1",
-                &[SqliteValue::Text(tension_id.to_owned())],
+                &[SqliteValue::Text(tension_id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
@@ -2796,7 +2887,7 @@ mod tests {
             .iter()
             .filter_map(|r| {
                 if let Some(SqliteValue::Text(name)) = r.get(1) {
-                    Some(name.clone())
+                    Some(name.to_string())
                 } else {
                     None
                 }
@@ -2822,7 +2913,7 @@ mod tests {
             .iter()
             .filter_map(|r| {
                 if let Some(SqliteValue::Text(name)) = r.get(1) {
-                    Some(name.clone())
+                    Some(name.to_string())
                 } else {
                     None
                 }
@@ -2837,36 +2928,35 @@ mod tests {
         assert!(columns.contains(&"new_value".to_owned()));
     }
 
-    // ── Concurrent Reads ───────────────────────────────────────────
+    // ── Concurrent Access ──────────────────────────────────────────
 
     #[test]
-    fn test_concurrent_reads() {
-        use std::thread;
-
-        // fsqlite's Connection uses Rc internally, so it's not Send.
-        // We test concurrent reads by having each thread open its own connection
-        // to a file-based database.
+    fn test_concurrent_access_blocked() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let store = Store::init(temp_dir.path()).unwrap();
-        let t = store.create_tension("goal", "reality").unwrap();
-        let tension_id = t.id.clone();
-        let path = temp_dir.path().to_path_buf();
+        let _store1 = Store::init(temp_dir.path()).unwrap();
 
-        let mut handles = vec![];
-        for _ in 0..5 {
-            let path_clone = path.clone();
-            let id = tension_id.clone();
-            handles.push(thread::spawn(move || {
-                // Each thread opens its own connection to the same database
-                let thread_store = Store::init(&path_clone).unwrap();
-                let retrieved = thread_store.get_tension(&id).unwrap();
-                assert!(retrieved.is_some());
-            }));
+        // A second init while the first is alive should fail with StoreLocked
+        let result = Store::init(temp_dir.path());
+        match result {
+            Err(StoreError::StoreLocked) => {} // expected
+            Err(other) => panic!("expected StoreLocked, got: {}", other),
+            Ok(_) => panic!("expected StoreLocked error, but init succeeded"),
         }
+    }
 
-        for handle in handles {
-            handle.join().unwrap();
-        }
+    #[test]
+    fn test_sequential_reopen_after_drop() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let tension_id = {
+            let store1 = Store::init(temp_dir.path()).unwrap();
+            let t = store1.create_tension("goal", "reality").unwrap();
+            t.id.clone()
+        }; // store1 dropped, lock released
+
+        // Re-opening after drop should succeed
+        let store2 = Store::init(temp_dir.path()).unwrap();
+        let retrieved = store2.get_tension(&tension_id).unwrap();
+        assert!(retrieved.is_some());
     }
 
     // ── Unicode ────────────────────────────────────────────────────
@@ -2886,12 +2976,15 @@ mod tests {
     #[test]
     fn test_init_idempotent() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let store1 = Store::init(temp_dir.path()).unwrap();
-        let t = store1.create_tension("goal", "reality").unwrap();
+        let tension_id = {
+            let store1 = Store::init(temp_dir.path()).unwrap();
+            let t = store1.create_tension("goal", "reality").unwrap();
+            t.id.clone()
+        }; // store1 dropped here, releasing the lock
 
         // Re-open the same database
         let store2 = Store::init(temp_dir.path()).unwrap();
-        let retrieved = store2.get_tension(&t.id).unwrap();
+        let retrieved = store2.get_tension(&tension_id).unwrap();
         assert!(retrieved.is_some());
     }
 
@@ -3961,7 +4054,7 @@ mod tests {
             let cols: Vec<fsqlite::Row> = legacy_conn.query("PRAGMA table_info(tensions)").unwrap();
             let has_horiz = cols.iter().any(|r| {
                 if let Some(fsqlite_types::value::SqliteValue::Text(s)) = r.get(1) {
-                    s == "horizon"
+                    &**s == "horizon"
                 } else {
                     false
                 }

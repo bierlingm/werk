@@ -52,7 +52,7 @@ fn test_add_creates_tension() {
     );
 
     // Verify the tension was stored
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert_eq!(tensions.len(), 1);
     assert_eq!(tensions[0].desired, "write a novel");
@@ -105,7 +105,7 @@ fn test_add_with_parent() {
         .success();
 
     // Create parent tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -151,7 +151,7 @@ fn test_add_rejects_empty_desired() {
         .stderr(predicate::str::contains("empty").or(predicate::str::contains("desired")));
 
     // Verify no tension was created
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert!(tensions.is_empty());
 }
@@ -177,7 +177,7 @@ fn test_add_rejects_empty_actual() {
         .stderr(predicate::str::contains("empty").or(predicate::str::contains("actual")));
 
     // Verify no tension was created
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert!(tensions.is_empty());
 }
@@ -203,7 +203,7 @@ fn test_add_handles_unicode() {
         .success();
 
     // Verify unicode is preserved
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert_eq!(tensions[0].desired, "写小说 🎵");
     assert_eq!(tensions[0].actual, "有大纲");
@@ -286,7 +286,7 @@ fn test_show_by_full_id() {
         .success();
 
     // Create tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("show goal", "show reality").unwrap();
 
     // Show by full ID
@@ -332,7 +332,7 @@ fn test_show_by_prefix() {
         .success();
 
     // Create tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("prefix goal", "prefix reality")
         .unwrap();
@@ -366,7 +366,7 @@ fn test_show_displays_mutation_count() {
         .success();
 
     // Create tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("mutation goal", "mutation reality")
         .unwrap();
@@ -403,7 +403,7 @@ fn test_show_ambiguous_prefix() {
         .success();
 
     // Create two tensions
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let _t1 = store.create_tension("first goal", "first reality").unwrap();
     let _t2 = store
         .create_tension("second goal", "second reality")
@@ -467,7 +467,7 @@ fn test_show_prefix_too_short() {
         .success();
 
     // Create a tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let _tension = store.create_tension("short goal", "short reality").unwrap();
 
     // Try 3-char prefix (too short)
@@ -506,7 +506,7 @@ fn test_show_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("json goal", "json reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -559,7 +559,7 @@ fn test_show_displays_parent() {
         .success();
 
     // Create parent and child
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();

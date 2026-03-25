@@ -36,3 +36,10 @@ Run `cargo run --bin werk -- show <id>` for details on any tension.
 ## What's Not Sacred
 
 Phase glyphs, color assignments, specific visual chrome, computed dynamics display, breakpoints. See the foundation document for the full list.
+
+## Code Quality
+
+- **UBS (Ultimate Bug Scanner)** runs automatically on every file write/edit via Claude Code hook. Critical findings are surfaced inline.
+- Run `ubs --only=rust .` for a full project scan. Run `ubs --only=rust --diff .` for changed files only.
+- Fix all CRITICAL findings before committing. Warnings are advisory.
+- The database uses **fsqlite** (FrankenSQLite) which does not safely handle concurrent writes. An advisory file lock in `Store::init()` prevents this. Never run parallel `werk` CLI commands against the same store.

@@ -74,6 +74,8 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             let event = HookEvent::mutation(
                 &tension.id,
                 &tension.desired,
+                Some(&tension.actual),
+                tension.parent_id.as_deref(),
                 "horizon",
                 old_horizon.as_deref(),
                 &new_horizon_str,

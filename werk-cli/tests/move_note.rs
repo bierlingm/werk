@@ -30,7 +30,7 @@ fn test_tree_resolved_no_panic() {
         .success();
 
     // Create a resolved tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     store
         .update_status(&tension.id, sd_core::TensionStatus::Resolved)
@@ -57,7 +57,7 @@ fn test_tree_released_no_panic() {
         .success();
 
     // Create a released tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     store
         .update_status(&tension.id, sd_core::TensionStatus::Released)
@@ -109,7 +109,7 @@ fn test_move_to_new_parent() {
         .success();
 
     // Create parent and child
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -143,7 +143,7 @@ fn test_move_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     // Small delay to ensure different ULID prefix
     std::thread::sleep(std::time::Duration::from_millis(10));
@@ -178,7 +178,7 @@ fn test_move_to_root() {
         .success();
 
     // Create parent with child
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store
         .create_tension_with_parent("child", "c", Some(parent.id.clone()))
@@ -209,7 +209,7 @@ fn test_move_prevents_cycle() {
         .success();
 
     // Create A -> B -> C chain
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let a = store.create_tension("A", "a").unwrap();
     let b = store
         .create_tension_with_parent("B", "b", Some(a.id.clone()))
@@ -249,7 +249,7 @@ fn test_move_to_self_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -278,7 +278,7 @@ fn test_move_to_nonexistent_parent() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -303,7 +303,7 @@ fn test_move_records_mutation() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
@@ -339,7 +339,7 @@ fn test_move_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
@@ -401,7 +401,7 @@ fn test_note_add_on_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -434,7 +434,7 @@ fn test_note_add_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -462,7 +462,7 @@ fn test_note_add_on_resolved_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     store
@@ -493,7 +493,7 @@ fn test_note_add_on_released_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     store
@@ -568,7 +568,7 @@ fn test_note_add_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -602,7 +602,7 @@ fn test_note_add_unicode() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -698,7 +698,7 @@ fn test_multiple_notes() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -735,7 +735,7 @@ fn test_move_preserves_children() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
     let grandchild = store
@@ -768,7 +768,7 @@ fn test_move_between_parents() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent1 = store.create_tension("parent1", "p1").unwrap();
     let parent2 = store.create_tension("parent2", "p2").unwrap();
     let child = store
@@ -923,7 +923,7 @@ fn test_note_rm_retracts_note() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Add two notes
@@ -974,7 +974,7 @@ fn test_note_rm_excluded_from_list() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Add two notes
@@ -1032,7 +1032,7 @@ fn test_note_rm_invalid_number() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // No notes exist, try to retract #1
@@ -1058,7 +1058,7 @@ fn test_note_rm_zero_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -1123,7 +1123,7 @@ fn test_note_rm_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
