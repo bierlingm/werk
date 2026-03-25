@@ -807,10 +807,509 @@ Typing:
 4. Add held tray and trace footer.
 5. Add hierarchy dock and armed typing.
 
-## Final Recommendation
+## First-Pass Recommendation
 
 If I were building this, I would implement **one coherent change**, not a pile of small embellishments:
 
 **Build the console as a real, bounded, load-responsive component whose central visual object is the helm row, whose telemetry lives in a modular crown, whose commands live in a command well, and whose trace settles into a footer.**
 
 That is the direction most likely to make the component feel intentional, elegant, and instrument-grade rather than merely "more featureful".
+
+## Second Pass: More Ruthless Exploration
+
+This second pass applied a stricter filter.
+
+The question was not "could this be cool?"
+
+The question was:
+
+- does it materially increase center-of-gravity?
+- does it improve scanability?
+- does it preserve the sacred architecture?
+- does it compress gracefully?
+- does it avoid turning the console into dashboard theater?
+
+### Second-Pass 30 Ideas
+
+1. Give the console a bounded chassis with crown, body, and footer.
+2. Replace the prose header with modular telemetry chips.
+3. Make the next committed step a dedicated helm row at the center.
+4. Create a distinct overdue warning queue above the helm.
+5. Render held items as a tray below the helm instead of ordinary rows.
+6. Settle accumulated items into a trace footer near reality.
+7. Make console height banded by load, with hysteresis.
+8. Design the empty console as a meaningful idle state.
+9. Design the held-only console as an explicit `no committed bridge` state.
+10. Promote the input line into a two-row command well.
+11. Make command chips contextual to the current cursor target.
+12. Let direct typing open helm input immediately from normal mode.
+13. Put hierarchy peek in a dock inside the console rather than inline anywhere.
+14. Split Space peek from Enter focus in the state model.
+15. Make chrome severity-sensitive: idle, active, pressure.
+16. Compress into chips before degrading into summary sentences.
+17. Guarantee a sticky center so helm and commands never disappear.
+18. Fold prior-events and log readouts into the console footer.
+19. Use mild left/right asymmetry so overdue feels left-weighted and held feels right-weighted.
+20. Show a selected-item reality stub in the dock.
+21. Add a closure micro-gauge to the crown.
+22. Add a route memory strip when route is fully compressed.
+23. Put transient gesture feedback inside the console instead of only the bottom bar.
+24. Add a stronger cursor reticle around the helm target.
+25. Use a two-column console layout on very wide terminals.
+26. Add side rails for micro-telemetry.
+27. Add a title plate or notch marking the console.
+28. Add a footer quick-action row.
+29. Refactor the console into explicit `ConsolePlan` / `ConsoleState` / `ConsoleMetrics` objects.
+30. Split the render path into separate route / console / path passes.
+
+### Second-Pass Evaluation
+
+| # | Verdict | Reason |
+|---|---------|--------|
+| 1 | **Keep** | Highest-leverage structural improvement. |
+| 2 | **Keep** | Instruments should scan in chunks, not sentences. |
+| 3 | **Keep** | The console needs a steering wheel; the next step is it. |
+| 4 | **Keep** | Overdue pressure deserves a distinct lane. |
+| 5 | **Keep** | Held is not route and should not look like route. |
+| 6 | **Keep** | Trace belongs at the console floor nearest reality. |
+| 7 | **Keep** | Extent as signal is core, not decorative. |
+| 8 | **Keep** | Empty console meaning is explicitly required. |
+| 9 | Reject | Correct need, but better treated as a variant of the idle-state system. |
+| 10 | **Keep** | One-line input is too weak for the center surface. |
+| 11 | **Keep** | Controls should reflect what the cursor is on. |
+| 12 | Reject | Strong phase-2 idea, but too much key-routing complexity for first-pass excellence. |
+| 13 | **Keep** | This is the cleanest way to make hierarchy native to the console. |
+| 14 | **Keep** | Current Enter/Space overloading already constrains the design. |
+| 15 | Reject | Nice polish, but lower leverage than shell, helm, and layout. |
+| 16 | **Keep** | Compression should stay elegant before it turns generic. |
+| 17 | **Keep** | The action center must never disappear. |
+| 18 | Reject | Correct, but really part of the trace footer rather than a separate idea. |
+| 19 | Reject | Too easy to drift into ornament. |
+| 20 | Reject | Useful only as part of the hierarchy dock, not standalone. |
+| 21 | Reject | Too dashboardy; chips communicate the same fact more cleanly. |
+| 22 | Reject | Crown chips already cover route memory more elegantly. |
+| 23 | Reject | Good later, but not first-order. |
+| 24 | Reject | Once the helm is real, this becomes redundant. |
+| 25 | Reject | Worth revisiting later, not now. |
+| 26 | Reject | Decorative risk too high. |
+| 27 | Reject | Too literal; risks gimmick. |
+| 28 | Reject | Duplicates the command well. |
+| 29 | **Keep** | Required to make the whole thing robust and polishable. |
+| 30 | Reject | Implied by 29 rather than standing alone as a distinct improvement. |
+
+### Passed Ideas From Second Pass
+
+#### 1. Bounded Chassis
+
+**Plan**
+
+Render the console as a real shell inside the middle zone with a crown, body, and footer, using `Block` when there is enough height and falling back to open rails when compressed.
+
+**Why**
+
+This creates visual ownership immediately. It is the difference between a list with a separator and a real center console.
+
+**Downsides**
+
+- costs vertical lines
+- can feel heavy if over-boxed
+
+**Confidence**
+
+96%
+
+#### 2. Telemetry Crown
+
+**Plan**
+
+Replace the current centered readout sentence with chips ordered by priority:
+
+1. overdue
+2. next deadline
+3. closure
+4. epoch age
+5. held count
+6. last act
+
+**Why**
+
+Chips scan faster and degrade better than prose.
+
+**Downsides**
+
+- can get noisy if too many survive
+
+**Confidence**
+
+94%
+
+#### 3. Helm Row
+
+**Plan**
+
+Reserve the visual center of the console for one hero row. If `next` exists, render it there. If not, render a purposeful structural prompt such as `no committed next step`.
+
+**Why**
+
+The user wants a steering wheel. This is it.
+
+**Downsides**
+
+- can become theatrical if overstyled
+
+**Confidence**
+
+97%
+
+#### 4. Overdue Warning Queue
+
+**Plan**
+
+Render overdue steps as a short amber queue above the helm, capped at two visible rows. Collapse the rest into a crown chip such as `+3 overdue`.
+
+**Why**
+
+Overdue is exception pressure and deserves stronger geometry than ordinary action.
+
+**Downsides**
+
+- too much amber becomes alarmist
+
+**Confidence**
+
+91%
+
+#### 5. Held Tray
+
+**Plan**
+
+Render held steps below the helm as a distinct tray. Show up to two, then collapse the rest into a held summary chip.
+
+**Why**
+
+Held is reserve possibility, not committed route. The eye should know that instantly.
+
+**Downsides**
+
+- easy to make visually fussy
+
+**Confidence**
+
+89%
+
+#### 6. Trace Footer
+
+**Plan**
+
+Move accumulated counts and trace readouts into a footer at the bottom of the console shell, nearest reality.
+
+**Why**
+
+This completes the console from pressure, to action, to settled trace.
+
+**Downsides**
+
+- must not duplicate bottom-bar chrome
+
+**Confidence**
+
+89%
+
+#### 7. Dynamic Extent With Hysteresis
+
+**Plan**
+
+Compute a load score from overdue, next, held, trace, and dock state, then choose a height band with hysteresis so the console does not pulse after small changes.
+
+**Why**
+
+Extent is itself a signal and should be deliberate.
+
+**Downsides**
+
+- adds layout complexity
+
+**Confidence**
+
+93%
+
+```rust
+enum ConsoleBand {
+    Idle,
+    Light,
+    Loaded,
+    Pressure,
+}
+
+fn compute_console_load(frontier: &Frontier, has_dock: bool) -> u8 {
+    let overdue = frontier.overdue.len().min(3) as u8 * 3;
+    let next = if frontier.next.is_some() { 3 } else { 0 };
+    let held = frontier.held.len().min(3) as u8;
+    let trace = frontier.accumulated.len().min(2) as u8;
+    let dock = if has_dock { 2 } else { 0 };
+    overdue + next + held + trace + dock
+}
+```
+
+#### 8. Meaningful Idle State
+
+**Plan**
+
+Make empty and uncommitted states first-class render templates instead of just "less content". A held-only frontier should say `no committed next step`; a truly empty frontier should say `nothing action-relevant in the current epoch`.
+
+**Why**
+
+The current console under-speaks exactly these states.
+
+**Downsides**
+
+- copy can become self-important if over-written
+
+**Confidence**
+
+91%
+
+#### 10. Two-Row Command Well
+
+**Plan**
+
+Replace the current one-line input surface with two rows:
+
+- a prompt / typing row
+- a controls row
+
+Under compression, collapse back to one line.
+
+**Why**
+
+This makes the action surface feel like controls, not a placeholder.
+
+**Downsides**
+
+- costs an extra line in medium-height layouts
+
+**Confidence**
+
+95%
+
+#### 11. Contextual Command Chips
+
+**Plan**
+
+Make the command row depend on the cursor target.
+
+**Why**
+
+A real console exposes relevant controls at the point of action.
+
+**Downsides**
+
+- discoverability can suffer if controls move too much
+
+**Confidence**
+
+88%
+
+```rust
+fn command_chips(target: CursorTarget) -> Vec<CommandChip> {
+    match target {
+        CursorTarget::Next(_) => chips(&["Enter focus", "Space peek", "e edit", "r resolve"]),
+        CursorTarget::HeldItem(_) => chips(&["Enter focus", "Space peek", "e edit", "m move"]),
+        CursorTarget::AccumulatedItem(_) => chips(&["Enter focus", "o reopen", "y yank"]),
+        _ => chips(&["a add", "n note", "! desire", "? reality"]),
+    }
+}
+```
+
+#### 13. Hierarchy Dock
+
+**Plan**
+
+When Space is pressed on a child, open a compact dock inside the console showing up to three children and, if room allows, a one-line reality context.
+
+**Why**
+
+This makes hierarchy native to the console without exploding into full focus.
+
+**Downsides**
+
+- can clutter the console if height budgeting is weak
+
+**Confidence**
+
+85%
+
+#### 14. Split Peek From Focus In State Model
+
+**Plan**
+
+Stop using the same focus machinery for both Enter and Space. Enter remains full focus zoom; Space opens a lighter dock-local peek.
+
+**Why**
+
+The semantics are different, and the current overloading already limits the design.
+
+**Downsides**
+
+- moderate refactor cost
+
+**Confidence**
+
+93%
+
+```rust
+enum ConsoleLocalState {
+    Rest,
+    PeekDock { sibling_index: usize },
+    HelmInput,
+}
+
+enum ZoomLevel {
+    Normal,
+    Focus,
+    Orient,
+}
+```
+
+#### 16. Chip-First Compression
+
+**Plan**
+
+When space gets tight, collapse route, held, and trace into crown/footer chips before falling back to generic summary lines.
+
+**Why**
+
+This keeps compression elegant.
+
+**Downsides**
+
+- some users may prefer explicit summary rows
+
+**Confidence**
+
+91%
+
+#### 17. Sticky Action Center
+
+**Plan**
+
+Make the helm row, one command row, and one footer row non-negotiable. Everything else compresses around them.
+
+**Why**
+
+The center of action must survive pressure.
+
+**Downsides**
+
+- route and held detail disappear sooner
+
+**Confidence**
+
+95%
+
+#### 29. Explicit `ConsolePlan` / `ConsoleState` / `ConsoleMetrics`
+
+**Plan**
+
+Pull the console out of the monolithic middle render pass and compute it explicitly before rendering.
+
+**Why**
+
+Without this, every UI improvement stays fragile and ad hoc.
+
+**Downsides**
+
+- real refactor cost
+
+**Confidence**
+
+97%
+
+```rust
+pub struct ConsolePlan {
+    pub rect: Rect,
+    pub crown: CrownPlan,
+    pub warning_rows: Vec<RowPlan>,
+    pub helm: HelmPlan,
+    pub held: TrayPlan,
+    pub dock: Option<DockPlan>,
+    pub footer: FooterPlan,
+}
+
+pub struct ConsoleState {
+    pub local: ConsoleLocalState,
+    pub band: ConsoleBand,
+}
+
+pub struct ConsoleMetrics {
+    pub inner_width: u16,
+    pub crown_height: u16,
+    pub footer_height: u16,
+    pub minimum_center_height: u16,
+}
+```
+
+## Final Synthesis Across Both Passes
+
+Both passes converged very strongly.
+
+They disagree on some ornaments and some phase-2 ideas, but they agree on the core architecture almost perfectly.
+
+### What Survived Both Passes
+
+1. The console must become an explicit component, not ad hoc middle-zone rows.
+2. The console needs a true visual chassis.
+3. The next committed step should be the visual center.
+4. The header should become modular telemetry, not a prose sentence.
+5. Overdue, held, and trace should have distinct geometry.
+6. The command surface should be more than one line.
+7. Hierarchy should be present locally in the console.
+8. Console extent should be deliberate and signal-bearing.
+9. Empty and uncommitted states need purposeful renderings.
+10. Compression should preserve polish by moving into chips before generic summaries.
+11. The action center must remain visible under pressure.
+12. The code needs explicit `ConsolePlan` / `ConsoleState` style abstractions.
+
+### What The Second Pass Cut Back
+
+The second pass was especially useful because it killed ideas that would make the console more theatrical than excellent.
+
+These are not the right next moves:
+
+- literal steering-wheel metaphors
+- gauges and sparklines
+- side rails
+- extra title plates
+- extra footer action rows
+- reticle-heavy selection chrome
+- wide-layout cleverness before the core console is solved
+
+### The Combined Final Direction
+
+The best synthesis is:
+
+**A bounded, load-responsive center console with a telemetry crown, a warning queue for overdue pressure, a helm row for the current next bridge, a two-row contextual command well, a held tray below it, a compact hierarchy dock on Space, and a trace footer settling toward reality.**
+
+That should be backed by:
+
+- explicit `ConsolePlan` / `ConsoleState` / `ConsoleMetrics`
+- a clean separation between dock peek and full focus
+- chip-first compression
+- sticky preservation of helm + commands + footer
+- deliberate height bands with hysteresis
+
+### Practical Implementation Order After Synthesis
+
+1. Extract `ConsolePlan` and a dedicated `render_console()`.
+2. Replace the current header and input line with crown + helm + footer scaffolding.
+3. Add warning queue, held tray, and trace footer.
+4. Add banded extent, chip-first compression, and sticky action-center guarantees.
+5. Split Space peek from Enter focus and add the hierarchy dock.
+6. Add contextual command chips.
+7. Revisit phase-2 ideas only after the above feels right in the terminal.
+
+### Final Call
+
+If only one sentence survives from the entire document, it should be this:
+
+**Do not keep embellishing the current console rows. Replace them with a real console component whose center is the helm row and whose entire composition is built to preserve action legibility under compression.**
