@@ -94,6 +94,9 @@ pub struct InstrumentApp {
     // Pathway palette state — active when InputMode::Pathway.
     pub pathway_state: Option<crate::state::PathwayState>,
 
+    // Cached frontier — computed once per frame, shared between render and navigation.
+    pub cached_frontier: Option<crate::deck::Frontier>,
+
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
 }
@@ -182,6 +185,7 @@ impl InstrumentApp {
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
             pathway_state: None,
+            cached_frontier: None,
             session_log: crate::session_log::SessionLog::new(),
         };
         app.load_siblings();
@@ -234,6 +238,7 @@ impl InstrumentApp {
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
             pathway_state: None,
+            cached_frontier: None,
             session_log: crate::session_log::SessionLog::new(),
         }
     }
@@ -408,10 +413,11 @@ impl InstrumentApp {
         // Compute alerts
         self.compute_alerts();
 
-        // Clamp deck cursor to valid range after reload (don't reset — preserves position)
+        // Recompute cached frontier and clamp deck cursor
+        self.recompute_frontier();
         if self.use_deck && self.parent_id.is_some() {
-            let frontier = self.frontier_for_navigation();
-            self.deck_cursor.clamp(frontier.selectable_count());
+            let count = self.cached_frontier.as_ref().map(|f| f.selectable_count()).unwrap_or(0);
+            self.deck_cursor.clamp(count);
         }
 
         // Refresh db_modified so the next Tick doesn't treat our own writes as external changes
@@ -511,17 +517,7 @@ impl InstrumentApp {
                 self.vlist.cursor = idx;
                 // In deck mode, find this sibling in the frontier and set cursor there
                 if self.use_deck && self.parent_id.is_some() {
-                    let frontier = self.frontier_for_navigation();
-                    // Search through all cursor positions to find one pointing to this sibling
-                    let count = frontier.selectable_count();
-                    for ci in 0..count {
-                        if let Some(si) = frontier.cursor_target(ci).sibling_index() {
-                            if si == idx {
-                                self.deck_cursor.index = ci;
-                                break;
-                            }
-                        }
-                    }
+                    self.deck_cursor_to_sibling(idx);
                 }
             }
         } else {
@@ -695,6 +691,30 @@ impl InstrumentApp {
     }
 
     // -----------------------------------------------------------------------
+    // Frontier caching
+    // -----------------------------------------------------------------------
+
+    /// Recompute the cached frontier from current siblings and expansion lines.
+    /// Called after load_siblings and whenever siblings are mutated.
+    pub fn recompute_frontier(&mut self) {
+        let mut frontier = crate::deck::Frontier::compute(
+            &self.siblings,
+            self.trajectory_mode,
+            self.epoch_boundary,
+        );
+        frontier.compute_expansion(self.last_render_lines.get());
+        self.cached_frontier = Some(frontier);
+    }
+
+    /// Get the cached frontier, recomputing if invalidated.
+    pub fn ensure_frontier(&mut self) -> &crate::deck::Frontier {
+        if self.cached_frontier.is_none() {
+            self.recompute_frontier();
+        }
+        self.cached_frontier.as_ref().unwrap()
+    }
+
+    // -----------------------------------------------------------------------
     // Reordering — grab-and-drop interaction
     // -----------------------------------------------------------------------
 
@@ -782,6 +802,7 @@ impl InstrumentApp {
         // Swap directly to the target position (skipping resolved/released)
         self.siblings.swap(cursor, target);
         self.vlist.cursor = target;
+        self.cached_frontier = None; // invalidate — siblings mutated
     }
 
     /// Move the grabbed tension down one position (toward reality).
@@ -805,6 +826,7 @@ impl InstrumentApp {
 
         self.siblings.swap(cursor, target);
         self.vlist.cursor = target;
+        self.cached_frontier = None; // invalidate — siblings mutated
     }
 
     /// Commit the reorder: write final positions to engine as a single logical action.
