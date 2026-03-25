@@ -533,7 +533,7 @@ impl InstrumentApp {
     /// The action target: in deck mode uses deck cursor; otherwise gazed tension if gaze
     /// is active, else vlist selected.
     pub fn action_target(&self) -> Option<&FieldEntry> {
-        if self.use_deck && self.parent_id.is_some() {
+        if self.use_deck && self.cached_frontier.is_some() {
             self.deck_selected_sibling_index()
                 .and_then(|idx| self.siblings.get(idx))
         } else if let Some(ref gaze) = self.gaze {
@@ -725,13 +725,10 @@ impl InstrumentApp {
     pub fn enter_reorder(&mut self) -> bool {
         if self.siblings.is_empty() { return false; }
 
-        // In deck mode, sync vlist cursor from deck cursor
-        let cursor = if self.use_deck && self.parent_id.is_some() {
+        // Determine the sibling index of the selected item
+        let cursor = if self.use_deck && self.cached_frontier.is_some() {
             match self.deck_selected_sibling_index() {
-                Some(idx) => {
-                    self.vlist.cursor = idx;
-                    idx
-                }
+                Some(idx) => idx,
                 None => {
                     self.set_transient("nothing to reorder here");
                     return false;
@@ -749,6 +746,9 @@ impl InstrumentApp {
         }
 
         let tension_id = self.siblings[cursor].id.clone();
+
+        // Sync vlist cursor for reorder tracking
+        self.vlist.cursor = cursor;
 
         // Store original positions for cancel
         self.reorder_original = self.siblings.iter()
@@ -778,17 +778,26 @@ impl InstrumentApp {
         true
     }
 
+    /// Find the sibling index of the grabbed tension during reorder.
+    pub fn reorder_grabbed_index(&self) -> Option<usize> {
+        if let InputMode::Reordering { ref tension_id } = self.input_mode {
+            self.siblings.iter().position(|s| s.id == *tension_id)
+        } else {
+            None
+        }
+    }
+
     /// Move the grabbed tension up one position (toward desire).
     ///
-    /// During reorder, we only swap array entries — nothing else.
-    /// No position sync, no frontier recompute, no deck cursor remapping.
-    /// The vlist cursor IS the truth. Positions are derived on commit.
-    /// Skips over non-active items (resolved/released) to find the next active neighbor.
+    /// During reorder, the grabbed item is tracked by tension_id.
+    /// We find its current position in the siblings array, swap with the
+    /// nearest active neighbor above, and invalidate the frontier cache.
     pub fn reorder_move_up(&mut self) {
-        if self.siblings.is_empty() || self.vlist.cursor == 0 {
-            return;
-        }
-        let cursor = self.vlist.cursor;
+        let cursor = match self.reorder_grabbed_index() {
+            Some(idx) => idx,
+            None => return,
+        };
+        if cursor == 0 { return; }
 
         // Find the nearest active sibling above
         let mut target = cursor - 1;
@@ -807,13 +816,13 @@ impl InstrumentApp {
 
     /// Move the grabbed tension down one position (toward reality).
     ///
-    /// During reorder, we only swap array entries — nothing else.
-    /// Skips over non-active items (resolved/released) to find the next active neighbor.
+    /// During reorder, the grabbed item is tracked by tension_id.
     pub fn reorder_move_down(&mut self) {
-        if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 {
-            return;
-        }
-        let cursor = self.vlist.cursor;
+        let cursor = match self.reorder_grabbed_index() {
+            Some(idx) => idx,
+            None => return,
+        };
+        if cursor >= self.siblings.len() - 1 { return; }
 
         // Find the nearest active sibling below
         let mut target = cursor + 1;
@@ -900,9 +909,7 @@ impl InstrumentApp {
         // Restore cursor to the moved tension
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
-            if self.use_deck && self.parent_id.is_some() {
-                self.deck_cursor_to_sibling(idx);
-            }
+            self.deck_cursor_to_sibling(idx);
         }
 
         // Check for sequencing pressure after reorder
@@ -932,9 +939,7 @@ impl InstrumentApp {
 
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
-            if self.use_deck && self.parent_id.is_some() {
-                self.deck_cursor_to_sibling(idx);
-            }
+            self.deck_cursor_to_sibling(idx);
         }
     }
 

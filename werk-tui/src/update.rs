@@ -658,16 +658,18 @@ impl InstrumentApp {
             }
             // g/G: jump to top/bottom of active list
             Msg::Char('g') => {
-                while self.vlist.cursor > 0 {
+                for _ in 0..self.siblings.len() {
+                    let prev = self.reorder_grabbed_index();
                     self.reorder_move_up();
+                    if self.reorder_grabbed_index() == prev { break; }
                 }
                 Cmd::none()
             }
             Msg::Char('G') => {
-                while self.vlist.cursor < self.siblings.len().saturating_sub(1) {
-                    let prev = self.vlist.cursor;
+                for _ in 0..self.siblings.len() {
+                    let prev = self.reorder_grabbed_index();
                     self.reorder_move_down();
-                    if self.vlist.cursor == prev { break; } // hit bottom
+                    if self.reorder_grabbed_index() == prev { break; }
                 }
                 Cmd::none()
             }
