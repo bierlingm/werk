@@ -140,7 +140,7 @@ impl InstrumentApp {
             ("a", "add tension", "e", "edit (desire/reality/horizon)"),
             ("n", "add note", "m", "move / reparent"),
             ("r", "resolve", "x", "release"),
-            ("o", "reopen", "u", "undo last act"),
+            ("o", "reopen", "u/U", "undo / redo"),
             ("y", "copy ID", "f", "filter"),
             ("q", "quit", "", ""),
         ];

@@ -385,6 +385,69 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Redo (Shift+U) — same mechanics as undo (toggle behavior).
+            // After an undo, the latest mutation's old_value is the pre-undo value,
+            // so applying old_value again restores it.
+            Msg::Char('U') => {
+                let target = self.action_target().cloned().or_else(|| {
+                    self.parent_tension.as_ref().map(|p| {
+                        let now = chrono::Utc::now();
+                        crate::state::FieldEntry::from_tension(p, p.created_at, 0, p.created_at, now)
+                    })
+                });
+                if let Some(entry) = target {
+                    let mutations = self.engine.store().get_mutations(&entry.id).unwrap_or_default();
+                    let mut redone = false;
+                    for m in mutations.iter().rev() {
+                        let field = m.field();
+                        let old = m.old_value().map(|s| s.to_string());
+                        match (field, old) {
+                            ("desired", Some(old)) => {
+                                let _ = self.engine.update_desired(&entry.id, &old);
+                                self.set_transient("desire restored");
+                                redone = true;
+                                break;
+                            }
+                            ("actual", Some(old)) => {
+                                let _ = self.engine.update_actual(&entry.id, &old);
+                                self.set_transient("reality restored");
+                                redone = true;
+                                break;
+                            }
+                            ("status", Some(old)) => {
+                                let status = match old.as_str() {
+                                    "Active" => sd_core::TensionStatus::Active,
+                                    "Resolved" => sd_core::TensionStatus::Resolved,
+                                    "Released" => sd_core::TensionStatus::Released,
+                                    _ => sd_core::TensionStatus::Active,
+                                };
+                                let _ = self.engine.store().update_status(&entry.id, status);
+                                self.set_transient("status restored");
+                                redone = true;
+                                break;
+                            }
+                            ("horizon", Some(old)) => {
+                                if old.is_empty() {
+                                    let _ = self.engine.update_horizon(&entry.id, None);
+                                } else if let Ok(h) = crate::horizon::parse_horizon(&old) {
+                                    let _ = self.engine.update_horizon(&entry.id, Some(h));
+                                }
+                                self.set_transient("horizon restored");
+                                redone = true;
+                                break;
+                            }
+                            _ => continue,
+                        }
+                    }
+                    if !redone {
+                        self.set_transient("nothing to redo");
+                    } else {
+                        self.load_siblings();
+                    }
+                }
+                Cmd::none()
+            }
+
             // Yank (copy tension ID to clipboard)
             Msg::Char('y') => {
                 if let Some(entry) = self.action_target().cloned() {
