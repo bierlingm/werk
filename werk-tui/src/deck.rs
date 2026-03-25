@@ -651,13 +651,7 @@ impl InstrumentApp {
             return;
         }
 
-        let parent = match &self.parent_tension {
-            Some(p) => p,
-            None => {
-                self.render_field(&area, frame);
-                return;
-            }
-        };
+        let parent = self.parent_tension.as_ref();
 
         // --- Column layout for child lines ---
         let deadline_label = self.parent_horizon_label.as_deref();
@@ -693,37 +687,43 @@ impl InstrumentApp {
         // --- Measure zones for Flex layout ---
         let has_breadcrumb = self.grandparent_display.is_some();
         let has_deadline = deadline_label.is_some() && !deadline_label.unwrap_or("").is_empty();
-        let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
-        let right_col_reserve = GUTTER + cols.right;
-        let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
-        let desire_lines = word_wrap(&parent.desired, desire_wrap_width);
 
-        let top_height: u16 = {
-            let mut h: u16 = 0;
-            if has_breadcrumb { h += 1; }
-            h += 1; // blank line before desire
-            h += desire_lines.len() as u16;
-            h += 1; // desire rule
-            h
-        };
+        // At root level (no parent), skip desire/reality zones entirely
+        let (top_height, bottom_height, desire_lines): (u16, u16, Vec<String>) = if let Some(p) = parent {
+            let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
+            let right_col_reserve = GUTTER + cols.right;
+            let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
+            let d_lines = word_wrap(&p.desired, desire_wrap_width);
 
-        // Reality: use Paragraph with word wrap for measurement
-        // Reality: measure height for Flex constraint (Paragraph handles actual wrapping)
-        let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
-        let reality_age_reserve = if reality_age_str.is_empty() { 0 } else { 3 + reality_age_str.chars().count() };
-        let reality_line_count = if parent.actual.is_empty() {
-            0u16
+            let th: u16 = {
+                let mut h: u16 = 0;
+                if has_breadcrumb { h += 1; }
+                h += 1; // blank line before desire
+                h += d_lines.len() as u16;
+                h += 1; // desire rule
+                h
+            };
+
+            let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
+            let reality_age_reserve = if reality_age_str.is_empty() { 0 } else { 3 + reality_age_str.chars().count() };
+            let reality_line_count = if p.actual.is_empty() {
+                0u16
+            } else {
+                word_wrap(&p.actual, w.saturating_sub(reality_age_reserve)).len() as u16
+            };
+            let bh: u16 = {
+                let mut h: u16 = 0;
+                if reality_line_count > 0 {
+                    h += 1; // blank line before reality
+                    h += reality_line_count;
+                }
+                h += 1; // reality rule
+                h
+            };
+
+            (th, bh, d_lines)
         } else {
-            word_wrap(&parent.actual, w.saturating_sub(reality_age_reserve)).len() as u16
-        };
-        let bottom_height: u16 = {
-            let mut h: u16 = 0;
-            if reality_line_count > 0 {
-                h += 1; // blank line before reality
-                h += reality_line_count;
-            }
-            h += 1; // reality rule
-            h
+            (0, 0, Vec::new())
         };
 
         // === Flex vertical split: top (Fixed) | middle (Fill) | bottom (Fixed) ===
@@ -738,12 +738,13 @@ impl InstrumentApp {
         let middle_zone = zones[1];
         let bottom_zone = zones[2];
 
-        // === Render top zone (desire anchor) ===
-        self.render_desire_zone(frame, top_zone, w, &cols, parent, &desire_lines,
-            has_breadcrumb, has_deadline, deadline_label.unwrap_or(""));
-
-        // === Render bottom zone (reality anchor) ===
-        self.render_reality_zone(frame, bottom_zone, w, parent, reality_age_str);
+        // === Render top zone (desire anchor) — only when descended ===
+        if let Some(p) = parent {
+            let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
+            self.render_desire_zone(frame, top_zone, w, &cols, p, &desire_lines,
+                has_breadcrumb, has_deadline, deadline_label.unwrap_or(""));
+            self.render_reality_zone(frame, bottom_zone, w, p, reality_age_str);
+        }
 
         // === Render middle zone ===
         if middle_zone.height == 0 {

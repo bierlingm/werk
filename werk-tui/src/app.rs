@@ -313,7 +313,7 @@ impl InstrumentApp {
         // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end.
         // In deck mode, always include all children so the frontier can classify
         // resolved/released into accumulated. The field view uses the filter as before.
-        let in_deck = self.use_deck && self.parent_id.is_some();
+        let in_deck = self.use_deck;
         let mut filtered: Vec<_> = tensions
             .iter()
             .filter(|t| {
@@ -415,7 +415,7 @@ impl InstrumentApp {
 
         // Recompute cached frontier and clamp deck cursor
         self.recompute_frontier();
-        if self.use_deck && self.parent_id.is_some() {
+        if self.use_deck {
             let count = self.cached_frontier.as_ref().map(|f| f.selectable_count()).unwrap_or(0);
             self.deck_cursor.clamp(count);
         }
@@ -516,7 +516,7 @@ impl InstrumentApp {
             if let Some(idx) = self.siblings.iter().position(|s| s.id == *old_pid) {
                 self.vlist.cursor = idx;
                 // In deck mode, find this sibling in the frontier and set cursor there
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     self.deck_cursor_to_sibling(idx);
                 }
             }
