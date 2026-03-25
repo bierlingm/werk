@@ -580,32 +580,6 @@ pub struct FocusedDetail {
 }
 
 // ---------------------------------------------------------------------------
-// DeckState — lives alongside InstrumentApp
-// ---------------------------------------------------------------------------
-
-/// State for the new deck rendering.
-pub struct DeckState {
-    pub columns: ColumnLayout,
-    pub zoom: ZoomLevel,
-    pub cursor: DeckCursor,
-}
-
-impl DeckState {
-    pub fn new(total_width: usize, deadline_label: Option<&str>, max_id: usize, max_age_len: usize) -> Self {
-        Self {
-            columns: ColumnLayout::compute(total_width, deadline_label, max_id, max_age_len),
-            zoom: ZoomLevel::Normal,
-            cursor: DeckCursor::default(),
-        }
-    }
-
-    /// Recompute column layout (e.g. on terminal resize or data change).
-    pub fn recompute_columns(&mut self, total_width: usize, deadline_label: Option<&str>, max_id: usize, max_age_len: usize) {
-        self.columns = ColumnLayout::compute(total_width, deadline_label, max_id, max_age_len);
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Rendering — render_deck
 // ---------------------------------------------------------------------------
 
@@ -736,12 +710,10 @@ impl InstrumentApp {
             return;
         }
 
-        // Reorder mode: flat list rendering, no frontier classification.
-        // Array order IS visual order — immediate feedback on every swap.
-        if matches!(self.input_mode, crate::state::InputMode::Reordering { .. }) {
-            self.render_reorder_flat(frame, area.x, middle_zone.y, middle_zone.y + middle_zone.height, w, &cols);
-            return;
-        }
+        // Reorder mode: keep the full deck visible. The frontier uses stale
+        // position fields during drag, so items may appear in zones that don't
+        // reflect the pending reorder — but the full context (console, accumulated,
+        // desire, reality) stays visible. Positions are finalized on commit.
 
         // V7: measure inline focus detail height to reserve space
         let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
@@ -758,9 +730,23 @@ impl InstrumentApp {
         let middle_start = middle_zone.y;
         let middle_end = middle_zone.y + middle_zone.height;
         let middle_lines = middle_zone.height as usize;
-        frontier.compute_expansion(middle_lines.saturating_sub(focus_detail_height));
+        let expansion_lines = middle_lines.saturating_sub(focus_detail_height);
+        frontier.compute_expansion(expansion_lines);
+        // Cache for navigation so cursor and render agree on selectables
+        self.last_render_lines.set(expansion_lines);
 
-        let cursor_idx = self.deck_cursor.index;
+        // During reorder, the grabbed item is tracked by vlist.cursor (sibling index).
+        // Map it to the frontier's cursor index so selection highlighting works.
+        // Otherwise, clamp deck_cursor to the render frontier's selectable count.
+        let cursor_idx = if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
+            frontier.cursor_for_sibling(
+                self.siblings.iter().position(|s| s.id == *tension_id).unwrap_or(0)
+            ).unwrap_or(0)
+        } else {
+            self.deck_cursor.index.min(
+                frontier.selectable_count().saturating_sub(1)
+            )
+        };
         let focused_sibling = if self.deck_zoom == ZoomLevel::Focus {
             self.focused_detail.as_ref().map(|d| d.sibling_index)
         } else {
@@ -982,11 +968,18 @@ impl InstrumentApp {
                         else { STYLES.dim };
                     (text, style)
                 });
-                let next_dl = frontier.route.iter()
-                    .chain(frontier.next.iter())
+                // Show the next step's deadline, or if none, the nearest route deadline.
+                // Route items are sorted by position DESC (last = nearest to frontier).
+                let next_dl = frontier.next.iter()
                     .filter_map(|&idx| self.siblings.get(idx))
                     .filter_map(|s| s.horizon_label.as_deref())
-                    .next();
+                    .next()
+                    .or_else(|| {
+                        frontier.route.iter().rev()
+                            .filter_map(|&idx| self.siblings.get(idx))
+                            .filter_map(|s| s.horizon_label.as_deref())
+                            .next()
+                    });
 
                 // Collect readout cells: (text, style)
                 let mut cells: Vec<(String, Style)> = Vec::new();
@@ -1461,81 +1454,11 @@ impl InstrumentApp {
         y - start_y
     }
 
-    /// Render a flat list during reorder mode — no zones, no frontier.
-    /// Array order IS visual order. The grabbed item is highlighted.
-    fn render_reorder_flat(
-        &self,
-        frame: &mut Frame<'_>,
-        x: u16,
-        start_y: u16,
-        end_y: u16,
-        w: usize,
-        cols: &ColumnLayout,
-    ) {
-        let cursor = self.vlist.cursor;
-        let grabbed_id = match &self.input_mode {
-            crate::state::InputMode::Reordering { tension_id } => tension_id.as_str(),
-            _ => "",
-        };
-
-        // Find the boundary between positioned and held
-        let boundary = self.siblings.iter()
-            .position(|s| s.status == TensionStatus::Active && s.position.is_none())
-            .unwrap_or(self.siblings.len());
-
-        // Scroll window: center the cursor in the available space
-        let available = (end_y - start_y) as usize;
-        let total_active = self.siblings.iter().filter(|s| s.status == TensionStatus::Active).count();
-        let scroll_start = if total_active <= available {
-            0
-        } else {
-            cursor.saturating_sub(available / 2).min(total_active.saturating_sub(available))
-        };
-
-        let mut my = start_y;
-        let mut item_idx = 0usize;
-
-        for (i, entry) in self.siblings.iter().enumerate() {
-            if my >= end_y { break; }
-            if entry.status != TensionStatus::Active { continue; }
-
-            if item_idx < scroll_start {
-                item_idx += 1;
-                continue;
-            }
-
-            // Boundary marker: light rule between positioned and held
-            if i == boundary && my < end_y && boundary > 0 {
-                let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
-                render_line(frame, x, my, w as u16, &[(rule, STYLES.dim)]);
-                my += 1;
-                if my >= end_y { break; }
-            }
-
-            let is_grabbed = entry.id == grabbed_id;
-            let is_cursor = i == cursor;
-            let is_selected = is_cursor || is_grabbed;
-
-            let glyph = if is_grabbed {
-                "\u{25B8}" // ▸ grabbed item
-            } else {
-                "\u{00B7}" // · other items
-            };
-
-            self.render_child_line(frame, x, my, w, cols, entry, glyph, is_selected, false, 0);
-            my += 1;
-            item_idx += 1;
-        }
-    }
-
-    /// Compute frontier with maximum expansion for navigation.
-    /// The render path does the precise space-aware expansion.
+    /// Compute frontier with the same expansion as the last render.
+    /// This ensures navigation and rendering agree on which items are selectable.
     pub fn frontier_for_navigation(&self) -> Frontier {
         let mut frontier = Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary);
-        // Show all items for navigation — render will compress if needed
-        frontier.show_route = frontier.route.len();
-        frontier.show_held = frontier.held.len();
-        frontier.show_accumulated = frontier.accumulated.len();
+        frontier.compute_expansion(self.last_render_lines.get());
         frontier
     }
 
@@ -1586,11 +1509,11 @@ impl InstrumentApp {
             let target = frontier.cursor_target(self.deck_cursor.index);
             match target {
                 CursorTarget::Route(_) | CursorTarget::Next(_) =>
-                    "Enter focus \u{00B7} l descend \u{00B7} r resolve".to_string(),
+                    "Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve".to_string(),
                 CursorTarget::Overdue(_) =>
                     "r resolve \u{00B7} ~ release \u{00B7} l descend".to_string(),
                 CursorTarget::HeldItem(_) =>
-                    "Enter focus \u{00B7} r resolve \u{00B7} ~ release".to_string(),
+                    "p position \u{00B7} Enter focus \u{00B7} r resolve".to_string(),
                 CursorTarget::AccumulatedItem(_) =>
                     "l descend \u{00B7} Enter focus".to_string(),
                 _ => String::new(),

@@ -130,6 +130,7 @@ pub enum InputMode {
     },
     Searching,
     Help,
+    Pathway,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +152,15 @@ pub enum EditField {
 pub enum ConfirmKind {
     Resolve { tension_id: String, desired: String },
     Release { tension_id: String, desired: String },
+}
+
+/// Active pathway palette state — held separately from InputMode because
+/// PaletteContext doesn't derive Clone/Debug.
+pub struct PathwayState {
+    pub palette: werk_shared::palette::Palette,
+    pub context: werk_shared::palette::PaletteContext,
+    /// 0-based cursor into palette.options.
+    pub cursor: usize,
 }
 
 /// An alert computed from current tension state.

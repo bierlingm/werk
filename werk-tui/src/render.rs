@@ -1090,6 +1090,72 @@ impl InstrumentApp {
     }
 
     // -----------------------------------------------------------------------
+    // Pathway palette — inline option set for structural signals
+    // -----------------------------------------------------------------------
+
+    pub fn render_pathway(&self, area: &Rect, frame: &mut Frame<'_>) {
+        let pw = match &self.pathway_state {
+            Some(pw) => pw,
+            None => return,
+        };
+        let area = self.content_area(*area);
+
+        // Compute height: 1 signal + 1 blank + options + 1 blank + 1 hint
+        let option_count = pw.palette.options.len();
+        let total_h = (3 + option_count + 2) as u16;
+        let cy = area.height / 2;
+        let top_y = area.y + cy.saturating_sub(total_h / 2);
+        let prompt_area = Rect::new(area.x, top_y, area.width, total_h.min(area.height));
+        crate::helpers::clear_area(frame, prompt_area);
+
+        let mut lines: Vec<Line> = Vec::new();
+
+        // Signal description with glyph
+        lines.push(Line::from(""));
+        lines.push(Line::from_spans([
+            Span::styled(format!("{}  ", INDENT), Style::new()),
+            Span::styled("\u{26A1} ", STYLES.amber), // ⚡
+            Span::styled(&pw.palette.description, STYLES.amber),
+        ]));
+        lines.push(Line::from(""));
+
+        // Options
+        for (i, opt) in pw.palette.options.iter().enumerate() {
+            let is_cursor = i == pw.cursor;
+            let idx_style = if is_cursor { STYLES.selected } else { STYLES.cyan };
+            let label_style = if is_cursor { STYLES.selected } else { STYLES.text };
+            lines.push(Line::from_spans([
+                Span::styled(format!("{}  ", INDENT), if is_cursor { STYLES.selected } else { Style::new() }),
+                Span::styled(format!("[{}]", opt.index), idx_style),
+                Span::styled(format!(" {}", opt.label), label_style),
+                // Pad to full width for selection highlight
+                if is_cursor {
+                    let used = INDENT.len() + 2 + 3 + 1 + opt.label.len();
+                    let pad = (area.width as usize).saturating_sub(used);
+                    Span::styled(" ".repeat(pad), STYLES.selected)
+                } else {
+                    Span::styled("", Style::new())
+                },
+            ]));
+        }
+
+        // Hint line
+        lines.push(Line::from(""));
+        lines.push(Line::from_spans([
+            Span::styled(format!("{}  ", INDENT), Style::new()),
+            Span::styled("j/k", STYLES.cyan),
+            Span::styled(" navigate  ", STYLES.dim),
+            Span::styled("Enter", STYLES.cyan),
+            Span::styled(" select  ", STYLES.dim),
+            Span::styled("Esc", STYLES.cyan),
+            Span::styled(" dismiss", STYLES.dim),
+        ]));
+
+        let para = Paragraph::new(Text::from_lines(lines));
+        para.render(prompt_area, frame);
+    }
+
+    // -----------------------------------------------------------------------
     // Edit prompt — Panel card with field label
     // -----------------------------------------------------------------------
 

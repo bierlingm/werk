@@ -73,6 +73,10 @@ pub struct InstrumentApp {
     // Deck cursor — V2: tracks position in the frontier's flat selectable list
     pub deck_cursor: crate::deck::DeckCursor,
 
+    // Cached render expansion — updated after each render so navigation uses
+    // the same frontier expansion as the visible display.
+    pub last_render_lines: std::cell::Cell<usize>,
+
     // Trajectory mode (Q30): when true, positioned resolved/released stay on route
     pub trajectory_mode: bool,
 
@@ -86,6 +90,9 @@ pub struct InstrumentApp {
     // Focus zoom (V7): detail of the currently focused child.
     pub deck_zoom: crate::deck::ZoomLevel,
     pub focused_detail: Option<crate::deck::FocusedDetail>,
+
+    // Pathway palette state — active when InputMode::Pathway.
+    pub pathway_state: Option<crate::state::PathwayState>,
 
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
@@ -160,6 +167,7 @@ impl InstrumentApp {
             parent_mutation_count: 0,
             db_path_cache: None,
             deck_cursor: crate::deck::DeckCursor::default(),
+            last_render_lines: std::cell::Cell::new(40),
             trajectory_mode: false,
             epoch_boundary: None,
             deck_config: {
@@ -173,6 +181,7 @@ impl InstrumentApp {
             },
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
+            pathway_state: None,
             session_log: crate::session_log::SessionLog::new(),
         };
         app.load_siblings();
@@ -218,11 +227,13 @@ impl InstrumentApp {
             parent_mutation_count: 0,
             db_path_cache: None,
             deck_cursor: crate::deck::DeckCursor::default(),
+            last_render_lines: std::cell::Cell::new(40),
             trajectory_mode: false,
             epoch_boundary: None,
             deck_config: crate::deck::DeckConfig::default(),
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
+            pathway_state: None,
             session_log: crate::session_log::SessionLog::new(),
         }
     }
@@ -402,6 +413,9 @@ impl InstrumentApp {
             let frontier = self.frontier_for_navigation();
             self.deck_cursor.clamp(frontier.selectable_count());
         }
+
+        // Refresh db_modified so the next Tick doesn't treat our own writes as external changes
+        self.refresh_db_modified();
     }
 
     /// Compute stateless alerts from current tension state.
@@ -624,6 +638,7 @@ impl InstrumentApp {
         // Try to parse horizon (supports natural language like "tomorrow", "2w", "eom")
         let horizon = crate::horizon::parse_horizon(horizon_str).ok();
 
+        let has_horizon = horizon.is_some();
         let result = self.engine.create_tension_full(desired, reality, parent, horizon);
 
         if let Ok(tension) = result {
@@ -631,6 +646,50 @@ impl InstrumentApp {
             self.load_siblings();
             if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
                 self.vlist.cursor = idx;
+            }
+            // Check for containment violation if created with a horizon under a parent
+            if has_horizon && self.parent_id.is_some() {
+                self.check_containment_palette(&tension.id);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pathway palettes — structural signal detection and presentation
+    // -----------------------------------------------------------------------
+
+    /// Check for containment violations after a horizon change.
+    /// If a signal is found, enters Pathway mode with the first palette.
+    pub fn check_containment_palette(&mut self, tension_id: &str) {
+        if let Ok(palettes) = werk_shared::palette::detect_containment_palettes(
+            self.engine.store(),
+            tension_id,
+        ) {
+            if let Some((palette, context)) = palettes.into_iter().next() {
+                self.pathway_state = Some(crate::state::PathwayState {
+                    palette,
+                    context,
+                    cursor: 0,
+                });
+                self.input_mode = InputMode::Pathway;
+            }
+        }
+    }
+
+    /// Check for sequencing pressure after a position change.
+    /// If a signal is found, enters Pathway mode with the first palette.
+    pub fn check_sequencing_palette(&mut self, tension_id: &str) {
+        if let Ok(palettes) = werk_shared::palette::detect_sequencing_palettes(
+            self.engine.store(),
+            tension_id,
+        ) {
+            if let Some((palette, context)) = palettes.into_iter().next() {
+                self.pathway_state = Some(crate::state::PathwayState {
+                    palette,
+                    context,
+                    cursor: 0,
+                });
+                self.input_mode = InputMode::Pathway;
             }
         }
     }
@@ -704,49 +763,48 @@ impl InstrumentApp {
     /// During reorder, we only swap array entries — nothing else.
     /// No position sync, no frontier recompute, no deck cursor remapping.
     /// The vlist cursor IS the truth. Positions are derived on commit.
+    /// Skips over non-active items (resolved/released) to find the next active neighbor.
     pub fn reorder_move_up(&mut self) {
         if self.siblings.is_empty() || self.vlist.cursor == 0 {
-            self.session_log.record(crate::session_log::Category::Reorder,
-                format!("MOVE_UP blocked: empty={} cursor={}", self.siblings.is_empty(), self.vlist.cursor));
             return;
         }
         let cursor = self.vlist.cursor;
 
-        if self.siblings[cursor - 1].status != TensionStatus::Active {
-            self.session_log.record(crate::session_log::Category::Reorder,
-                format!("MOVE_UP blocked: neighbor[{}] status={:?}", cursor - 1, self.siblings[cursor - 1].status));
-            return;
+        // Find the nearest active sibling above
+        let mut target = cursor - 1;
+        while target > 0 && self.siblings[target].status != TensionStatus::Active {
+            target -= 1;
+        }
+        if self.siblings[target].status != TensionStatus::Active {
+            return; // no active sibling above
         }
 
-        self.siblings.swap(cursor, cursor - 1);
-        self.vlist.cursor = cursor - 1;
-
-        self.session_log.record(crate::session_log::Category::Reorder,
-            format!("MOVE_UP {} → {} vlist_cursor={}", cursor, cursor - 1, self.vlist.cursor));
+        // Swap directly to the target position (skipping resolved/released)
+        self.siblings.swap(cursor, target);
+        self.vlist.cursor = target;
     }
 
     /// Move the grabbed tension down one position (toward reality).
     ///
     /// During reorder, we only swap array entries — nothing else.
+    /// Skips over non-active items (resolved/released) to find the next active neighbor.
     pub fn reorder_move_down(&mut self) {
         if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 {
-            self.session_log.record(crate::session_log::Category::Reorder,
-                format!("MOVE_DOWN blocked: empty={} cursor={} len={}", self.siblings.is_empty(), self.vlist.cursor, self.siblings.len()));
             return;
         }
         let cursor = self.vlist.cursor;
 
-        if self.siblings[cursor + 1].status != TensionStatus::Active {
-            self.session_log.record(crate::session_log::Category::Reorder,
-                format!("MOVE_DOWN blocked: neighbor[{}] status={:?}", cursor + 1, self.siblings[cursor + 1].status));
-            return;
+        // Find the nearest active sibling below
+        let mut target = cursor + 1;
+        while target < self.siblings.len() - 1 && self.siblings[target].status != TensionStatus::Active {
+            target += 1;
+        }
+        if self.siblings[target].status != TensionStatus::Active {
+            return; // no active sibling below
         }
 
-        self.siblings.swap(cursor, cursor + 1);
-        self.vlist.cursor = cursor + 1;
-
-        self.session_log.record(crate::session_log::Category::Reorder,
-            format!("MOVE_DOWN {} → {} vlist_cursor={}", cursor, cursor + 1, self.vlist.cursor));
+        self.siblings.swap(cursor, target);
+        self.vlist.cursor = target;
     }
 
     /// Commit the reorder: write final positions to engine as a single logical action.
@@ -769,9 +827,14 @@ impl InstrumentApp {
             format!("COMMIT id={} vlist_cursor={} final_order=[{}]",
                 &tension_id, self.vlist.cursor, final_order.join(", ")));
 
-        // Count how many active items were originally positioned
+        // Count how many ACTIVE items were originally positioned
+        // (reorder_original includes all siblings — filter to active only)
+        let active_ids: std::collections::HashSet<&str> = self.siblings.iter()
+            .filter(|s| s.status == TensionStatus::Active)
+            .map(|s| s.id.as_str())
+            .collect();
         let originally_positioned = self.reorder_original.iter()
-            .filter(|(_, pos)| pos.is_some())
+            .filter(|(id, pos)| pos.is_some() && active_ids.contains(id.as_str()))
             .count();
 
         // Was the grabbed tension originally positioned?
@@ -819,7 +882,14 @@ impl InstrumentApp {
                 self.deck_cursor_to_sibling(idx);
             }
         }
-        self.set_transient("position updated");
+
+        // Check for sequencing pressure after reorder
+        if !tension_id.is_empty() {
+            self.check_sequencing_palette(&tension_id);
+        }
+        if !matches!(self.input_mode, InputMode::Pathway) {
+            self.set_transient("position updated");
+        }
     }
 
     /// Cancel the reorder: restore original positions and cursor.
@@ -995,6 +1065,35 @@ impl InstrumentApp {
             }
         }
         false
+    }
+
+    /// Refresh the cached db_modified timestamp to the current DB file mtime.
+    /// Called after TUI-initiated writes so the next Tick doesn't mistake our
+    /// own mutations for external changes.
+    fn refresh_db_modified(&mut self) {
+        // Ensure db_path_cache is populated (may not be if called before first tick)
+        if self.db_path_cache.is_none() {
+            self.db_path_cache = std::env::current_dir()
+                .ok()
+                .and_then(|mut d| {
+                    loop {
+                        let candidate = d.join(".werk").join("sd.db");
+                        if candidate.exists() {
+                            return Some(candidate);
+                        }
+                        if !d.pop() {
+                            return None;
+                        }
+                    }
+                });
+        }
+        if let Some(ref path) = self.db_path_cache {
+            if let Ok(meta) = std::fs::metadata(path) {
+                if let Ok(modified) = meta.modified() {
+                    self.db_modified = Some(modified);
+                }
+            }
+        }
     }
 
     /// Quick gaze height estimate for refresh (doesn't conflict with borrows).
