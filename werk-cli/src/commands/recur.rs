@@ -90,6 +90,8 @@ pub fn cmd_recur(
         let event = HookEvent::mutation(
             &tension.id,
             &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
             "recurrence",
             None,
             "none",
@@ -139,6 +141,8 @@ pub fn cmd_recur(
         let event = HookEvent::mutation(
             &tension.id,
             &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
             "recurrence",
             None,
             &validated,

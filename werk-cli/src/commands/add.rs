@@ -87,7 +87,7 @@ pub fn cmd_add(
     let hooks = Config::load(&workspace)
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop());
-    let event = HookEvent::create(&tension.id, &tension.desired);
+    let event = HookEvent::create(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref());
     hooks.post_create(&event);
 
     // Human-readable output before palette (matches horizon/position pattern)

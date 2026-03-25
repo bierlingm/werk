@@ -45,7 +45,7 @@ pub fn cmd_reopen(output: &Output, id: String, reason: Option<String>) -> Result
     let hooks = Config::load(&workspace)
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop());
-    let event = HookEvent::status_change(&tension.id, &tension.desired, "Active");
+    let event = HookEvent::status_change(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Active");
     if !hooks.pre_mutation(&event) {
         return Err(WerkError::InvalidInput(
             "Blocked by pre_mutation hook".to_string(),

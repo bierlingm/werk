@@ -29,7 +29,7 @@ fn test_resolve_active_tension() {
         .success();
 
     // Create a tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -58,7 +58,7 @@ fn test_resolve_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -85,7 +85,7 @@ fn test_resolve_reparents_children() {
         .success();
 
     // Create parent with children
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -122,7 +122,7 @@ fn test_resolve_non_active_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve it first
@@ -155,7 +155,7 @@ fn test_resolve_records_mutation() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -186,7 +186,7 @@ fn test_resolve_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -225,7 +225,7 @@ fn test_release_with_reason() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -254,7 +254,7 @@ fn test_release_without_reason_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Release without --reason should fail (clap required flag)
@@ -278,7 +278,7 @@ fn test_release_reparents_children() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p reality").unwrap();
     let child = store
         .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
@@ -309,7 +309,7 @@ fn test_release_on_resolved_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve first
@@ -341,7 +341,7 @@ fn test_release_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -379,7 +379,7 @@ fn test_rm_deletes_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -407,7 +407,7 @@ fn test_rm_reparents_to_grandparent() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create A -> B -> C hierarchy
     let grandparent = store.create_tension("A", "a").unwrap();
@@ -445,7 +445,7 @@ fn test_rm_root_makes_children_roots() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child1 = store
         .create_tension_with_parent("child1", "c1", Some(parent.id.clone()))
@@ -499,7 +499,7 @@ fn test_rm_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -526,7 +526,7 @@ fn test_rm_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -608,7 +608,7 @@ fn test_full_lifecycle_resolve() {
         .success();
 
     // Add via CLI (to get the actual ID from output)
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve via CLI using the actual tension ID
@@ -635,7 +635,7 @@ fn test_release_reason_recorded() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")

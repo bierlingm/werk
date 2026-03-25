@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-24T22:06:22Z",
+  "flushed_at": "2026-03-25T14:29:43Z",
   "summary": {
-    "active": 34,
+    "active": 33,
     "released": 5,
-    "resolved": 23,
-    "total": 62
+    "resolved": 27,
+    "total": 65
   },
   "tensions": [
     {
@@ -280,7 +280,7 @@
       "parent_id": "01KMGFKY13827YVY23E14BX4X7",
       "position": null,
       "short_code": 25,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "parent_snapshot_json field exists on tensions. Auto-populated at child creation time in both store.create_tension_full() and engine.create_tension_with_parent(). Captures full JSON with desire, reality, status, horizon, and all children (id, desired, actual, status, position, horizon). parent_desired_snapshot and parent_actual_snapshot still populated for backward compat.",
@@ -547,7 +547,7 @@
       "status": "Active"
     },
     {
-      "actual": "Hooks exist in code (pre_mutation, post_mutation, post_create, post_resolve) and fire from CLI and MCP gesture tools. No design document. Hook set evolved ad hoc. No pre_create hook (asymmetric). No clarity on whether MCP and CLI should share the same hook events or diverge. Config lives in config.toml — unclear if that is right. No rationale recorded for why these events and not others.",
+      "actual": "Complete. Design rationale documented in designs/hook-infrastructure-design.md covering: five events, why these and not others (pre_create rejected, temporal events rejected per gesture principle, post_reopen deferred), payload semantics, firing rules per interface (CLI/MCP symmetric, TUI deferred), configuration model (workspace-scoped config.toml), execution model (pre blocks, post fire-and-forget), and explicit boundaries (hooks are notification surface, not extension mechanism).",
       "created_at": "2026-03-24T17:52:28.342614+00:00",
       "desired": "hook infrastructure has a clear design — rationale for when hooks fire, purpose of each event, firing rules across interfaces (CLI/MCP/TUI), pre/post symmetry, configuration model",
       "horizon": null,
@@ -555,7 +555,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 50,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "README.md covers the essentials. No docs/ directory, no crate-level reference docs, no user guide, no docs site. Foundation doc exists but is a design document, not user-facing documentation.",
@@ -651,7 +651,7 @@
       "desired": "palette triggers extended to add and move commands — add triggers containment palette when child created with horizon under deadlined parent, move triggers containment + sequencing after reparenting",
       "horizon": null,
       "id": "01KMGFPAHAPNK95ZQ5T1KE11NY",
-      "parent_id": "01KMGFKYGNVP7Q7CGGJVXJWE50",
+      "parent_id": null,
       "position": null,
       "short_code": 59,
       "status": "Resolved"
@@ -662,7 +662,7 @@
       "desired": "expanded palette option sets — containment 3→5 options (+promote to sibling, +remove deadline), sequencing 2→4 options (+move before, +hold)",
       "horizon": null,
       "id": "01KMGFPSV5X2TWS3JJ7BA4YE4Q",
-      "parent_id": "01KMGFKYGNVP7Q7CGGJVXJWE50",
+      "parent_id": null,
       "position": null,
       "short_code": 60,
       "status": "Resolved"
@@ -673,13 +673,13 @@
       "desired": "MCP tools accept optional palette_response parameter so agents can pre-select choices — horizon, position, add, move tools all return signals in JSON and accept pre-selected action",
       "horizon": null,
       "id": "01KMGFQ5RDYBR779A7Z46Y4M1Z",
-      "parent_id": "01KMGFKYGNVP7Q7CGGJVXJWE50",
+      "parent_id": null,
       "position": null,
       "short_code": 61,
       "status": "Resolved"
     },
     {
-      "actual": "Skinner sent a formal collaboration proposal (WERK_WATERLIGHT_COLLABORATION_PROPOSAL.html). Response sent clarifying: Surface A already works via survey --json; Surface B maps onto hooks (post_create/post_resolve/post_mutation); Surface C is AI composition not instrument coupling. Conversation is live. No commitments made. Hook payload design (#50) identified as concrete deliverable on our side.",
+      "actual": "Second response received from Skinner/Claude with: Mist routing model (5-tier), full Prism cycle on MRP thesis (6-model adversarial), and hook payload spec. Comprehensive reply drafted and sent covering: type corrections (urgency nullable/>1.0, trajectory enum, risk booleans), Prism response accepting Blue precision fixes, articulating creative-vs-reactive orientation thesis and anti-capture traceability, raising observational analysis design question. HookEvent enriched with parent_id and current_reality per spec. post_release hook added. Awaiting their survey --json reader and a real tension to run through Prism.",
       "created_at": "2026-03-24T20:30:15.346756+00:00",
       "desired": "Waterlight collaboration has a clear shape — what Mist gets from werk's structural urgency, what the hook contract looks like, and how AI composition (not functional coupling) handles the interpretive layer",
       "horizon": null,
@@ -687,6 +687,39 @@
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
       "short_code": 62,
+      "status": "Active"
+    },
+    {
+      "actual": "22 tests in werk-shared/src/palette.rs covering: containment palette builder (5 options, descriptions, parent/child perspective), sequencing palette builder (4 options, order-matches-deadlines), containment applicators (dismiss, clip child, extend parent, promote to sibling, promote to root, remove deadline), sequencing applicators (dismiss, swap, move before, hold), edge cases (nonexistent tension, no deadline, no parent deadline, unpositioned, selected-0-as-dismiss, out-of-range selection). All pass.",
+      "created_at": "2026-03-25T13:05:41.785327+00:00",
+      "desired": "palette logic has test coverage — builders, applicators, detection helpers, and edge cases all tested against in-memory stores",
+      "horizon": null,
+      "id": "01KMJHKKWS27VC3256QAMV1FS3",
+      "parent_id": null,
+      "position": null,
+      "short_code": 63,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Cascading detection implemented in check_containment_after_horizon (werk-cli/src/palette.rs). After applying extend_parent, re-detects from that parent to catch upstream violations. Continues until no new violations found or MAX_CASCADE_DEPTH (5) reached. Visual separator shown in interactive mode. Only extend_parent triggers cascading — other choices reduce deadlines, escape the frame, or remove the deadline entirely.",
+      "created_at": "2026-03-25T13:06:02.052930+00:00",
+      "desired": "applying a palette choice that creates a new signal triggers cascading detection — palettes chain until the tree stabilizes or the user dismisses",
+      "horizon": null,
+      "id": "01KMJHM7P4MDNN637R2208EJVB",
+      "parent_id": null,
+      "position": null,
+      "short_code": 64,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Design note drafted (observational-analysis-stance.md). Recommends Stance B: keep trajectory enum as signal, quarantine projections to ground mode. Three open sub-questions: opt-in vs default for trajectory in external surfaces, gap_magnitude continuity, Mist bridge implications. No decision committed yet.",
+      "created_at": "2026-03-25T14:07:25.517074+00:00",
+      "desired": "observational analysis stance is decided — clear boundary between fact, signal, and dynamic in the instrument's output, with trajectory classification and projection layer each assigned to the correct side of that boundary",
+      "horizon": null,
+      "id": "01KMJN4MTDH3MQB1M39HEYPXCH",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 65,
       "status": "Active"
     }
   ]

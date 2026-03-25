@@ -1344,7 +1344,7 @@ fn test_agent_workflow_full_flow() {
         .success();
 
     // Step 2: Add tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("build feature X", "have requirements")
         .unwrap();
@@ -1402,7 +1402,7 @@ fn test_context_has_expected_fields() {
         .success();
 
     // Create tension with some updates
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial").unwrap();
     let id = tension.id.clone();
 
@@ -1499,7 +1499,7 @@ fn test_context_show_json_consistent_fields() {
         .success();
 
     // Create tension with some updates
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("test goal", "test reality").unwrap();
     store.update_actual(&tension.id, "updated reality").unwrap();
 
@@ -1581,7 +1581,7 @@ fn test_context_show_mutations_match() {
         .success();
 
     // Create tension with mutations
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial").unwrap();
     store.update_actual(&tension.id, "update 1").unwrap();
     store.update_desired(&tension.id, "refined goal").unwrap();

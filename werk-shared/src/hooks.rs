@@ -11,6 +11,8 @@ pub struct HookEvent {
     pub timestamp: DateTime<Utc>,
     pub tension_id: String,
     pub tension_desired: String,
+    pub current_reality: Option<String>,
+    pub parent_id: Option<String>,
     pub field: Option<String>,
     pub old_value: Option<String>,
     pub new_value: Option<String>,
@@ -20,6 +22,8 @@ impl HookEvent {
     pub fn mutation(
         tension_id: &str,
         tension_desired: &str,
+        current_reality: Option<&str>,
+        parent_id: Option<&str>,
         field: &str,
         old_value: Option<&str>,
         new_value: &str,
@@ -29,6 +33,8 @@ impl HookEvent {
             timestamp: Utc::now(),
             tension_id: tension_id.to_string(),
             tension_desired: tension_desired.to_string(),
+            current_reality: current_reality.map(|s| s.to_string()),
+            parent_id: parent_id.map(|s| s.to_string()),
             field: Some(field.to_string()),
             old_value: old_value.map(|s| s.to_string()),
             new_value: Some(new_value.to_string()),
@@ -38,6 +44,8 @@ impl HookEvent {
     pub fn status_change(
         tension_id: &str,
         tension_desired: &str,
+        current_reality: Option<&str>,
+        parent_id: Option<&str>,
         new_status: &str,
     ) -> Self {
         Self {
@@ -45,18 +53,27 @@ impl HookEvent {
             timestamp: Utc::now(),
             tension_id: tension_id.to_string(),
             tension_desired: tension_desired.to_string(),
+            current_reality: current_reality.map(|s| s.to_string()),
+            parent_id: parent_id.map(|s| s.to_string()),
             field: Some("status".to_string()),
             old_value: Some("Active".to_string()),
             new_value: Some(new_status.to_string()),
         }
     }
 
-    pub fn create(tension_id: &str, tension_desired: &str) -> Self {
+    pub fn create(
+        tension_id: &str,
+        tension_desired: &str,
+        current_reality: Option<&str>,
+        parent_id: Option<&str>,
+    ) -> Self {
         Self {
             event: "create".to_string(),
             timestamp: Utc::now(),
             tension_id: tension_id.to_string(),
             tension_desired: tension_desired.to_string(),
+            current_reality: current_reality.map(|s| s.to_string()),
+            parent_id: parent_id.map(|s| s.to_string()),
             field: None,
             old_value: None,
             new_value: None,
@@ -77,6 +94,7 @@ impl HookRunner {
             "pre_mutation",
             "post_mutation",
             "post_resolve",
+            "post_release",
             "post_create",
         ] {
             let config_key = format!("hooks.{}", key);
@@ -157,6 +175,11 @@ impl HookRunner {
         self.run_hook("post_resolve", event).ok();
     }
 
+    /// Convenience: run post_release hook.
+    pub fn post_release(&self, event: &HookEvent) {
+        self.run_hook("post_release", event).ok();
+    }
+
     /// Convenience: run post_create hook.
     pub fn post_create(&self, event: &HookEvent) {
         self.run_hook("post_create", event).ok();
@@ -176,13 +199,13 @@ mod tests {
     fn test_hook_runner_noop() {
         let runner = HookRunner::noop();
         assert!(!runner.has_hooks());
-        let event = HookEvent::create("test-id", "test desired");
+        let event = HookEvent::create("test-id", "test desired", None, None);
         assert!(runner.pre_mutation(&event)); // no hook = allowed
     }
 
     #[test]
     fn test_hook_event_serialization() {
-        let event = HookEvent::mutation("id1", "desired1", "actual", Some("old"), "new");
+        let event = HookEvent::mutation("id1", "desired1", Some("reality1"), Some("parent1"), "actual", Some("old"), "new");
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"event\":\"mutation\""));
         assert!(json.contains("\"tension_id\":\"id1\""));

@@ -81,7 +81,7 @@ pub fn cmd_note_add(
             let tension = resolver.resolve(&id_prefix)?;
 
             let event =
-                HookEvent::mutation(&tension.id, &tension.desired, "note", None, &text);
+                HookEvent::mutation(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "note", None, &text);
             if !hooks.pre_mutation(&event) {
                 return Err(WerkError::InvalidInput(
                     "Blocked by pre_mutation hook".to_string(),
@@ -112,6 +112,8 @@ pub fn cmd_note_add(
             let event = HookEvent::mutation(
                 WORKSPACE_NOTE_TENSION_ID,
                 "workspace",
+                None,
+                None,
                 "note",
                 None,
                 &text,
@@ -203,15 +205,15 @@ pub fn cmd_note_rm(
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop());
 
-    let (resolved_tension_id, display_label) = match tension_id_prefix {
+    let (resolved_tension_id, display_label, tension_actual, tension_parent_id) = match tension_id_prefix {
         Some(id_prefix) => {
             let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
             let resolver = PrefixResolver::new(tensions);
             let tension = resolver.resolve(&id_prefix)?;
             let display = werk_shared::display_id(tension.short_code, &tension.id);
-            (tension.id.clone(), format!("tension {}", display))
+            (tension.id.clone(), format!("tension {}", display), Some(tension.actual.clone()), tension.parent_id.clone())
         }
-        None => (WORKSPACE_NOTE_TENSION_ID.to_string(), "workspace".to_string()),
+        None => (WORKSPACE_NOTE_TENSION_ID.to_string(), "workspace".to_string(), None, None),
     };
 
     // Get all mutations, find active (non-retracted) notes
@@ -252,6 +254,8 @@ pub fn cmd_note_rm(
     let event = HookEvent::mutation(
         &resolved_tension_id,
         &display_label,
+        tension_actual.as_deref(),
+        tension_parent_id.as_deref(),
         "note_retracted",
         Some(&note_text),
         &note_timestamp,

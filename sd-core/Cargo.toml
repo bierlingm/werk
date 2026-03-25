@@ -5,15 +5,16 @@ edition = "2024"
 description = "Structural dynamics grammar — a faithful computational model of Fritz's structural tension"
 
 [dependencies]
-fsqlite = "0.1.1"
-fsqlite-types = "0.1"
-fsqlite-error = "0.1"
+fsqlite = "0.1.2"
+fsqlite-types = "0.1.2"
+fsqlite-error = "0.1.2"
 ulid = "1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 dirs = "5"
+fs4 = "0.13"
 
 [dev-dependencies]
 tempfile = "3"

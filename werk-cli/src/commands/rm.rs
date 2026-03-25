@@ -35,7 +35,7 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     let hooks = Config::load(&workspace)
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop());
-    let event = HookEvent::mutation(&tension_id, &tension_desired, "deleted", None, "true");
+    let event = HookEvent::mutation(&tension_id, &tension_desired, Some(&tension.actual), tension.parent_id.as_deref(), "deleted", None, "true");
     if !hooks.pre_mutation(&event) {
         return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
     }

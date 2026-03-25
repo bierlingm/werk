@@ -41,7 +41,7 @@ fn test_init_creates_correct_schema() {
 
     // Open the database using sd_core and verify we can create/list tensions
     // This verifies the schema is correct
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Should be able to list tensions (empty is fine)
     let tensions = store.list_tensions().unwrap();
@@ -91,7 +91,7 @@ fn test_init_idempotent_preserves_data() {
         .stdout(predicate::str::contains("Workspace initialized"));
 
     // Create a tension using sd-core directly
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("test goal", "test reality").unwrap();
 
     // Re-run init - should say "already initialized" but still succeed
@@ -103,7 +103,7 @@ fn test_init_idempotent_preserves_data() {
         .stdout(predicate::str::contains("Workspace"));
 
     // Verify tension still exists
-    let store2 = sd_core::Store::init(dir.path()).unwrap();
+    let store2 = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let retrieved = store2.get_tension(&tension.id).unwrap();
     assert!(
         retrieved.is_some(),

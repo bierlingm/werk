@@ -28,7 +28,7 @@ fn test_reality_updates_actual() {
         .success();
 
     // Create a tension
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -71,7 +71,7 @@ fn test_reality_shows_old_and_new() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "old value").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -109,7 +109,7 @@ fn test_reality_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -136,7 +136,7 @@ fn test_reality_rejects_empty() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -160,7 +160,7 @@ fn test_reality_opens_editor() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial").unwrap();
 
     // Use EDITOR=cat to verify the current value is passed to the editor
@@ -203,7 +203,7 @@ fn test_reality_fails_on_resolved() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve the tension directly
@@ -241,7 +241,7 @@ fn test_reality_fails_on_released() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Release the tension directly
@@ -314,7 +314,7 @@ fn test_reality_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -355,7 +355,7 @@ fn test_desire_updates_desired() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("initial goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -389,7 +389,7 @@ fn test_desire_shows_old_and_new() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("old goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -419,7 +419,7 @@ fn test_desire_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -446,7 +446,7 @@ fn test_desire_rejects_empty() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -470,7 +470,7 @@ fn test_desire_opens_editor() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("initial goal", "reality").unwrap();
 
     // Use EDITOR=cat to verify the current value is passed to the editor
@@ -510,7 +510,7 @@ fn test_desire_fails_on_resolved() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     store
@@ -542,7 +542,7 @@ fn test_desire_fails_on_released() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     store
@@ -608,7 +608,7 @@ fn test_desire_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -653,7 +653,7 @@ fn test_editor_modifies_content() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial reality").unwrap();
 
     // Create a script file that acts as an "editor" - it overwrites the file
@@ -698,7 +698,7 @@ fn test_reality_records_mutation() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Update reality
@@ -736,7 +736,7 @@ fn test_desire_records_mutation() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Update desire
@@ -769,7 +769,7 @@ fn test_multiple_reality_updates() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "v1").unwrap();
 
     // Multiple updates

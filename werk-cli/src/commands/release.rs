@@ -44,7 +44,7 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
     let hooks = Config::load(&workspace)
         .map(|c| HookRunner::from_config(&c))
         .unwrap_or_else(|_| HookRunner::noop());
-    let event = HookEvent::status_change(&tension.id, &tension.desired, "Released");
+    let event = HookEvent::status_change(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Released");
     if !hooks.pre_mutation(&event) {
         return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
     }
@@ -57,6 +57,7 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
     store.end_gesture();
 
     hooks.post_mutation(&event);
+    hooks.post_release(&event);
 
     // Record the release reason as a mutation
     store

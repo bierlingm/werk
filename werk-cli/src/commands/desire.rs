@@ -78,6 +78,8 @@ pub fn cmd_desire(
     let event = HookEvent::mutation(
         &tension.id,
         &tension.desired,
+        Some(&tension.actual),
+        tension.parent_id.as_deref(),
         "desired",
         Some(&old_desired),
         &new_value,

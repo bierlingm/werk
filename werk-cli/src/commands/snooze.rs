@@ -92,6 +92,8 @@ pub fn cmd_snooze(
         let event = HookEvent::mutation(
             &tension.id,
             &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
             "snoozed_until",
             None,
             "cleared",
@@ -138,6 +140,8 @@ pub fn cmd_snooze(
         let event = HookEvent::mutation(
             &tension.id,
             &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
             "snoozed_until",
             None,
             &formatted,

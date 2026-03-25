@@ -79,6 +79,8 @@ pub fn cmd_reality(
     let event = HookEvent::mutation(
         &tension.id,
         &tension.desired,
+        Some(&old_actual),
+        tension.parent_id.as_deref(),
         "actual",
         Some(&old_actual),
         &new_value,

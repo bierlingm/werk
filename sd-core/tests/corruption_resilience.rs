@@ -12,7 +12,7 @@ use std::io::Write;
 #[test]
 fn test_store_init_creates_fresh_db() {
     let temp = TempDir::new().unwrap();
-    let store = Store::init(temp.path()).unwrap();
+    let store = Store::init_unlocked(temp.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert!(tensions.is_empty());
 }
@@ -22,12 +22,12 @@ fn test_store_persists_across_reopen() {
     let temp = TempDir::new().unwrap();
 
     {
-        let store = Store::init(temp.path()).unwrap();
+        let store = Store::init_unlocked(temp.path()).unwrap();
         store.create_tension("goal", "reality").unwrap();
     }
 
     {
-        let store = Store::init(temp.path()).unwrap();
+        let store = Store::init_unlocked(temp.path()).unwrap();
         let tensions = store.list_tensions().unwrap();
         assert_eq!(tensions.len(), 1);
         assert_eq!(tensions[0].desired, "goal");
@@ -46,7 +46,7 @@ fn test_store_init_on_zero_byte_db_creates_fresh() {
     assert_eq!(std::fs::metadata(&db_path).unwrap().len(), 0);
 
     // Store::init should handle this gracefully (reinit or error, not panic)
-    let result = Store::init(temp.path());
+    let result = Store::init_unlocked(temp.path());
     // Either succeeds (reinits) or returns a clean error
     match result {
         Ok(store) => {
@@ -64,7 +64,7 @@ fn test_store_init_on_zero_byte_db_creates_fresh() {
 #[test]
 fn test_backup_dir_creation_and_file_copy() {
     let temp = TempDir::new().unwrap();
-    let store = Store::init(temp.path()).unwrap();
+    let store = Store::init_unlocked(temp.path()).unwrap();
     store.create_tension("important data", "must survive").unwrap();
     drop(store);
 
@@ -82,7 +82,7 @@ fn test_backup_dir_creation_and_file_copy() {
     std::fs::create_dir_all(&restore_werk).unwrap();
     std::fs::copy(&backup_path, restore_werk.join("sd.db")).unwrap();
 
-    let restored = Store::init(restore_dir.path()).unwrap();
+    let restored = Store::init_unlocked(restore_dir.path()).unwrap();
     let tensions = restored.list_tensions().unwrap();
     assert_eq!(tensions.len(), 1);
     assert_eq!(tensions[0].desired, "important data");
@@ -114,7 +114,7 @@ fn test_flush_sanity_check_concept() {
 #[test]
 fn test_tensions_json_round_trip() {
     let temp = TempDir::new().unwrap();
-    let store = Store::init(temp.path()).unwrap();
+    let store = Store::init_unlocked(temp.path()).unwrap();
 
     // Create a small tree
     let root = store.create_tension("root goal", "root reality").unwrap();
@@ -148,7 +148,7 @@ fn test_tensions_json_round_trip() {
 #[test]
 fn test_epoch_creation_does_not_corrupt_store() {
     let temp = TempDir::new().unwrap();
-    let store = Store::init(temp.path()).unwrap();
+    let store = Store::init_unlocked(temp.path()).unwrap();
     let parent = store.create_tension("project", "started").unwrap();
     let _child = store.create_tension_with_parent("task", "todo", Some(parent.id.clone())).unwrap();
 
@@ -177,7 +177,7 @@ fn test_concurrent_operations_on_same_store() {
     // (the actual crash was from concurrent process access, which we can't easily test,
     // but we can verify rapid sequential access is safe)
     let temp = TempDir::new().unwrap();
-    let store = Store::init(temp.path()).unwrap();
+    let store = Store::init_unlocked(temp.path()).unwrap();
 
     for i in 0..50 {
         let t = store.create_tension(&format!("goal {}", i), &format!("reality {}", i)).unwrap();

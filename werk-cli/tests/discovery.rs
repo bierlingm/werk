@@ -42,7 +42,7 @@ fn test_discovery_add_from_subdirectory() {
         .success();
 
     // Verify tension is in parent's store
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert_eq!(tensions.len(), 1);
     assert_eq!(tensions[0].desired, "subdir goal");
@@ -60,7 +60,7 @@ fn test_discovery_show_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -92,7 +92,7 @@ fn test_discovery_reality_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store
         .create_tension("update goal", "initial reality")
         .unwrap();
@@ -111,7 +111,7 @@ fn test_discovery_reality_from_subdirectory() {
         .success();
 
     // Verify update in parent store
-    let updated = sd_core::Store::init(parent_dir.path())
+    let updated = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -131,7 +131,7 @@ fn test_discovery_desire_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store.create_tension("original desire", "reality").unwrap();
 
     // Create subdirectory and update from there
@@ -148,7 +148,7 @@ fn test_discovery_desire_from_subdirectory() {
         .success();
 
     // Verify update in parent store
-    let updated = sd_core::Store::init(parent_dir.path())
+    let updated = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -168,7 +168,7 @@ fn test_discovery_resolve_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store
         .create_tension("resolve from subdir", "reality")
         .unwrap();
@@ -186,7 +186,7 @@ fn test_discovery_resolve_from_subdirectory() {
         .success();
 
     // Verify resolved in parent store
-    let resolved = sd_core::Store::init(parent_dir.path())
+    let resolved = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -206,7 +206,7 @@ fn test_discovery_release_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store
         .create_tension("release from subdir", "reality")
         .unwrap();
@@ -226,7 +226,7 @@ fn test_discovery_release_from_subdirectory() {
         .success();
 
     // Verify released in parent store
-    let released = sd_core::Store::init(parent_dir.path())
+    let released = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -246,7 +246,7 @@ fn test_discovery_rm_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store.create_tension("rm from subdir", "reality").unwrap();
 
     // Create subdirectory and rm from there
@@ -262,7 +262,7 @@ fn test_discovery_rm_from_subdirectory() {
         .success();
 
     // Verify deleted in parent store
-    let deleted = sd_core::Store::init(parent_dir.path())
+    let deleted = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap();
@@ -281,7 +281,7 @@ fn test_discovery_move_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let parent_tension = store.create_tension("parent", "reality").unwrap();
     let child_tension = store.create_tension("child to move", "reality").unwrap();
 
@@ -302,7 +302,7 @@ fn test_discovery_move_from_subdirectory() {
         .success();
 
     // Verify moved in parent store
-    let moved = sd_core::Store::init(parent_dir.path())
+    let moved = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_tension(&child_tension.id)
         .unwrap()
@@ -322,7 +322,7 @@ fn test_discovery_note_from_subdirectory() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(parent_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(parent_dir.path()).unwrap();
     let tension = store.create_tension("note from subdir", "reality").unwrap();
 
     // Create subdirectory and add note from there
@@ -340,7 +340,7 @@ fn test_discovery_note_from_subdirectory() {
         .success();
 
     // Verify note in parent store
-    let mutations = sd_core::Store::init(parent_dir.path())
+    let mutations = sd_core::Store::init_unlocked(parent_dir.path())
         .unwrap()
         .get_mutations(&tension.id)
         .unwrap();
@@ -360,7 +360,7 @@ fn test_global_fallback_add() {
     // Initialize global workspace in fake home
     let global_werk = home_dir.path().join(".werk");
     std::fs::create_dir_all(&global_werk).unwrap();
-    let _store = sd_core::Store::init(home_dir.path()).unwrap();
+    let _store = sd_core::Store::init_unlocked(home_dir.path()).unwrap();
 
     // Add from work_dir (no local .werk/) should use global
     cargo_bin_cmd!("werk")
@@ -373,7 +373,7 @@ fn test_global_fallback_add() {
         .success();
 
     // Verify in global store
-    let store = sd_core::Store::init(home_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(home_dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert_eq!(tensions.len(), 1);
     assert_eq!(tensions[0].desired, "global goal");
@@ -388,7 +388,7 @@ fn test_global_fallback_show() {
     // Initialize global workspace and create tension
     let global_werk = home_dir.path().join(".werk");
     std::fs::create_dir_all(&global_werk).unwrap();
-    let store = sd_core::Store::init(home_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(home_dir.path()).unwrap();
     let tension = store.create_tension("global show test", "reality").unwrap();
 
     // Show from work_dir should find it
@@ -412,7 +412,7 @@ fn test_global_fallback_reality() {
     // Initialize global workspace and create tension
     let global_werk = home_dir.path().join(".werk");
     std::fs::create_dir_all(&global_werk).unwrap();
-    let store = sd_core::Store::init(home_dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(home_dir.path()).unwrap();
     let tension = store
         .create_tension("global reality test", "initial")
         .unwrap();
@@ -429,7 +429,7 @@ fn test_global_fallback_reality() {
         .success();
 
     // Verify in global store
-    let updated = sd_core::Store::init(home_dir.path())
+    let updated = sd_core::Store::init_unlocked(home_dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -518,7 +518,7 @@ fn test_workspace_consistency_across_commands() {
     let _stdout = String::from_utf8_lossy(&output);
 
     // Extract the tension ID from output
-    let store = sd_core::Store::init(project_root.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(project_root.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     let tension_id = &tensions[0].id;
     let prefix = &tension_id[..6];
@@ -577,7 +577,7 @@ fn test_local_precedence_over_global() {
     // Initialize global workspace
     let global_werk = home_dir.path().join(".werk");
     std::fs::create_dir_all(&global_werk).unwrap();
-    let global_store = sd_core::Store::init(home_dir.path()).unwrap();
+    let global_store = sd_core::Store::init_unlocked(home_dir.path()).unwrap();
     global_store
         .create_tension("global tension", "reality")
         .unwrap();
@@ -600,13 +600,13 @@ fn test_local_precedence_over_global() {
         .success();
 
     // Verify local store has local tension, not global
-    let local_store = sd_core::Store::init(project_dir.path()).unwrap();
+    let local_store = sd_core::Store::init_unlocked(project_dir.path()).unwrap();
     let local_tensions = local_store.list_tensions().unwrap();
     assert_eq!(local_tensions.len(), 1);
     assert_eq!(local_tensions[0].desired, "local tension");
 
     // Verify global store still has only global tension
-    let global_tensions = sd_core::Store::init(home_dir.path())
+    let global_tensions = sd_core::Store::init_unlocked(home_dir.path())
         .unwrap()
         .list_tensions()
         .unwrap();
@@ -629,7 +629,7 @@ fn test_error_recovery_resolve_twice() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("resolve twice test", "reality")
         .unwrap();
@@ -644,7 +644,7 @@ fn test_error_recovery_resolve_twice() {
         .success();
 
     // Get state after first resolve
-    let store_after_first = sd_core::Store::init(dir.path()).unwrap();
+    let store_after_first = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let after_first = store_after_first.get_tension(&tension.id).unwrap().unwrap();
     let mutations_first = store_after_first.get_mutations(&tension.id).unwrap().len();
 
@@ -657,7 +657,7 @@ fn test_error_recovery_resolve_twice() {
         .failure();
 
     // State unchanged after failed resolve
-    let store_after_second = sd_core::Store::init(dir.path()).unwrap();
+    let store_after_second = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let after_second = store_after_second
         .get_tension(&tension.id)
         .unwrap()
@@ -678,14 +678,14 @@ fn test_error_recovery_release_no_reason() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("release no reason test", "reality")
         .unwrap();
     let prefix = &tension.id[..6];
 
     // Get initial state
-    let before = sd_core::Store::init(dir.path())
+    let before = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -700,7 +700,7 @@ fn test_error_recovery_release_no_reason() {
         .failure();
 
     // State unchanged
-    let after = sd_core::Store::init(dir.path())
+    let after = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -719,11 +719,11 @@ fn test_error_recovery_rm_not_found() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("keep this one", "reality").unwrap();
 
     // Get initial state
-    let before_count = sd_core::Store::init(dir.path())
+    let before_count = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .list_tensions()
         .unwrap()
@@ -738,7 +738,7 @@ fn test_error_recovery_rm_not_found() {
         .failure();
 
     // Tension count unchanged
-    let after_count = sd_core::Store::init(dir.path())
+    let after_count = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .list_tensions()
         .unwrap()
@@ -746,7 +746,7 @@ fn test_error_recovery_rm_not_found() {
     assert_eq!(before_count, after_count);
 
     // Original tension still exists
-    let still_exists = sd_core::Store::init(dir.path())
+    let still_exists = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap();
@@ -765,7 +765,7 @@ fn test_error_recovery_move_cycle() {
         .success();
 
     // Create A -> B -> C hierarchy
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let a = store.create_tension("A", "reality").unwrap();
     let b = store
         .create_tension_with_parent("B", "reality", Some(a.id.clone()))
@@ -775,12 +775,12 @@ fn test_error_recovery_move_cycle() {
         .unwrap();
 
     // Get state before
-    let before_a = sd_core::Store::init(dir.path())
+    let before_a = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&a.id)
         .unwrap()
         .unwrap();
-    let before_c = sd_core::Store::init(dir.path())
+    let before_c = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&c.id)
         .unwrap()
@@ -799,12 +799,12 @@ fn test_error_recovery_move_cycle() {
         .failure();
 
     // State unchanged
-    let after_a = sd_core::Store::init(dir.path())
+    let after_a = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&a.id)
         .unwrap()
         .unwrap();
-    let after_c = sd_core::Store::init(dir.path())
+    let after_c = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&c.id)
         .unwrap()
@@ -825,7 +825,7 @@ fn test_error_recovery_reality_on_resolved() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("resolved tension", "initial reality")
         .unwrap();
@@ -837,7 +837,7 @@ fn test_error_recovery_reality_on_resolved() {
         .unwrap();
 
     // Get state before
-    let before = sd_core::Store::init(dir.path())
+    let before = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -853,7 +853,7 @@ fn test_error_recovery_reality_on_resolved() {
         .failure();
 
     // State unchanged
-    let after = sd_core::Store::init(dir.path())
+    let after = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -877,7 +877,7 @@ fn test_prefix_consistency_across_commands() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("prefix consistency test", "initial reality")
         .unwrap();
@@ -927,7 +927,7 @@ fn test_prefix_consistency_across_commands() {
         .success();
 
     // Verify all changes applied to same tension
-    let final_tension = sd_core::Store::init(dir.path())
+    let final_tension = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&tension.id)
         .unwrap()
@@ -936,7 +936,7 @@ fn test_prefix_consistency_across_commands() {
     assert_eq!(final_tension.actual, "updated reality");
 
     // Check mutations
-    let mutations = sd_core::Store::init(dir.path())
+    let mutations = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_mutations(&tension.id)
         .unwrap();
@@ -957,7 +957,7 @@ fn test_prefix_move_and_release() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent for move", "reality").unwrap();
     let child = store.create_tension("child to move", "reality").unwrap();
 
@@ -976,7 +976,7 @@ fn test_prefix_move_and_release() {
         .success();
 
     // Verify move
-    let moved = sd_core::Store::init(dir.path())
+    let moved = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&child.id)
         .unwrap()
@@ -994,7 +994,7 @@ fn test_prefix_move_and_release() {
         .success();
 
     // Verify release
-    let released = sd_core::Store::init(dir.path())
+    let released = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&parent.id)
         .unwrap()
@@ -1014,7 +1014,7 @@ fn test_prefix_resolve_and_rm() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let t1 = store.create_tension("to resolve", "reality").unwrap();
     let t2 = store.create_tension("to delete", "reality").unwrap();
 
@@ -1039,7 +1039,7 @@ fn test_prefix_resolve_and_rm() {
         .success();
 
     // Verify resolve
-    let resolved = sd_core::Store::init(dir.path())
+    let resolved = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&t1.id)
         .unwrap()
@@ -1047,7 +1047,7 @@ fn test_prefix_resolve_and_rm() {
     assert_eq!(resolved.status, sd_core::TensionStatus::Resolved);
 
     // Verify rm
-    let deleted = sd_core::Store::init(dir.path())
+    let deleted = sd_core::Store::init_unlocked(dir.path())
         .unwrap()
         .get_tension(&t2.id)
         .unwrap();
@@ -1104,7 +1104,7 @@ fn test_first_use_experience() {
     );
 
     // Step 3: Show
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     let tension_id = &tensions[0].id;
     let prefix = &tension_id[..6];
@@ -1267,7 +1267,7 @@ fn test_deep_nesting_discovery() {
         .success();
 
     // Verify in root store
-    let store = sd_core::Store::init(root.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(root.path()).unwrap();
     let tensions = store.list_tensions().unwrap();
     assert_eq!(tensions.len(), 1);
     assert_eq!(tensions[0].desired, "deep goal");
@@ -1285,7 +1285,7 @@ fn test_multiple_tensions_prefix_handling() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init(dir.path()).unwrap();
+    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create multiple tensions rapidly (similar timestamps = similar prefixes)
     let _t1 = store.create_tension("first", "reality").unwrap();
