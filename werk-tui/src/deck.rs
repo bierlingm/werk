@@ -886,14 +886,23 @@ impl InstrumentApp {
         }
 
         // The top-down section must not overlap with the accumulated section.
-        // Guarantee at least enough room for: held items/summary + console + input point.
+        // Guarantee enough room for the entire top-down pass:
+        // route items/summary + overdue + next + console + held items/summary + input point.
         let min_top_space: u16 = {
             let mut h: u16 = 1; // input point (always)
             h += 2; // console header + breathing
+            // Route
+            let shown_r = frontier.show_route.min(frontier.route.len());
+            h += shown_r as u16;
+            if shown_r < frontier.route.len() { h += 1; } // route summary
+            // Overdue + next
+            h += frontier.overdue.len() as u16;
+            if frontier.next.is_some() { h += 1; }
+            // Held
             if !frontier.held.is_empty() {
-                let shown = frontier.show_held.min(frontier.held.len());
-                h += shown as u16;
-                if shown < frontier.held.len() { h += 1; } // summary
+                let shown_h = frontier.show_held.min(frontier.held.len());
+                h += shown_h as u16;
+                if shown_h < frontier.held.len() { h += 1; } // summary
             }
             h
         };

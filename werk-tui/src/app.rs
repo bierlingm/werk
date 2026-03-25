@@ -889,12 +889,12 @@ impl InstrumentApp {
             let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
             for m in mutations.iter().rev() {
                 let field = m.field();
-                let old = match m.old_value() {
-                    Some(v) => v.to_string(),
-                    None => continue,
-                };
+                let old = m.old_value().map(|v| v.to_string()).unwrap_or_default();
                 match field {
+                    // For desired/actual, skip if old_value is empty (would clear the text)
+                    "desired" | "actual" if old.is_empty() => continue,
                     "desired" | "actual" | "status" | "horizon" => {}
+                    "created" => continue, // creation is never undoable
                     _ => continue,
                 }
                 let ts = m.timestamp().to_owned();
