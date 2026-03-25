@@ -6,7 +6,6 @@ use werk_shared::truncate;
 
 use crate::glyphs;
 use crate::state::*;
-use crate::vlist::VirtualList;
 
 /// The main application struct.
 pub struct InstrumentApp {
@@ -24,12 +23,6 @@ pub struct InstrumentApp {
     /// How long ago the parent's reality was last checked
     pub parent_reality_age: Option<String>,
     pub siblings: Vec<FieldEntry>,
-    pub vlist: VirtualList,
-
-    // Gaze
-    pub gaze: Option<GazeState>,
-    pub gaze_data: Option<GazeData>,
-    pub full_gaze_data: Option<FullGazeData>,
 
     // Input
     pub input_mode: InputMode,
@@ -39,9 +32,6 @@ pub struct InstrumentApp {
 
     // Search
     pub search_state: Option<crate::search::SearchState>,
-
-    // Filter
-    pub filter: Filter,
 
     // Chrome
     pub transient: Option<TransientMessage>,
@@ -61,9 +51,6 @@ pub struct InstrumentApp {
 
     // Reordering — stores original positions for cancel
     pub reorder_original: Vec<(String, Option<i32>)>,
-
-    // Deck mode toggle — when true, use the new deck rendering (V1+)
-    pub use_deck: bool,
 
     // Deck cached data — computed during load_siblings, not during render
     pub grandparent_display: Option<(String, String)>, // (display_id, desired text)
@@ -101,29 +88,6 @@ pub struct InstrumentApp {
     pub session_log: crate::session_log::SessionLog,
 }
 
-/// Filter for the field view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Filter {
-    Active,
-    All,
-}
-
-impl Filter {
-    pub fn label(self) -> &'static str {
-        match self {
-            Filter::Active => "active",
-            Filter::All => "all",
-        }
-    }
-
-    pub fn cycle(self) -> Self {
-        match self {
-            Filter::Active => Filter::All,
-            Filter::All => Filter::Active,
-        }
-    }
-}
-
 impl InstrumentApp {
     /// Create a new app. Starts at the Field (root level).
     pub fn new(store: Store, all_entries: Vec<FieldEntry>) -> Self {
@@ -144,10 +108,6 @@ impl InstrumentApp {
             parent_desire_age: None,
             parent_reality_age: None,
             siblings: Vec::new(),
-            vlist: VirtualList::new(0),
-            gaze: None,
-            gaze_data: None,
-            full_gaze_data: None,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
             text_input: TextInput::new()
@@ -155,7 +115,6 @@ impl InstrumentApp {
                 .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
                 .with_placeholder_style(crate::theme::STYLES.dim),
             search_state: None,
-            filter: Filter::Active,
             transient: None,
             show_help: false,
             db_modified: None,
@@ -165,7 +124,6 @@ impl InstrumentApp {
             alerts: Vec::new(),
             alert_cursor: 0,
             reorder_original: Vec::new(),
-            use_deck: true,
             grandparent_display: None,
             parent_mutation_count: 0,
             db_path_cache: None,
@@ -205,10 +163,6 @@ impl InstrumentApp {
             parent_desire_age: None,
             parent_reality_age: None,
             siblings: Vec::new(),
-            vlist: VirtualList::new(0),
-            gaze: None,
-            gaze_data: None,
-            full_gaze_data: None,
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
             text_input: TextInput::new()
@@ -216,7 +170,6 @@ impl InstrumentApp {
                 .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
                 .with_placeholder_style(crate::theme::STYLES.dim),
             search_state: None,
-            filter: Filter::Active,
             transient: None,
             show_help: false,
             db_modified: None,
@@ -226,7 +179,6 @@ impl InstrumentApp {
             alerts: Vec::new(),
             alert_cursor: 0,
             reorder_original: Vec::new(),
-            use_deck: true,
             grandparent_display: None,
             parent_mutation_count: 0,
             db_path_cache: None,
@@ -311,23 +263,8 @@ impl InstrumentApp {
         }
 
         // Sort: positioned DESC (from SQL), then unpositioned by horizon range_end.
-        // In deck mode, always include all children so the frontier can classify
-        // resolved/released into accumulated. The field view uses the filter as before.
-        let in_deck = self.use_deck;
-        let mut filtered: Vec<_> = tensions
-            .iter()
-            .filter(|t| {
-                if in_deck {
-                    true // deck needs all children for frontier classification
-                } else {
-                    match self.filter {
-                        Filter::Active => t.status == TensionStatus::Active,
-                        Filter::All => true,
-                    }
-                }
-            })
-            .cloned()
-            .collect();
+        // Always include all children so the frontier can classify them.
+        let mut filtered: Vec<_> = tensions.to_vec();
 
         // The SQL already gives us positioned DESC first, then unpositioned by created_at.
         // Re-sort only the unpositioned group by horizon range_end (deadline).
@@ -377,31 +314,6 @@ impl InstrumentApp {
             })
             .collect();
 
-        // Rebuild vlist — preserve cursor position and gaze
-        let old_cursor = self.vlist.cursor;
-        let old_gaze = self.gaze.clone();
-
-        self.vlist.rebuild(self.siblings.len());
-        self.vlist.cursor = old_cursor.min(self.siblings.len().saturating_sub(1));
-
-        // If gaze was open, try to keep it at the same cursor position
-        if let Some(gaze) = old_gaze {
-            if gaze.index < self.siblings.len() {
-                let id = self.siblings[gaze.index].id.clone();
-                self.gaze = Some(GazeState { index: gaze.index, full: gaze.full });
-                self.gaze_data = self.compute_gaze(&id);
-                let height = if gaze.full {
-                    self.full_gaze_height_for_refresh()
-                } else {
-                    self.quick_gaze_height_for_refresh()
-                };
-                self.vlist.set_height(gaze.index, height);
-            } else {
-                self.gaze = None;
-                self.gaze_data = None;
-            }
-        }
-
         // Update totals (COUNT queries, not loading all rows)
         let (total, active) = self.engine.store().count_tensions().unwrap_or((0, 0));
         self.total_count = total;
@@ -415,10 +327,8 @@ impl InstrumentApp {
 
         // Recompute cached frontier and clamp deck cursor
         self.recompute_frontier();
-        if self.use_deck {
-            let count = self.cached_frontier.as_ref().map(|f| f.selectable_count()).unwrap_or(0);
-            self.deck_cursor.clamp(count);
-        }
+        let count = self.cached_frontier.as_ref().map(|f| f.selectable_count()).unwrap_or(0);
+        self.deck_cursor.clamp(count);
 
         // Refresh db_modified so the next Tick doesn't treat our own writes as external changes
         self.refresh_db_modified();
@@ -485,10 +395,6 @@ impl InstrumentApp {
         self.session_log.record(crate::session_log::Category::Nav, format!("DESCEND into {}", id));
         self.parent_id = Some(id.to_string());
         self.load_siblings();
-        self.gaze = None;
-        self.gaze_data = None;
-        self.full_gaze_data = None;
-        self.vlist.cursor = 0;
         self.deck_cursor_reset();
     }
 
@@ -496,11 +402,6 @@ impl InstrumentApp {
     pub fn ascend(&mut self) {
         self.session_log.record(crate::session_log::Category::Nav, format!("ASCEND from {:?}", self.parent_id));
         let old_parent_id = self.parent_id.take();
-
-        // Close gaze
-        self.gaze = None;
-        self.gaze_data = None;
-        self.full_gaze_data = None;
 
         // Find the grandparent
         if let Some(ref pid) = old_parent_id {
@@ -514,33 +415,17 @@ impl InstrumentApp {
         // Set cursor to the tension we ascended from
         if let Some(ref old_pid) = old_parent_id {
             if let Some(idx) = self.siblings.iter().position(|s| s.id == *old_pid) {
-                self.vlist.cursor = idx;
-                // In deck mode, find this sibling in the frontier and set cursor there
-                if self.use_deck {
-                    self.deck_cursor_to_sibling(idx);
-                }
+                self.deck_cursor_to_sibling(idx);
             }
         } else {
             self.deck_cursor_reset();
         }
     }
 
-    /// Get the currently selected entry.
-    pub fn selected_entry(&self) -> Option<&FieldEntry> {
-        self.siblings.get(self.vlist.cursor)
-    }
-
-    /// The action target: in deck mode uses deck cursor; otherwise gazed tension if gaze
-    /// is active, else vlist selected.
+    /// The action target: uses deck cursor to resolve the selected sibling.
     pub fn action_target(&self) -> Option<&FieldEntry> {
-        if self.use_deck && self.cached_frontier.is_some() {
-            self.deck_selected_sibling_index()
-                .and_then(|idx| self.siblings.get(idx))
-        } else if let Some(ref gaze) = self.gaze {
-            self.siblings.get(gaze.index)
-        } else {
-            self.selected_entry()
-        }
+        self.deck_selected_sibling_index()
+            .and_then(|idx| self.siblings.get(idx))
     }
 
     /// Build breadcrumb path from current parent up to root.
@@ -560,72 +445,6 @@ impl InstrumentApp {
         crumbs
     }
 
-    /// Compute quick Gaze data for a tension.
-    pub fn compute_gaze(&mut self, id: &str) -> Option<GazeData> {
-        let tension = self.engine.store().get_tension(id).ok()??;
-
-        // Children preview — collect IDs first to avoid borrow conflicts
-        let children_tensions = self.engine.store().get_children(id).unwrap_or_default();
-        let active_children: Vec<_> = children_tensions
-            .iter()
-            .filter(|c| c.status == TensionStatus::Active)
-            .take(8)
-            .cloned()
-            .collect();
-
-        let mut children: Vec<ChildPreview> = Vec::new();
-        for c in &active_children {
-            children.push(ChildPreview {
-                id: c.id.clone(),
-                desired: c.desired.clone(),
-                status: c.status,
-                position: c.position,
-            });
-        }
-
-        // Horizon display
-        let now = chrono::Utc::now();
-        let horizon = tension.horizon.as_ref().map(|h| {
-            let days = h.range_end().signed_duration_since(now).num_days();
-            if days < 0 {
-                format!("{} ({}d past)", h, -days)
-            } else if days == 0 {
-                format!("{} (today)", h)
-            } else {
-                format!("{} ({}d)", h, days)
-            }
-        });
-
-        // Last event — most recent mutation for this tension
-        let last_event = self.engine.store().get_mutations(&tension.id).ok().and_then(|mutations| {
-            mutations.last().map(|m| {
-                let elapsed = now.signed_duration_since(m.timestamp().to_owned());
-                let time_str = if elapsed.num_minutes() < 1 {
-                    "just now".to_string()
-                } else if elapsed.num_hours() < 1 {
-                    format!("{}m ago", elapsed.num_minutes())
-                } else if elapsed.num_hours() < 24 {
-                    format!("{}h ago", elapsed.num_hours())
-                } else {
-                    format!("{}d ago", elapsed.num_days())
-                };
-                format!("{} {}", m.field(), time_str)
-            })
-        });
-
-        // Created date display
-        let created_at = tension.created_at.format("%Y-%m-%d").to_string();
-
-        Some(GazeData {
-            id: tension.id.clone(),
-            actual: tension.actual.clone(),
-            horizon,
-            created_at,
-            children,
-            last_event,
-        })
-    }
-
     /// Create a tension with a horizon string (e.g. "2026-W13" or "2026-03-20").
     pub fn create_tension_with_horizon(&mut self, name: &str, desire: &str, reality: &str, horizon_str: &str) {
         let desired = if desire.is_empty() { name } else { desire };
@@ -641,7 +460,7 @@ impl InstrumentApp {
             self.set_transient(format!("created: {}", truncate(&tension.desired, 30)));
             self.load_siblings();
             if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
-                self.vlist.cursor = idx;
+                self.deck_cursor_to_sibling(idx);
             }
             // Check for containment violation if created with a horizon under a parent
             if has_horizon && self.parent_id.is_some() {
@@ -732,16 +551,12 @@ impl InstrumentApp {
         if self.siblings.is_empty() { return false; }
 
         // Determine the sibling index of the selected item
-        let cursor = if self.use_deck && self.cached_frontier.is_some() {
-            match self.deck_selected_sibling_index() {
-                Some(idx) => idx,
-                None => {
-                    self.set_transient("nothing to reorder here");
-                    return false;
-                }
+        let cursor = match self.deck_selected_sibling_index() {
+            Some(idx) => idx,
+            None => {
+                self.set_transient("nothing to reorder here");
+                return false;
             }
-        } else {
-            self.vlist.cursor
         };
 
         // Only active tensions can be reordered
@@ -752,9 +567,6 @@ impl InstrumentApp {
         }
 
         let tension_id = self.siblings[cursor].id.clone();
-
-        // Sync vlist cursor for reorder tracking
-        self.vlist.cursor = cursor;
 
         // Store original positions for cancel
         self.reorder_original = self.siblings.iter()
@@ -774,13 +586,6 @@ impl InstrumentApp {
             format!("ENTER cursor={} id={} deck_cursor={} positions=[{}]",
                 cursor, &tension_id, self.deck_cursor.index, positions.join(", ")));
 
-        // Close gaze if open
-        if self.gaze.is_some() {
-            self.gaze = None;
-            self.gaze_data = None;
-            self.full_gaze_data = None;
-            self.vlist.reset_heights();
-        }
         true
     }
 
@@ -814,9 +619,7 @@ impl InstrumentApp {
             return; // no active sibling above
         }
 
-        // Swap directly to the target position (skipping resolved/released)
         self.siblings.swap(cursor, target);
-        self.vlist.cursor = target;
         self.cached_frontier = None; // invalidate — siblings mutated
     }
 
@@ -840,7 +643,6 @@ impl InstrumentApp {
         }
 
         self.siblings.swap(cursor, target);
-        self.vlist.cursor = target;
         self.cached_frontier = None; // invalidate — siblings mutated
     }
 
@@ -861,8 +663,8 @@ impl InstrumentApp {
                 s.position.map(|p| p.to_string()).unwrap_or_else(|| "held".into())))
             .collect();
         self.session_log.record(Category::Reorder,
-            format!("COMMIT id={} vlist_cursor={} final_order=[{}]",
-                &tension_id, self.vlist.cursor, final_order.join(", ")));
+            format!("COMMIT id={} final_order=[{}]",
+                &tension_id, final_order.join(", ")));
 
         // Count how many ACTIVE items were originally positioned
         // (reorder_original includes all siblings — filter to active only)
@@ -914,7 +716,6 @@ impl InstrumentApp {
 
         // Restore cursor to the moved tension
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
-            self.vlist.cursor = idx;
             self.deck_cursor_to_sibling(idx);
         }
 
@@ -944,78 +745,10 @@ impl InstrumentApp {
         self.load_siblings();
 
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
-            self.vlist.cursor = idx;
             self.deck_cursor_to_sibling(idx);
         }
     }
 
-
-    /// Compute full gaze data (facts + history) for a tension.
-    pub fn compute_full_gaze(&mut self, id: &str) -> Option<FullGazeData> {
-        let tension = self.engine.store().get_tension(id).ok()??;
-        let now = chrono::Utc::now();
-
-        // Urgency from horizon
-        let urgency = self.engine.compute_urgency(&tension).map(|u| {
-            format!("{:.0}%", u.value * 100.0)
-        });
-
-        // Horizon drift from mutation history
-        let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
-        let drift = sd_core::detect_horizon_drift(id, &mutations);
-        let horizon_drift = if drift.change_count > 0 {
-            Some(match drift.drift_type {
-                sd_core::HorizonDriftType::Stable => "stable".to_string(),
-                sd_core::HorizonDriftType::Tightening => "tightening".to_string(),
-                sd_core::HorizonDriftType::Postponement => "postponement".to_string(),
-                sd_core::HorizonDriftType::RepeatedPostponement => "repeated postponement".to_string(),
-                sd_core::HorizonDriftType::Loosening => "loosening".to_string(),
-                sd_core::HorizonDriftType::Oscillating => "oscillating".to_string(),
-            })
-        } else {
-            None
-        };
-
-        // Closure: proportion of children resolved
-        let children = self.engine.store().get_children(id).unwrap_or_default();
-        let closure = if !children.is_empty() {
-            let resolved = children.iter().filter(|c| c.status == TensionStatus::Resolved).count();
-            Some(format!("{}/{}", resolved, children.len()))
-        } else {
-            None
-        };
-
-        // History
-        let history: Vec<HistoryEntry> = mutations
-            .iter()
-            .rev() // most recent first
-            .take(20)
-            .map(|m| {
-                let relative = werk_shared::relative_time(m.timestamp(), now);
-                let desc = match m.field() {
-                    "desired" => format!("desire: \"{}\"", truncate(m.new_value(), 70)),
-                    "actual" => format!("reality: \"{}\"", truncate(m.new_value(), 70)),
-                    "status" => format!("status \u{2192} {}", m.new_value()),
-                    "note" => format!("note: \"{}\"", truncate(m.new_value(), 70)),
-                    "parent_id" => "parent changed".to_string(),
-                    "horizon" => format!("horizon \u{2192} {}", m.new_value()),
-                    "created" => "created".to_string(),
-                    other => format!("{}: {}", other, truncate(m.new_value(), 60)),
-                };
-                HistoryEntry {
-                    relative_time: relative,
-                    description: desc,
-                }
-            })
-            .collect();
-
-        Some(FullGazeData {
-            urgency,
-            horizon_drift,
-            closure,
-            history,
-        })
-    }
 
     /// Build tension context for clipboard handoff.
     pub fn build_clipboard_context(&mut self, tension_id: &str) -> String {
@@ -1127,34 +860,6 @@ impl InstrumentApp {
                 }
             }
         }
-    }
-
-    /// Quick gaze height estimate for refresh (doesn't conflict with borrows).
-    fn quick_gaze_height_for_refresh(&self) -> usize {
-        let mut h = 2; // panel top + bottom border
-        if let Some(ref data) = self.gaze_data {
-            h += data.children.len().max(1);
-            if !data.actual.is_empty() {
-                h += 2;
-            }
-        } else {
-            h += 1;
-        }
-        h
-    }
-
-    fn full_gaze_height_for_refresh(&self) -> usize {
-        let mut h = self.quick_gaze_height_for_refresh();
-        if let Some(ref full) = self.full_gaze_data {
-            h += 1; // separator
-            let dyn_count = full.urgency.is_some() as usize
-                + full.horizon_drift.is_some() as usize
-                + full.closure.is_some() as usize;
-            let dyn_count = dyn_count.max(1); // at least 1 row
-            let hist_count = full.history.len().min(dyn_count.max(3));
-            h += dyn_count.max(hist_count);
-        }
-        h
     }
 
     /// Set a transient message on the lever.

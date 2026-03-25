@@ -69,46 +69,6 @@ impl FieldEntry {
     }
 }
 
-/// Which sibling is gazed and how deep.
-#[derive(Debug, Clone)]
-pub struct GazeState {
-    pub index: usize,
-    pub full: bool,
-}
-
-/// Data for the quick Gaze (Depth 1).
-pub struct GazeData {
-    pub id: String,
-    pub actual: String,
-    pub horizon: Option<String>,
-    pub created_at: String,
-    pub children: Vec<ChildPreview>,
-    pub last_event: Option<String>,
-}
-
-/// Mini-line for children preview inside Gaze.
-pub struct ChildPreview {
-    pub id: String,
-    pub desired: String,
-    pub status: TensionStatus,
-    /// Explicit ordering position. None means unpositioned (backlog).
-    pub position: Option<i32>,
-}
-
-/// Data for the full Gaze (Depth 2 — facts + history).
-pub struct FullGazeData {
-    pub urgency: Option<String>,
-    pub horizon_drift: Option<String>,
-    pub closure: Option<String>,
-    pub history: Vec<HistoryEntry>,
-}
-
-/// A single mutation in the history.
-pub struct HistoryEntry {
-    pub relative_time: String,
-    pub description: String,
-}
-
 /// Input mode — what the user is currently doing.
 #[derive(Debug, Clone)]
 pub enum InputMode {

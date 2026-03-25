@@ -4,7 +4,6 @@
 
 pub mod state;
 pub mod glyphs;
-pub mod vlist;
 pub mod theme;
 pub mod msg;
 pub mod app;
