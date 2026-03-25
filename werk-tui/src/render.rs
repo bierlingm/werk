@@ -819,7 +819,7 @@ impl InstrumentApp {
             }
         }
 
-        let left_text = if self.use_deck && self.parent_id.is_some() {
+        let left_text = if self.use_deck {
             // Deck mode: minimal lever — tension ID only, breadcrumb is in the deck itself
             if let Some(ref parent) = self.parent_tension {
                 let id = werk_shared::display_id(parent.short_code, &parent.id);

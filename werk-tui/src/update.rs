@@ -75,7 +75,7 @@ impl Model for InstrumentApp {
             && !matches!(self.input_mode, InputMode::Adding(_))
         {
             self.render_empty(&rects[0], frame);
-        } else if self.use_deck && self.parent_id.is_some() {
+        } else if self.use_deck {
             // New deck rendering (V1+) for descended views
             self.render_deck(&rects[0], frame);
         } else if self.siblings.is_empty() && self.parent_id.is_some() {
@@ -107,7 +107,7 @@ impl Model for InstrumentApp {
         }
 
         // Bottom bar: deck bar in deck mode, old lever otherwise
-        if self.use_deck && self.parent_id.is_some() {
+        if self.use_deck {
             self.render_deck_bar(&rects[1], frame);
         } else {
             self.render_lever(&rects[1], frame);
@@ -140,7 +140,7 @@ impl InstrumentApp {
         match msg {
             // Navigation
             Msg::Char('k') | Msg::Up => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     // Clear focus on cursor move
                     if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                         self.deck_zoom = crate::deck::ZoomLevel::Normal;
@@ -154,7 +154,7 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Char('j') | Msg::Down => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     // Clear focus on cursor move
                     if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                         self.deck_zoom = crate::deck::ZoomLevel::Normal;
@@ -190,7 +190,7 @@ impl InstrumentApp {
 
             Msg::Char('l') | Msg::Descend => {
                 // Roll right: descend into selected tension
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     if let Some(idx) = self.deck_selected_sibling_index() {
                         let id = self.siblings[idx].id.clone();
                         self.descend(&id);
@@ -201,7 +201,7 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Submit => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     // V7: Enter toggles focus zoom on the selected element
                     if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                         // Already focused — unfocus
@@ -240,7 +240,7 @@ impl InstrumentApp {
             }
             // Shift+Enter — orient zoom (V9 placeholder)
             Msg::ShiftSubmit => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     self.set_transient("orient zoom: coming soon");
                 }
                 Cmd::none()
@@ -254,7 +254,7 @@ impl InstrumentApp {
             }
 
             Msg::Char('g') | Msg::JumpTop => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
                     self.deck_cursor.index = 0;
@@ -265,7 +265,7 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
                     let count = self.ensure_frontier().selectable_count();
@@ -279,7 +279,7 @@ impl InstrumentApp {
 
             // Space: peek in deck mode, gaze in field mode
             Msg::Char(' ') | Msg::ToggleGaze => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     // V8: peek — inline children preview, lighter than focus
                     if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                         // Already peeking/focused — close
@@ -510,7 +510,7 @@ impl InstrumentApp {
 
             // Toggle trajectory mode (Q30: resolved stay in-place on route)
             Msg::Char('T') => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     self.trajectory_mode = !self.trajectory_mode;
                     self.set_transient(if self.trajectory_mode { "trajectory view" } else { "frontier view" });
                     self.deck_cursor_reset();
@@ -529,7 +529,7 @@ impl InstrumentApp {
             // In deck mode: ? = edit parent reality (V4 quick-edit)
             // In field mode: ? = help
             Msg::Char('?') | Msg::ToggleHelp => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     if let Some(ref pid) = self.parent_id.clone() {
                         let actual = self.parent_tension.as_ref()
                             .map(|t| t.actual.clone()).unwrap_or_default();
@@ -550,7 +550,7 @@ impl InstrumentApp {
 
             // In deck mode: ! = edit parent desire (V4 quick-edit)
             Msg::Char('!') => {
-                if self.use_deck && self.parent_id.is_some() {
+                if self.use_deck {
                     if let Some(ref pid) = self.parent_id.clone() {
                         let desired = self.parent_tension.as_ref()
                             .map(|t| t.desired.clone()).unwrap_or_default();
