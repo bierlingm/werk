@@ -2,6 +2,7 @@
 
 use crate::error::WerkError;
 use crate::output::Output;
+use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use sd_core::Forest;
@@ -13,6 +14,8 @@ struct MoveResult {
     id: String,
     parent_id: Option<String>,
     old_parent_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    signals: Vec<palette::Palette>,
 }
 
 pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(), WerkError> {
@@ -67,18 +70,8 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
         .map_err(WerkError::SdError)?;
     store.end_gesture();
 
-    let result = MoveResult {
-        id: tension_id.clone(),
-        parent_id: new_parent_id.clone(),
-        old_parent_id,
-    };
-
-    if output.is_structured() {
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
-    } else {
-        // Human-readable output
+    // Human-readable output before palette
+    if !output.is_structured() {
         match &new_parent_id {
             Some(pid) => {
                 output
@@ -93,6 +86,40 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
         }
+    }
+
+    // Pathway palettes: check containment and sequencing in new parent context
+    let mut signals = Vec::new();
+
+    // Containment: does the moved tension's deadline violate the new parent's?
+    if new_parent_id.is_some() {
+        let containment = palette::check_containment_after_horizon(output, &mut store, &tension_id)?;
+        signals.extend(containment);
+    }
+
+    // Sequencing: does the moved tension's position conflict with new siblings?
+    if new_parent_id.is_some() {
+        // Re-read tension to get current state after move
+        let updated_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+        let moved = updated_tensions.iter().find(|t| t.id == tension_id);
+        if let Some(t) = moved {
+            if t.position.is_some() {
+                let sequencing = palette::check_sequencing_after_position(output, &mut store, &tension_id)?;
+                signals.extend(sequencing);
+            }
+        }
+    }
+
+    if output.is_structured() {
+        let result = MoveResult {
+            id: tension_id.clone(),
+            parent_id: new_parent_id.clone(),
+            old_parent_id,
+            signals,
+        };
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     }
 
     Ok(())
