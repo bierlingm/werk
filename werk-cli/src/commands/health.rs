@@ -46,9 +46,27 @@ fn bar(count: usize, total: usize, width: usize) -> String {
     )
 }
 
-pub fn cmd_health(output: &Output) -> Result<(), WerkError> {
+pub fn cmd_health(output: &Output, repair: bool) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
+
+    if repair {
+        let count = store.count_noop_mutations().map_err(WerkError::SdError)?;
+        if count > 0 {
+            eprint!("Found {} no-op position mutation(s). Purge? [y/N] ", count);
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).map_err(|e| WerkError::IoError(e.to_string()))?;
+            if input.trim().eq_ignore_ascii_case("y") {
+                let purged = store.purge_noop_mutations().map_err(WerkError::SdError)?;
+                println!("Purged {} no-op position mutation(s)", purged);
+            } else {
+                println!("Skipped");
+            }
+        } else {
+            println!("No no-op mutations found");
+        }
+        println!();
+    }
     let now = Utc::now();
 
     let tensions = store

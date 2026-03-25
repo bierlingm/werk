@@ -775,6 +775,32 @@ impl Store {
         Ok(())
     }
 
+    /// Count no-op position mutations where old_value equals new_value.
+    /// Use this to preview before purging.
+    pub fn count_noop_mutations(&self) -> Result<usize, SdError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT COUNT(*) FROM mutations WHERE field = 'position' AND old_value IS NOT NULL AND old_value = new_value")
+            .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
+        match rows.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Integer(n)) => Ok(*n as usize),
+            _ => Ok(0),
+        }
+    }
+
+    /// Delete no-op position mutations where old_value equals new_value.
+    /// Scoped to position mutations only — other fields are left untouched.
+    /// Returns the number of deleted rows.
+    pub fn purge_noop_mutations(&self) -> Result<usize, SdError> {
+        let count = self.count_noop_mutations()?;
+        if count > 0 {
+            let conn = self.conn.borrow();
+            conn.execute("DELETE FROM mutations WHERE field = 'position' AND old_value IS NOT NULL AND old_value = new_value")
+                .map_err(|e| SdError::ValidationError(format!("delete failed: {:?}", e)))?;
+        }
+        Ok(count)
+    }
+
     /// Get a tension by ID.
     ///
     /// Returns None if the tension doesn't exist.
@@ -2020,7 +2046,8 @@ impl Store {
     /// Update the position of a tension for sibling ordering.
     ///
     /// Records a mutation and persists the change.
-    pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<(), SdError> {
+    /// Returns true if the position was actually changed, false if it was already the target value.
+    pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<bool, SdError> {
         let conn = self.conn.borrow();
 
         // Get existing tension
@@ -2039,6 +2066,11 @@ impl Store {
             Some(SqliteValue::Integer(n)) => Some(*n as i32),
             _ => None,
         };
+
+        // No-op guard: skip if position isn't actually changing
+        if old_position == new_position {
+            return Ok(false);
+        }
 
         // Update in database
         conn.execute_with_params(
@@ -2062,7 +2094,7 @@ impl Store {
             new_position.map(|p| p.to_string()).unwrap_or_else(|| "null".to_string()),
         ))?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Reorder siblings by assigning positions to all children of a parent.

@@ -1,14 +1,14 @@
 {
-  "flushed_at": "2026-03-25T15:53:00Z",
+  "flushed_at": "2026-03-25T17:12:20Z",
   "summary": {
-    "active": 40,
+    "active": 38,
     "released": 2,
-    "resolved": 26,
+    "resolved": 28,
     "total": 68
   },
   "tensions": [
     {
-      "actual": "Conceptual foundation exists and is partially implemented. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: implied execution window, urgency, sequencing pressure, critical path (recursive), containment violation — all computed in sd-core. Frontier projection: operating envelope partitions children into next/overdue/held/remaining/resolved. Three interface surfaces operational: TUI (functional but pre-foundation), CLI (30+ commands with foundation vocabulary, JSON on all commands), MCP (werk mcp — 30 tools via rmcp/stdio, same gestures as CLI). Cooperative dynamics remain unexplored.",
+      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, primary experience functional), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -19,7 +19,7 @@
       "status": "Active"
     },
     {
-      "actual": "TUI rendering layer rebuilt on ftui (Panel, Paragraph, StatusLine, TextInput). Gaze card is the visual anchor. Grab-and-drop reordering, temporal indicators, alert system, edit mode, search/move overlays, agent prompt, insight review all working. Unicode width issues in selected state highlight remain. Three independent design systems produced by Claude, Gemini, and Codex agents — each explored ftui and werk from scratch and wrote a comprehensive design system document plus reflection on gaps and decision hierarchy. All collected in werk-design-inputs/ for synthesis. Next: synthesize the three designs into a definitive design system, then implement.",
+      "actual": "TUI is the primary experience. V1-V8 complete: 4-zone deck layout (desire/route/console/reality), frontier computation, gradual compression with configurable chrome, epoch mechanics, pitch/roll navigation with cursor memory, quick-edit gestures (!/? for desire/reality), trajectory toggle, focus zoom (Enter expands inline), peek (Space shows children), live console zone with enriched header and active input. Console V2 Phase 1 surgical fixes landed (next-step glyph, overdue intensity, header color-coding, breathing line, OVERDUE tag, contextual hints). Session telemetry, deck-native reorder, panic handler, flush sanity check, TUI startup backup, E2E tests. ftui integration: Flex layout, Paragraph word wrap, StatusLine. Remaining: Console V2 Phase 2 (ConsolePlan bounded component), V9 orient zoom, pathway palette presentation, survey view, threshold mechanics.",
       "created_at": "2026-03-24T17:52:25.922309+00:00",
       "desired": "werk is a FrankenTUI-first application where the terminal interface is the primary experience",
       "horizon": "2026-05-30",
@@ -118,7 +118,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Substantial implementation of the conceptual foundation in the data model and CLI. Implemented: gesture grouping (all mutations linked to gestures), sessions and epochs tables with CRUD, temporal calculus (6 computed properties in temporal.rs), frontier projection (operating envelope in frontier.rs), held/positioned distinction, parent snapshots, epoch boundaries on reality/desire updates. CLI displays frontier facts with honest labels and sorts children by structural position. Not yet implemented: state machine (6 states identified conceptually, not formally specified — #16), delta versioning as a queryable sequence of structural snapshots, epoch/session lifecycle wiring (#36). The gap between 'data model supports X' and 'the instrument uses X as the foundation specifies' remains significant — tables exist but the behavioral layer (state machine governing transitions, thresholds, pathway palettes) is unbuilt.",
+      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 — may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).",
       "created_at": "2026-03-24T17:52:26.260351+00:00",
       "desired": "the conceptual foundation is implemented — data model supports delta versioning, gesture grouping, order of operations distinct from horizon, held steps, and the five temporal concepts",
       "horizon": null,
@@ -140,7 +140,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "V1-V8 implemented. Deck view with 4-zone layout, frontier computation, gradual compression, configurable chrome, epoch mechanics, pitch/roll navigation with cursor memory, quick-edit gestures, trajectory toggle, focus zoom (inline expansion on Enter), peek (Space for children preview), live console zone with enriched header readouts and active input line. ftui integration: Flex layout, Paragraph word wrap, StatusLine. Panic handler, flush sanity check, TUI startup backup, 18 E2E tests. 40 design questions tracked. Next: console refinement, V9 orient zoom.",
+      "actual": "V1-V8 complete. Frontier-centered screen layout operational. Pitch/roll navigation with cursor memory. Focus zoom (Enter), peek (Space). Compression engine with configurable chrome. Epoch mechanics. Quick-edit gestures. Console V2 Phase 1 surgical fixes applied. 40 design questions tracked. Remaining children are TUI-specific feature extensions: survey view (#18), threshold mechanics (#19), pathway palettes (#58) — all unblocked but not yet built.",
       "created_at": "2026-03-24T17:52:26.323765+00:00",
       "desired": "TUI rebuilt around the operating envelope as primary interaction surface — frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access",
       "horizon": null,
@@ -151,7 +151,7 @@
       "status": "Active"
     },
     {
-      "actual": "state machine states identified conceptually (NORMAL, INPUT, FOCUSED, ORIENTED, PATHWAY, THRESHOLD) but not formally specified",
+      "actual": "State machine exists implicitly in TUI: InputMode enum has 8 states (Normal, Adding, Editing, Annotating, Confirming, Moving, Reordering, Searching, Help) plus focus zoom and peek as render-layer states. Transitions are implemented in update.rs key handlers. Not formally specified in XState/Stately — was built organically during V1-V8. The formal spec question is whether the current implicit machine needs to be extracted and validated, or whether the working implementation is sufficient.",
       "created_at": "2026-03-24T17:52:26.343123+00:00",
       "desired": "complete state machine specification — all states, transitions, key bindings per state, designed in XState/Stately before Rust implementation",
       "horizon": null,
@@ -228,7 +228,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "README install section fixed — removed fictional feature flags. CLI design gaps #53-#56 recorded under #10, two now resolved (#54 reopen --reason, #56 tree subtree). Docs expansion tracked as #52.",
+      "actual": "Skills rewritten around foundation vocabulary and instrument/practice boundary. README rewritten covering three interface surfaces and MCP. Install section simplified. Remaining: no formal user guide, no crate-level reference docs (tracked separately as #51).",
       "created_at": "2026-03-24T17:52:26.563389+00:00",
       "desired": "skills and documentation updated to reflect foundation — SKILL.md, references, onboarding rewritten around new vocabulary and concepts",
       "horizon": null,
@@ -236,7 +236,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 23,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "watch daemon exists with 7 trigger types, pending insights stored in .werk/watch/pending/. No integration with run concept or ground mode. Triggers fire independently of session state",
@@ -305,7 +305,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "CLI trigger path complete: reality and desire commands auto-create epoch boundaries before applying updates. --no-epoch flag for minor corrections. Manual 'werk epoch' command also available. TUI trigger path not yet implemented.",
+      "actual": "CLI trigger path complete: reality and desire commands auto-create epoch boundaries. Manual 'werk epoch' command available. --no-epoch flag for corrections. TUI inline edits (\\!/?) go through engine.update_desired/actual but don't yet trigger epoch boundaries — the epoch logic lives in the CLI command layer, not the store. Minor gap.",
       "created_at": "2026-03-24T17:52:26.941206+00:00",
       "desired": "epoch creation has a trigger path — CLI or TUI prompts 'start a new epoch?' when desire/reality changes, snapshotting the current delta",
       "horizon": null,
@@ -324,7 +324,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 31,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Tree view now shows short codes (#N) as primary identity, theory of closure progress [R/T], OVERDUE flags, and status markers (✓/~). Old dynamics (phase badges, movement signals, conflict markers) removed. ULID prefixes no longer shown in tree — short codes are the human interface.",
@@ -360,7 +360,7 @@
       "status": "Active"
     },
     {
-      "actual": "epoch tables and session tables exist in data model, no CLI trigger paths",
+      "actual": "Epoch lifecycle operational: auto-boundaries on reality/desire updates (CLI), manual 'werk epoch' command, epoch span queries (mutations per epoch across descendants), epoch list/show. Session lifecycle: TUI calls start_session/end_session, session telemetry logging added. Remaining gap: TUI doesn't yet trigger epoch boundaries on inline desire/reality edits.",
       "created_at": "2026-03-24T17:52:27.162135+00:00",
       "desired": "epoch and session lifecycle are fully operational",
       "horizon": null,
@@ -481,7 +481,7 @@
       "status": "Active"
     },
     {
-      "actual": "Temporal calculus computes properties per-query in temporal.rs but does not monitor or compare across time. Watch daemon has threshold detection coupled to agent invocation — detection logic is valuable, coupling is not.",
+      "actual": "Watch daemon deleted. Pathway palette infrastructure in werk-shared detects containment violations and sequencing pressure independently of invocation mechanism — triggers on add, move, position gestures across CLI and MCP. Temporal calculus computes urgency/critical-path/drift per-query. What's missing: cross-temporal threshold monitoring (detecting when urgency *crosses* a boundary between queries), horizon drift alerts, and surfacing these signals in the TUI.",
       "created_at": "2026-03-24T17:52:27.996872+00:00",
       "desired": "threshold detection as independent structural signal logic — urgency crossings, horizon drift, containment violations surfaceable without coupling to any invocation mechanism",
       "horizon": null,
@@ -591,7 +591,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Shared palette infrastructure exists in werk-shared (types, builders, applicators, detection). No TUI presentation layer yet. Blocked on envelope rebuild (#15 V3+).",
+      "actual": "Shared palette infrastructure exists in werk-shared (types, builders, applicators, detection). CLI palettes fully operational. Envelope rebuild complete (V1-V8). Blocker cleared. TUI presentation layer not yet built — needs to render palette option sets inline when gestures trigger structural signals.",
       "created_at": "2026-03-24T17:52:29.496367+00:00",
       "desired": "pathway palettes in TUI — inline option sets presented via ftui when gestures create structural signals (containment violations, sequencing pressure). Uses shared palette types from werk-shared. The TUI analog of CLI pathway palettes.",
       "horizon": null,

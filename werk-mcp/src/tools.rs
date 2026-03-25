@@ -1998,15 +1998,6 @@ impl WerkServer {
 
         let _ = store.begin_gesture(Some(&format!("hold {}", &tension_id)));
         store
-            .record_mutation(&Mutation::new(
-                tension_id.clone(),
-                Utc::now(),
-                "position".to_owned(),
-                tension.position.map(|p| p.to_string()),
-                "held".to_owned(),
-            ))
-            .map_err(|e| err(e.to_string()))?;
-        store
             .update_position(&tension_id, None)
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
@@ -2031,15 +2022,6 @@ impl WerkServer {
         let old_pos = tension.position;
 
         let _ = store.begin_gesture(Some(&format!("position {}", &tension_id)));
-        store
-            .record_mutation(&Mutation::new(
-                tension_id.clone(),
-                Utc::now(),
-                "position".to_owned(),
-                old_pos.map(|p| p.to_string()),
-                p.position.to_string(),
-            ))
-            .map_err(|e| err(e.to_string()))?;
         store
             .update_position(&tension_id, Some(p.position))
             .map_err(|e| err(e.to_string()))?;
