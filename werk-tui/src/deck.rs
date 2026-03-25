@@ -5,10 +5,10 @@
 //!     rendered in the middle area. Pitch navigation through selectable items.
 
 use ftui::Frame;
+use ftui::PackedRgba;
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::style::Style;
 use ftui::text::{Line, Span, Text, WrapMode};
-use ftui::widgets::status_line::{StatusLine, StatusItem};
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
 
@@ -374,6 +374,20 @@ impl Frontier {
             if self.show_held < self.held.len() { pos += 1; } // summary line
         }
         pos // input point is always right after held
+    }
+
+    /// Find the cursor index that points to a given sibling index.
+    /// Returns None if the sibling is not visible (compressed into a summary).
+    pub fn cursor_for_sibling(&self, sibling_idx: usize) -> Option<usize> {
+        let count = self.selectable_count();
+        for i in 0..count {
+            if let Some(idx) = self.cursor_target(i).sibling_index() {
+                if idx == sibling_idx {
+                    return Some(i);
+                }
+            }
+        }
+        None
     }
 
     /// Map a cursor index to what it points at.
@@ -924,7 +938,7 @@ impl InstrumentApp {
                 if my < top_limit {
                     let entry = &self.siblings[next_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, 0);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25B8}", is_selected, false, 0);
                     my += 1;
                     if focused_sibling == Some(next_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -934,22 +948,32 @@ impl InstrumentApp {
                 }
             }
 
-            // --- Console header: enriched boundary with structural readouts ---
+            // --- Console header: enriched boundary with structural readouts (S3) ---
             let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
                 || frontier.next.is_some() || !frontier.held.is_empty()
                 || !frontier.accumulated.is_empty();
             if has_content && my < top_limit {
-                // Build readout: closure · epoch · next deadline
+                // S5: Breathing line above console header
+                if my > middle_start && middle_zone.height > 10 {
+                    my += 1;
+                }
+
+                // Build readout as colored spans
                 let total_children = self.siblings.len();
                 let done_count = self.siblings.iter()
                     .filter(|s| s.status == TensionStatus::Resolved || s.status == TensionStatus::Released)
                     .count();
-                let epoch_str = self.epoch_boundary.map(|boundary| {
+                let epoch_display = self.epoch_boundary.map(|boundary| {
                     let delta = chrono::Utc::now().signed_duration_since(boundary);
                     let hours = delta.num_hours();
-                    if hours < 1 { "fresh".to_string() }
-                    else if hours < 24 { format!("epoch {}h", hours) }
-                    else { format!("epoch {}d", delta.num_days()) }
+                    let days = delta.num_days();
+                    let text = if hours < 1 { "fresh".to_string() }
+                        else if hours < 24 { format!("epoch {}h", hours) }
+                        else { format!("epoch {}d", days) };
+                    let style = if hours < 1 { STYLES.green }
+                        else if days > 7 { STYLES.amber }
+                        else { STYLES.dim };
+                    (text, style)
                 });
                 let next_dl = frontier.route.iter()
                     .chain(frontier.next.iter())
@@ -957,38 +981,70 @@ impl InstrumentApp {
                     .filter_map(|s| s.horizon_label.as_deref())
                     .next();
 
-                let mut readout_parts: Vec<String> = Vec::new();
+                // Collect readout cells: (text, style)
+                let mut cells: Vec<(String, Style)> = Vec::new();
                 if total_children > 0 {
-                    readout_parts.push(format!("{}/{}", done_count, total_children));
+                    cells.push((format!("{}/{}", done_count, total_children), STYLES.text));
                 }
-                if let Some(ref ep) = epoch_str {
-                    readout_parts.push(ep.clone());
+                if let Some((ref text, style)) = epoch_display {
+                    cells.push((text.clone(), style));
                 }
                 if let Some(dl) = next_dl {
-                    readout_parts.push(format!("next {}", dl));
+                    cells.push((format!("next {}", dl), STYLES.dim));
                 }
-                if frontier.overdue.len() > 0 {
-                    readout_parts.push(format!("\u{26A0} {} overdue", frontier.overdue.len()));
+                if !frontier.overdue.is_empty() {
+                    cells.push((
+                        format!("\u{26A0} {} overdue", frontier.overdue.len()),
+                        STYLES.amber,
+                    ));
                 }
 
-                let readout = readout_parts.join(" \u{00B7} ");
+                // Calculate total readout width for centering
+                let separator = " \u{00B7} ";
+                let sep_w = separator.chars().count();
+                let readout_w: usize = cells.iter().map(|(t, _)| t.chars().count()).sum::<usize>()
+                    + if cells.len() > 1 { sep_w * (cells.len() - 1) } else { 0 };
 
-                // Center the readout in a rule line: ┄┄ readout ┄┄
+                // Render: rule background with colored readout overlay
                 let rule_char = glyphs::LIGHT_RULE.to_string();
-                let readout_w = readout.chars().count();
-                let pad_total = w.saturating_sub(readout_w + 4); // 2 spaces + 2 rule segments
+                let pad_total = w.saturating_sub(readout_w + 4);
                 let left_rules = pad_total / 2;
                 let right_rules = pad_total - left_rules;
-                let header = format!(
-                    "{} {} {}",
-                    rule_char.repeat(left_rules),
-                    readout,
-                    rule_char.repeat(right_rules),
-                );
-                render_line(frame, area.x, my, area.width, &[
-                    (header, STYLES.dim),
-                ]);
+
+                let mut header_spans: Vec<Span> = Vec::new();
+                header_spans.push(Span::styled(rule_char.repeat(left_rules), STYLES.dim));
+                header_spans.push(Span::styled(" ", STYLES.dim));
+                for (i, (text, style)) in cells.iter().enumerate() {
+                    if i > 0 {
+                        header_spans.push(Span::styled(separator, STYLES.dim));
+                    }
+                    header_spans.push(Span::styled(text.clone(), *style));
+                }
+                header_spans.push(Span::styled(" ", STYLES.dim));
+                header_spans.push(Span::styled(rule_char.repeat(right_rules), STYLES.dim));
+
+                Paragraph::new(Text::from(Line::from_spans(header_spans)))
+                    .render(Rect::new(area.x, my, area.width, 1), frame);
                 my += 1;
+
+                // S4: Held-only message (no route, no overdue, no next — only held)
+                let s4_held_only = frontier.route.is_empty()
+                    && frontier.overdue.is_empty()
+                    && frontier.next.is_none()
+                    && !frontier.held.is_empty();
+                if s4_held_only && my < top_limit {
+                    my += 1; // breathing
+                    let msg = "no committed next step";
+                    let prefix_len = cols.left + GUTTER;
+                    let pad_right = w.saturating_sub(prefix_len + msg.len());
+                    render_line(frame, area.x, my, area.width, &[
+                        (" ".repeat(prefix_len), Style::new()),
+                        (msg.to_string(), STYLES.dim),
+                        (" ".repeat(pad_right), Style::new()),
+                    ]);
+                    my += 1;
+                    if my < top_limit { my += 1; } // breathing
+                }
             }
 
             // --- Held items (gradual: show N individually, summary for rest) ---
@@ -1032,13 +1088,42 @@ impl InstrumentApp {
             }
         }
 
+        // --- S4: Empty console state ---
+        let is_empty_console = frontier.route.is_empty()
+            && frontier.overdue.is_empty()
+            && frontier.next.is_none()
+            && frontier.held.is_empty();
+
+        if is_empty_console && my < top_limit {
+            // Truly empty: no children or all accumulated
+            if my < top_limit { my += 1; } // breathing
+            let msg = if frontier.accumulated.is_empty() && self.siblings.is_empty() {
+                "no steps yet"
+            } else {
+                "no active steps"
+            };
+            let prefix_len = cols.left + GUTTER;
+            let pad_right = w.saturating_sub(prefix_len + msg.len());
+            render_line(frame, area.x, my, area.width, &[
+                (" ".repeat(prefix_len), Style::new()),
+                (msg.to_string(), STYLES.dim),
+                (" ".repeat(pad_right), Style::new()),
+            ]);
+            my += 1;
+            if my < top_limit { my += 1; } // breathing
+        }
+
         // --- Input line: the action surface at the console's heart ---
         if my < top_limit {
             let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
 
             let content = if is_selected {
                 // Active: show available gestures
-                "\u{25B8} a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality".to_string()
+                if is_empty_console {
+                    "\u{25B8} a add first step \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality"
+                } else {
+                    "\u{25B8} a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality"
+                }.to_string()
             } else {
                 // Resting: minimal affordance
                 "\u{25B8} ___".to_string()
@@ -1083,7 +1168,14 @@ impl InstrumentApp {
         let base_style = if is_selected {
             STYLES.selected
         } else if is_overdue {
-            STYLES.amber
+            // S2: Time-amplified overdue intensity (N7/C5)
+            if entry.temporal_urgency > 2.0 {
+                Style::new().fg(PackedRgba::rgb(230, 190, 60)).bold()
+            } else if entry.temporal_urgency > 1.3 {
+                Style::new().fg(CLR_AMBER).bold()
+            } else {
+                STYLES.amber
+            }
         } else if is_done {
             STYLES.dim
         } else {
@@ -1091,7 +1183,7 @@ impl InstrumentApp {
         };
 
         let glyph_style = if is_overdue && !is_selected {
-            STYLES.amber
+            base_style // inherit the escalated overdue style
         } else {
             base_style
         };
@@ -1111,17 +1203,21 @@ impl InstrumentApp {
 
         let right_str = format!("{} {} {}", id_num, arrow, age_str);
 
+        // S7: OVERDUE tag for overdue items
+        let overdue_tag = if is_overdue && !is_selected { "OVERDUE  " } else { "" };
+        let overdue_tag_w = overdue_tag.chars().count();
+
         // Main column: glyph + text — maximum budget
         let glyph_w = 2; // glyph + space
         let right_w = right_str.chars().count();
         let text_budget = w
-            .saturating_sub(cols.left + GUTTER + extra_indent + glyph_w + GUTTER + right_w);
+            .saturating_sub(cols.left + GUTTER + extra_indent + glyph_w + overdue_tag_w + GUTTER + right_w);
         let main_text = truncate_str(&entry.desired, text_budget);
 
         // Build the line
         let mut spans: Vec<Span> = Vec::new();
 
-        let left_style = if is_selected { base_style } else if is_overdue { STYLES.amber } else { STYLES.dim };
+        let left_style = if is_selected { base_style } else if is_overdue { base_style } else { STYLES.dim };
         let right_style = if is_selected { base_style } else { STYLES.dim };
 
         spans.push(Span::styled(left_padded, left_style));
@@ -1129,10 +1225,13 @@ impl InstrumentApp {
         spans.push(Span::styled(format!("{} ", glyph), glyph_style));
         spans.push(Span::styled(&main_text, base_style));
 
-        // Pad between text and right sub-columns
+        // Pad between text and OVERDUE tag / right sub-columns
         let used: usize = cols.left + GUTTER + extra_indent + glyph_w + main_text.chars().count();
-        let gap = w.saturating_sub(used + right_w);
+        let gap = w.saturating_sub(used + overdue_tag_w + right_w);
         spans.push(Span::styled(" ".repeat(gap), base_style));
+        if !overdue_tag.is_empty() {
+            spans.push(Span::styled(overdue_tag, base_style));
+        }
         spans.push(Span::styled(right_str, right_style));
 
         // Pad to full width for selection highlight
@@ -1384,6 +1483,17 @@ impl InstrumentApp {
         self.deck_cursor.index = frontier.default_cursor();
     }
 
+    /// Set deck cursor to point at a specific sibling index.
+    /// Falls back to default cursor if the sibling isn't visible.
+    pub fn deck_cursor_to_sibling(&mut self, sibling_idx: usize) {
+        let frontier = self.frontier_for_navigation();
+        if let Some(cursor_idx) = frontier.cursor_for_sibling(sibling_idx) {
+            self.deck_cursor.index = cursor_idx;
+        } else {
+            self.deck_cursor.index = frontier.default_cursor();
+        }
+    }
+
     /// Get the sibling index the deck cursor currently points to (if any).
     pub fn deck_selected_sibling_index(&self) -> Option<usize> {
         let frontier = self.frontier_for_navigation();
@@ -1391,24 +1501,73 @@ impl InstrumentApp {
     }
 
     /// Render the deck bottom bar using ftui StatusLine.
+    /// S6: Context-sensitive gesture hints based on cursor target (Normal mode only).
     pub fn render_deck_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
         let content = self.deck_content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
-        // Build dynamic text, then borrow for StatusLine
-        let events_text = if self.parent_mutation_count > 0 {
-            format!("\u{2193} {} prior events", self.parent_mutation_count)
+        // S6: Context-sensitive hints — only in Normal input mode
+        let hints_text = if matches!(self.input_mode, crate::state::InputMode::Normal) {
+            let frontier = self.frontier_for_navigation();
+            let target = frontier.cursor_target(self.deck_cursor.index);
+            match target {
+                CursorTarget::Route(_) | CursorTarget::Next(_) =>
+                    "Enter focus \u{00B7} l descend \u{00B7} r resolve".to_string(),
+                CursorTarget::Overdue(_) =>
+                    "r resolve \u{00B7} ~ release \u{00B7} l descend".to_string(),
+                CursorTarget::HeldItem(_) =>
+                    "Enter focus \u{00B7} r resolve \u{00B7} ~ release".to_string(),
+                CursorTarget::AccumulatedItem(_) =>
+                    "l descend \u{00B7} Enter focus".to_string(),
+                _ => String::new(),
+            }
         } else {
             String::new()
         };
 
-        let mut bar = StatusLine::new().style(STYLES.lever);
-        if !events_text.is_empty() {
-            bar = bar.left(StatusItem::text(&events_text));
-        }
-        bar = bar.right(StatusItem::text("? help"));
+        // Build dynamic text, then borrow for StatusLine
+        let events_text = if self.parent_mutation_count > 0 {
+            format!("\u{2193} {} prior epochs", self.parent_mutation_count)
+        } else {
+            String::new()
+        };
 
-        bar.render(bar_area, frame);
+        // Render bar manually for true centering of hints
+        let w = bar_area.width as usize;
+        let left_w = events_text.chars().count();
+        let right_text = "? help";
+        let right_w = right_text.chars().count();
+        let hints_w = hints_text.chars().count();
+
+        // True center position for hints
+        let hints_start = if hints_w > 0 {
+            (w.saturating_sub(hints_w)) / 2
+        } else { 0 };
+
+        let mut spans: Vec<Span> = Vec::new();
+
+        // Left: events text
+        if !events_text.is_empty() {
+            spans.push(Span::styled(&events_text, STYLES.lever));
+        }
+
+        // Gap between left and centered hints
+        let after_left = left_w;
+        if hints_w > 0 {
+            let gap = hints_start.saturating_sub(after_left);
+            spans.push(Span::styled(" ".repeat(gap), STYLES.lever));
+            spans.push(Span::styled(&hints_text, STYLES.lever));
+        }
+
+        // Gap between hints and right
+        let after_hints = if hints_w > 0 { hints_start + hints_w } else { after_left };
+        let right_start = w.saturating_sub(right_w);
+        let gap = right_start.saturating_sub(after_hints);
+        spans.push(Span::styled(" ".repeat(gap), STYLES.lever));
+        spans.push(Span::styled(right_text, STYLES.lever));
+
+        Paragraph::new(Text::from(Line::from_spans(spans)))
+            .render(bar_area, frame);
     }
 }
 
