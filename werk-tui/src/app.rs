@@ -870,6 +870,91 @@ impl InstrumentApp {
         }
     }
 
+    /// Global undo/redo: find the most recent undoable mutation across all
+    /// visible tensions + parent, and apply its old_value.
+    /// Both undo and redo use the same mechanics (toggle behavior).
+    pub fn global_undo_redo(&mut self, is_redo: bool) {
+        use sd_core::TensionStatus;
+
+        // Collect all tension IDs in scope: parent + all siblings
+        let mut candidates: Vec<String> = self.siblings.iter().map(|s| s.id.clone()).collect();
+        if let Some(ref pid) = self.parent_id {
+            candidates.push(pid.clone());
+        }
+
+        // Find the most recent undoable mutation across all candidates
+        let mut best: Option<(chrono::DateTime<chrono::Utc>, String, String, String)> = None; // (timestamp, tension_id, field, old_value)
+
+        for id in &candidates {
+            let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
+            for m in mutations.iter().rev() {
+                let field = m.field();
+                let old = match m.old_value() {
+                    Some(v) => v.to_string(),
+                    None => continue,
+                };
+                match field {
+                    "desired" | "actual" | "status" | "horizon" => {}
+                    _ => continue,
+                }
+                let ts = m.timestamp().to_owned();
+                if best.as_ref().map(|(bt, _, _, _)| ts > *bt).unwrap_or(true) {
+                    best = Some((ts, id.clone(), field.to_string(), old));
+                }
+                break; // only check most recent undoable per tension
+            }
+        }
+
+        let label = if is_redo { "restored" } else { "reverted" };
+
+        if let Some((_ts, tension_id, field, old_value)) = best {
+            let display_id = self.siblings.iter()
+                .find(|s| s.id == tension_id)
+                .and_then(|s| s.short_code)
+                .map(|sc| format!("#{}", sc))
+                .or_else(|| {
+                    self.parent_tension.as_ref()
+                        .filter(|p| p.id == tension_id)
+                        .and_then(|p| p.short_code)
+                        .map(|sc| format!("#{}", sc))
+                })
+                .unwrap_or_else(|| tension_id[..8].to_string());
+
+            match field.as_str() {
+                "desired" => {
+                    let _ = self.engine.update_desired(&tension_id, &old_value);
+                    self.set_transient(format!("{} desire {}", display_id, label));
+                }
+                "actual" => {
+                    let _ = self.engine.update_actual(&tension_id, &old_value);
+                    self.set_transient(format!("{} reality {}", display_id, label));
+                }
+                "status" => {
+                    let status = match old_value.as_str() {
+                        "Active" => TensionStatus::Active,
+                        "Resolved" => TensionStatus::Resolved,
+                        "Released" => TensionStatus::Released,
+                        _ => TensionStatus::Active,
+                    };
+                    let _ = self.engine.store().update_status(&tension_id, status);
+                    self.set_transient(format!("{} status {}", display_id, label));
+                }
+                "horizon" => {
+                    if old_value.is_empty() {
+                        let _ = self.engine.update_horizon(&tension_id, None);
+                    } else if let Ok(h) = crate::horizon::parse_horizon(&old_value) {
+                        let _ = self.engine.update_horizon(&tension_id, Some(h));
+                    }
+                    self.set_transient(format!("{} horizon {}", display_id, label));
+                }
+                _ => {}
+            }
+            self.load_siblings();
+        } else {
+            self.set_transient(if is_redo { "nothing to redo" } else { "nothing to undo" });
+        }
+    }
+
     /// Set a transient message on the lever.
     #[allow(dead_code)]
     pub fn set_transient(&mut self, text: impl Into<String>) {
