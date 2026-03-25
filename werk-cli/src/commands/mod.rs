@@ -266,7 +266,11 @@ pub enum Commands {
     },
 
     /// Show system health summary (structural statistics, temporal alerts).
-    Health,
+    Health {
+        /// Repair: purge no-op mutations where old_value equals new_value.
+        #[arg(long)]
+        repair: bool,
+    },
 
     /// Show behavioral pattern insights from mutation history.
     Insights {

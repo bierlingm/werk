@@ -109,7 +109,7 @@ fn main() {
             resolved,
             released,
         } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released),
-        Commands::Health => werk::commands::health::cmd_health(&output),
+        Commands::Health { repair } => werk::commands::health::cmd_health(&output, repair),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
         Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
         Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),

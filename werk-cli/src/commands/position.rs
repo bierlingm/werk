@@ -33,29 +33,38 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
     let old_position = tension.position;
 
     let _ = store.begin_gesture(Some(&format!("position {} at {}", &tension.id, n)));
-    store
+    let changed = store
         .update_position(&tension.id, Some(n))
         .map_err(WerkError::SdError)?;
     store.end_gesture();
 
     // Print success message before palette (human mode)
     if !output.is_structured() {
-        match old_position {
-            Some(p) => {
-                output
-                    .success(&format!(
-                        "Positioned tension {} at {} (was {})",
-                        werk_shared::display_id(tension.short_code, &tension.id), n, p
-                    ))
-                    .map_err(|e| WerkError::IoError(e.to_string()))?;
-            }
-            None => {
-                output
-                    .success(&format!(
-                        "Positioned tension {} at {} (was held)",
-                        werk_shared::display_id(tension.short_code, &tension.id), n
-                    ))
-                    .map_err(|e| WerkError::IoError(e.to_string()))?;
+        if !changed {
+            output
+                .success(&format!(
+                    "Tension {} is already at position {}",
+                    werk_shared::display_id(tension.short_code, &tension.id), n
+                ))
+                .map_err(|e| WerkError::IoError(e.to_string()))?;
+        } else {
+            match old_position {
+                Some(p) => {
+                    output
+                        .success(&format!(
+                            "Positioned tension {} at {} (was {})",
+                            werk_shared::display_id(tension.short_code, &tension.id), n, p
+                        ))
+                        .map_err(|e| WerkError::IoError(e.to_string()))?;
+                }
+                None => {
+                    output
+                        .success(&format!(
+                            "Positioned tension {} at {} (was held)",
+                            werk_shared::display_id(tension.short_code, &tension.id), n
+                        ))
+                        .map_err(|e| WerkError::IoError(e.to_string()))?;
+                }
             }
         }
     }

@@ -144,11 +144,12 @@ impl Engine {
     }
 
     /// Update the position of a tension for sibling ordering.
+    /// Returns true if position actually changed, false if already at target value.
     pub fn update_position(
         &mut self,
         id: &str,
         new_position: Option<i32>,
-    ) -> Result<(), crate::tension::SdError> {
+    ) -> Result<bool, crate::tension::SdError> {
         self.store.update_position(id, new_position)
     }
 
