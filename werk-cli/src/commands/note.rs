@@ -64,7 +64,7 @@ pub fn cmd_note_add(
         }
         (Some(text), None) => (None, text),
         (Some(id), Some(text)) => (Some(id), text),
-        (None, Some(_)) => unreachable!("arg2 without arg1"),
+        (None, Some(_)) => unreachable!("arg2 without arg1"), // ubs:ignore positional args guarantee this
     };
 
     let workspace = Workspace::discover()?;

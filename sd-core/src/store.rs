@@ -131,7 +131,7 @@ impl From<StoreError> for SdError {
 /// Use `set_event_bus()` to attach a bus, then all successful operations
 /// will emit corresponding events.
 pub struct Store {
-    conn: Rc<RefCell<Connection>>,
+    conn: Rc<RefCell<Connection>>, // ubs:ignore deliberate !Send — single-writer fsqlite design
     path: Option<PathBuf>,
     event_bus: Option<EventBus>,
     /// The currently active gesture. When set, all mutations are linked to this gesture.
@@ -2939,8 +2939,8 @@ mod tests {
         let result = Store::init(temp_dir.path());
         match result {
             Err(StoreError::StoreLocked) => {} // expected
-            Err(other) => panic!("expected StoreLocked, got: {}", other),
-            Ok(_) => panic!("expected StoreLocked error, but init succeeded"),
+            Err(other) => panic!("expected StoreLocked, got: {}", other), // ubs:ignore test assertion
+            Ok(_) => panic!("expected StoreLocked error, but init succeeded"), // ubs:ignore test assertion
         }
     }
 
@@ -3872,7 +3872,7 @@ mod tests {
             assert_eq!(old_horizon, &Some("2026".to_owned()));
             assert_eq!(new_horizon, &None);
         } else {
-            panic!("expected HorizonChanged event");
+            panic!("expected HorizonChanged event"); // ubs:ignore test assertion
         }
     }
 
@@ -3924,7 +3924,7 @@ mod tests {
         if let Event::TensionCreated { horizon, .. } = &evts[0] {
             assert_eq!(horizon, &Some("2026-05".to_owned()));
         } else {
-            panic!("expected TensionCreated event");
+            panic!("expected TensionCreated event"); // ubs:ignore test assertion
         }
     }
 
@@ -3954,7 +3954,7 @@ mod tests {
         if let Event::TensionCreated { horizon, .. } = &evts[0] {
             assert!(horizon.is_none());
         } else {
-            panic!("expected TensionCreated event");
+            panic!("expected TensionCreated event"); // ubs:ignore test assertion
         }
     }
 
@@ -3982,7 +3982,7 @@ mod tests {
         if let Event::TensionCreated { horizon, .. } = &evts[0] {
             assert!(horizon.is_none());
         } else {
-            panic!("expected TensionCreated event");
+            panic!("expected TensionCreated event"); // ubs:ignore test assertion
         }
     }
 

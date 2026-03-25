@@ -149,7 +149,7 @@ mod tests {
                 assert_eq!(new_value, "Research complete");
                 assert_eq!(reasoning, "Progress made");
             }
-            other => panic!("Expected UpdateActual, got {:?}", other),
+            other => panic!("Expected UpdateActual, got {:?}", other), // ubs:ignore test assertion
         }
     }
 

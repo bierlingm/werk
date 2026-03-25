@@ -515,7 +515,7 @@ mod tests {
             HorizonParseError::OutOfRange(msg) => {
                 assert!(msg.contains("1-9999") || msg.contains("year must be"));
             }
-            other => panic!("expected OutOfRange, got {other:?}"),
+            other => panic!("expected OutOfRange, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -527,7 +527,7 @@ mod tests {
             HorizonParseError::OutOfRange(msg) => {
                 assert!(msg.contains("1-9999") || msg.contains("year must be"));
             }
-            other => panic!("expected OutOfRange, got {other:?}"),
+            other => panic!("expected OutOfRange, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -557,7 +557,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             HorizonParseError::OutOfRange(msg) => assert!(msg.contains("1-12")),
-            other => panic!("expected OutOfRange, got {other:?}"),
+            other => panic!("expected OutOfRange, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -567,7 +567,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             HorizonParseError::OutOfRange(msg) => assert!(msg.contains("1-12")),
-            other => panic!("expected OutOfRange, got {other:?}"),
+            other => panic!("expected OutOfRange, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -588,7 +588,7 @@ mod tests {
                 assert_eq!(date.month(), 5);
                 assert_eq!(date.day(), 15);
             }
-            other => panic!("expected Day, got {other:?}"),
+            other => panic!("expected Day, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -600,7 +600,7 @@ mod tests {
                 assert_eq!(date.month(), 2);
                 assert_eq!(date.day(), 29);
             }
-            other => panic!("expected Day, got {other:?}"),
+            other => panic!("expected Day, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -630,7 +630,7 @@ mod tests {
                 assert_eq!(date.month(), 12);
                 assert_eq!(date.day(), 31);
             }
-            other => panic!("expected Day, got {other:?}"),
+            other => panic!("expected Day, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -660,7 +660,7 @@ mod tests {
                 assert_eq!(dt.minute(), 0);
                 assert_eq!(dt.second(), 0);
             }
-            other => panic!("expected DateTime, got {other:?}"),
+            other => panic!("expected DateTime, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -672,7 +672,7 @@ mod tests {
                 // Should be converted to UTC
                 assert_eq!(dt.hour(), 12); // 14:00+02:00 = 12:00 UTC
             }
-            other => panic!("expected DateTime, got {other:?}"),
+            other => panic!("expected DateTime, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -683,7 +683,7 @@ mod tests {
             HorizonKind::DateTime(dt) => {
                 assert_eq!(dt.hour(), 14);
             }
-            other => panic!("expected DateTime, got {other:?}"),
+            other => panic!("expected DateTime, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -701,7 +701,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             HorizonParseError::EmptyInput => {}
-            other => panic!("expected EmptyInput, got {other:?}"),
+            other => panic!("expected EmptyInput, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -711,7 +711,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             HorizonParseError::EmptyInput => {}
-            other => panic!("expected EmptyInput, got {other:?}"),
+            other => panic!("expected EmptyInput, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -1609,7 +1609,7 @@ mod tests {
             HorizonParseError::OutOfRange(msg) => {
                 assert!(msg.contains("1-9999"));
             }
-            other => panic!("expected OutOfRange, got {other:?}"),
+            other => panic!("expected OutOfRange, got {other:?}"), // ubs:ignore test assertion
         }
     }
 

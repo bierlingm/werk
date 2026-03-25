@@ -757,7 +757,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             TreeError::SelfReference(id) => assert_eq!(id, "self"),
-            _ => panic!("expected SelfReference error"),
+            _ => panic!("expected SelfReference error"), // ubs:ignore test assertion
         }
     }
 
@@ -777,7 +777,7 @@ mod tests {
             TreeError::CircularReference(msg) => {
                 assert!(msg.contains("->"));
             }
-            _ => panic!("expected CircularReference error"),
+            _ => panic!("expected CircularReference error"), // ubs:ignore test assertion
         }
     }
 

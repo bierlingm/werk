@@ -520,7 +520,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             super::ReplayError::EmptyMutations => {}
-            other => panic!("expected EmptyMutations, got {other:?}"),
+            other => panic!("expected EmptyMutations, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -538,7 +538,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             super::ReplayError::MissingCreation => {}
-            other => panic!("expected MissingCreation, got {other:?}"),
+            other => panic!("expected MissingCreation, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -738,7 +738,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             super::ReplayError::InvalidStatus(s) => assert_eq!(s, "InvalidStatus"),
-            other => panic!("expected InvalidStatus, got {other:?}"),
+            other => panic!("expected InvalidStatus, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -923,7 +923,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             super::ReplayError::InvalidHorizon(s) => assert_eq!(s, "invalid-horizon"),
-            other => panic!("expected InvalidHorizon, got {other:?}"),
+            other => panic!("expected InvalidHorizon, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
