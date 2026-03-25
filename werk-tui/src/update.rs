@@ -1,10 +1,8 @@
 //! Update logic for the Operative Instrument.
 
-use std::time::Duration;
-
 use ftui::{Cmd, Event, Frame, Model};
 use ftui::layout::{Constraint, Flex, Rect};
-use ftui::runtime::subscription::{Every, Subscription};
+use ftui::runtime::subscription::Subscription;
 
 use crate::app::InstrumentApp;
 use crate::msg::Msg;
@@ -25,6 +23,14 @@ impl Model for InstrumentApp {
             }
         }
 
+        // Check for external DB changes on user input (not reorder — preserves drag state)
+        if !matches!(msg, Msg::Tick | Msg::Noop)
+            && !matches!(self.input_mode, InputMode::Reordering { .. })
+            && self.db_has_changed()
+        {
+            self.load_siblings();
+        }
+
         match &self.input_mode {
             InputMode::Normal => self.update_normal(msg),
             InputMode::Help => self.update_help(msg),
@@ -35,6 +41,7 @@ impl Model for InstrumentApp {
             InputMode::Searching => self.update_searching(msg),
             InputMode::Moving { .. } => self.update_moving(msg),
             InputMode::Reordering { .. } => self.update_reordering(msg),
+            InputMode::Pathway => self.update_pathway(msg),
         }
     }
 
@@ -92,6 +99,9 @@ impl Model for InstrumentApp {
             InputMode::Annotating { .. } => {
                 self.render_note_prompt(&rects[0], frame);
             }
+            InputMode::Pathway => {
+                self.render_pathway(&rects[0], frame);
+            }
             // Full-screen modes already rendered above
             _ => {}
         }
@@ -106,12 +116,12 @@ impl Model for InstrumentApp {
         // Hints — show contextual hints for input modes
         if show_hints {
             match &self.input_mode {
-                InputMode::Adding(_) => self.render_input_hints("Enter next  Esc skip/create  Bksp back", &rects[2], frame),
+                InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &rects[2], frame),
                 InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &rects[2], frame),
-                InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab switch field  Esc cancel", &rects[2], frame),
+                InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &rects[2], frame),
                 InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &rects[2], frame),
                 InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &rects[2], frame),
-                InputMode::Moving { .. } => self.render_input_hints("Enter place here  j/k navigate  Esc cancel", &rects[2], frame),
+                InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &rects[2], frame),
                 InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &rects[2], frame),
                 _ => self.render_hints(&rects[2], frame),
             }
@@ -119,7 +129,9 @@ impl Model for InstrumentApp {
     }
 
     fn subscriptions(&self) -> Vec<Box<dyn Subscription<Msg>>> {
-        vec![Box::new(Every::new(Duration::from_secs(2), || Msg::Tick))]
+        // No recurring tick — we schedule one-shot ticks on demand to avoid
+        // unnecessary redraws that cause terminal flicker.
+        vec![]
     }
 }
 
@@ -441,6 +453,36 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Position toggle: held → position (next step), positioned → hold
+            Msg::Char('p') => {
+                if let Some(entry) = self.action_target().cloned() {
+                    let entry_id = entry.id.clone();
+                    if entry.status != sd_core::TensionStatus::Active {
+                        self.set_transient("only active steps can be positioned");
+                    } else if entry.position.is_some() {
+                        // Positioned → hold
+                        let _ = self.engine.update_position(&entry_id, None);
+                        self.set_transient("held");
+                        self.load_siblings();
+                        // Track cursor to the moved item
+                        if let Some(idx) = self.siblings.iter().position(|s| s.id == entry_id) {
+                            self.deck_cursor_to_sibling(idx);
+                        }
+                    } else {
+                        // Held → position at 1 (bottom of sequence = next to act on)
+                        let _ = self.engine.update_position(&entry_id, Some(1));
+                        self.set_transient("positioned");
+                        self.load_siblings();
+                        // Track cursor to the moved item
+                        if let Some(idx) = self.siblings.iter().position(|s| s.id == entry_id) {
+                            self.deck_cursor_to_sibling(idx);
+                        }
+                        self.check_sequencing_palette(&entry_id);
+                    }
+                }
+                Cmd::none()
+            }
+
             // Search
             Msg::Char('/') | Msg::Search => {
                 self.input_mode = InputMode::Searching;
@@ -588,21 +630,7 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            Msg::Tick => {
-                if let Some(ref t) = self.transient {
-                    if t.is_expired() {
-                        self.transient = None;
-                    }
-                }
-                // Only reload if the database file has changed (external modification).
-                // NEVER reload during reorder — it destroys the in-memory drag state.
-                if !matches!(self.input_mode, InputMode::Reordering { .. }) && self.db_has_changed() {
-                    self.session_log.record(crate::session_log::Category::State,
-                        "RELOAD: db changed externally, reloading siblings");
-                    self.load_siblings();
-                }
-                Cmd::none()
-            }
+            Msg::Tick => Cmd::none(),
 
             // In normal mode, RawEvent carries Left/Right that should be navigation
             Msg::RawEvent(Event::Key(key)) => {
@@ -628,6 +656,21 @@ impl InstrumentApp {
                 self.reorder_move_down();
                 Cmd::none()
             }
+            // g/G: jump to top/bottom of active list
+            Msg::Char('g') => {
+                while self.vlist.cursor > 0 {
+                    self.reorder_move_up();
+                }
+                Cmd::none()
+            }
+            Msg::Char('G') => {
+                while self.vlist.cursor < self.siblings.len().saturating_sub(1) {
+                    let prev = self.vlist.cursor;
+                    self.reorder_move_down();
+                    if self.vlist.cursor == prev { break; } // hit bottom
+                }
+                Cmd::none()
+            }
             // Enter/Space commits
             Msg::Submit | Msg::Char(' ') => {
                 self.reorder_commit();
@@ -641,12 +684,80 @@ impl InstrumentApp {
             // Quit always works (Ctrl+C or q)
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             // Everything else: ignore (stay in reorder mode)
-            _ => {
-                self.session_log.record(crate::session_log::Category::Reorder,
-                    format!("IGNORED msg={:?} (in reorder mode)", msg));
+            _ => Cmd::none(),
+        }
+    }
+
+    fn update_pathway(&mut self, msg: Msg) -> Cmd<Msg> {
+        match msg {
+            Msg::Noop | Msg::Tick => Cmd::none(),
+            Msg::Char('j') | Msg::Down => {
+                if let Some(ref mut pw) = self.pathway_state {
+                    if pw.cursor + 1 < pw.palette.options.len() {
+                        pw.cursor += 1;
+                    }
+                }
                 Cmd::none()
             }
+            Msg::Char('k') | Msg::Up => {
+                if let Some(ref mut pw) = self.pathway_state {
+                    if pw.cursor > 0 {
+                        pw.cursor -= 1;
+                    }
+                }
+                Cmd::none()
+            }
+            // Number keys select directly (1-9)
+            Msg::Char(c @ '1'..='9') => {
+                let idx = (c as usize) - ('1' as usize);
+                if let Some(ref pw) = self.pathway_state {
+                    if idx < pw.palette.options.len() {
+                        self.apply_pathway_choice(idx);
+                    }
+                }
+                Cmd::none()
+            }
+            Msg::Submit => {
+                if let Some(ref pw) = self.pathway_state {
+                    let idx = pw.cursor;
+                    self.apply_pathway_choice(idx);
+                }
+                Cmd::none()
+            }
+            Msg::Cancel | Msg::Char('q') => {
+                // Dismiss = option index 0 (keep as-is)
+                self.apply_pathway_choice(0);
+                Cmd::none()
+            }
+            Msg::Quit => Cmd::quit(),
+            _ => Cmd::none(),
         }
+    }
+
+    fn apply_pathway_choice(&mut self, option_index: usize) {
+        if let Some(pw) = self.pathway_state.take() {
+            let choice = if pw.palette.options.get(option_index)
+                .map(|o| o.action == "dismiss")
+                .unwrap_or(true)
+            {
+                werk_shared::palette::PaletteChoice::Dismissed
+            } else {
+                werk_shared::palette::PaletteChoice::Selected(option_index)
+            };
+
+            match werk_shared::palette::apply_choice(
+                self.engine.store_mut(),
+                &pw.context,
+                &choice,
+            ) {
+                Ok(Some(msg)) => self.set_transient(msg),
+                Ok(None) => self.set_transient("dismissed"),
+                Err(e) => self.set_transient(format!("palette error: {}", e)),
+            }
+
+            self.load_siblings();
+        }
+        self.input_mode = InputMode::Normal;
     }
 
     fn update_help(&mut self, msg: Msg) -> Cmd<Msg> {
@@ -694,17 +805,63 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Submit => {
+                // Enter = create now with what I have, intelligent defaults for the rest.
                 let buf = self.input_buffer.clone();
-                if buf.is_empty() {
-                    return Cmd::none();
-                }
                 match self.input_mode.clone() {
                     InputMode::Adding(AddStep::Name) => {
+                        if buf.is_empty() { return Cmd::none(); } // name is required
+                        // Name becomes desire, reality from parent or empty
+                        let reality = self.parent_id.as_ref().and_then(|pid| {
+                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
+                        }).unwrap_or_default();
+                        self.create_tension(&buf, "", &reality);
+                    }
+                    InputMode::Adding(AddStep::Desire { name }) => {
+                        let desire = if buf.is_empty() { String::new() } else { buf };
+                        let reality = self.parent_id.as_ref().and_then(|pid| {
+                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
+                        }).unwrap_or_default();
+                        self.create_tension(&name, &desire, &reality);
+                    }
+                    InputMode::Adding(AddStep::Reality { name, desire }) => {
+                        let reality = if buf.is_empty() {
+                            self.parent_id.as_ref().and_then(|pid| {
+                                self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
+                            }).unwrap_or_default()
+                        } else { buf };
+                        self.create_tension(&name, &desire, &reality);
+                    }
+                    InputMode::Adding(AddStep::Horizon { name, desire, reality }) => {
+                        if buf.is_empty() {
+                            self.create_tension(&name, &desire, &reality);
+                        } else {
+                            self.create_tension_with_horizon(&name, &desire, &reality, &buf);
+                        }
+                    }
+                    _ => {}
+                }
+                if !matches!(self.input_mode, InputMode::Pathway) {
+                    self.input_mode = InputMode::Normal;
+                }
+                self.input_buffer.clear();
+                Cmd::none()
+            }
+            Msg::Cancel => {
+                // Esc = always cancel, abandon entirely
+                self.input_mode = InputMode::Normal;
+                self.input_buffer.clear();
+                Cmd::none()
+            }
+            Msg::Tab => {
+                // Tab = advance to next field (I want to fill more detail)
+                let buf = self.input_buffer.clone();
+                match self.input_mode.clone() {
+                    InputMode::Adding(AddStep::Name) => {
+                        if buf.is_empty() { return Cmd::none(); } // name required
                         self.input_buffer.clear();
                         self.input_mode = InputMode::Adding(AddStep::Desire { name: buf });
                     }
                     InputMode::Adding(AddStep::Desire { name }) => {
-                        // Pre-fill reality with parent's actual if we're creating a child
                         let prefill = self.parent_id.as_ref().and_then(|pid| {
                             self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
                         }).unwrap_or_default();
@@ -712,49 +869,17 @@ impl InstrumentApp {
                         self.input_mode = InputMode::Adding(AddStep::Reality { name, desire: buf });
                     }
                     InputMode::Adding(AddStep::Reality { name, desire }) => {
+                        let reality = if buf.is_empty() {
+                            self.parent_id.as_ref().and_then(|pid| {
+                                self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
+                            }).unwrap_or_default()
+                        } else { buf };
                         self.input_buffer.clear();
-                        self.input_mode = InputMode::Adding(AddStep::Horizon { name, desire, reality: buf });
+                        self.input_mode = InputMode::Adding(AddStep::Horizon { name, desire, reality });
                     }
-                    InputMode::Adding(AddStep::Horizon { name, desire, reality }) => {
-                        self.create_tension_with_horizon(&name, &desire, &reality, &buf);
-                        self.input_mode = InputMode::Normal;
-                        self.input_buffer.clear();
-                    }
-                    _ => {}
-                }
-                Cmd::none()
-            }
-            Msg::Cancel | Msg::Tab => {
-                // Esc/Tab: skip remaining optional steps, but reality is required
-                match self.input_mode.clone() {
-                    InputMode::Adding(AddStep::Name) => {
-                        // Cancel entirely
-                        self.input_mode = InputMode::Normal;
-                        self.input_buffer.clear();
-                    }
-                    InputMode::Adding(AddStep::Desire { name }) => {
-                        // Skip desire (use name as desire), advance to reality
-                        let prefill = self.parent_id.as_ref().and_then(|pid| {
-                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
-                        }).unwrap_or_default();
-                        self.input_buffer = prefill;
-                        self.input_mode = InputMode::Adding(AddStep::Reality { name, desire: String::new() });
-                    }
-                    InputMode::Adding(AddStep::Reality { name, desire }) => {
-                        // Reality is required — if buffer has content, use it and skip horizon
-                        let buf = self.input_buffer.clone();
-                        if !buf.is_empty() {
-                            self.create_tension(&name, &desire, &buf);
-                            self.input_mode = InputMode::Normal;
-                            self.input_buffer.clear();
-                        }
-                        // If empty, stay on Reality step (don't skip)
-                    }
-                    InputMode::Adding(AddStep::Horizon { name, desire, reality }) => {
-                        // Skip horizon, create with what we have
-                        self.create_tension(&name, &desire, &reality);
-                        self.input_mode = InputMode::Normal;
-                        self.input_buffer.clear();
+                    InputMode::Adding(AddStep::Horizon { .. }) => {
+                        // Already on last field — Tab wraps to commit (same as Enter)
+                        return self.update_adding(Msg::Submit);
                     }
                     _ => {}
                 }
@@ -771,11 +896,14 @@ impl InstrumentApp {
             Msg::Submit => {
                 self.sync_text_input_to_buffer();
                 self.save_current_edit_field();
-                self.set_transient("saved");
                 self.reload_after_edit();
-                self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
                 self.text_input.set_focused(false);
+                // If save triggered a pathway palette, don't override to Normal
+                if !matches!(self.input_mode, InputMode::Pathway) {
+                    self.set_transient("saved");
+                    self.input_mode = InputMode::Normal;
+                }
                 Cmd::none()
             }
             Msg::Tab => {
@@ -869,7 +997,10 @@ impl InstrumentApp {
                         let _ = self.engine.update_horizon(tension_id, None);
                     } else {
                         match crate::horizon::parse_horizon(&buf) {
-                            Ok(h) => { let _ = self.engine.update_horizon(tension_id, Some(h)); }
+                            Ok(h) => {
+                                let _ = self.engine.update_horizon(tension_id, Some(h));
+                                self.check_containment_palette(tension_id);
+                            }
                             Err(_) => { self.set_transient(format!("horizon not recognized: {}", buf)); }
                         }
                     }
@@ -1089,9 +1220,16 @@ impl InstrumentApp {
                         let _ = self.engine.update_parent(&tension_id, new_parent);
                         self.set_transient(format!("moved to {}", if result.is_root_entry { "root" } else { &result.desired }));
                         self.load_siblings();
+                        // Check for containment and sequencing after reparent
+                        self.check_containment_palette(&tension_id);
+                        if !matches!(self.input_mode, InputMode::Pathway) {
+                            self.check_sequencing_palette(&tension_id);
+                        }
                     }
                 }
-                self.input_mode = InputMode::Normal;
+                if !matches!(self.input_mode, InputMode::Pathway) {
+                    self.input_mode = InputMode::Normal;
+                }
                 self.search_state = None;
                 self.input_buffer.clear();
                 Cmd::none()
