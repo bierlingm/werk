@@ -104,11 +104,30 @@ fn parse_natural(input: &str, today: NaiveDate) -> Result<Horizon, String> {
         _ => {}
     }
 
+    // Month names: "may", "january", "oct", etc. → month precision in current/next year
+    if let Some(month_num) = parse_month_name(input) {
+        let year = if month_num < today.month() {
+            today.year() + 1 // month already passed → next year
+        } else {
+            today.year()
+        };
+        return Horizon::new_month(year, month_num).map_err(|e| e.to_string());
+    }
+
     // "next <weekday>"
     if let Some(rest) = input.strip_prefix("next ") {
         if let Some(wd) = parse_weekday(rest.trim()) {
             let target = next_occurrence(today, wd);
             return horizon_day(target);
+        }
+        // "next <month>"
+        if let Some(month_num) = parse_month_name(rest.trim()) {
+            let year = if month_num <= today.month() {
+                today.year() + 1
+            } else {
+                today.year()
+            };
+            return Horizon::new_month(year, month_num).map_err(|e| e.to_string());
         }
     }
 
@@ -238,6 +257,24 @@ fn next_occurrence(today: NaiveDate, target: Weekday) -> NaiveDate {
     // If it's the same weekday, go to next week
     let days = if days_ahead == 0 { 7 } else { days_ahead };
     today + Duration::days(days)
+}
+
+fn parse_month_name(s: &str) -> Option<u32> {
+    match s {
+        "january" | "jan" => Some(1),
+        "february" | "feb" => Some(2),
+        "march" | "mar" => Some(3),
+        "april" | "apr" => Some(4),
+        "may" => Some(5),
+        "june" | "jun" => Some(6),
+        "july" | "jul" => Some(7),
+        "august" | "aug" => Some(8),
+        "september" | "sep" | "sept" => Some(9),
+        "october" | "oct" => Some(10),
+        "november" | "nov" => Some(11),
+        "december" | "dec" => Some(12),
+        _ => None,
+    }
 }
 
 fn parse_weekday(s: &str) -> Option<Weekday> {
@@ -403,6 +440,25 @@ mod tests {
         let dec = NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
         let h = parse_natural("eoq", dec).unwrap();
         assert_eq!(h.to_string(), "2026-12");
+    }
+
+    #[test]
+    fn month_names() {
+        assert!(parse_horizon("May").is_ok());
+        assert!(parse_horizon("january").is_ok());
+        assert!(parse_horizon("oct").is_ok());
+        assert!(parse_horizon("December").is_ok());
+        assert!(parse_horizon("next may").is_ok());
+        assert!(parse_horizon("next January").is_ok());
+        // Month name gives month precision
+        let h = parse_natural("may", NaiveDate::from_ymd_opt(2026, 3, 25).unwrap()).unwrap();
+        assert_eq!(h.to_string(), "2026-05");
+        // Past month → next year
+        let h = parse_natural("jan", NaiveDate::from_ymd_opt(2026, 3, 25).unwrap()).unwrap();
+        assert_eq!(h.to_string(), "2027-01");
+        // Current month → this year
+        let h = parse_natural("mar", NaiveDate::from_ymd_opt(2026, 3, 25).unwrap()).unwrap();
+        assert_eq!(h.to_string(), "2026-03");
     }
 
     #[test]
