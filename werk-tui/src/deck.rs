@@ -736,6 +736,13 @@ impl InstrumentApp {
             return;
         }
 
+        // Reorder mode: flat list rendering, no frontier classification.
+        // Array order IS visual order — immediate feedback on every swap.
+        if matches!(self.input_mode, crate::state::InputMode::Reordering { .. }) {
+            self.render_reorder_flat(frame, area.x, middle_zone.y, middle_zone.y + middle_zone.height, w, &cols);
+            return;
+        }
+
         // V7: measure inline focus detail height to reserve space
         let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
             if let Some(ref detail) = self.focused_detail {
@@ -1452,6 +1459,73 @@ impl InstrumentApp {
         }
 
         y - start_y
+    }
+
+    /// Render a flat list during reorder mode — no zones, no frontier.
+    /// Array order IS visual order. The grabbed item is highlighted.
+    fn render_reorder_flat(
+        &self,
+        frame: &mut Frame<'_>,
+        x: u16,
+        start_y: u16,
+        end_y: u16,
+        w: usize,
+        cols: &ColumnLayout,
+    ) {
+        let cursor = self.vlist.cursor;
+        let grabbed_id = match &self.input_mode {
+            crate::state::InputMode::Reordering { tension_id } => tension_id.as_str(),
+            _ => "",
+        };
+
+        // Find the boundary between positioned and held
+        let boundary = self.siblings.iter()
+            .position(|s| s.status == TensionStatus::Active && s.position.is_none())
+            .unwrap_or(self.siblings.len());
+
+        // Scroll window: center the cursor in the available space
+        let available = (end_y - start_y) as usize;
+        let total_active = self.siblings.iter().filter(|s| s.status == TensionStatus::Active).count();
+        let scroll_start = if total_active <= available {
+            0
+        } else {
+            cursor.saturating_sub(available / 2).min(total_active.saturating_sub(available))
+        };
+
+        let mut my = start_y;
+        let mut item_idx = 0usize;
+
+        for (i, entry) in self.siblings.iter().enumerate() {
+            if my >= end_y { break; }
+            if entry.status != TensionStatus::Active { continue; }
+
+            if item_idx < scroll_start {
+                item_idx += 1;
+                continue;
+            }
+
+            // Boundary marker: light rule between positioned and held
+            if i == boundary && my < end_y && boundary > 0 {
+                let rule = glyphs::LIGHT_RULE.to_string().repeat(w);
+                render_line(frame, x, my, w as u16, &[(rule, STYLES.dim)]);
+                my += 1;
+                if my >= end_y { break; }
+            }
+
+            let is_grabbed = entry.id == grabbed_id;
+            let is_cursor = i == cursor;
+            let is_selected = is_cursor || is_grabbed;
+
+            let glyph = if is_grabbed {
+                "\u{25B8}" // ▸ grabbed item
+            } else {
+                "\u{00B7}" // · other items
+            };
+
+            self.render_child_line(frame, x, my, w, cols, entry, glyph, is_selected, false, 0);
+            my += 1;
+            item_idx += 1;
+        }
     }
 
     /// Compute frontier with maximum expansion for navigation.

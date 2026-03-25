@@ -160,12 +160,18 @@ impl InstrumentApp {
             Msg::Char('K') | Msg::MoveUp => {
                 if self.enter_reorder() {
                     self.reorder_move_up();
+                } else {
+                    self.session_log.record(crate::session_log::Category::Reorder,
+                        "enter_reorder failed (cursor not on reorderable item)");
                 }
                 Cmd::none()
             }
             Msg::Char('J') | Msg::MoveDown => {
                 if self.enter_reorder() {
                     self.reorder_move_down();
+                } else {
+                    self.session_log.record(crate::session_log::Category::Reorder,
+                        "enter_reorder failed (cursor not on reorderable item)");
                 }
                 Cmd::none()
             }
@@ -563,6 +569,12 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Dump session log
+            Msg::Char('`') => {
+                self.dump_session_log();
+                Cmd::none()
+            }
+
             // Quit
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             Msg::Cancel => {
@@ -582,8 +594,11 @@ impl InstrumentApp {
                         self.transient = None;
                     }
                 }
-                // Only reload if the database file has changed (external modification)
-                if self.db_has_changed() {
+                // Only reload if the database file has changed (external modification).
+                // NEVER reload during reorder — it destroys the in-memory drag state.
+                if !matches!(self.input_mode, InputMode::Reordering { .. }) && self.db_has_changed() {
+                    self.session_log.record(crate::session_log::Category::State,
+                        "RELOAD: db changed externally, reloading siblings");
                     self.load_siblings();
                 }
                 Cmd::none()
@@ -626,7 +641,11 @@ impl InstrumentApp {
             // Quit always works (Ctrl+C or q)
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             // Everything else: ignore (stay in reorder mode)
-            _ => Cmd::none(),
+            _ => {
+                self.session_log.record(crate::session_log::Category::Reorder,
+                    format!("IGNORED msg={:?} (in reorder mode)", msg));
+                Cmd::none()
+            }
         }
     }
 
