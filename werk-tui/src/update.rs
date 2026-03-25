@@ -61,7 +61,7 @@ impl Model for InstrumentApp {
         let layout = Flex::vertical().constraints(constraints);
         let rects = layout.split(area);
 
-        // Full-screen modes: render ONLY the overlay, skip the field entirely
+        // Full-screen modes: render ONLY the overlay, skip the deck entirely
         if matches!(self.input_mode, InputMode::Help) {
             crate::helpers::clear_area(frame, rects[0]);
             self.render_help(&rects[0], frame);
@@ -75,14 +75,8 @@ impl Model for InstrumentApp {
             && !matches!(self.input_mode, InputMode::Adding(_))
         {
             self.render_empty(&rects[0], frame);
-        } else if self.use_deck {
-            // New deck rendering (V1+) for descended views
-            self.render_deck(&rects[0], frame);
-        } else if self.siblings.is_empty() && self.parent_id.is_some() {
-            // Descended into a tension with no children — render_field handles this
-            self.render_field(&rects[0], frame);
         } else {
-            self.render_field(&rects[0], frame);
+            self.render_deck(&rects[0], frame);
         }
 
         // Render inline overlays on top of the field (only for non-fullscreen modes)
@@ -106,12 +100,8 @@ impl Model for InstrumentApp {
             _ => {}
         }
 
-        // Bottom bar: deck bar in deck mode, old lever otherwise
-        if self.use_deck {
-            self.render_deck_bar(&rects[1], frame);
-        } else {
-            self.render_lever(&rects[1], frame);
-        }
+        // Bottom bar
+        self.render_deck_bar(&rects[1], frame);
 
         // Hints — show contextual hints for input modes
         if show_hints {
@@ -140,31 +130,19 @@ impl InstrumentApp {
         match msg {
             // Navigation
             Msg::Char('k') | Msg::Up => {
-                if self.use_deck {
-                    // Clear focus on cursor move
-                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
-                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
-                        self.focused_detail = None;
-                    }
-                    self.deck_pitch_up();
-                } else {
-                    self.vlist.up();
-                    self.close_gaze();
+                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
                 }
+                self.deck_pitch_up();
                 Cmd::none()
             }
             Msg::Char('j') | Msg::Down => {
-                if self.use_deck {
-                    // Clear focus on cursor move
-                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
-                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
-                        self.focused_detail = None;
-                    }
-                    self.deck_pitch_down();
-                } else {
-                    self.vlist.down();
-                    self.close_gaze();
+                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
                 }
+                self.deck_pitch_down();
                 Cmd::none()
             }
 
@@ -189,26 +167,77 @@ impl InstrumentApp {
             }
 
             Msg::Char('l') | Msg::Descend => {
-                // Roll right: descend into selected tension
-                if self.use_deck {
-                    if let Some(idx) = self.deck_selected_sibling_index() {
-                        let id = self.siblings[idx].id.clone();
-                        self.descend(&id);
-                    }
-                } else if let Some(entry) = self.action_target().cloned() {
+                if let Some(entry) = self.action_target().cloned() {
                     self.descend(&entry.id);
                 }
                 Cmd::none()
             }
             Msg::Submit => {
-                if self.use_deck {
-                    // V7: Enter toggles focus zoom on the selected element
-                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
-                        // Already focused — unfocus
-                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
-                        self.focused_detail = None;
-                    } else if let Some(entry) = self.action_target().cloned() {
-                        // Load focus detail with full FieldEntry children
+                // V7: Enter toggles focus zoom on the selected element
+                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
+                } else if let Some(entry) = self.action_target().cloned() {
+                    let now = chrono::Utc::now();
+                    let raw_children = self.engine.store()
+                        .get_children(&entry.id)
+                        .unwrap_or_default();
+                    let child_ids: Vec<&str> = raw_children.iter().map(|c| c.id.as_str()).collect();
+                    let child_counts = self.engine.store()
+                        .count_children_by_parent(&child_ids)
+                        .unwrap_or_default();
+                    let children: Vec<crate::state::FieldEntry> = raw_children.iter().map(|c| {
+                        let cc = child_counts.get(&c.id).copied().unwrap_or(0);
+                        crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
+                    }).collect();
+                    let deadline_label = entry.horizon_label.clone();
+                    let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
+                    self.focused_detail = Some(crate::deck::FocusedDetail {
+                        sibling_index: sibling_idx,
+                        desired: entry.desired.clone(),
+                        actual: entry.actual.clone(),
+                        children,
+                        short_code: entry.short_code,
+                        deadline_label,
+                    });
+                    self.deck_zoom = crate::deck::ZoomLevel::Focus;
+                }
+                Cmd::none()
+            }
+            // Shift+Enter — orient zoom (V9 placeholder)
+            Msg::ShiftSubmit => {
+                self.set_transient("orient zoom: coming soon");
+                Cmd::none()
+            }
+
+            Msg::Char('h') | Msg::Backspace | Msg::Ascend => {
+                if self.parent_id.is_some() {
+                    self.ascend();
+                }
+                Cmd::none()
+            }
+
+            Msg::Char('g') | Msg::JumpTop => {
+                self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                self.focused_detail = None;
+                self.deck_cursor.index = 0;
+                Cmd::none()
+            }
+            Msg::Char('G') | Msg::JumpBottom => {
+                self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                self.focused_detail = None;
+                let count = self.ensure_frontier().selectable_count();
+                self.deck_cursor.index = count.saturating_sub(1);
+                Cmd::none()
+            }
+
+            // Space: peek — inline children preview
+            Msg::Char(' ') | Msg::ToggleGaze => {
+                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
+                } else if let Some(entry) = self.action_target().cloned() {
+                    if entry.child_count > 0 {
                         let now = chrono::Utc::now();
                         let raw_children = self.engine.store()
                             .get_children(&entry.id)
@@ -221,99 +250,17 @@ impl InstrumentApp {
                             let cc = child_counts.get(&c.id).copied().unwrap_or(0);
                             crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
                         }).collect();
-                        let deadline_label = entry.horizon_label.clone();
                         let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
                         self.focused_detail = Some(crate::deck::FocusedDetail {
                             sibling_index: sibling_idx,
                             desired: entry.desired.clone(),
-                            actual: entry.actual.clone(),
+                            actual: String::new(), // peek = no reality
                             children,
                             short_code: entry.short_code,
-                            deadline_label,
+                            deadline_label: entry.horizon_label.clone(),
                         });
                         self.deck_zoom = crate::deck::ZoomLevel::Focus;
                     }
-                } else if let Some(entry) = self.action_target().cloned() {
-                    self.descend(&entry.id);
-                }
-                Cmd::none()
-            }
-            // Shift+Enter — orient zoom (V9 placeholder)
-            Msg::ShiftSubmit => {
-                if self.use_deck {
-                    self.set_transient("orient zoom: coming soon");
-                }
-                Cmd::none()
-            }
-
-            Msg::Char('h') | Msg::Backspace | Msg::Ascend => {
-                if self.parent_id.is_some() {
-                    self.ascend();
-                }
-                Cmd::none()
-            }
-
-            Msg::Char('g') | Msg::JumpTop => {
-                if self.use_deck {
-                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
-                    self.focused_detail = None;
-                    self.deck_cursor.index = 0;
-                } else {
-                    self.vlist.top();
-                    self.close_gaze();
-                }
-                Cmd::none()
-            }
-            Msg::Char('G') | Msg::JumpBottom => {
-                if self.use_deck {
-                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
-                    self.focused_detail = None;
-                    let count = self.ensure_frontier().selectable_count();
-                    self.deck_cursor.index = count.saturating_sub(1);
-                } else {
-                    self.vlist.bottom();
-                    self.close_gaze();
-                }
-                Cmd::none()
-            }
-
-            // Space: peek in deck mode, gaze in field mode
-            Msg::Char(' ') | Msg::ToggleGaze => {
-                if self.use_deck {
-                    // V8: peek — inline children preview, lighter than focus
-                    if self.deck_zoom == crate::deck::ZoomLevel::Focus {
-                        // Already peeking/focused — close
-                        self.deck_zoom = crate::deck::ZoomLevel::Normal;
-                        self.focused_detail = None;
-                    } else if let Some(entry) = self.action_target().cloned() {
-                        if entry.child_count > 0 {
-                            // Load children only (no deep reality for peek)
-                            let now = chrono::Utc::now();
-                            let raw_children = self.engine.store()
-                                .get_children(&entry.id)
-                                .unwrap_or_default();
-                            let child_ids: Vec<&str> = raw_children.iter().map(|c| c.id.as_str()).collect();
-                            let child_counts = self.engine.store()
-                                .count_children_by_parent(&child_ids)
-                                .unwrap_or_default();
-                            let children: Vec<crate::state::FieldEntry> = raw_children.iter().map(|c| {
-                                let cc = child_counts.get(&c.id).copied().unwrap_or(0);
-                                crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
-                            }).collect();
-                            let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
-                            self.focused_detail = Some(crate::deck::FocusedDetail {
-                                sibling_index: sibling_idx,
-                                desired: entry.desired.clone(),
-                                actual: String::new(), // peek = no reality
-                                children,
-                                short_code: entry.short_code,
-                                deadline_label: entry.horizon_label.clone(),
-                            });
-                            self.deck_zoom = crate::deck::ZoomLevel::Focus;
-                        }
-                    }
-                } else {
-                    self.toggle_gaze();
                 }
                 Cmd::none()
             }
@@ -501,68 +448,46 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Toggle deck view (new V1 rendering)
-            Msg::Char('D') => {
-                self.use_deck = !self.use_deck;
-                self.set_transient(if self.use_deck { "deck view" } else { "field view" });
-                Cmd::none()
-            }
-
             // Toggle trajectory mode (Q30: resolved stay in-place on route)
             Msg::Char('T') => {
-                if self.use_deck {
-                    self.trajectory_mode = !self.trajectory_mode;
-                    self.set_transient(if self.trajectory_mode { "trajectory view" } else { "frontier view" });
-                    self.deck_cursor_reset();
-                }
+                self.trajectory_mode = !self.trajectory_mode;
+                self.set_transient(if self.trajectory_mode { "trajectory view" } else { "frontier view" });
+                self.deck_cursor_reset();
                 Cmd::none()
             }
 
-            // Filter
-            Msg::Char('f') | Msg::CycleFilter => {
-                self.filter = self.filter.cycle();
-                self.load_siblings();
-                self.set_transient(format!("filter: {}", self.filter.label()));
-                Cmd::none()
-            }
-
-            // In deck mode: ? = edit parent reality (V4 quick-edit)
-            // In field mode: ? = help
+            // ? = edit parent reality (V4 quick-edit), help at root
             Msg::Char('?') | Msg::ToggleHelp => {
-                if self.use_deck {
-                    if let Some(ref pid) = self.parent_id.clone() {
-                        let actual = self.parent_tension.as_ref()
-                            .map(|t| t.actual.clone()).unwrap_or_default();
-                        self.input_buffer = actual.clone();
-                        self.text_input.set_value(&actual);
-                        self.text_input.set_focused(true);
-                        self.text_input.select_all();
-                        self.input_mode = InputMode::Editing {
-                            tension_id: pid.clone(),
-                            field: EditField::Reality,
-                        };
-                    }
+                if let Some(ref pid) = self.parent_id.clone() {
+                    let actual = self.parent_tension.as_ref()
+                        .map(|t| t.actual.clone()).unwrap_or_default();
+                    self.input_buffer = actual.clone();
+                    self.text_input.set_value(&actual);
+                    self.text_input.set_focused(true);
+                    self.text_input.select_all();
+                    self.input_mode = InputMode::Editing {
+                        tension_id: pid.clone(),
+                        field: EditField::Reality,
+                    };
                 } else {
                     self.input_mode = InputMode::Help;
                 }
                 Cmd::none()
             }
 
-            // In deck mode: ! = edit parent desire (V4 quick-edit)
+            // ! = edit parent desire (V4 quick-edit)
             Msg::Char('!') => {
-                if self.use_deck {
-                    if let Some(ref pid) = self.parent_id.clone() {
-                        let desired = self.parent_tension.as_ref()
-                            .map(|t| t.desired.clone()).unwrap_or_default();
-                        self.input_buffer = desired.clone();
-                        self.text_input.set_value(&desired);
-                        self.text_input.set_focused(true);
-                        self.text_input.select_all();
-                        self.input_mode = InputMode::Editing {
-                            tension_id: pid.clone(),
-                            field: EditField::Desire,
-                        };
-                    }
+                if let Some(ref pid) = self.parent_id.clone() {
+                    let desired = self.parent_tension.as_ref()
+                        .map(|t| t.desired.clone()).unwrap_or_default();
+                    self.input_buffer = desired.clone();
+                    self.text_input.set_value(&desired);
+                    self.text_input.set_focused(true);
+                    self.text_input.select_all();
+                    self.input_mode = InputMode::Editing {
+                        tension_id: pid.clone(),
+                        field: EditField::Desire,
+                    };
                 }
                 Cmd::none()
             }
@@ -621,11 +546,8 @@ impl InstrumentApp {
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             Msg::Cancel => {
                 if self.deck_zoom == crate::deck::ZoomLevel::Focus {
-                    // V7: Esc exits focus zoom
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
-                } else if self.gaze.is_some() {
-                    self.close_gaze();
                 }
                 Cmd::none()
             }
@@ -1041,12 +963,6 @@ impl InstrumentApp {
 
     fn reload_after_edit(&mut self) {
         self.load_siblings();
-        if let Some(ref gaze) = self.gaze {
-            let id = self.siblings.get(gaze.index).map(|e| e.id.clone());
-            if let Some(id) = id {
-                self.gaze_data = self.compute_gaze(&id);
-            }
-        }
     }
 
     fn update_annotating(&mut self, msg: Msg) -> Cmd<Msg> {
@@ -1163,7 +1079,7 @@ impl InstrumentApp {
                         self.parent_id = parent_id;
                         self.load_siblings();
                         if let Some(idx) = self.siblings.iter().position(|s| s.id == result.id) {
-                            self.vlist.cursor = idx;
+                            self.deck_cursor_to_sibling(idx);
                         }
                     }
                 }
@@ -1261,55 +1177,6 @@ impl InstrumentApp {
     }
 
     // -----------------------------------------------------------------------
-    // Gaze helpers
-    // -----------------------------------------------------------------------
-
-    fn toggle_gaze(&mut self) {
-        if let Some(gaze) = self.gaze.clone() {
-            if gaze.index == self.vlist.cursor {
-                self.close_gaze();
-                return;
-            }
-        }
-        let idx = self.vlist.cursor;
-        let entry_id = self.siblings.get(idx).map(|e| e.id.clone());
-        if let Some(id) = entry_id {
-            let gaze_data = self.compute_gaze(&id);
-            self.gaze = Some(GazeState {
-                index: idx,
-                full: false,
-            });
-            self.gaze_data = gaze_data;
-            let height = self.quick_gaze_height();
-            self.vlist.reset_heights();
-            self.vlist.set_height(idx, height);
-        }
-    }
-
-    fn close_gaze(&mut self) {
-        if self.gaze.is_some() {
-            self.gaze = None;
-            self.gaze_data = None;
-            self.full_gaze_data = None;
-            self.vlist.reset_heights();
-        }
-    }
-
-    fn quick_gaze_height(&self) -> usize {
-        // Panel (2 border lines) + children + reality
-        let mut h = 2; // panel top + bottom border
-        if let Some(ref data) = self.gaze_data {
-            h += data.children.len().max(1); // at least "no children" line
-            if !data.actual.is_empty() {
-                h += 2; // separator + at least 1 reality line
-            }
-        } else {
-            h += 1; // "no children" line
-        }
-        h
-    }
-
-    // -----------------------------------------------------------------------
     // Data operations
     // -----------------------------------------------------------------------
 
@@ -1325,8 +1192,9 @@ impl InstrumentApp {
         if let Ok(tension) = result {
             self.set_transient(format!("created: {}", truncate_str(&tension.desired, 30)));
             self.load_siblings();
+            // Position cursor on the new item
             if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
-                self.vlist.cursor = idx;
+                self.deck_cursor_to_sibling(idx);
             }
         }
     }
