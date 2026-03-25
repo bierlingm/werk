@@ -343,7 +343,7 @@ pub fn compute_implied_windows(
         .map(|n| &n.tension)
         .filter(|t| t.status == TensionStatus::Active && t.position.is_some())
         .collect();
-    positioned.sort_by_key(|t| t.position.unwrap());
+    positioned.sort_by_key(|t| t.position.unwrap()); // ubs:ignore filter guarantees is_some()
 
     let mut results = Vec::new();
 
@@ -399,17 +399,17 @@ pub fn detect_sequencing_pressure(forest: &Forest, parent_id: &str) -> Vec<Seque
             t.status == TensionStatus::Active && t.position.is_some() && t.horizon.is_some()
         })
         .collect();
-    positioned.sort_by_key(|t| t.position.unwrap());
+    positioned.sort_by_key(|t| t.position.unwrap()); // ubs:ignore filter guarantees is_some()
 
     let mut results = Vec::new();
 
     for i in 1..positioned.len() {
         let current = positioned[i];
-        let current_end = current.horizon.as_ref().unwrap().range_end();
+        let current_end = current.horizon.as_ref().unwrap().range_end(); // ubs:ignore filter guarantees is_some()
 
         // Check against all predecessors (not just immediate — pressure can skip)
         for pred in &positioned[..i] {
-            let pred_end = pred.horizon.as_ref().unwrap().range_end();
+            let pred_end = pred.horizon.as_ref().unwrap().range_end(); // ubs:ignore filter guarantees is_some()
 
             if current_end < pred_end {
                 let gap = (pred_end - current_end).num_seconds();

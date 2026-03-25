@@ -124,7 +124,7 @@ fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, WerkError> {
 
     // Try ISO date
     if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
-        return Ok(date.and_hms_opt(12, 0, 0).unwrap().and_utc());
+        return Ok(date.and_hms_opt(12, 0, 0).unwrap().and_utc()); // ubs:ignore 12:00:00 is always valid
     }
 
     Err(WerkError::InvalidInput(format!(

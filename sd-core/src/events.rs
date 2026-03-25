@@ -211,7 +211,7 @@ impl EventBus {
     where
         F: Fn(&Event) + Send + Sync + 'static,
     {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
         let id = inner.next_id;
         inner.next_id += 1;
         inner.subscribers.insert(id, Arc::new(callback));
@@ -223,13 +223,13 @@ impl EventBus {
 
     /// Unsubscribe by ID (called when handle is dropped).
     fn unsubscribe(&self, id: SubscriberId) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
         inner.subscribers.remove(&id);
     }
 
     /// Emit an event to all subscribers.
     pub fn emit(&self, event: &Event) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
         inner.history.push(event.clone());
 
         let subscribers: Vec<(SubscriberId, EventCallback)> = inner
@@ -243,7 +243,7 @@ impl EventBus {
         for (id, callback) in subscribers {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(event)));
             if result.is_err() {
-                let mut inner = self.inner.lock().unwrap();
+                let mut inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
                 inner.subscribers.remove(&id);
             }
         }
@@ -251,19 +251,19 @@ impl EventBus {
 
     /// Get the event history (for testing).
     pub fn history(&self) -> Vec<Event> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
         inner.history.clone()
     }
 
     /// Clear the event history.
     pub fn clear_history(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
         inner.history.clear();
     }
 
     /// Get the number of active subscribers.
     pub fn subscriber_count(&self) -> usize {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap(); // ubs:ignore poisoned mutex is unrecoverable
         inner.subscribers.len()
     }
 }

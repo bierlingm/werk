@@ -293,7 +293,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             SdError::ValidationError(msg) => assert!(msg.contains("desired")),
-            other => panic!("expected ValidationError, got {other:?}"),
+            other => panic!("expected ValidationError, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -303,7 +303,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             SdError::ValidationError(msg) => assert!(msg.contains("actual")),
-            other => panic!("expected ValidationError, got {other:?}"),
+            other => panic!("expected ValidationError, got {other:?}"), // ubs:ignore test assertion
         }
     }
 
@@ -794,7 +794,7 @@ mod tests {
             SdError::UpdateOnInactiveTension(status) => {
                 assert_eq!(status, TensionStatus::Resolved);
             }
-            other => panic!("expected UpdateOnInactiveTension, got {other:?}"),
+            other => panic!("expected UpdateOnInactiveTension, got {other:?}"), // ubs:ignore test assertion
         }
         // Original horizon preserved
         assert_eq!(t.horizon, Some(Horizon::new_year(2026).unwrap()));
@@ -817,7 +817,7 @@ mod tests {
             SdError::UpdateOnInactiveTension(status) => {
                 assert_eq!(status, TensionStatus::Released);
             }
-            other => panic!("expected UpdateOnInactiveTension, got {other:?}"),
+            other => panic!("expected UpdateOnInactiveTension, got {other:?}"), // ubs:ignore test assertion
         }
         // Original horizon preserved
         assert_eq!(t.horizon, Some(Horizon::new_year(2026).unwrap()));

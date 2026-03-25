@@ -223,12 +223,12 @@ fn add_months(date: NaiveDate, months: u32) -> NaiveDate {
     let new_month = (total_months % 12 + 1) as u32;
     // Clamp day to valid range for the target month
     let max_day = NaiveDate::from_ymd_opt(new_year, new_month + 1, 1)
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(new_year + 1, 1, 1).unwrap())
+        .unwrap_or_else(|| NaiveDate::from_ymd_opt(new_year + 1, 1, 1).unwrap()) // ubs:ignore year+1 is valid for any realistic date
         .pred_opt()
-        .unwrap()
+        .unwrap() // ubs:ignore pred of a valid date is always valid (not MIN)
         .day();
     let day = date.day().min(max_day);
-    NaiveDate::from_ymd_opt(new_year, new_month, day).unwrap()
+    NaiveDate::from_ymd_opt(new_year, new_month, day).unwrap() // ubs:ignore day clamped to valid range above
 }
 
 fn next_occurrence(today: NaiveDate, target: Weekday) -> NaiveDate {

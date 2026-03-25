@@ -531,7 +531,7 @@ fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, McpError> {
         return Ok(now - chrono::Duration::days(n));
     }
     if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
-        return Ok(date.and_hms_opt(12, 0, 0).unwrap().and_utc());
+        return Ok(date.and_hms_opt(12, 0, 0).unwrap().and_utc()); // ubs:ignore 12:00:00 is always valid
     }
     Err(err(format!(
         "cannot parse '{}' as a date. Try: 'yesterday', '3 days ago', or '2026-03-20'",
@@ -567,7 +567,7 @@ fn parse_since(value: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, McpErro
         }
     }
     if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
-        return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
+        return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc()); // ubs:ignore 00:00:00 is always valid
     }
     Err(err(format!("unrecognized date: '{}'. Try 'today', 'yesterday', '3 days ago', or 'YYYY-MM-DD'.", value)))
 }

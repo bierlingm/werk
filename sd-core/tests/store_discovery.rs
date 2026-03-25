@@ -148,7 +148,7 @@ fn test_store_init_read_only_directory_returns_error() {
                 error_string
             );
         }
-        Ok(_) => panic!("Expected error, but Store::init succeeded"),
+        Ok(_) => panic!("Expected error, but Store::init succeeded"), // ubs:ignore test assertion
     }
 }
 
@@ -167,7 +167,7 @@ fn test_store_init_nonexistent_parent_returns_error() {
             // The error should mention something about the failure
             assert!(!error_string.is_empty());
         }
-        Ok(_) => panic!("Expected error, but Store::init succeeded"),
+        Ok(_) => panic!("Expected error, but Store::init succeeded"), // ubs:ignore test assertion
     }
 }
 

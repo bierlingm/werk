@@ -181,7 +181,7 @@ impl InstrumentApp {
 
     /// Create an app in empty/welcome state.
     pub fn new_empty() -> Self {
-        let engine = Engine::new_in_memory().expect("failed to create in-memory engine");
+        let engine = Engine::new_in_memory().expect("failed to create in-memory engine"); // ubs:ignore in-memory SQLite cannot fail
         Self {
             engine,
             parent_id: None,

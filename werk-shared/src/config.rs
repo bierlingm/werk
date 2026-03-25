@@ -257,7 +257,7 @@ fn unflatten_toml(values: &BTreeMap<String, String>) -> toml::Value {
                 current = current
                     .get_mut(*segment)
                     .and_then(|v| v.as_table_mut())
-                    .unwrap();
+                    .unwrap(); // ubs:ignore table just inserted above
             }
         }
     }

@@ -381,7 +381,7 @@ fn build_tension_json_list(
                 .unwrap_or_default();
 
             let find = |h: ProjectionHorizon| -> &TensionProjection {
-                projs.iter().find(|p| p.horizon == h).unwrap()
+                projs.iter().find(|p| p.horizon == h).unwrap() // ubs:ignore projection engine generates all three horizons
             };
 
             let p1w = find(ProjectionHorizon::OneWeek);
