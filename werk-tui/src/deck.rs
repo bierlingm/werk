@@ -756,7 +756,7 @@ impl InstrumentApp {
         // reflect the pending reorder — but the full context (console, accumulated,
         // desire, reality) stays visible. Positions are finalized on commit.
 
-        // V7: measure inline focus detail height to reserve space
+        // V7: measure inline focus detail height (used for accumulated item spacing)
         let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
             if let Some(ref detail) = self.focused_detail {
                 let ch = detail.children.len();
@@ -767,14 +767,16 @@ impl InstrumentApp {
             } else { 0 }
         } else { 0 };
 
-        // Compute space-aware expansion for held/accumulated
+        // Compute space-aware expansion for held/accumulated.
+        // Focus detail renders inline below the focused item but does NOT reduce
+        // expansion — it uses empty space in the middle zone naturally. This prevents
+        // the focused item from collapsing into a summary when focused.
         let middle_start = middle_zone.y;
         let middle_end = middle_zone.y + middle_zone.height;
         let middle_lines = middle_zone.height as usize;
-        let expansion_lines = middle_lines.saturating_sub(focus_detail_height);
-        frontier.compute_expansion(expansion_lines);
+        frontier.compute_expansion(middle_lines);
         // Cache expansion lines so navigation uses the same value
-        self.last_render_lines.set(expansion_lines);
+        self.last_render_lines.set(middle_lines);
 
         // During reorder, the grabbed item is tracked by vlist.cursor (sibling index).
         // Map it to the frontier's cursor index so selection highlighting works.

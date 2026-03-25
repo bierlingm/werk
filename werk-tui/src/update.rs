@@ -320,9 +320,18 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Undo last undoable mutation
+            // Undo last undoable mutation on the selected item.
+            // When cursor is on the input point, undo targets the parent tension
+            // (reverts ? / ! edits). When on a summary line, no target.
             Msg::Char('u') | Msg::Undo => {
-                if let Some(entry) = self.action_target().cloned() {
+                let target = self.action_target().cloned().or_else(|| {
+                    // Fallback: if on input point, target the parent
+                    self.parent_tension.as_ref().map(|p| {
+                        let now = chrono::Utc::now();
+                        crate::state::FieldEntry::from_tension(p, p.created_at, 0, p.created_at, now)
+                    })
+                });
+                if let Some(entry) = target {
                     let mutations = self.engine.store().get_mutations(&entry.id).unwrap_or_default();
                     // Walk backwards to find the most recent undoable mutation
                     let mut undone = false;
