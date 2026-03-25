@@ -158,13 +158,15 @@ impl InstrumentApp {
 
             // Reorder: Shift+J/K enters grab mode and does first move
             Msg::Char('K') | Msg::MoveUp => {
-                self.enter_reorder();
-                self.reorder_move_up();
+                if self.enter_reorder() {
+                    self.reorder_move_up();
+                }
                 Cmd::none()
             }
             Msg::Char('J') | Msg::MoveDown => {
-                self.enter_reorder();
-                self.reorder_move_down();
+                if self.enter_reorder() {
+                    self.reorder_move_down();
+                }
                 Cmd::none()
             }
 
@@ -602,12 +604,12 @@ impl InstrumentApp {
 
     fn update_reordering(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
-            // Shift+J/K moves the grabbed tension
-            Msg::Char('K') | Msg::MoveUp => {
+            // J/K/Shift+J/K/arrows all move in reorder mode
+            Msg::Char('K') | Msg::Char('k') | Msg::MoveUp | Msg::Up => {
                 self.reorder_move_up();
                 Cmd::none()
             }
-            Msg::Char('J') | Msg::MoveDown => {
+            Msg::Char('J') | Msg::Char('j') | Msg::MoveDown | Msg::Down => {
                 self.reorder_move_down();
                 Cmd::none()
             }
@@ -621,6 +623,8 @@ impl InstrumentApp {
                 self.reorder_cancel();
                 Cmd::none()
             }
+            // Quit always works (Ctrl+C or q)
+            Msg::Char('q') | Msg::Quit => Cmd::quit(),
             // Everything else: ignore (stay in reorder mode)
             _ => Cmd::none(),
         }

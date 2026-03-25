@@ -634,9 +634,34 @@ impl InstrumentApp {
 
     /// Enter reorder mode: grab the selected tension for repositioning.
     /// Shift+J/K enters this mode; j/k moves visually; Enter commits; Esc cancels.
-    pub fn enter_reorder(&mut self) {
-        if self.siblings.is_empty() { return; }
-        let cursor = self.vlist.cursor;
+    /// Only active tensions can be reordered (resolved/released cannot).
+    /// Returns true if reorder mode was entered, false if blocked.
+    pub fn enter_reorder(&mut self) -> bool {
+        if self.siblings.is_empty() { return false; }
+
+        // In deck mode, sync vlist cursor from deck cursor
+        let cursor = if self.use_deck && self.parent_id.is_some() {
+            match self.deck_selected_sibling_index() {
+                Some(idx) => {
+                    self.vlist.cursor = idx;
+                    idx
+                }
+                None => {
+                    self.set_transient("nothing to reorder here");
+                    return false;
+                }
+            }
+        } else {
+            self.vlist.cursor
+        };
+
+        // Only active tensions can be reordered
+        let entry = &self.siblings[cursor];
+        if entry.status != TensionStatus::Active {
+            self.set_transient("only active steps can be repositioned");
+            return false;
+        }
+
         let tension_id = self.siblings[cursor].id.clone();
 
         // Store original positions for cancel
@@ -652,22 +677,89 @@ impl InstrumentApp {
             self.full_gaze_data = None;
             self.vlist.reset_heights();
         }
+        true
     }
 
-    /// Move the grabbed tension up one position (visual swap only, no engine writes).
+    /// Move the grabbed tension up one position (toward desire).
+    /// Handles three cases:
+    /// - Within positioned: swap position values
+    /// - Within held: swap array entries (held have no position order)
+    /// - Held → positioned (promote): assign position, shift others up
     pub fn reorder_move_up(&mut self) {
         if self.siblings.is_empty() || self.vlist.cursor == 0 { return; }
         let cursor = self.vlist.cursor;
+
+        // Block moving into/past resolved/released items
+        if self.siblings[cursor - 1].status != TensionStatus::Active { return; }
+
+        let cur_positioned = self.siblings[cursor].position.is_some();
+        let nbr_positioned = self.siblings[cursor - 1].position.is_some();
+
+        if cur_positioned && nbr_positioned {
+            // Both positioned: swap position values
+            let pos_a = self.siblings[cursor].position;
+            let pos_b = self.siblings[cursor - 1].position;
+            self.siblings[cursor].position = pos_b;
+            self.siblings[cursor - 1].position = pos_a;
+        } else if !cur_positioned && nbr_positioned {
+            // Held item moving into positioned zone: promote
+            // Give it the neighbor's position, shift neighbor down by 1
+            let nbr_pos = self.siblings[cursor - 1].position.unwrap_or(1);
+            self.siblings[cursor].position = Some(nbr_pos);
+            self.siblings[cursor - 1].position = Some(nbr_pos.saturating_sub(1).max(1));
+        } else if cur_positioned && !nbr_positioned {
+            // Positioned item moving into held zone: demote
+            self.siblings[cursor].position = None;
+            // Neighbor stays None (both now held)
+        }
+        // Both held: just swap array entries, no position changes needed
+
         self.siblings.swap(cursor, cursor - 1);
         self.vlist.cursor = cursor - 1;
+
+        if self.use_deck && self.parent_id.is_some() {
+            self.deck_cursor_to_sibling(cursor - 1);
+        }
     }
 
-    /// Move the grabbed tension down one position (visual swap only, no engine writes).
+    /// Move the grabbed tension down one position (toward reality).
+    /// Handles three cases:
+    /// - Within positioned: swap position values
+    /// - Within held: swap array entries
+    /// - Positioned → held (demote): remove position
     pub fn reorder_move_down(&mut self) {
         if self.siblings.is_empty() || self.vlist.cursor >= self.siblings.len() - 1 { return; }
         let cursor = self.vlist.cursor;
+
+        // Block moving into/past resolved/released items
+        if self.siblings[cursor + 1].status != TensionStatus::Active { return; }
+
+        let cur_positioned = self.siblings[cursor].position.is_some();
+        let nbr_positioned = self.siblings[cursor + 1].position.is_some();
+
+        if cur_positioned && nbr_positioned {
+            // Both positioned: swap position values
+            let pos_a = self.siblings[cursor].position;
+            let pos_b = self.siblings[cursor + 1].position;
+            self.siblings[cursor].position = pos_b;
+            self.siblings[cursor + 1].position = pos_a;
+        } else if cur_positioned && !nbr_positioned {
+            // Positioned item moving into held zone: demote
+            self.siblings[cursor].position = None;
+        } else if !cur_positioned && nbr_positioned {
+            // Held item moving past a positioned item: swap positions
+            let nbr_pos = self.siblings[cursor + 1].position;
+            self.siblings[cursor].position = nbr_pos;
+            self.siblings[cursor + 1].position = None;
+        }
+        // Both held: just swap array entries
+
         self.siblings.swap(cursor, cursor + 1);
         self.vlist.cursor = cursor + 1;
+
+        if self.use_deck && self.parent_id.is_some() {
+            self.deck_cursor_to_sibling(cursor + 1);
+        }
     }
 
     /// Commit the reorder: write final positions to engine as a single logical action.
@@ -719,9 +811,12 @@ impl InstrumentApp {
         self.input_mode = InputMode::Normal;
         self.load_siblings();
 
-        // Restore cursor to the moved tension
+        // Restore cursor to the moved tension (both vlist and deck cursor)
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
+            if self.use_deck && self.parent_id.is_some() {
+                self.deck_cursor_to_sibling(idx);
+            }
         }
         self.set_transient("position updated");
     }
@@ -742,9 +837,12 @@ impl InstrumentApp {
         self.input_mode = InputMode::Normal;
         self.load_siblings();
 
-        // Restore cursor to the original tension
+        // Restore cursor to the original tension (both vlist and deck cursor)
         if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
             self.vlist.cursor = idx;
+            if self.use_deck && self.parent_id.is_some() {
+                self.deck_cursor_to_sibling(idx);
+            }
         }
     }
 
