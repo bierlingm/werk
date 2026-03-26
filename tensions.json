@@ -1,14 +1,14 @@
 {
-  "flushed_at": "2026-03-25T17:12:20Z",
+  "flushed_at": "2026-03-25T22:44:54Z",
   "summary": {
-    "active": 38,
-    "released": 2,
-    "resolved": 28,
-    "total": 68
+    "active": 51,
+    "released": 6,
+    "resolved": 29,
+    "total": 86
   },
   "tensions": [
     {
-      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, primary experience functional), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
+      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, pathway palettes operational, primary experience functional with known architectural debt being addressed), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -19,13 +19,13 @@
       "status": "Active"
     },
     {
-      "actual": "TUI is the primary experience. V1-V8 complete: 4-zone deck layout (desire/route/console/reality), frontier computation, gradual compression with configurable chrome, epoch mechanics, pitch/roll navigation with cursor memory, quick-edit gestures (!/? for desire/reality), trajectory toggle, focus zoom (Enter expands inline), peek (Space shows children), live console zone with enriched header and active input. Console V2 Phase 1 surgical fixes landed (next-step glyph, overdue intensity, header color-coding, breathing line, OVERDUE tag, contextual hints). Session telemetry, deck-native reorder, panic handler, flush sanity check, TUI startup backup, E2E tests. ftui integration: Flex layout, Paragraph word wrap, StatusLine. Remaining: Console V2 Phase 2 (ConsolePlan bounded component), V9 orient zoom, pathway palette presentation, survey view, threshold mechanics.",
+      "actual": "TUI is the primary experience. V1-V8 complete with Console V2 Phase 1. Pathway palettes (#58) operational — the PATHWAY experiential state is now implemented. Position toggle (p), reworked add/edit UX, reorder fixes, flicker elimination. Architectural consolidation plan written: 5-step refactor to unify dual cursor, cache frontier per frame, fix reorder/frontier interaction, enable deck at root level, remove old renderer. Ready for execution in next session.",
       "created_at": "2026-03-24T17:52:25.922309+00:00",
       "desired": "werk is a FrankenTUI-first application where the terminal interface is the primary experience",
       "horizon": "2026-05-30",
       "id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": 1,
+      "position": 3,
       "short_code": 3,
       "status": "Active"
     },
@@ -36,7 +36,7 @@
       "horizon": null,
       "id": "01KMGFKXTZYXZJ6ZQQXB632771",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": null,
+      "position": 1,
       "short_code": 4,
       "status": "Active"
     },
@@ -121,10 +121,10 @@
       "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 — may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).",
       "created_at": "2026-03-24T17:52:26.260351+00:00",
       "desired": "the conceptual foundation is implemented — data model supports delta versioning, gesture grouping, order of operations distinct from horizon, held steps, and the five temporal concepts",
-      "horizon": null,
+      "horizon": "2026-06",
       "id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": 1,
+      "position": 2,
       "short_code": 13,
       "status": "Active"
     },
@@ -140,7 +140,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "V1-V8 complete. Frontier-centered screen layout operational. Pitch/roll navigation with cursor memory. Focus zoom (Enter), peek (Space). Compression engine with configurable chrome. Epoch mechanics. Quick-edit gestures. Console V2 Phase 1 surgical fixes applied. 40 design questions tracked. Remaining children are TUI-specific feature extensions: survey view (#18), threshold mechanics (#19), pathway palettes (#58) — all unblocked but not yet built.",
+      "actual": "V1-V8 complete. Console V2 Phase 1 surgical fixes applied. Pathway palettes in TUI (#58) operational. Position toggle (p key), add/edit UX reworked (Enter=create, Tab=more fields, Esc=cancel). Reorder fixes (skip non-active, correct boundary calculation, full deck visible during drag). Flicker fix (tick subscription removed, DB change detection on user input). Console header next-deadline chip corrected. Remaining: survey view (#18), threshold mechanics (#19). Known architectural debt: dual cursor (vlist vs deck_cursor), dual renderer (render_field vs render_deck), frontier expansion mismatch — consolidation plan written for next session.",
       "created_at": "2026-03-24T17:52:26.323765+00:00",
       "desired": "TUI rebuilt around the operating envelope as primary interaction surface — frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access",
       "horizon": null,
@@ -371,7 +371,7 @@
       "status": "Active"
     },
     {
-      "actual": "exploration phase — building for self first, others who want it second. Business model unclear: license could work, but core question is what people would actually pay for. Need cash, so practical paths matter more than elegant models. Interested in setup-call / donation / build-something-obviously-valuable approaches. Supermirror.app and jsm CLI as reference models. No revenue, no pricing, no public presence beyond statecraft.systems listing. Target: first $1000 through practical means.",
+      "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
       "created_at": "2026-03-24T17:52:27.203679+00:00",
       "desired": "werk has a sustainable business model that funds continued development while remaining fundamentally true to the conceptual foundation",
       "horizon": null,
@@ -591,7 +591,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Shared palette infrastructure exists in werk-shared (types, builders, applicators, detection). CLI palettes fully operational. Envelope rebuild complete (V1-V8). Blocker cleared. TUI presentation layer not yet built — needs to render palette option sets inline when gestures trigger structural signals.",
+      "actual": "Pathway palettes operational in TUI. Containment violation and sequencing pressure palettes surface as inline overlays after horizon edits, add-with-horizon, move, and reorder. j/k navigate options, Enter/number selects, Esc dismisses. Uses shared palette infrastructure from werk-shared. PATHWAY experiential state implemented.",
       "created_at": "2026-03-24T17:52:29.496367+00:00",
       "desired": "pathway palettes in TUI — inline option sets presented via ftui when gestures create structural signals (containment violations, sequencing pressure). Uses shared palette types from werk-shared. The TUI analog of CLI pathway palettes.",
       "horizon": null,
@@ -753,6 +753,204 @@
       "parent_id": "01KMJV5AKKY3H468YCS52WD640",
       "position": null,
       "short_code": 72,
+      "status": "Active"
+    },
+    {
+      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, primary experience functional), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
+      "created_at": "2026-03-25T17:40:10.065806+00:00",
+      "desired": "palette works",
+      "horizon": "2026-03-25",
+      "id": "01KMK1A66H8CBYZTA62Y8X21F3",
+      "parent_id": null,
+      "position": 3,
+      "short_code": 73,
+      "status": "Released"
+    },
+    {
+      "actual": "etest",
+      "created_at": "2026-03-25T17:49:29.508567+00:00",
+      "desired": "test",
+      "horizon": "2026-03-26",
+      "id": "01KMK1V8H46NN4DJMCN6WT84TA",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 74,
+      "status": "Released"
+    },
+    {
+      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, primary experience functional), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
+      "created_at": "2026-03-25T18:13:25.047506+00:00",
+      "desired": "new item",
+      "horizon": null,
+      "id": "01KMK372DQFNNK5ND18C9WXYRE",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": 7,
+      "short_code": 75,
+      "status": "Released"
+    },
+    {
+      "actual": "Consolidation plan written: 5 steps (cache frontier, unify cursor, fix reorder/frontier, deck at root, remove dead code). 15KB implementation prompt prepared. Dual cursor, dual renderer, and frontier mismatch identified as root cause of persistent display bugs.",
+      "created_at": "2026-03-25T19:20:11.335786+00:00",
+      "desired": "TUI architectural consolidation — unified cursor, single frontier per frame, deck at root, remove old renderer",
+      "horizon": null,
+      "id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
+      "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
+      "position": null,
+      "short_code": 76,
+      "status": "Active"
+    },
+    {
+      "actual": "hogwash",
+      "created_at": "2026-03-25T19:52:07.188007+00:00",
+      "desired": "testing",
+      "horizon": "2026-03-26",
+      "id": "01KMK8VSRKFMBS89M9H5GWDBR0",
+      "parent_id": null,
+      "position": null,
+      "short_code": 77,
+      "status": "Resolved"
+    },
+    {
+      "actual": "CreatorTools.net charges $130/month for simple structural tension charts; ~50-200 active SD practitioners globally; Fritz (early 80s) still teaches; 2 certified instructors (Schutze in Berlin, Higgs in Portland); no community infrastructure (no forum, Slack, or directory); practitioners use pen-and-paper, recorded consultations, and Zoom; no real software tool exists for the practice",
+      "created_at": "2026-03-25T20:14:51.079047+00:00",
+      "desired": "werk is the standard practice tool for structural dynamics practitioners and coaches — the successor to what Fritz once offered, and the obvious thing to charge for",
+      "horizon": null,
+      "id": "01KMKA5DP7EVQV8CZY93WY9636",
+      "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
+      "position": null,
+      "short_code": 78,
+      "status": "Active"
+    },
+    {
+      "actual": "CreatorTools.net (Ivan Fritz, Robert's son) still operates at $130/month — offers 'structural tension charts' that are essentially goal-tracking forms (desired outcome, current reality, 12 action steps with checkboxes). No hierarchy, no dynamics, no temporal logic. LifeStudio iPad app preceded it (~2015), discontinued ~2019. A PDF chart template also exists. The tool is weak, not gone — which is better for us: the market is paying for something werk already surpasses",
+      "created_at": "2026-03-25T20:15:06.715700+00:00",
+      "desired": "Fritz's discontinued tool is researched — what it was, what it did, what practitioners relied on, what's missed, and how werk can surpass it",
+      "horizon": null,
+      "id": "01KMKA5WYV2AKGXD46VK2T90YY",
+      "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
+      "position": null,
+      "short_code": 79,
+      "status": "Active"
+    },
+    {
+      "actual": "no practitioner outside Moritz has seen werk; Nicholas Catton is Fritz-influenced but not confirmed formally certified — runs coaching in San Diego; the two certified Fritz instructors are Katharina Schutze (Berlin, since 2004) and Kira Higgs (Portland, since 2019); Fritz Japan practice also exists; no outreach attempted yet",
+      "created_at": "2026-03-25T20:15:08.652647+00:00",
+      "desired": "SD practitioners and coaches have validated werk as useful for their practice — at least three have tried it and given feedback",
+      "horizon": null,
+      "id": "01KMKA5YVCQ5FZPGTWJJ76BP5Z",
+      "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
+      "position": null,
+      "short_code": 80,
+      "status": "Active"
+    },
+    {
+      "actual": "CreatorTools.net pricing: $130/month, $428/3-months, $1,300/year — for a course + simple charting tool. FST training: 4-day live online (price unlisted). SCCP: $125/quarter workshops + $150/critique. This establishes a price anchor — practitioners already pay $130/month for far less than what werk offers structurally",
+      "created_at": "2026-03-25T20:15:10.604891+00:00",
+      "desired": "werk is packaged and priced for coaches — per-seat, per-client licensing that fits how coaching practices actually work",
+      "horizon": null,
+      "id": "01KMKA60RCXPW1KW3CYGWQHVPG",
+      "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
+      "position": null,
+      "short_code": 81,
+      "status": "Active"
+    },
+    {
+      "actual": "only the terminal TUI and CLI exist; non-technical users find the terminal ugly and unapproachable; no GUI work has begun",
+      "created_at": "2026-03-25T20:15:19.805413+00:00",
+      "desired": "werk has a graphical interface — browser or native Mac app — that non-terminal users find inviting and natural to use, and that serves as the premium product",
+      "horizon": null,
+      "id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 82,
+      "status": "Active"
+    },
+    {
+      "actual": "no evaluation done; options are wide open",
+      "created_at": "2026-03-25T20:15:27.863960+00:00",
+      "desired": "the GUI technology choice is made — web app, Tauri, native SwiftUI, or other — with clear rationale for the SD practitioner audience",
+      "horizon": null,
+      "id": "01KMKA6HKQ6MVZ2P5PQCMTTQFH",
+      "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
+      "position": null,
+      "short_code": 83,
+      "status": "Active"
+    },
+    {
+      "actual": "no GUI exists",
+      "created_at": "2026-03-25T20:15:35.801566+00:00",
+      "desired": "the GUI reaches feature parity with the core practice loop — create tension, see the structure, gesture through it, track dynamics",
+      "horizon": null,
+      "id": "01KMKA6SBS2QVJD0HTNJZJGCJE",
+      "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
+      "position": null,
+      "short_code": 84,
+      "status": "Active"
+    },
+    {
+      "actual": "no design work done; no visual language established for a graphical surface",
+      "created_at": "2026-03-25T20:15:37.757810+00:00",
+      "desired": "the GUI has visual design that expresses structural dynamics — not a generic task manager skin but something that makes the practice feel right",
+      "horizon": null,
+      "id": "01KMKA6V8XGXEXCKK4KEC52KXD",
+      "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
+      "position": null,
+      "short_code": 85,
+      "status": "Active"
+    },
+    {
+      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, pathway palettes operational, primary experience functional with known architectural debt being addressed), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
+      "created_at": "2026-03-25T20:21:23.311931+00:00",
+      "desired": "test",
+      "horizon": "2026-06",
+      "id": "01KMKAHCQF4DG03SMJKAR7S47Z",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 86,
+      "status": "Released"
+    },
+    {
+      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 — may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).",
+      "created_at": "2026-03-25T20:48:37.065076+00:00",
+      "desired": "test",
+      "horizon": null,
+      "id": "01KMKC386807XZP8JPEEH7XC0Z",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 87,
+      "status": "Active"
+    },
+    {
+      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 — may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).",
+      "created_at": "2026-03-25T20:48:39.738979+00:00",
+      "desired": "test",
+      "horizon": null,
+      "id": "01KMKC3ASTX5215GVNG7HWYRTF",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 88,
+      "status": "Active"
+    },
+    {
+      "actual": "not started — root level currently shows no accumulated zone and no epoch boundary",
+      "created_at": "2026-03-25T20:50:06.125363+00:00",
+      "desired": "root-level epochs — the root tension tracks epoch boundaries for its own desire/reality lifecycle, visible in the deck bottom bar",
+      "horizon": null,
+      "id": "01KMKC5Z5DPQ0W1QVYJABQ8ACP",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 89,
+      "status": "Active"
+    },
+    {
+      "actual": "inquiry stage — currently root level filters to active-only, has no epoch boundary, no accumulated zone, and no desire/reality anchors. The single-root pattern (#2) already serves as de facto container. Question: should this be formalized in the data model (implicit root tension) or remain a UI-level convention?",
+      "created_at": "2026-03-25T22:44:54.475353+00:00",
+      "desired": "the root level behaves as a quasi-tension — the field itself is a container with desire/reality/epochs, not just a flat list of unrelated roots",
+      "horizon": null,
+      "id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 90,
       "status": "Active"
     }
   ]
