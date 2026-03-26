@@ -13,6 +13,7 @@ sd-core = { path = "../sd-core" }
 werk-shared = { path = "../werk-shared" }
 werk-mcp = { path = "../werk-mcp" }
 werk-tui = { path = "../werk-tui" }
+werk-web = { path = "../werk-web" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
