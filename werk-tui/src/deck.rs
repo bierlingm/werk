@@ -8,7 +8,7 @@ use ftui::Frame;
 use ftui::PackedRgba;
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::style::Style;
-use ftui::text::{Line, Span, Text, WrapMode};
+use ftui::text::{Line, Span, Text};
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
 
@@ -704,17 +704,20 @@ impl InstrumentApp {
                 h
             };
 
-            let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
-            let reality_age_reserve = if reality_age_str.is_empty() { 0 } else { 3 + reality_age_str.chars().count() };
+            // Reality wraps at full width; age suffix goes on last line only.
             let reality_line_count = if p.actual.is_empty() {
                 0u16
             } else {
-                word_wrap(&p.actual, w.saturating_sub(reality_age_reserve)).len() as u16
+                word_wrap(&p.actual, w).len() as u16
             };
-            // Reality gets up to 25% of screen height, ensuring the middle zone
-            // has adequate space. Full text accessible via ? (edit reality).
-            let max_reality_lines: u16 = (area.height / 4).max(2);
-            let capped_reality = reality_line_count.min(max_reality_lines);
+            // Ensure the middle zone gets at least 8 lines (or half the area).
+            // Reality takes whatever is left after desire + minimum middle.
+            let min_middle: u16 = (area.height / 2).min(8).max(4);
+            let available_for_reality = area.height
+                .saturating_sub(th)
+                .saturating_sub(min_middle)
+                .saturating_sub(2); // rule + blank
+            let capped_reality = reality_line_count.min(available_for_reality);
             let bh: u16 = {
                 let mut h: u16 = 0;
                 if capped_reality > 0 {
@@ -977,9 +980,11 @@ impl InstrumentApp {
                 let next_deadline = frontier.route[shown_route..].iter()
                     .filter_map(|&idx| self.siblings[idx].horizon_label.as_deref())
                     .next();
+                // "N more" when some items visible above, "N route steps" when fully compressed
+                let label = if shown_route > 0 { "more" } else { "route steps" };
                 let text = match next_deadline {
-                    Some(dl) => format!("\u{25B2} {} remaining \u{00B7} next {}", count, dl),
-                    None => format!("\u{25B2} {} remaining", count),
+                    Some(dl) => format!("\u{25B8} {} {} \u{00B7} next {}", count, label, dl),
+                    None => format!("\u{25B8} {} {}", count, label),
                 };
                 self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
                 my += 1;
@@ -1468,28 +1473,32 @@ impl InstrumentApp {
         } else {
             format!(" \u{00B7} {}", reality_age)
         };
-        let age_w = age_suffix.chars().count();
-        let text_w = w.saturating_sub(age_w);
 
-        // Check if full text fits in the zone
+        // Word-wrap at full width for all lines
         let full_lines = word_wrap(&parent.actual, w);
-        if full_lines.len() as u16 <= text_zone.height {
-            // Full text fits — render with age on the last line
-            let mut spans = vec![Span::styled(&parent.actual, STYLES.dim)];
-            if !age_suffix.is_empty() {
-                spans.push(Span::styled(&age_suffix, STYLES.dim));
-            }
-            Paragraph::new(Text::from(Line::from_spans(spans)))
-                .wrap(WrapMode::Word)
-                .render(text_zone, frame);
-        } else {
-            // Truncated — word-wrap to (height-1) lines, then last line = "..." + age
-            let avail = text_zone.height.saturating_sub(1) as usize;
-            let wrapped = word_wrap(&parent.actual, text_w);
-            let shown: Vec<Line> = wrapped.iter().take(avail)
+        let fits = full_lines.len() as u16 <= text_zone.height;
+
+        if fits {
+            // Full text fits — append age to the last line
+            let mut lines: Vec<Line> = full_lines.iter()
                 .map(|l| Line::from(Span::styled(l.as_str(), STYLES.dim)))
                 .collect();
-            let mut lines = shown;
+            if !age_suffix.is_empty() {
+                if let Some(last) = lines.last_mut() {
+                    *last = Line::from_spans([
+                        Span::styled(full_lines.last().unwrap().as_str(), STYLES.dim),
+                        Span::styled(&age_suffix, STYLES.dim),
+                    ]);
+                }
+            }
+            Paragraph::new(Text::from_lines(lines))
+                .render(text_zone, frame);
+        } else {
+            // Truncated — show as many full lines as fit, last line = "..." + age
+            let avail = text_zone.height.saturating_sub(1) as usize;
+            let mut lines: Vec<Line> = full_lines.iter().take(avail)
+                .map(|l| Line::from(Span::styled(l.as_str(), STYLES.dim)))
+                .collect();
             lines.push(Line::from_spans([
                 Span::styled("...", STYLES.dim),
                 Span::styled(&age_suffix, STYLES.dim),
