@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>werk — structural dynamics instrument</title>
+<style>
+  :root {
+    --bg: #faf8f5;
+    --bg-warm: #f5f1ec;
+    --card: #ffffff;
+    --border: #e8e4df;
+    --border-light: #f0ece7;
+    --text: #3d3832;
+    --text-secondary: #6b635a;
+    --text-muted: #a89f94;
+    --text-faint: #ccc5bc;
+    --accent: #c47d4e;
+    --accent-hover: #b06d3e;
+    --accent-light: #f5ebe3;
+    --accent-lighter: #faf5f0;
+    --green: #5a8a5a;
+    --green-light: #e8f2e8;
+    --green-dark: #4a7a4a;
+    --amber: #b8952e;
+    --amber-light: #faf3e0;
+    --red: #c46b6b;
+    --red-light: #fae8e8;
+    --blue: #5a7eb8;
+    --blue-light: #e8eff8;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 1px 4px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-lg: 16px;
+    --transition: 0.2s ease;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Top Bar ── */
+  .top-bar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-sm);
+  }
+  .top-bar-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .brand span { font-size: 12px; color: var(--text-muted); }
+
+  .top-actions { display: flex; gap: 10px; align-items: center; }
+
+  .search-box { position: relative; }
+  .search-box input {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 7px 12px 7px 32px;
+    font-size: 13px;
+    width: 200px;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .search-box input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196,125,78,0.1);
+  }
+  .search-box input::placeholder { color: var(--text-faint); }
+  .search-box svg {
+    position: absolute; left: 10px; top: 50%;
+    transform: translateY(-50%); width: 14px; height: 14px;
+    color: var(--text-muted);
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500; border: none;
+    cursor: pointer; transition: all var(--transition);
+    white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--bg-warm); color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border-light); }
+  .btn-ghost { background: transparent; color: var(--text-muted); padding: 5px 8px; font-size: 12px; }
+  .btn-ghost:hover { background: var(--bg-warm); color: var(--text-secondary); }
+  .btn-small { padding: 3px 9px; font-size: 11px; }
+  .btn-icon {
+    padding: 5px; border-radius: 6px; background: transparent;
+    border: none; cursor: pointer; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-icon:hover { background: var(--bg-warm); color: var(--text-secondary); }
+  .btn svg { width: 14px; height: 14px; }
+
+  /* ── Filter Row ── */
+  .controls-row {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 12px 24px 4px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filter-chip {
+    padding: 4px 12px; border-radius: 16px;
+    font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--text-secondary); cursor: pointer;
+    transition: all var(--transition); user-select: none;
+  }
+  .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .chip-count { margin-left: 3px; opacity: 0.7; font-weight: 400; }
+
+  .stats-inline {
+    margin-left: auto;
+    display: flex; gap: 14px; align-items: center;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .stat-num { font-weight: 600; }
+  .stat-num.s-active { color: var(--accent); }
+  .stat-num.s-resolved { color: var(--green); }
+  .stat-num.s-total { color: var(--text-secondary); }
+
+  /* ── Main ── */
+  .main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 12px 24px 80px;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     THE TENSION — a vertical structure.
+
+     The one spatial law: desired outcome ABOVE current reality.
+
+     Desire (top) — the aimed-at future
+     Theory of closure (middle) — children bridging the gap
+     Reality (bottom) — where things stand now
+
+     The vertical axis: now, through enacted movement,
+     toward aimed-at future.
+     ═══════════════════════════════════════════════════════ */
+
+  .tension {
+    margin-bottom: 16px;
+  }
+
+  .tension-frame {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .tension-frame:hover {
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+  }
+  .tension-frame.open {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+  }
+  .tension-frame.status-resolved { opacity: 0.55; }
+  .tension-frame.status-resolved:hover { opacity: 0.8; }
+  .tension-frame.status-released { opacity: 0.4; }
+  .tension-frame.status-released:hover { opacity: 0.65; }
+
+  /* ── DESIRE — top of the tension ── */
+  .tension-desire {
+    padding: 14px 18px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .tension-toggle {
+    flex-shrink: 0; margin-top: 2px;
+    width: 16px; height: 16px;
+    color: var(--text-faint);
+    transition: all var(--transition);
+  }
+  .tension-frame.open .tension-toggle {
+    transform: rotate(90deg); color: var(--accent);
+  }
+  .tension-toggle svg { width: 12px; height: 12px; }
+
+  .desire-content { flex: 1; min-width: 0; }
+
+  .desire-top {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  }
+
+  .t-code {
+    font-size: 11px; font-weight: 600;
+    color: var(--accent); background: var(--accent-lighter);
+    padding: 1px 6px; border-radius: 5px;
+    font-variant-numeric: tabular-nums; flex-shrink: 0;
+  }
+
+  .desire-text {
+    font-size: 14px; font-weight: 500;
+    color: var(--text); line-height: 1.45;
+  }
+
+  .desire-meta {
+    display: flex; gap: 6px; margin-top: 5px;
+    flex-wrap: wrap; align-items: center;
+  }
+
+  .badge {
+    font-size: 9px; font-weight: 600; padding: 2px 7px;
+    border-radius: 10px; letter-spacing: 0.3px; text-transform: uppercase;
+  }
+  .badge-active { background: var(--accent-light); color: var(--accent); }
+  .badge-resolved { background: var(--green-light); color: var(--green); }
+  .badge-released { background: #f0eeec; color: var(--text-muted); }
+  .badge-horizon { background: var(--blue-light); color: var(--blue); font-size: 10px; text-transform: none; font-weight: 500; }
+  .badge-overdue { background: var(--red-light); color: var(--red); }
+
+  .closure-bar {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 10px; color: var(--text-muted);
+  }
+  .closure-track {
+    width: 32px; height: 3px; background: var(--border-light);
+    border-radius: 2px; overflow: hidden;
+  }
+  .closure-fill {
+    height: 100%; background: var(--green); border-radius: 2px;
+  }
+
+  /* ── THEORY OF CLOSURE — children bridging the gap ── */
+  .theory-of-closure {
+    padding: 2px 0 2px 36px;
+    position: relative;
+  }
+
+  /* The vertical bridge line: desire down toward reality */
+  .theory-of-closure::before {
+    content: '';
+    position: absolute;
+    left: 26px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent) 0%, var(--border) 100%);
+    border-radius: 1px;
+  }
+
+  .closure-step {
+    padding: 6px 14px;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--transition);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .closure-step:last-child { border-bottom: none; }
+  .closure-step:hover { background: var(--bg-warm); }
+
+  /* Connector from bridge line to step */
+  .closure-step::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 14px;
+    width: 8px;
+    height: 2px;
+    background: var(--border);
+  }
+
+  .step-desire {
+    font-size: 13px; color: var(--text);
+    line-height: 1.4;
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .step-code {
+    font-size: 10px; color: var(--text-muted);
+    font-weight: 600; flex-shrink: 0;
+  }
+  .step-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0; position: relative; top: -1px;
+  }
+  .step-dot.s-active { background: var(--accent); }
+  .step-dot.s-resolved { background: var(--green); }
+  .step-dot.s-released { background: var(--text-faint); }
+
+  .step-text { flex: 1; }
+  .step-text.resolved { text-decoration: line-through; color: var(--text-muted); }
+
+  .step-meta {
+    font-size: 10px; color: var(--text-faint);
+    margin-top: 2px; padding-left: 13px;
+  }
+
+  /* Nested children (deeper theory) */
+  .step-children {
+    padding-left: 18px;
+    border-left: 1px solid var(--border-light);
+    margin-left: 6px;
+    margin-top: 2px;
+  }
+
+  /* ── REALITY — bottom of the tension ── */
+  .tension-reality {
+    display: none;
+    padding: 10px 18px 14px 44px;
+    background: var(--bg);
+    border-top: 1px solid var(--border-light);
+  }
+  .tension-frame.open .tension-reality { display: block; }
+
+  .reality-label {
+    font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text-faint); margin-bottom: 3px;
+  }
+
+  .reality-text {
+    font-size: 13px; color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .reality-text em { color: var(--text-faint); font-style: italic; }
+
+  /* ── Actions ── */
+  .tension-actions {
+    display: none;
+    padding: 8px 18px 10px 44px;
+    background: var(--bg);
+    border-top: 1px solid var(--border-light);
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .tension-frame.open .tension-actions { display: flex; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+    z-index: 200; padding: 40px 20px; overflow-y: auto;
+  }
+  .modal-overlay.open { display: flex; justify-content: center; align-items: flex-start; }
+  .modal {
+    background: var(--card); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg); width: 100%; max-width: 520px;
+    padding: 28px; position: relative; animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .modal-close { position: absolute; top: 14px; right: 14px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); margin-bottom: 5px;
+  }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 12px;
+    font-size: 13px; font-family: inherit; color: var(--text);
+    background: var(--bg); outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196,125,78,0.1);
+  }
+  .form-group textarea { resize: vertical; min-height: 72px; }
+  .form-hint { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  .form-error { font-size: 11px; color: var(--red); margin-top: 4px; display: none; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #2d2a26; color: #e8e0d6;
+    padding: 10px 18px; border-radius: var(--radius);
+    font-size: 13px; box-shadow: var(--shadow-lg); z-index: 300;
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s ease;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.toast-error { background: var(--red); color: white; }
+  .toast.toast-success { background: var(--green-dark); color: white; }
+
+  /* ── Empty / Loading ── */
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+  .empty-state p { font-size: 15px; margin-bottom: 6px; }
+  .empty-state small { font-size: 12px; color: var(--text-faint); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; } 50% { opacity: 1; }
+  }
+  .loading-dots span { animation: pulse 1.2s infinite; font-size: 20px; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  .hl { background: var(--amber-light); border-radius: 2px; padding: 0 1px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .top-bar-inner { flex-direction: column; align-items: stretch; }
+    .search-box input { width: 100%; }
+    .main { padding: 8px 12px 60px; }
+    .controls-row { padding: 8px 12px 4px; }
+    .brand span { display: none; }
+    .theory-of-closure { padding-left: 24px; }
+    .theory-of-closure::before { left: 14px; }
+    .tension-reality { padding-left: 32px; }
+    .tension-actions { padding-left: 32px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-inner">
+    <div class="brand">
+      <h1>werk</h1>
+      <span>structural dynamics</span>
+    </div>
+    <div class="top-actions">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" placeholder="Search... (Cmd+K)" />
+      </div>
+      <button class="btn btn-primary" onclick="openAddModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+        New tension
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="controls-row" id="controlsRow"></div>
+
+<div class="main" id="main">
+  <div class="empty-state">
+    <div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>
+    <p>Loading</p>
+  </div>
+</div>
+
+<!-- Create Tension -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('addModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Create a tension</h2>
+    <div class="form-group">
+      <label>Desired outcome</label>
+      <textarea id="addDesired" placeholder="What do you want to be true?"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Current reality</label>
+      <textarea id="addActual" placeholder="Where do things stand right now?"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Parent (optional)</label>
+      <select id="addParent"><option value="">Root tension</option></select>
+    </div>
+    <div class="form-group">
+      <label>Horizon (optional)</label>
+      <input type="text" id="addHorizon" placeholder="2026-06 or 2026-05-15" />
+      <div class="form-hint">When is this aimed at?</div>
+    </div>
+    <div class="form-error" id="addError"></div>
+    <button class="btn btn-primary" id="addBtn" onclick="submitCreate()" style="width:100%;justify-content:center;margin-top:6px;">Create</button>
+  </div>
+</div>
+
+<!-- Evolve Desire -->
+<div class="modal-overlay" id="desireModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('desireModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Evolve desire</h2>
+    <p id="desireCtx" style="font-size:12px;color:var(--text-muted);margin-bottom:14px;"></p>
+    <div class="form-group">
+      <label>Desired outcome</label>
+      <textarea id="desireText"></textarea>
+    </div>
+    <div class="form-error" id="desireError"></div>
+    <button class="btn btn-primary" onclick="submitDesire()" style="width:100%;justify-content:center;">Save</button>
+  </div>
+</div>
+
+<!-- Update Reality -->
+<div class="modal-overlay" id="realityModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('realityModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Update reality</h2>
+    <p id="realityCtx" style="font-size:12px;color:var(--text-muted);margin-bottom:14px;"></p>
+    <div class="form-group">
+      <label>Where do things stand now?</label>
+      <textarea id="realityText"></textarea>
+    </div>
+    <div class="form-error" id="realityError"></div>
+    <button class="btn btn-primary" onclick="submitReality()" style="width:100%;justify-content:center;">Save</button>
+  </div>
+</div>
+
+<!-- Resolve -->
+<div class="modal-overlay" id="resolveModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('resolveModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Resolve tension</h2>
+    <p id="resolveCtx" style="font-size:13px;color:var(--text);margin-bottom:14px;"></p>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:18px;">
+      The desired state has been achieved. Desire and reality meet.
+    </p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal('resolveModal')" style="flex:1;justify-content:center;">Cancel</button>
+      <button class="btn btn-primary" onclick="submitResolve()" style="flex:1;justify-content:center;background:var(--green);">Resolve</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Tauri IPC ──
+const invoke = window.__TAURI_INTERNALS__.invoke;
+
+// ── Data ──
+let tensions = [], summary = {}, byId = {}, childrenOf = {}, roots = [];
+let openSet = new Set(), activeFilter = 'all', searchQuery = '', editId = null;
+
+async function loadData() {
+  try {
+    const d = await invoke('get_tree');
+    tensions = d.tensions || [];
+    summary = d.summary || {};
+    byId = {}; childrenOf = {};
+    tensions.forEach(t => { byId[t.id] = t; childrenOf[t.id] = []; });
+    tensions.forEach(t => {
+      if (t.parent_id && childrenOf[t.parent_id]) childrenOf[t.parent_id].push(t);
+    });
+    Object.values(childrenOf).forEach(arr =>
+      arr.sort((a, b) => (a.position ?? 9999) - (b.position ?? 9999) || (a.short_code||0) - (b.short_code||0))
+    );
+    roots = tensions.filter(t => !t.parent_id)
+      .sort((a, b) => (a.position ?? 9999) - (b.position ?? 9999) || (a.short_code||0) - (b.short_code||0));
+    render();
+  } catch(e) {
+    document.getElementById('main').innerHTML =
+      `<div class="empty-state"><p>Cannot load data</p><small>${esc(String(e))}</small></div>`;
+  }
+}
+
+// ── Helpers ──
+function esc(s) { return !s ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function hl(text, q) {
+  if (!q || !text) return esc(text || '');
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i === -1) return esc(text);
+  return esc(text.slice(0,i)) + '<span class="hl">' + esc(text.slice(i,i+q.length)) + '</span>' + hl(text.slice(i+q.length), q);
+}
+function getChildren(id) { return childrenOf[id] || []; }
+function countDesc(id) { return getChildren(id).reduce((n, c) => n + 1 + countDesc(c.id), 0); }
+function countResolved(id) { return getChildren(id).reduce((n, c) => n + (c.status==='Resolved'?1:0) + countResolved(c.id), 0); }
+
+function matchesFilter(t) {
+  if (activeFilter === 'all') return true;
+  if (activeFilter === 'active') return t.status === 'Active';
+  if (activeFilter === 'resolved') return t.status === 'Resolved';
+  if (activeFilter === 'released') return t.status === 'Released';
+  if (activeFilter === 'overdue') return t.overdue;
+  return true;
+}
+function matchesSearch(t) {
+  if (!searchQuery) return true;
+  const q = searchQuery.toLowerCase();
+  return (t.desired||'').toLowerCase().includes(q) || (t.actual||'').toLowerCase().includes(q) || ('#'+t.short_code).includes(q);
+}
+function visible(t) { return matchesFilter(t) && matchesSearch(t); }
+function subtreeVisible(id) {
+  const t = byId[id];
+  return t && (visible(t) || getChildren(id).some(c => subtreeVisible(c.id)));
+}
+
+// ── Render ──
+function renderControls() {
+  const overdue = tensions.filter(t => t.overdue).length;
+  const filters = [
+    { key: 'all', label: 'All', count: tensions.length },
+    { key: 'active', label: 'Active', count: summary.active || 0 },
+    { key: 'resolved', label: 'Resolved', count: summary.resolved || 0 },
+    { key: 'released', label: 'Released', count: summary.released || 0 },
+  ];
+  if (overdue > 0) filters.push({ key: 'overdue', label: 'Overdue', count: overdue });
+  document.getElementById('controlsRow').innerHTML = filters.map(f =>
+    `<button class="filter-chip${activeFilter===f.key?' active':''}" onclick="activeFilter='${f.key}';render();">${f.label}<span class="chip-count">${f.count}</span></button>`
+  ).join('') +
+  `<div class="stats-inline">
+    <span><span class="stat-num s-active">${summary.active||0}</span> active</span>
+    <span><span class="stat-num s-resolved">${summary.resolved||0}</span> resolved</span>
+    <span><span class="stat-num s-total">${summary.total||0}</span> total</span>
+  </div>`;
+}
+
+/* A step in the theory of closure */
+function renderStep(t, depth) {
+  const ch = getChildren(t.id).filter(c => subtreeVisible(c.id));
+  const dotClass = t.status==='Resolved' ? 's-resolved' : t.status==='Released' ? 's-released' : 's-active';
+  const textClass = t.status==='Resolved' ? 'resolved' : '';
+
+  let meta = [];
+  if (t.horizon) meta.push(`<span class="badge ${t.overdue?'badge-overdue':'badge-horizon'}">${t.overdue?'overdue ':''}${esc(t.horizon)}</span>`);
+  const totalCh = countDesc(t.id);
+  const resolvedCh = countResolved(t.id);
+  if (totalCh > 0) {
+    const pct = Math.round((resolvedCh/totalCh)*100);
+    meta.push(`<span class="closure-bar"><span class="closure-track"><span class="closure-fill" style="width:${pct}%"></span></span>${resolvedCh}/${totalCh}</span>`);
+  }
+
+  let childrenHtml = '';
+  if (ch.length > 0 && openSet.has(t.id)) {
+    childrenHtml = '<div class="step-children">' + ch.map(c => renderStep(c, depth+1)).join('') + '</div>';
+  }
+
+  return `<div class="closure-step" onclick="event.stopPropagation();toggleOpen('${t.id}')">
+    <div class="step-desire">
+      <div class="step-dot ${dotClass}"></div>
+      <span class="step-code">#${t.short_code}</span>
+      <span class="step-text ${textClass}">${hl(t.desired, searchQuery)}</span>
+    </div>
+    ${meta.length ? '<div class="step-meta">'+meta.join(' ')+'</div>' : ''}
+    ${childrenHtml}
+  </div>`;
+}
+
+/* A root tension — the full vertical structure:
+   DESIRE at top, theory of closure in middle, REALITY at bottom */
+function renderTension(t) {
+  const isOpen = openSet.has(t.id);
+  const statusClass = 'status-' + t.status.toLowerCase();
+  const ch = getChildren(t.id).filter(c => subtreeVisible(c.id));
+  const totalDesc = countDesc(t.id);
+  const resolvedDesc = countResolved(t.id);
+
+  // Desire badges
+  let badges = `<span class="badge badge-${t.status.toLowerCase()}">${t.status}</span>`;
+  if (t.horizon) badges += `<span class="badge ${t.overdue?'badge-overdue':'badge-horizon'}">${t.overdue?'overdue ':''}${esc(t.horizon)}</span>`;
+  if (totalDesc > 0) {
+    const pct = Math.round((resolvedDesc/totalDesc)*100);
+    badges += `<div class="closure-bar"><div class="closure-track"><div class="closure-fill" style="width:${pct}%"></div></div>${resolvedDesc}/${totalDesc}</div>`;
+  }
+
+  // Theory of closure
+  let theoryHtml = '';
+  if (isOpen && ch.length > 0) {
+    theoryHtml = `<div class="theory-of-closure">${ch.map(c => renderStep(c, 0)).join('')}</div>`;
+  }
+
+  // Reality
+  const realityText = t.actual ? hl(t.actual, searchQuery) : '<em>No reality articulated yet</em>';
+
+  // Actions — gestures available on this tension
+  let actions = '';
+  if (isOpen) {
+    if (t.status === 'Active') {
+      actions = `
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openDesireModal('${t.id}')">Evolve desire</button>
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openRealityModal('${t.id}')">Update reality</button>
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openResolveModal('${t.id}')" style="color:var(--green);">Resolve</button>
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openAddModal('${t.id}')">Decompose</button>`;
+    } else {
+      actions = `<button class="btn btn-ghost btn-small" onclick="event.stopPropagation();doReopen('${t.id}')">Reopen</button>`;
+    }
+  }
+
+  return `<div class="tension">
+    <div class="tension-frame ${isOpen?'open':''} ${statusClass}">
+      <div class="tension-desire" onclick="toggleOpen('${t.id}')">
+        <div class="tension-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+        <div class="desire-content">
+          <div class="desire-top">
+            <span class="t-code">#${t.short_code}</span>
+            <span class="desire-text">${hl(t.desired, searchQuery)}</span>
+          </div>
+          <div class="desire-meta">${badges}</div>
+        </div>
+      </div>
+      ${theoryHtml}
+      <div class="tension-reality">
+        <div class="reality-label">current reality</div>
+        <div class="reality-text">${realityText}</div>
+      </div>
+      <div class="tension-actions">${actions}</div>
+    </div>
+  </div>`;
+}
+
+function render() {
+  renderControls();
+  const main = document.getElementById('main');
+  if (tensions.length === 0) {
+    main.innerHTML = '<div class="empty-state"><p>No tensions yet</p><small>Create your first tension to begin</small></div>';
+    return;
+  }
+  const vis = roots.filter(r => subtreeVisible(r.id));
+  if (vis.length === 0) {
+    main.innerHTML = '<div class="empty-state"><p>No tensions match</p><small>Try a different filter or search</small></div>';
+    return;
+  }
+  main.innerHTML = vis.map(renderTension).join('');
+}
+
+// ── Interactions ──
+function toggleOpen(id) {
+  if (openSet.has(id)) openSet.delete(id); else openSet.add(id);
+  render();
+}
+
+let searchTimer;
+document.getElementById('searchInput').addEventListener('input', function(e) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchQuery = e.target.value.trim();
+    if (searchQuery) {
+      tensions.forEach(t => {
+        if (matchesSearch(t) && t.parent_id) {
+          let pid = t.parent_id;
+          while (pid) { openSet.add(pid); pid = byId[pid] ? byId[pid].parent_id : null; }
+        }
+      });
+    }
+    render();
+  }, 200);
+});
+
+// ── Modals ──
+function closeModal(id) { document.getElementById(id).classList.remove('open'); editId = null; }
+
+function openAddModal(parentId) {
+  document.getElementById('addModal').classList.add('open');
+  document.getElementById('addDesired').value = '';
+  document.getElementById('addActual').value = '';
+  document.getElementById('addHorizon').value = '';
+  document.getElementById('addError').style.display = 'none';
+  document.getElementById('addBtn').disabled = false;
+  const sel = document.getElementById('addParent');
+  sel.innerHTML = '<option value="">Root tension</option>';
+  tensions.filter(t => t.status==='Active')
+    .sort((a,b) => (a.short_code||0)-(b.short_code||0))
+    .forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = `#${t.short_code} \u2014 ${t.desired.slice(0,50)}`;
+      if (parentId === t.id) o.selected = true;
+      sel.appendChild(o);
+    });
+  document.getElementById('addDesired').focus();
+}
+
+async function submitCreate() {
+  const desired = document.getElementById('addDesired').value.trim();
+  const actual = document.getElementById('addActual').value.trim();
+  const parent = document.getElementById('addParent').value;
+  const horizon = document.getElementById('addHorizon').value.trim();
+  if (!desired) return showFormErr('addError', 'Enter a desired outcome');
+  document.getElementById('addBtn').disabled = true;
+  try {
+    const args = { desired };
+    if (actual) args.actual = actual;
+    if (parent) args.parent_id = parent;
+    if (horizon) args.horizon = horizon;
+    await invoke('create_tension', { args });
+    closeModal('addModal');
+    toast('Tension created', 'success');
+    await loadData();
+  } catch(e) { showFormErr('addError', String(e)); }
+  finally { document.getElementById('addBtn').disabled = false; }
+}
+
+function openDesireModal(id) {
+  editId = id; const t = byId[id];
+  document.getElementById('desireCtx').textContent = `#${t.short_code} \u2014 ${t.desired}`;
+  document.getElementById('desireText').value = t.desired;
+  document.getElementById('desireError').style.display = 'none';
+  document.getElementById('desireModal').classList.add('open');
+  document.getElementById('desireText').focus();
+}
+async function submitDesire() {
+  const v = document.getElementById('desireText').value.trim();
+  if (!v) return showFormErr('desireError', 'Enter the desired outcome');
+  try {
+    await invoke('update_desired', { id: editId, new_desired: v });
+    closeModal('desireModal'); toast('Desire evolved', 'success'); await loadData();
+  } catch(e) { showFormErr('desireError', String(e)); }
+}
+
+function openRealityModal(id) {
+  editId = id; const t = byId[id];
+  document.getElementById('realityCtx').textContent = `#${t.short_code} \u2014 ${t.desired}`;
+  document.getElementById('realityText').value = t.actual || '';
+  document.getElementById('realityError').style.display = 'none';
+  document.getElementById('realityModal').classList.add('open');
+  document.getElementById('realityText').focus();
+}
+async function submitReality() {
+  const v = document.getElementById('realityText').value.trim();
+  if (!v) return showFormErr('realityError', 'Enter current reality');
+  try {
+    await invoke('update_reality', { id: editId, new_reality: v });
+    closeModal('realityModal'); toast('Reality updated', 'success'); await loadData();
+  } catch(e) { showFormErr('realityError', String(e)); }
+}
+
+function openResolveModal(id) {
+  editId = id; const t = byId[id];
+  document.getElementById('resolveCtx').textContent = `#${t.short_code} \u2014 ${t.desired}`;
+  document.getElementById('resolveModal').classList.add('open');
+}
+async function submitResolve() {
+  try {
+    await invoke('resolve_tension', { id: editId });
+    closeModal('resolveModal'); toast('Tension resolved', 'success'); await loadData();
+  } catch(e) { toast(String(e), 'error'); }
+}
+
+async function doReopen(id) {
+  try {
+    await invoke('reopen_tension', { id });
+    toast('Reopened', 'success'); await loadData();
+  } catch(e) { toast(String(e), 'error'); }
+}
+
+function showFormErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.style.display = 'block';
+}
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (type==='error'?' toast-error':type==='success'?' toast-success':'');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    editId = null;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault(); document.getElementById('searchInput').focus();
+  }
+});
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); editId = null; } });
+});
+
+// ── Init ──
+loadData();
+</script>
+</body>
+</html>
