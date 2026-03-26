@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-26T14:55:54Z",
+  "flushed_at": "2026-03-26T15:22:13Z",
   "summary": {
-    "active": 53,
+    "active": 52,
     "released": 7,
-    "resolved": 32,
+    "resolved": 33,
     "total": 92
   },
   "tensions": [
@@ -789,7 +789,7 @@
       "status": "Released"
     },
     {
-      "actual": "Summary affordances landed (Enter on route/held/accumulated summaries toggles expansion). Write-scoped locking (#92 resolved) — WriteLockGuard RAII pattern, per-write file lock, CLI commands work alongside TUI. Selectable desire/reality anchors (#91 resolved) — cursor reaches top/bottom zones, Enter opens edit. Focus detail filters by epoch boundary. Reconciliation guarantees every non-empty zone keeps 1-line minimum; focus detail compresses before summaries disappear. Open: focus zoom redesign (detail card vs miniature descent), root-level epochs (#89/#90).",
+      "actual": "V1-V8 complete. Focus zoom redesigned (#94 resolved): detail card shows reality/temporal/notes, Focus/Peek as distinct zoom levels. Diamond glyph vocabulary (◆ ✧ ◇ ⏱) across all deck zones with semantic color (cyan/green/subdued). Subdued style added to palette. Reconciliation protects focused items in all zones. Root suppresses accumulated children. Reorder keeps held separate. e edits anchors. Glyph vocabulary banked in conceptual foundation. Open: root-level epochs (#89/#90).",
       "created_at": "2026-03-25T19:20:11.335786+00:00",
       "desired": "TUI architectural consolidation — unified cursor, single frontier per frame, deck at root, remove old renderer",
       "horizon": null,
@@ -987,7 +987,7 @@
       "status": "Active"
     },
     {
-      "actual": "Current focus shows children inline, duplicating what descent provides. Design insight: focus should give higher density on ONE tension's own facts without context switch. Descent is for working inside children. The deck IS the console — the console boundary is visual chrome, not a separate surface.",
+      "actual": "Detail card implemented: Focus (Enter) shows reality text in subdued weight, metadata line (intent→bridge→trace: ⏱ deadline, child count, born/◆ desire/◇ reality ages), recent notes. Peek (Space) shows lighter card. Focus/Peek switch between densities. Diamond glyph vocabulary: ◆ cyan route, ◆ green next, ✧ subdued held, ◇ subdued reality, ⏱ deadlines everywhere. Reconciliation protects focused items. Root suppresses accumulated. Reorder keeps held separate. e edits anchors, Enter reserved for focus.",
       "created_at": "2026-03-26T10:44:30.235641+00:00",
       "desired": "focus zoom shows a detail card (full desire/reality text, temporal facts, recent notes, child count breakdown) — not a miniature descent",
       "horizon": null,
@@ -995,7 +995,7 @@
       "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
       "position": null,
       "short_code": 94,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "not started — no mobile technology choice made. Tauri 2.0 supports mobile targets (iOS/Android) which could share the web frontend. Native Swift/Kotlin is the alternative. The logbase and all surfaces (CLI, MCP, TUI, web, desktop, mobile) should share the same queryable substrate.",
