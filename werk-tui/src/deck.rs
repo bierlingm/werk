@@ -704,29 +704,12 @@ impl InstrumentApp {
                 h
             };
 
-            // Reality wraps at full width; age suffix goes on last line only.
-            let reality_line_count = if p.actual.is_empty() {
-                0u16
+            // Reality: always exactly 1 line (truncated with "... · age").
+            // Full text accessible via ? (edit) or orient zoom (future).
+            let bh: u16 = if p.actual.is_empty() {
+                1 // just the rule
             } else {
-                word_wrap(&p.actual, w).len() as u16
-            };
-            // Middle zone priority: compute what the frontier content needs,
-            // then reality gets whatever's left (minimum 1 line + rule).
-            // Frontier content needs: selectables + console header(2) + breathing(2).
-            let middle_content_need = (frontier.selectable_count() as u16) + 4;
-            let available_for_reality = area.height
-                .saturating_sub(th)
-                .saturating_sub(middle_content_need)
-                .saturating_sub(2); // rule + blank
-            let capped_reality = reality_line_count.min(available_for_reality.max(1));
-            let bh: u16 = {
-                let mut h: u16 = 0;
-                if capped_reality > 0 {
-                    h += 1; // blank line before reality
-                    h += capped_reality;
-                }
-                h += 1; // reality rule
-                h
+                3 // blank + 1 reality line + rule
             };
 
             (th, bh, d_lines)
@@ -837,7 +820,15 @@ impl InstrumentApp {
         let mut acc_top = middle_end; // will be decremented as we place accumulated items
 
         if !frontier.accumulated.is_empty() {
-            let shown = frontier.show_accumulated.min(frontier.accumulated.len());
+            // Clamp shown to what physically fits between acc_floor and middle_end.
+            // Reserve 1 line for summary if not all shown.
+            let acc_space = middle_end.saturating_sub(acc_floor) as usize;
+            let max_shown = if frontier.show_accumulated < frontier.accumulated.len() {
+                acc_space.saturating_sub(1) // leave room for summary line
+            } else {
+                acc_space
+            };
+            let shown = frontier.show_accumulated.min(frontier.accumulated.len()).min(max_shown);
             let remaining = frontier.accumulated.len() - shown;
 
             // Remaining: show individually if only 1, else summary
@@ -1466,7 +1457,7 @@ impl InstrumentApp {
 
         if !has_reality { return; }
 
-        // Reality text with word wrap, truncated with "..." + age when zone is too small.
+        // Single-line reality: truncate to fit width, always show age suffix.
         let text_zone = zones[1];
         if text_zone.height == 0 { return; }
 
@@ -1475,39 +1466,21 @@ impl InstrumentApp {
         } else {
             format!(" \u{00B7} {}", reality_age)
         };
+        let age_w = age_suffix.chars().count();
+        let text_budget = w.saturating_sub(age_w);
 
-        // Word-wrap at full width for all lines
-        let full_lines = word_wrap(&parent.actual, w);
-        let fits = full_lines.len() as u16 <= text_zone.height;
-
-        if fits {
-            // Full text fits — append age to the last line
-            let mut lines: Vec<Line> = full_lines.iter()
-                .map(|l| Line::from(Span::styled(l.as_str(), STYLES.dim)))
-                .collect();
-            if !age_suffix.is_empty() {
-                if let Some(last) = lines.last_mut() {
-                    *last = Line::from_spans([
-                        Span::styled(full_lines.last().unwrap().as_str(), STYLES.dim),
-                        Span::styled(&age_suffix, STYLES.dim),
-                    ]);
-                }
-            }
-            Paragraph::new(Text::from_lines(lines))
-                .render(text_zone, frame);
+        let reality_chars: Vec<char> = parent.actual.chars().collect();
+        let display = if reality_chars.len() <= text_budget {
+            parent.actual.clone()
         } else {
-            // Truncated — show as many full lines as fit, last line = "..." + age
-            let avail = text_zone.height.saturating_sub(1) as usize;
-            let mut lines: Vec<Line> = full_lines.iter().take(avail)
-                .map(|l| Line::from(Span::styled(l.as_str(), STYLES.dim)))
-                .collect();
-            lines.push(Line::from_spans([
-                Span::styled("...", STYLES.dim),
-                Span::styled(&age_suffix, STYLES.dim),
-            ]));
-            Paragraph::new(Text::from_lines(lines))
-                .render(text_zone, frame);
-        }
+            let truncated: String = reality_chars[..text_budget.saturating_sub(3)].iter().collect();
+            format!("{}...", truncated)
+        };
+
+        render_line(frame, text_zone.x, text_zone.y, text_zone.width, &[
+            (display, STYLES.dim),
+            (age_suffix, STYLES.dim),
+        ]);
     }
 
     /// Render inline focus detail below a child line (V7).
