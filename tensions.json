@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-26T08:50:23Z",
+  "flushed_at": "2026-03-26T09:36:42Z",
   "summary": {
     "active": 53,
     "released": 6,
@@ -789,7 +789,7 @@
       "status": "Released"
     },
     {
-      "actual": "Steps 1-5 complete (cached frontier, unified cursor, reorder fix, deck at root, dead code removed — net -1550 lines). Post-refactor fixes: global undo/redo (u/U), month names in horizon parser, root active filter, focus compression, route summary wording, single-line reality truncation. Remaining: accumulated still overlaps held/input on small screens despite acc_floor — the expansion algorithm and physical rendering are not fully reconciled. Reality should be multi-line adaptive (not always 1 line). Layout needs a proper two-pass approach where middle zone content determines reality budget, not the reverse.",
+      "actual": "Steps 1-5 complete + 13 bug-fix commits. Net -1550 lines dead code. Two-pass layout (measure → reconcile → render) prevents overlap: accumulated compresses first (individuals → summary → hidden), then held (individuals → summary). Input point never disappears. Global undo/redo, month names in horizon, adaptive reality truncation. Open: summary affordances undefined (expand? focus? peek?), selectable desire/reality anchors (#91), write-scoped locking (#92), root-level epochs (#89/#90).",
       "created_at": "2026-03-25T19:20:11.335786+00:00",
       "desired": "TUI architectural consolidation — unified cursor, single frontier per frame, deck at root, remove old renderer",
       "horizon": null,
