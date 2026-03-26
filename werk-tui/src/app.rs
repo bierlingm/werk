@@ -545,6 +545,10 @@ impl InstrumentApp {
                 self.epoch_boundary,
             )
         };
+        // Root level: children don't display as accumulated
+        if self.parent_id.is_none() {
+            frontier.accumulated.clear();
+        }
         frontier.compute_expansion(self.last_render_lines.get());
         // Set desire/reality anchor selectability based on whether we're descended
         frontier.has_desire_anchor = self.parent_tension.is_some();

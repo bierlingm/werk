@@ -1,8 +1,8 @@
 {
-  "flushed_at": "2026-03-26T11:44:33Z",
+  "flushed_at": "2026-03-26T14:55:54Z",
   "summary": {
-    "active": 54,
-    "released": 6,
+    "active": 53,
+    "released": 7,
     "resolved": 32,
     "total": 92
   },
@@ -25,7 +25,7 @@
       "horizon": "2026-05-30",
       "id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": 3,
+      "position": 4,
       "short_code": 3,
       "status": "Active"
     },
@@ -91,7 +91,7 @@
       "horizon": null,
       "id": "01KMGFKY13827YVY23E14BX4X7",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": 4,
+      "position": 3,
       "short_code": 10,
       "status": "Active"
     },
@@ -916,9 +916,9 @@
       "horizon": null,
       "id": "01KMKC386807XZP8JPEEH7XC0Z",
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
-      "position": null,
+      "position": 1,
       "short_code": 87,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 — may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).",

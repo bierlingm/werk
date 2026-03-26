@@ -130,7 +130,7 @@ impl InstrumentApp {
         match msg {
             // Navigation
             Msg::Char('k') | Msg::Up => {
-                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
                 }
@@ -138,7 +138,7 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Char('j') | Msg::Down => {
-                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
                 }
@@ -173,26 +173,22 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Submit => {
-                // V7: Enter toggles focus zoom on the selected element
+                // Enter: if already in Focus, dismiss. If in Peek, upgrade to Focus. Otherwise enter Focus.
                 if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                } else if self.deck_zoom == crate::deck::ZoomLevel::Peek {
+                    // Upgrade peek to full focus — reload with reality + notes
+                    if let Some(entry) = self.action_target().cloned() {
+                        let detail = self.load_focus_detail(&entry);
+                        self.focused_detail = Some(detail);
+                        self.deck_zoom = crate::deck::ZoomLevel::Focus;
+                    }
                 } else if self.toggle_summary_expansion() {
                     // Enter on a summary line toggles expansion — handled
-                } else if self.enter_anchor_edit() {
-                    // Enter on desire/reality anchor opens edit for that field
                 } else if let Some(entry) = self.action_target().cloned() {
-                    let children = self.load_focus_children(&entry.id);
-                    let deadline_label = entry.horizon_label.clone();
-                    let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
-                    self.focused_detail = Some(crate::deck::FocusedDetail {
-                        sibling_index: sibling_idx,
-                        desired: entry.desired.clone(),
-                        actual: entry.actual.clone(),
-                        children,
-                        short_code: entry.short_code,
-                        deadline_label,
-                    });
+                    let detail = self.load_focus_detail(&entry);
+                    self.focused_detail = Some(detail);
                     self.deck_zoom = crate::deck::ZoomLevel::Focus;
                 }
                 Cmd::none()
@@ -224,25 +220,25 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Space: peek — inline children preview
+            // Space: peek — lighter detail card. Switches between densities.
             Msg::Char(' ') | Msg::ToggleGaze => {
-                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                if self.deck_zoom == crate::deck::ZoomLevel::Peek {
+                    // Already peeking — dismiss
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
-                } else if let Some(entry) = self.action_target().cloned() {
-                    if entry.child_count > 0 {
-                        let children = self.load_focus_children(&entry.id);
-                        let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
-                        self.focused_detail = Some(crate::deck::FocusedDetail {
-                            sibling_index: sibling_idx,
-                            desired: entry.desired.clone(),
-                            actual: String::new(), // peek = no reality
-                            children,
-                            short_code: entry.short_code,
-                            deadline_label: entry.horizon_label.clone(),
-                        });
-                        self.deck_zoom = crate::deck::ZoomLevel::Focus;
+                } else if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                    // Downgrade focus to peek — strip reality + notes
+                    if let Some(ref mut detail) = self.focused_detail {
+                        detail.actual = String::new();
+                        detail.recent_notes = Vec::new();
                     }
+                    self.deck_zoom = crate::deck::ZoomLevel::Peek;
+                } else if let Some(entry) = self.action_target().cloned() {
+                    let mut detail = self.load_focus_detail(&entry);
+                    detail.actual = String::new();       // peek = no reality
+                    detail.recent_notes = Vec::new();    // peek = no notes
+                    self.focused_detail = Some(detail);
+                    self.deck_zoom = crate::deck::ZoomLevel::Peek;
                 }
                 Cmd::none()
             }
@@ -256,7 +252,9 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Char('e') | Msg::StartEdit => {
-                if let Some(entry) = self.action_target().cloned() {
+                if self.enter_anchor_edit() {
+                    // Cursor was on desire/reality anchor — edit opened
+                } else if let Some(entry) = self.action_target().cloned() {
                     if entry.status == sd_core::TensionStatus::Active {
                         self.input_buffer = entry.desired.clone();
                         self.text_input.set_value(&entry.desired);
@@ -479,7 +477,7 @@ impl InstrumentApp {
             // Quit
             Msg::Char('q') | Msg::Quit => Cmd::quit(),
             Msg::Cancel => {
-                if self.deck_zoom == crate::deck::ZoomLevel::Focus {
+                if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
                 }
@@ -1133,50 +1131,64 @@ impl InstrumentApp {
         }
     }
 
-    /// Load children for a focus detail view, filtering by epoch boundary.
-    /// Resolved/released children from prior epochs are excluded.
-    fn load_focus_children(&self, tension_id: &str) -> Vec<crate::state::FieldEntry> {
+    /// Load detail card data for a focused tension.
+    fn load_focus_detail(&self, entry: &crate::state::FieldEntry) -> crate::deck::FocusedDetail {
         let now = chrono::Utc::now();
-        let raw_children = self.engine.store()
-            .get_children(tension_id)
-            .unwrap_or_default();
+        let id = &entry.id;
 
-        // Get the focused tension's epoch boundary
-        let epoch_boundary = self.engine.store()
-            .get_last_epoch_timestamp(tension_id)
-            .ok()
-            .flatten();
+        // Temporal facts from mutations
+        let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
 
-        // Filter: keep active children always, resolved/released only if in current epoch
-        let filtered: Vec<_> = raw_children.iter().filter(|c| {
-            match c.status {
-                sd_core::TensionStatus::Active => true,
-                sd_core::TensionStatus::Resolved | sd_core::TensionStatus::Released => {
-                    match epoch_boundary {
-                        Some(boundary) => {
-                            // Need the child's last status change timestamp
-                            let last_status = self.engine.store()
-                                .get_last_mutation_timestamps(&[c.id.as_str()], &["status"])
-                                .ok()
-                                .and_then(|m| m.get(&c.id).copied())
-                                .unwrap_or(c.created_at);
-                            last_status >= boundary
-                        }
-                        None => true, // no epoch = show all
-                    }
-                }
-            }
-        }).collect();
+        let last_reality = mutations.iter().rev()
+            .find(|m| m.field() == "actual" || m.field() == "created")
+            .map(|m| m.timestamp())
+            .unwrap_or(now);
 
-        let child_ids: Vec<&str> = filtered.iter().map(|c| c.id.as_str()).collect();
-        let child_counts = self.engine.store()
-            .count_children_by_parent(&child_ids)
-            .unwrap_or_default();
+        let last_desire = mutations.iter().rev()
+            .find(|m| m.field() == "desired" || m.field() == "created")
+            .map(|m| m.timestamp())
+            .unwrap_or(now);
 
-        filtered.iter().map(|c| {
-            let cc = child_counts.get(&c.id).copied().unwrap_or(0);
-            crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
-        }).collect()
+        let created_at = mutations.iter()
+            .find(|m| m.field() == "created")
+            .map(|m| m.timestamp())
+            .unwrap_or(now);
+
+        // Recent notes (most recent first, cap at 5)
+        let recent_notes: Vec<(String, String)> = mutations.iter().rev()
+            .filter(|m| m.field() == "note")
+            .take(5)
+            .map(|m| {
+                let age = crate::glyphs::relative_time(m.timestamp(), now);
+                (age, m.new_value().to_string())
+            })
+            .collect();
+
+        // Child breakdown
+        let children = self.engine.store().get_children(id).unwrap_or_default();
+        let child_count = children.len();
+        let child_active = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active).count();
+        let child_resolved = children.iter().filter(|c| c.status == sd_core::TensionStatus::Resolved).count();
+        let child_released = children.iter().filter(|c| c.status == sd_core::TensionStatus::Released).count();
+        let child_held = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_none()).count();
+
+        crate::deck::FocusedDetail {
+            sibling_index: self.deck_selected_sibling_index().unwrap_or(0),
+            desired: entry.desired.clone(),
+            actual: entry.actual.clone(),
+            short_code: entry.short_code,
+            deadline_label: entry.horizon_label.clone(),
+            created_age: crate::glyphs::relative_time(created_at, now),
+            last_reality_age: crate::glyphs::relative_time(last_reality, now),
+            last_desire_age: crate::glyphs::relative_time(last_desire, now),
+            temporal_urgency: entry.temporal_urgency,
+            child_count,
+            child_active,
+            child_resolved,
+            child_released,
+            child_held,
+            recent_notes,
+        }
     }
 
     /// Enter edit mode for the desire/reality anchor under the cursor.
