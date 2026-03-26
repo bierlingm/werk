@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-26T15:24:23Z",
+  "flushed_at": "2026-03-26T18:05:06Z",
   "summary": {
     "active": 52,
     "released": 7,
@@ -789,7 +789,7 @@
       "status": "Released"
     },
     {
-      "actual": "V1-V8 complete. Focus zoom redesigned (#94 resolved): detail card shows reality/temporal/notes, Focus/Peek as distinct zoom levels. Diamond glyph vocabulary (◆ ✧ ◇ ⏱) across all deck zones with semantic color (cyan/green/subdued). Subdued style added to palette. Reconciliation protects focused items in all zones. Root suppresses accumulated children. Reorder keeps held separate. e edits anchors. Glyph vocabulary banked in conceptual foundation. Open: root-level epochs (#89/#90).",
+      "actual": "V1-V8 complete. Notes gesture polish (#76): TextInput widget for annotating mode (cursor movement, word nav), byte-safe UTF-8 truncation in note display, adaptive note sizing (no hardcoded cap — rendering fills available space). Accumulated zone now heterogeneous — AccumulatedItem enum interleaves parent notes with resolved/released children by timestamp, selectable/focusable. Post-annotate auto-focuses detail card. Focus zoom redesigned (#94 resolved). Diamond glyph vocabulary. Open: root-level epochs (#89/#90), input interface unification (Adding/Searching still use bare input_buffer).",
       "created_at": "2026-03-25T19:20:11.335786+00:00",
       "desired": "TUI architectural consolidation — unified cursor, single frontier per frame, deck at root, remove old renderer",
       "horizon": null,
@@ -932,7 +932,7 @@
       "status": "Active"
     },
     {
-      "actual": "Conceptual: reality updates already create epoch layers (auto-snapshot on desire/reality change). Data exists as epoch table rows with desire_snapshot, reality_snapshot, children_snapshot_json. Not yet queryable as a substrate — no search, no comparison, no cross-tension timeline. Ghost geometry (desire-reality triangle morphology over time) identified as the visual representation. Stack model: current reality is top layer, prior realities are navigable layers below. Desire evolution displays differently from reality evolution in the stack.",
+      "actual": "not started — root level currently shows no accumulated zone and no epoch boundary",
       "created_at": "2026-03-25T20:50:06.125363+00:00",
       "desired": "logbase — a searchable, queryable substrate of all prior desire/reality/epoch layers across the entire field, accessible from root view and all surfaces (CLI, MCP, TUI, web, desktop, mobile)",
       "horizon": null,

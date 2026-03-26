@@ -447,17 +447,32 @@ impl InstrumentApp {
         let prompt_area = Rect::new(area.x, area.y + bottom_y, area.width, 3);
         crate::helpers::clear_area(frame, prompt_area);
 
+        let label_text = format!("{}  note: ", INDENT);
+        let label_w = label_text.len() as u16;
         let lines = vec![
             Line::from(""),
             Line::from_spans([
-                Span::styled(format!("{}  note: ", INDENT), STYLES.label),
-                Span::styled(&self.input_buffer, STYLES.text_bold),
-                Span::styled("\u{2588}", STYLES.cyan),
+                Span::styled(&label_text, STYLES.label),
             ]),
         ];
 
         let para = Paragraph::new(Text::from_lines(lines));
         para.render(prompt_area, frame);
+
+        // Render TextInput widget after the label
+        let input_rect = Rect::new(
+            prompt_area.x + label_w,
+            prompt_area.y + 1, // after the blank line
+            prompt_area.width.saturating_sub(label_w),
+            1,
+        );
+        self.text_input.render(input_rect, frame);
+
+        if self.text_input.focused() {
+            let (cx, cy) = self.text_input.cursor_position(input_rect);
+            frame.set_cursor_visible(true);
+            frame.set_cursor(Some((cx, cy)));
+        }
     }
 
     // -----------------------------------------------------------------------

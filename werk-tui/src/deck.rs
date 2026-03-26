@@ -14,6 +14,29 @@ use ftui::widgets::paragraph::Paragraph;
 
 use sd_core::TensionStatus;
 
+/// An item in the accumulated zone — either a resolved/released child or a parent note.
+#[derive(Debug, Clone)]
+pub enum AccumulatedItem {
+    /// A resolved or released child tension (index into siblings vec).
+    Child(usize),
+    /// A note on the parent tension.
+    Note {
+        text: String,
+        age: String,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+impl AccumulatedItem {
+    /// Get the sibling index if this is a Child variant.
+    pub fn child_index(&self) -> Option<usize> {
+        match self {
+            AccumulatedItem::Child(i) => Some(*i),
+            AccumulatedItem::Note { .. } => None,
+        }
+    }
+}
+
 use crate::app::InstrumentApp;
 use crate::glyphs;
 use crate::state::FieldEntry;
@@ -150,8 +173,8 @@ pub struct Frontier {
     pub next: Option<usize>,
     /// Unpositioned active steps (held in reserve).
     pub held: Vec<usize>,
-    /// Resolved or released steps (accumulated since last epoch).
-    pub accumulated: Vec<usize>,
+    /// Temporal events: resolved/released steps and parent notes (accumulated since last epoch).
+    pub accumulated: Vec<AccumulatedItem>,
     /// How many route items to show individually (rest compressed to summary).
     pub show_route: usize,
     /// How many held items to show individually (0 = compressed indicator only).
@@ -203,7 +226,7 @@ impl Frontier {
                             None => true, // no epoch boundary = show all (stub behavior)
                         };
                         if in_current_epoch {
-                            frontier.accumulated.push(i);
+                            frontier.accumulated.push(AccumulatedItem::Child(i));
                         }
                     }
                 }
@@ -280,7 +303,7 @@ impl Frontier {
                         None => true,
                     };
                     if in_current_epoch {
-                        frontier.accumulated.push(i);
+                        frontier.accumulated.push(AccumulatedItem::Child(i));
                     }
                 }
             }
@@ -294,6 +317,25 @@ impl Frontier {
 
         frontier.accumulated.reverse();
         frontier
+    }
+
+    /// Inject parent notes into the accumulated zone, then sort all items
+    /// by timestamp descending (most recent first).
+    /// `siblings` is needed to look up `last_status_change` for child items.
+    pub fn inject_notes(&mut self, notes: Vec<AccumulatedItem>, siblings: &[FieldEntry]) {
+        self.accumulated.extend(notes);
+        // Sort: most recent first (descending timestamp)
+        self.accumulated.sort_by(|a, b| {
+            let ts_a = match a {
+                AccumulatedItem::Child(idx) => siblings[*idx].last_status_change,
+                AccumulatedItem::Note { timestamp, .. } => *timestamp,
+            };
+            let ts_b = match b {
+                AccumulatedItem::Child(idx) => siblings[*idx].last_status_change,
+                AccumulatedItem::Note { timestamp, .. } => *timestamp,
+            };
+            ts_b.cmp(&ts_a) // descending
+        });
     }
 
     /// Determine how many route/held/accumulated items to show individually.
@@ -502,7 +544,11 @@ impl Frontier {
         if !self.accumulated.is_empty() {
             let shown = self.show_accumulated.min(self.accumulated.len());
             if cursor < offset + shown {
-                return CursorTarget::AccumulatedItem(self.accumulated[cursor - offset]);
+                let acc_idx = cursor - offset;
+                return match &self.accumulated[acc_idx] {
+                    AccumulatedItem::Child(sibling_idx) => CursorTarget::AccumulatedItem(*sibling_idx),
+                    AccumulatedItem::Note { .. } => CursorTarget::NoteItem(acc_idx),
+                };
             }
             offset += shown;
             if shown < self.accumulated.len() {
@@ -542,8 +588,10 @@ pub enum CursorTarget {
     InputPoint,
     /// The accumulated indicator (compressed).
     Accumulated,
-    /// An individual accumulated item (expanded).
+    /// An individual accumulated child item (expanded, sibling index).
     AccumulatedItem(usize),
+    /// An individual accumulated note (expanded, index into accumulated vec).
+    NoteItem(usize),
     /// The reality anchor (parent's current ground truth).
     Reality,
 }
@@ -631,6 +679,15 @@ impl ZoomLevel {
     pub fn has_detail(&self) -> bool {
         matches!(self, ZoomLevel::Focus | ZoomLevel::Peek)
     }
+}
+
+/// Detail for a focused note in the accumulated zone.
+#[derive(Debug, Clone)]
+pub struct FocusedNote {
+    /// Index into the accumulated vec.
+    pub acc_index: usize,
+    pub text: String,
+    pub age: String,
 }
 
 /// Detail for a focused element (V7 → detail card).
@@ -827,7 +884,7 @@ impl InstrumentApp {
                     word_wrap(&detail.actual, text_w).len()
                 };
                 let meta_line = 1; // combined temporal + structure
-                let note_lines = detail.recent_notes.len().min(3);
+                let note_lines = detail.recent_notes.len();
                 reality_lines + meta_line + note_lines
             } else { 0 }
         } else { 0 };
@@ -888,7 +945,7 @@ impl InstrumentApp {
         // But never hide the focused item if it's in the accumulated zone.
         let min_show_acc = if self.deck_zoom.has_detail() {
             if let Some(ref detail) = self.focused_detail {
-                frontier.accumulated.iter().position(|&si| si == detail.sibling_index)
+                frontier.accumulated.iter().position(|item| item.child_index() == Some(detail.sibling_index))
                     .map(|pos| pos + 1)
                     .unwrap_or(0)
             } else { 0 }
@@ -939,6 +996,11 @@ impl InstrumentApp {
         } else {
             None
         };
+        let _focused_note_acc = if self.deck_zoom.has_detail() {
+            self.focused_note.as_ref().map(|n| n.acc_index)
+        } else {
+            None
+        };
 
         // === Bottom-up pass: accumulated items (gravity toward reality) ===
         let mut acc_top = middle_end;
@@ -950,20 +1012,29 @@ impl InstrumentApp {
             // Remaining: show individually if only 1, else summary
             if remaining == 1 && acc_top > middle_start {
                 acc_top -= 1;
-                let sibling_idx = frontier.accumulated[shown];
-                let entry = &self.siblings[sibling_idx];
-                let glyph = status_glyph(entry.status);
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
-                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
+                match &frontier.accumulated[shown] {
+                    AccumulatedItem::Child(sibling_idx) => {
+                        let entry = &self.siblings[*sibling_idx];
+                        let glyph = status_glyph(entry.status);
+                        self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
+                    }
+                    AccumulatedItem::Note { text, age, .. } => {
+                        self.render_note_line(frame, area.x, acc_top, w, &cols, text, age, is_selected);
+                    }
+                }
             } else if remaining > 1 && acc_top > middle_start {
                 acc_top -= 1;
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
 
                 let remaining_resolved = frontier.accumulated[shown..].iter()
-                    .filter(|&&idx| self.siblings[idx].status == TensionStatus::Resolved)
+                    .filter(|item| matches!(item, AccumulatedItem::Child(idx) if self.siblings[*idx].status == TensionStatus::Resolved))
                     .count();
                 let remaining_released = frontier.accumulated[shown..].iter()
-                    .filter(|&&idx| self.siblings[idx].status == TensionStatus::Released)
+                    .filter(|item| matches!(item, AccumulatedItem::Child(idx) if self.siblings[*idx].status == TensionStatus::Released))
+                    .count();
+                let remaining_notes = frontier.accumulated[shown..].iter()
+                    .filter(|item| matches!(item, AccumulatedItem::Note { .. }))
                     .count();
 
                 let mut parts = Vec::new();
@@ -972,6 +1043,9 @@ impl InstrumentApp {
                 }
                 if remaining_released > 0 {
                     parts.push(format!("~ {} more released", remaining_released));
+                }
+                if remaining_notes > 0 {
+                    parts.push(format!("\u{203b} {} more notes", remaining_notes));
                 }
                 if parts.is_empty() {
                     parts.push(format!("{} more", remaining));
@@ -983,7 +1057,7 @@ impl InstrumentApp {
             // Individual accumulated items (shown items above the summary, in order)
             // V7: if an accumulated item is focused, reserve space for inline detail
             let _acc_focus_reserve: u16 = if let Some(fi) = focused_sibling {
-                if frontier.accumulated[..shown].contains(&fi) {
+                if frontier.accumulated[..shown].iter().any(|item| item.child_index() == Some(fi)) {
                     focus_detail_height as u16
                 } else { 0 }
             } else { 0 };
@@ -993,29 +1067,42 @@ impl InstrumentApp {
 
             for i in (0..shown).rev() {
                 if acc_top <= middle_start { break; }
-                let sibling_idx = frontier.accumulated[i];
-                // Reserve extra space for focus detail below the item
-                if focused_sibling == Some(sibling_idx) {
+                let item = frontier.accumulated[i].clone();
+
+                // Reserve extra space for focus detail below child items
+                let is_focused_child = match &item {
+                    AccumulatedItem::Child(idx) => focused_sibling == Some(*idx),
+                    AccumulatedItem::Note { .. } => false,
+                };
+                if is_focused_child {
                     let reserve = focus_detail_height as u16;
                     acc_top = acc_top.saturating_sub(reserve);
-                    // Remember where to render focus detail (below the item line)
                     acc_focus_y = Some((acc_top, acc_top + reserve));
                 }
                 if acc_top <= middle_start { break; }
                 acc_top -= 1;
-                let entry = &self.siblings[sibling_idx];
-                let glyph = match entry.status {
-                    TensionStatus::Resolved => "\u{2713}",  // ✓
-                    TensionStatus::Released => "~",
-                    _ => "\u{25c6}",                        // ◆ fallback
-                };
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(sibling_idx);
-                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
 
-                // Render focus detail below this accumulated item (top-down within reserved space)
-                if focused_sibling == Some(sibling_idx) {
-                    if let (Some((_fy_start, fy_limit)), Some(ref detail)) = (acc_focus_y, &self.focused_detail) {
-                        self.render_inline_focus(frame, area.x, acc_top + 1, fy_limit, w, &cols, detail, 0);
+                match &item {
+                    AccumulatedItem::Child(sibling_idx) => {
+                        let entry = &self.siblings[*sibling_idx];
+                        let glyph = match entry.status {
+                            TensionStatus::Resolved => "\u{2713}",  // ✓
+                            TensionStatus::Released => "~",
+                            _ => "\u{25c6}",                        // ◆ fallback
+                        };
+                        let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(*sibling_idx);
+                        self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
+
+                        // Render focus detail below this accumulated item
+                        if is_focused_child {
+                            if let (Some((_fy_start, fy_limit)), Some(ref detail)) = (acc_focus_y, &self.focused_detail) {
+                                self.render_inline_focus(frame, area.x, acc_top + 1, fy_limit, w, &cols, detail, 0);
+                            }
+                        }
+                    }
+                    AccumulatedItem::Note { text, age, .. } => {
+                        let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::NoteItem(i);
+                        self.render_note_line(frame, area.x, acc_top, w, &cols, text, age, is_selected);
                     }
                 }
             }
@@ -1436,6 +1523,52 @@ impl InstrumentApp {
             .render(Rect::new(x, y, w as u16, 1), frame);
     }
 
+    /// Render a note line in the accumulated zone.
+    fn render_note_line(
+        &self,
+        frame: &mut Frame<'_>,
+        x: u16,
+        y: u16,
+        w: usize,
+        cols: &ColumnLayout,
+        text: &str,
+        age: &str,
+        is_selected: bool,
+    ) {
+        let base_style = if is_selected { STYLES.selected } else { STYLES.dim };
+        let glyph = "\u{203b}"; // ※
+        let glyph_w = 2; // glyph + space
+        let age_w = age.chars().count();
+        let text_budget = w.saturating_sub(cols.left + GUTTER + glyph_w + GUTTER + age_w);
+        let main_text = if text.chars().count() > text_budget {
+            let t: String = text.chars().take(text_budget.saturating_sub(1)).collect();
+            format!("{}\u{2026}", t)
+        } else {
+            text.to_string()
+        };
+
+        let used = cols.left + GUTTER + glyph_w + main_text.chars().count();
+        let gap = w.saturating_sub(used + age_w);
+
+        let mut spans = vec![
+            Span::styled(format!("{:<width$}", "", width = cols.left), base_style),
+            Span::styled(" ".repeat(GUTTER), base_style),
+            Span::styled(format!("{} ", glyph), base_style),
+            Span::styled(&main_text, base_style),
+            Span::styled(" ".repeat(gap), base_style),
+            Span::styled(age.to_string(), base_style),
+        ];
+
+        let total_rendered: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+        if total_rendered < w {
+            spans.push(Span::styled(" ".repeat(w - total_rendered), base_style));
+        }
+
+        let line = Line::from_spans(spans);
+        Paragraph::new(Text::from(line))
+            .render(Rect::new(x, y, w as u16, 1), frame);
+    }
+
     /// Render an indicator line (held, accumulated) in the deck.
     /// `extra_indent` adds chars before the text (used for held items, Q22).
     fn render_indicator_line(
@@ -1725,18 +1858,19 @@ impl InstrumentApp {
             y += 1;
         }
 
-        // 3. Notes (fill remaining space, cap at 3)
-        let max_notes = 3.min(detail.recent_notes.len());
-        for (age, text) in detail.recent_notes.iter().take(max_notes) {
-            if y >= limit_y { return y - start_y; }
+        // 3. Notes (fill remaining space, bounded by limit_y)
+        for (age, text) in detail.recent_notes.iter() {
+            if y >= limit_y { break; }
             let age_w = age.len() + 2;
             let note_avail = text_w.saturating_sub(age_w + 2);
-            let truncated = if text.len() > note_avail {
-                format!("{}\u{2026}", &text[..note_avail.saturating_sub(1)])
+            let truncated = if text.chars().count() > note_avail {
+                let t: String = text.chars().take(note_avail.saturating_sub(1)).collect();
+                format!("{}\u{2026}", t)
             } else {
                 text.clone()
             };
-            let pad = text_w.saturating_sub(2 + truncated.len() + age.len());
+            let display_w = truncated.chars().count();
+            let pad = text_w.saturating_sub(2 + display_w + age.len());
             let note_line = format!("\u{203b} {}{}{}", truncated, " ".repeat(pad), age);
             render_line(frame, x, y, w as u16, &[
                 (indent_str.clone(), STYLES.dim),
@@ -1807,6 +1941,8 @@ impl InstrumentApp {
                     "e edit \u{00B7} p position \u{00B7} Enter focus \u{00B7} r resolve".to_string(),
                 CursorTarget::AccumulatedItem(_) =>
                     "l descend \u{00B7} Enter focus".to_string(),
+                CursorTarget::NoteItem(_) =>
+                    "Enter focus".to_string(),
                 CursorTarget::InputPoint =>
                     "a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality".to_string(),
                 CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated =>

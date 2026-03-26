@@ -74,9 +74,13 @@ pub struct InstrumentApp {
     // Deck configuration (V6): read from deck.* config keys.
     pub deck_config: crate::deck::DeckConfig,
 
-    // Focus zoom (V7): detail of the currently focused child.
+    // Focus zoom (V7): detail of the currently focused child or note.
     pub deck_zoom: crate::deck::ZoomLevel,
     pub focused_detail: Option<crate::deck::FocusedDetail>,
+    pub focused_note: Option<crate::deck::FocusedNote>,
+
+    // Parent notes for accumulated zone display
+    pub parent_notes: Vec<crate::deck::AccumulatedItem>,
 
     // Pathway palette state — active when InputMode::Pathway.
     pub pathway_state: Option<crate::state::PathwayState>,
@@ -148,6 +152,8 @@ impl InstrumentApp {
             },
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
+            focused_note: None,
+            parent_notes: Vec::new(),
             pathway_state: None,
             cached_frontier: None,
             route_expanded: false,
@@ -198,6 +204,8 @@ impl InstrumentApp {
             deck_config: crate::deck::DeckConfig::default(),
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
+            focused_note: None,
+            parent_notes: Vec::new(),
             pathway_state: None,
             cached_frontier: None,
             route_expanded: false,
@@ -258,6 +266,18 @@ impl InstrumentApp {
             // Cache mutation count for deck log indicator
             self.parent_mutation_count = mutations.len();
 
+            // Extract parent notes for accumulated zone display
+            self.parent_notes = mutations.iter()
+                .filter(|m| m.field() == "note")
+                .map(|m| {
+                    crate::deck::AccumulatedItem::Note {
+                        text: m.new_value().to_string(),
+                        age: crate::glyphs::relative_time(m.timestamp(), now),
+                        timestamp: m.timestamp(),
+                    }
+                })
+                .collect();
+
             // V5: Compute epoch boundary — last epoch timestamp (lightweight query)
             self.epoch_boundary = self.engine.store()
                 .get_last_epoch_timestamp(&parent.id)
@@ -271,6 +291,7 @@ impl InstrumentApp {
             self.parent_reality_age = None;
             self.grandparent_display = None;
             self.parent_mutation_count = 0;
+            self.parent_notes = Vec::new();
             self.epoch_boundary = None;
         }
 
@@ -548,6 +569,10 @@ impl InstrumentApp {
         // Root level: children don't display as accumulated
         if self.parent_id.is_none() {
             frontier.accumulated.clear();
+        }
+        // Inject parent notes into accumulated zone, interleaved by timestamp
+        if !self.parent_notes.is_empty() {
+            frontier.inject_notes(self.parent_notes.clone(), &self.siblings);
         }
         frontier.compute_expansion(self.last_render_lines.get());
         // Set desire/reality anchor selectability based on whether we're descended

@@ -133,6 +133,7 @@ impl InstrumentApp {
                 if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                    self.focused_note = None;
                 }
                 self.deck_pitch_up();
                 Cmd::none()
@@ -141,6 +142,7 @@ impl InstrumentApp {
                 if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                    self.focused_note = None;
                 }
                 self.deck_pitch_down();
                 Cmd::none()
@@ -177,6 +179,7 @@ impl InstrumentApp {
                 if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                    self.focused_note = None;
                 } else if self.deck_zoom == crate::deck::ZoomLevel::Peek {
                     // Upgrade peek to full focus — reload with reality + notes
                     if let Some(entry) = self.action_target().cloned() {
@@ -186,9 +189,14 @@ impl InstrumentApp {
                     }
                 } else if self.toggle_summary_expansion() {
                     // Enter on a summary line toggles expansion — handled
+                } else if let Some(note_focus) = self.try_focus_note() {
+                    self.focused_note = Some(note_focus);
+                    self.focused_detail = None;
+                    self.deck_zoom = crate::deck::ZoomLevel::Focus;
                 } else if let Some(entry) = self.action_target().cloned() {
                     let detail = self.load_focus_detail(&entry);
                     self.focused_detail = Some(detail);
+                    self.focused_note = None;
                     self.deck_zoom = crate::deck::ZoomLevel::Focus;
                 }
                 Cmd::none()
@@ -209,12 +217,14 @@ impl InstrumentApp {
             Msg::Char('g') | Msg::JumpTop => {
                 self.deck_zoom = crate::deck::ZoomLevel::Normal;
                 self.focused_detail = None;
+                self.focused_note = None;
                 self.deck_cursor.index = 0;
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
                 self.deck_zoom = crate::deck::ZoomLevel::Normal;
                 self.focused_detail = None;
+                self.focused_note = None;
                 let count = self.ensure_frontier().selectable_count();
                 self.deck_cursor.index = count.saturating_sub(1);
                 Cmd::none()
@@ -226,6 +236,7 @@ impl InstrumentApp {
                     // Already peeking — dismiss
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                    self.focused_note = None;
                 } else if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                     // Downgrade focus to peek — strip reality + notes
                     if let Some(ref mut detail) = self.focused_detail {
@@ -271,6 +282,8 @@ impl InstrumentApp {
             Msg::Char('n') | Msg::StartNote => {
                 if let Some(entry) = self.action_target().cloned() {
                     self.input_buffer.clear();
+                    self.text_input.set_value("");
+                    self.text_input.set_focused(true);
                     self.input_mode = InputMode::Annotating {
                         tension_id: entry.id,
                     };
@@ -480,6 +493,7 @@ impl InstrumentApp {
                 if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                    self.focused_note = None;
                 }
                 Cmd::none()
             }
@@ -899,15 +913,8 @@ impl InstrumentApp {
 
     fn update_annotating(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
-            Msg::Char(c) => {
-                self.input_buffer.push(c);
-                Cmd::none()
-            }
-            Msg::Backspace => {
-                self.input_buffer.pop();
-                Cmd::none()
-            }
             Msg::Submit => {
+                self.sync_text_input_to_buffer();
                 let buf = self.input_buffer.clone();
                 if !buf.is_empty() {
                     if let InputMode::Annotating { ref tension_id } = self.input_mode.clone() {
@@ -922,18 +929,48 @@ impl InstrumentApp {
                         );
                         self.set_transient("note added");
                         self.load_siblings();
+                        // Reload detail and enter Focus so the note is immediately visible
+                        if let Some(entry) = self.action_target().cloned() {
+                            let detail = self.load_focus_detail(&entry);
+                            self.focused_detail = Some(detail);
+                            self.deck_zoom = crate::deck::ZoomLevel::Focus;
+                        }
                     }
                 }
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
+                self.text_input.set_focused(false);
                 Cmd::none()
             }
             Msg::Cancel => {
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
+                self.text_input.set_focused(false);
                 Cmd::none()
             }
             Msg::Quit => Cmd::quit(),
+
+            // Forward everything else to TextInput via raw event
+            Msg::RawEvent(ref event) => {
+                self.text_input.handle_event(event);
+                self.sync_text_input_to_buffer();
+                Cmd::none()
+            }
+
+            // Char and Backspace: synthesize events for TextInput
+            Msg::Char(c) => {
+                let event = Event::Key(ftui::KeyEvent::new(ftui::KeyCode::Char(c)));
+                self.text_input.handle_event(&event);
+                self.sync_text_input_to_buffer();
+                Cmd::none()
+            }
+            Msg::Backspace => {
+                let event = Event::Key(ftui::KeyEvent::new(ftui::KeyCode::Backspace));
+                self.text_input.handle_event(&event);
+                self.sync_text_input_to_buffer();
+                Cmd::none()
+            }
+
             _ => Cmd::none(),
         }
     }
@@ -1154,10 +1191,9 @@ impl InstrumentApp {
             .map(|m| m.timestamp())
             .unwrap_or(now);
 
-        // Recent notes (most recent first, cap at 5)
+        // Recent notes (most recent first, rendering decides how many fit)
         let recent_notes: Vec<(String, String)> = mutations.iter().rev()
             .filter(|m| m.field() == "note")
-            .take(5)
             .map(|m| {
                 let age = crate::glyphs::relative_time(m.timestamp(), now);
                 (age, m.new_value().to_string())
@@ -1189,6 +1225,22 @@ impl InstrumentApp {
             child_held,
             recent_notes,
         }
+    }
+
+    /// Try to focus a note if the cursor is on a NoteItem. Returns the FocusedNote or None.
+    fn try_focus_note(&self) -> Option<crate::deck::FocusedNote> {
+        let frontier = self.cached_frontier.as_ref()?;
+        let target = frontier.cursor_target(self.deck_cursor.index);
+        if let crate::deck::CursorTarget::NoteItem(acc_idx) = target {
+            if let Some(crate::deck::AccumulatedItem::Note { text, age, .. }) = frontier.accumulated.get(acc_idx) {
+                return Some(crate::deck::FocusedNote {
+                    acc_index: acc_idx,
+                    text: text.clone(),
+                    age: age.clone(),
+                });
+            }
+        }
+        None
     }
 
     /// Enter edit mode for the desire/reality anchor under the cursor.
