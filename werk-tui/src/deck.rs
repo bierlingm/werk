@@ -106,8 +106,9 @@ impl ColumnLayout {
     /// `max_age_len` is the longest age string length visible.
     pub fn compute(total_width: usize, deadline_label: Option<&str>, max_id: usize, max_age_len: usize) -> Self {
         // Left column = max of all deadlines in view (min 6)
+        // +2 for ⏱ glyph prefix when deadline exists
         let left = deadline_label
-            .map(|d| d.chars().count().max(MIN_LEFT))
+            .map(|d| (d.chars().count() + 2).max(MIN_LEFT))
             .unwrap_or(MIN_LEFT);
 
         // Right sub-columns: [id][space][→][space][age]
@@ -757,7 +758,7 @@ impl InstrumentApp {
             let reality_full_lines = if p.actual.is_empty() {
                 0u16
             } else {
-                word_wrap(&p.actual, w).len() as u16
+                word_wrap(&p.actual, w.saturating_sub(2)).len() as u16
             };
             // Estimate middle zone need from frontier content
             let middle_need = (frontier.selectable_count() as u16) + 4; // selectables + chrome
@@ -1241,7 +1242,7 @@ impl InstrumentApp {
                     let sibling_idx = frontier.held[i];
                     let entry = &self.siblings[sibling_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c7}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1254,7 +1255,7 @@ impl InstrumentApp {
                     let sibling_idx = frontier.held[shown_held];
                     let entry = &self.siblings[sibling_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c7}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1264,9 +1265,9 @@ impl InstrumentApp {
                 } else if held_remaining > 1 && my < top_limit {
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
                     let text = if shown_held == 0 {
-                        format!("\u{25c7} {} held", frontier.held.len())
+                        format!("\u{2727} {} held", frontier.held.len())
                     } else {
-                        format!("\u{25c7} {} more held", held_remaining)
+                        format!("\u{2727} {} more held", held_remaining)
                     };
                     self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, HELD_INDENT);
                     my += 1;
@@ -1375,8 +1376,11 @@ impl InstrumentApp {
             glyph_color.unwrap_or(base_style)
         };
 
-        // Left column: deadline
-        let left_str = entry.horizon_label.as_deref().unwrap_or("");
+        // Left column: deadline with ⏱ glyph
+        let left_str = match entry.horizon_label.as_deref() {
+            Some(dl) => format!("\u{23f1} {}", dl),
+            None => String::new(),
+        };
         let left_padded = format!("{:<width$}", left_str, width = cols.left);
 
         // Right sub-columns: [id] [→] [age]
@@ -1513,7 +1517,8 @@ impl InstrumentApp {
 
             if has_deadline {
                 let left_content = if i == 0 {
-                    format!("{:<width$}", deadline_str, width = cols.left)
+                    let dl_with_glyph = format!("\u{23f1} {}", deadline_str);
+                    format!("{:<width$}", dl_with_glyph, width = cols.left)
                 } else {
                     " ".repeat(cols.left)
                 };
