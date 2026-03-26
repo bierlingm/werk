@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-26T10:45:49Z",
+  "flushed_at": "2026-03-26T10:51:13Z",
   "summary": {
     "active": 52,
     "released": 6,
@@ -547,9 +547,9 @@
       "status": "Active"
     },
     {
-      "actual": "README review surfaced terminology gaps: tree shows the forest (not a subtree), no log/logbook command exists (vocabulary from tui-shaping.md), epoch subcommands use flag style not subcommand style, reading commands (diff/ground/insights/survey/trajectory) have unclear boundaries to new users. Needs systematic terminology pass.",
+      "actual": "README review surfaced terminology gaps: tree shows the forest (not a subtree), no log/logbook command exists, epoch subcommands use flag style not subcommand style, reading commands have unclear boundaries. Session finding: CLI is not forgiving to agents or fast-typing humans — add rejects --desire/--reality (positional-only), note requires subcommand (werk note 94 text fails, needs werk note add 94 text). Help output is flat (30+ commands alphabetically), no usage examples in per-command help (werk add -h shows args but not how to actually use them), no grouped help by framework.",
       "created_at": "2026-03-24T17:52:28.506906+00:00",
-      "desired": "CLI terminology and command structure reviewed and coherent — tree/forest distinction resolved, log/logbook commands exist, epoch subcommands rationalized, reading commands have clear boundaries",
+      "desired": "CLI is ergonomic, forgiving, and self-documenting — accepts both positional and named args for common fields, note defaults to add, every command has usage examples in help text, help is grouped by framework not alphabetical, agents and humans get the same friction-free experience",
       "horizon": null,
       "id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
       "parent_id": "01KMGFKY13827YVY23E14BX4X7",
