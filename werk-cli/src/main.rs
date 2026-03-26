@@ -130,6 +130,24 @@ fn main() {
                 Err(e) => Err(e),
             }
         }
+        Commands::Serve { port } => {
+            let workspace = werk_shared::Workspace::discover()
+                .map_err(|e| werk::error::WerkError::IoError(e.to_string()));
+            match workspace {
+                Ok(ws) => {
+                    let rt = tokio::runtime::Runtime::new()
+                        .map_err(|e| werk::error::WerkError::IoError(format!("failed to create runtime: {}", e)));
+                    match rt {
+                        Ok(rt) => rt.block_on(async {
+                            werk_web::serve(ws.root().to_path_buf(), port).await
+                                .map_err(|e| werk::error::WerkError::IoError(e.to_string()))
+                        }),
+                        Err(e) => Err(e),
+                    }
+                }
+                Err(e) => Err(e),
+            }
+        }
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)
         }

@@ -391,6 +391,13 @@ pub enum Commands {
     /// protocol-capable harness. The third interface surface alongside TUI and CLI.
     Mcp,
 
+    /// Launch the web interface (browser-based structural dynamics instrument).
+    Serve {
+        /// Port to listen on.
+        #[arg(short, long, default_value = "3749")]
+        port: u16,
+    },
+
     /// Destroy the current workspace (deletes the .werk/ directory).
     Nuke {
         /// Confirm deletion (required for safety).
