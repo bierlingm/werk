@@ -1,6 +1,7 @@
 # Werk: Business Foundation
 
 **Emerged:** 2026-03-23 through sustained dialogue
+**Updated:** 2026-03-26 — Strategic reorientation toward SD practitioner/coach market as primary revenue target, based on competitive research (CreatorTools.net) and community mapping.
 
 **Status:** Living document. This sits alongside the conceptual foundation. It captures the economic thesis, market positioning, revenue architecture, and venture integration that sustain the instrument over time. The conceptual foundation defines what the instrument is; this document defines how it lives in the world.
 
@@ -50,21 +51,23 @@ The MRP analogy is deliberately unsexy. MRP is infrastructure. It is not the thi
 
 ### 1. Three Rings of Adoption
 
-**Inner ring: Structural dynamics practitioners.** People who have studied with Nicholas Catton, read Robert Fritz, or practiced structural dynamics in a coaching context. They already have the vocabulary. They need the instrument. Small market (hundreds to low thousands globally), high willingness to pay, near-zero conceptual friction. These are the first users and the credibility engine.
+**Inner ring and primary revenue target: Structural dynamics practitioners and coaches.** People who have studied with Robert Fritz, trained through the CYL → FST → SCCP → ASCP pipeline, or practiced structural dynamics in a coaching context. They already have the vocabulary. They need the instrument. The community is small — roughly 50-200 active practitioners globally, with only two certified instructors (Katharina Schütze in Berlin, Kira Higgs in Portland) and all certification flowing through Robert Fritz Inc. There is no community infrastructure: no forum, no Slack, no Discord, no directory, no conference circuit. Monthly online conversations and quarterly SCCP workshops are the only gathering points. These practitioners currently use pen-and-paper, recorded consultations, Zoom, and books. No real software exists for the practice. The tool gap is real, the willingness to pay is validated (see competitive analysis below), and the conceptual friction is near-zero. This is not just the credibility engine — it is the first and primary revenue stream.
 
 **Middle ring: Terminal-native builders using AI agents.** People using Claude Code, OpenClaw, Hermes, NanoClaw, Cursor, and equivalent agent harnesses. They manage multiple concurrent projects. They struggle with context loading, project coherence, and the staleness of their planning documents. They have discovered or rediscovered the terminal as their primary work surface. This market is tens of thousands and growing rapidly. They find werk because they need "something better than taskmaster" or "context management for Claude Code" or "how to manage multiple projects in the terminal." They stay because the structural dynamics framework works and they start seeing differently.
 
 **Outer ring: Anyone running an AI agent who needs structural coherence.** This includes the "Alain case" — people who never touch werk directly, whose agent maintains the tension structure on their behalf. They do not need to know the vocabulary. They do not need to use the TUI or even the CLI. They need an agent that does not lose the thread. This is the largest market and the one that grows fastest as AI agent adoption accelerates.
 
-### 2. Two Primary Interface Modes
+### 2. Three Primary Interface Modes
 
-The instrument has two primary consumers, and they interact with it differently:
+The instrument has three primary consumers, and they interact with it differently:
 
-**Humans via TUI.** The operative instrument — three-axis navigation, operating envelope, thresholds, ghost geometry. This is the practice surface. The human inhabits the structure and develops structural awareness through repeated engagement with their own patterns. The TUI is where the conceptual foundation comes alive.
+**Practitioners and coaches via GUI.** The graphical instrument — web application or native Mac app — is the premium product for non-technical users. SD practitioners and coaches find the terminal ugly and unapproachable. They need the same structural depth (tension trees, dynamics, operating envelope, session analysis) presented through a visual interface they can use with clients. The GUI is the product that serves the primary market. It is what you charge for.
 
-**AI agents via CLI (and later MCP).** The programmatic interface — `werk tree`, `werk show`, `werk add`, `werk actual`, `werk resolve`, `werk context --json`. The agent reads structure for context, writes structure as work progresses, and maintains the model as a first-class part of its operating loop. The CLI is where the instrument becomes infrastructure.
+**Builders via TUI.** The operative terminal instrument — three-axis navigation, operating envelope, thresholds, ghost geometry. This is the power-user practice surface. The terminal-native builder inhabits the structure and develops structural awareness through repeated engagement with their own patterns. The TUI stays free and open-source. It is where the conceptual foundation comes alive for people who live in terminals.
 
-These are not competing modes. They are complementary. The richest use case — demonstrated in practice — is the human and the agent co-inhabiting the same tension structure within a single work session. The human navigates via TUI, the agent operates via CLI, and the structural model is the shared surface between them.
+**AI agents via CLI and MCP.** The programmatic interface — `werk tree`, `werk show`, `werk add`, `werk actual`, `werk resolve`, `werk context --json`, plus 30 MCP tools for native agent access. The agent reads structure for context, writes structure as work progresses, and maintains the model as a first-class part of its operating loop. The CLI is where the instrument becomes infrastructure.
+
+These are not competing modes. They are complementary. The open-source CLI and TUI serve as the foundation and funnel. The GUI is the premium product that serves the paying market. The richest use case — demonstrated in practice — is the human and the agent co-inhabiting the same tension structure within a single work session. The human navigates via GUI or TUI, the agent operates via CLI or MCP, and the structural model is the shared surface between them.
 
 ### 3. Three Validated Use Cases
 
@@ -73,6 +76,33 @@ These are not competing modes. They are complementary. The richest use case — 
 **Agent-maintained (Alain pattern).** The user never touches werk directly. Their AI agent (OpenClaw, Hermes, or equivalent) installs werk and maintains the tension structure as the basis for modeling and acting on the user's requests. The user talks to their agent; the agent maintains structural coherence via werk. The user gets coherent action without learning the instrument. The agent gets a structural model that makes it dramatically more effective.
 
 **Onboarding transformation (proposed).** A one-liner in the terminal or a prompt dropped into an agent harness that transforms an existing workspace — markdown files, todo lists, project docs, scattered context — into a proposed coherent werk structure. The agent reads what exists, proposes a tension tree (or forest), and the user reviews, adjusts, and commits. Coherence as a product. The entry point for anyone who has accumulated project debt in flat documents and wants structural relief.
+
+### 4. Competitive Analysis: CreatorTools.net
+
+The only existing software tool for structural dynamics practice is CreatorTools.net, built by Ivan Fritz (Robert's son). It charges **$130/month**, though the price is primarily for course content and monthly conversations with Robert Fritz, not the software.
+
+The software itself is a simple structural tension charting tool — essentially a form: desired outcome, current reality, 12 action steps with checkboxes. Its one sophistication is "telescoping" — an action step can become the goal of a child chart. This is the theory of closure / fractal depth concept, implemented at its most minimal.
+
+**What CreatorTools lacks that werk already has:**
+
+| Capability | CreatorTools | werk |
+|---|---|---|
+| Structural tension charting | Basic form | Full tension tree with unlimited depth |
+| Telescoping / fractal structure | Action step → child chart | Native parent-child with composed bridge from reality to desire |
+| Temporal dynamics | None | Deadline, order, urgency, drift, trajectory, epoch transitions |
+| Computed properties | None | Six computed properties, two recorded facts |
+| State machine | None | Full phase lifecycle with structural signals |
+| Operating envelope | None | Frontier of action, thresholds, signal by exception |
+| Agent integration | None | CLI, MCP (30 tools), JSON export |
+| Structural history | None | Mutation log, epoch tracking, session analysis |
+| Multiple concurrent tensions | Separate charts | Unified tension forest with cross-structure navigation |
+
+**What this validates:**
+
+1. **Willingness to pay is real.** Practitioners are paying $130/month for something werk already vastly surpasses structurally. The price anchor is established.
+2. **The tool gap is confirmed.** The best available software is a form with checkboxes. The community is underserved.
+3. **Course content is the current value, not software.** This means a better instrument paired with genuine community value (coaching integration, practitioner directory, shared practice infrastructure) can capture this market at comparable or higher price points — with the software itself justifying the price rather than being incidental to it.
+4. **The relationship to Robert Fritz Inc. matters.** Ivan is Robert's son. CreatorTools has implicit endorsement. Any competing tool needs to be positioned as complementary or must establish its own legitimacy through the practitioner community. The partnership pathway (see Part VI) addresses this directly.
 
 ---
 
@@ -163,15 +193,17 @@ A tension tree with theories of closure, temporal horizons, and computed critica
 
 **Open format, proprietary instrument.**
 
-**Open (MIT/Apache):** sd-core (data model, store, basic computations), the CLI, the `.werk/` directory convention, the SQLite schema, the mutation log format, the JSON export. Not positioned as a "protocol" — that overpromises. Positioned as a **format**. SQLite is not a protocol; it is a file format that won. Werk's data format should have the same character: simple, self-contained, readable by anything, maintained by the canonical tool but not owned by it.
+**Open (MIT/Apache):** sd-core (data model, store, basic computations), the CLI, the TUI, the `.werk/` directory convention, the SQLite schema, the mutation log format, the JSON export, the MCP server. Not positioned as a "protocol" — that overpromises. Positioned as a **format**. SQLite is not a protocol; it is a file format that won. Werk's data format should have the same character: simple, self-contained, readable by anything, maintained by the canonical tool but not owned by it. The CLI and TUI are free and open-source — the terminal experience is the on-ramp, the community commons, and the proof of concept.
 
-**Proprietary (source-available):** The TUI instrument, the projection/dynamics engine beyond basic urgency, coaching analytics, session analysis, interpretive "theories of meaning" computation. This is the practice layer — what turns a data format into an operative instrument.
+**Proprietary:** The graphical instrument (web application or native Mac app), the projection/dynamics engine beyond basic urgency, coaching analytics, session analysis, interpretive "theories of meaning" computation, practitioner/coach collaboration features, and client management views. This is the practice layer — what turns a data format into a professional instrument for coaches and practitioners who need visual, approachable, client-facing tooling.
 
 **Why this works:**
 
 - Agents get free, unrestricted access to the data. This is table stakes. Any agent can `werk add`, `werk context --json`, or read `sd.db` directly. This removes the adoption barrier.
+- The terminal experience (CLI + TUI) is free and open-source. This serves the builder community, builds credibility, drives adoption, and keeps the project honest. Terminal users are the evangelists.
+- The GUI is the premium product. Practitioners and coaches who need visual, client-facing tooling pay for the graphical instrument. This is where the revenue comes from. The split is natural: terminal people do not want a GUI, and coaches do not want a terminal.
 - The instrument experience remains controlled and coherent. The sacred core is enforced by the instrument, not the format. Bad third-party implementations do not dilute the concept because the concept lives in the practice, not the data.
-- The open core creates a funnel. Developers and agents adopt the format. Some users want more than `werk tree`. They discover the TUI. Some want the dynamics engine. The practice deepens, the willingness-to-pay increases.
+- The open core creates a funnel. Developers and agents adopt the format. Builders discover the TUI. Coaches and practitioners discover the GUI. The practice deepens, the willingness-to-pay increases.
 - The structural dynamics community can build on the open core without being captured.
 
 ---
@@ -182,13 +214,14 @@ A tension tree with theories of closure, temporal horizons, and computed critica
 
 Revenue flows from six sources, ordered by likely activation timeline:
 
-#### 1. Practitioner License
+#### 1. Practitioner and Coach GUI License (Primary)
 
-The instrument itself. The TUI, ground mode, dynamics engine, session analytics, ghost geometry visualization.
+The graphical instrument — the premium product for the primary market. Web application or native Mac app delivering the full structural dynamics practice experience through a visual interface that coaches can use with clients and practitioners can use in their own practice.
 
-- **Free tier:** CLI + open core. 3-5 root tensions. Basic `tree`, `show`, `add`, `resolve`, `actual`. Enough to hold a small structure and generate agent context. Already more valuable than anything else in the space.
-- **Practitioner tier ($10-20/month or $100-200/year):** Full TUI, unlimited tensions, ground mode, session recording and analysis, dynamics engine, ghost geometry, epoch visualization. The "serious tool for serious practitioners" tier.
-- **This is the first revenue.** Ship it when the TUI is ready.
+- **Free tier:** CLI + TUI + open core. Unlimited tensions. Full terminal experience. Already more valuable than anything else in the space. This is genuinely free, not a crippled demo — it is the complete instrument for people who live in terminals.
+- **Practitioner tier ($50-100/month or $500-1,000/year):** The graphical instrument. Visual tension tree navigation, dynamics dashboard, session recording and analysis, epoch visualization, export and reporting. Priced below the CreatorTools anchor ($130/month) while delivering categorically more value. The price reflects the software, not bundled course content.
+- **Coach tier ($100-200/month or $1,000-2,000/year):** Everything in Practitioner, plus client management views, multi-client tension oversight, session templates for coaching engagements, coaching analytics (pattern visibility across clients), and the ability to share read-only views with clients. A coach with 5-10 clients paying for this tier is the core revenue unit.
+- **This is the first revenue stream.** It activates when the GUI ships. The CLI/TUI ships first as the free foundation and community builder.
 
 #### 2. Agent Seat Licensing
 
@@ -212,13 +245,23 @@ Any tool that stores desire/reality/action data — Notion, Linear, Jira, custom
 - **Pricing: usage-based.** Per analysis request or subscription tiers.
 - **This activates when the dynamics engine is mature and validated.**
 
-#### 4. Coaching Integration
+#### 4. Coaching Integration and Partnership Pipeline
 
-Partner with structural dynamics coaches and training organizations. The instrument becomes the standard practice tool. Training programs include werk licenses. Certified practitioners get the full instrument.
+Partner with structural dynamics coaches and training organizations. The instrument becomes the standard practice tool for the SD community. Training programs include werk licenses. Certified practitioners get the full instrument.
 
-- **Revenue:** Per-seat for coaches + per-client, or a coach tier that includes N client seats.
-- **Channel:** Coaches recommend the tool. The tool makes coaching more effective (sessions have data, patterns are visible, progress is structural not anecdotal). Mutual reinforcement.
-- **This activates through relationships in the SD community.**
+**The partnership pathway is concrete:**
+
+1. **Moritz is registered for FST (Foundations for Structural Thinking) in April 2026.** This is the second step in the certification pipeline (CYL → FST → SCCP → ASCP). Direct contact and demonstration opportunity.
+2. **Active email thread with Kira Higgs and Katharina Schütze** (the only two certified instructors globally) via fst@robertfritz.com. These are the gatekeepers to the community.
+3. **18 months of coaching with Nicholas Catton** (Fritz-influenced). Established credibility within the practice lineage.
+4. **Path to Robert and Rosalind Fritz** runs through Kira and Katharina. Endorsement or partnership at this level would make werk the de facto instrument for the community.
+
+**The community infrastructure gap is an opportunity.** There is no forum, no Slack, no Discord, no practitioner directory. The monthly online conversations and quarterly SCCP workshops are the only gathering points. Werk could become not just the practice tool but the community platform — a shared space where practitioners connect, share structural patterns, and develop the practice together. This is infrastructure the community needs and no one is building.
+
+- **Revenue:** Coach tier licenses (see stream #1). Training program bulk licensing. Co-branded workshop integration.
+- **Channel:** Coaches recommend the tool because it makes coaching more effective (sessions have data, patterns are visible, progress is structural not anecdotal). The tool recommends coaching because structural dynamics practice deepens with guidance. Mutual reinforcement.
+- **Risk:** CreatorTools has an implicit endorsement through Ivan Fritz's family relationship. Werk must be positioned as complementary to the Fritz lineage, not competitive with it. The partnership pathway — through FST, through Kira and Katharina, through demonstrated value — is the way to establish legitimacy without confrontation.
+- **This activates through the April 2026 FST and subsequent community engagement.**
 
 #### 5. Structure-as-Context Subscription
 
@@ -319,19 +362,21 @@ A standalone tool competes on features. A tool embedded in a web of ventures com
 
 ### Primary Distribution Channels
 
-#### 1. Agent Framework Ecosystem
+#### 1. Structural Dynamics Community (Primary)
 
-The highest-leverage distribution channel. If OpenClaw, Hermes, NanoClaw, and similar frameworks recommend or bundle werk as the structural context layer, adoption follows agent adoption.
+Small (50-200 active practitioners) but high-conviction and high willingness to pay. Coaches, practitioners, Fritz readers, Catton students, SCCP/ASCP certified practitioners. This is the first distribution channel because it is the first revenue market.
+
+**Tactic:** FST attendance (April 2026) as the initial demonstration point. Build relationship with Kira and Katharina as the two certified instructors who control community access. The Foundations course funnels students into the tool. Coach partnerships create bilateral referral loops. Offer to build the community infrastructure that does not exist (practitioner directory, forum, shared practice space) as part of the platform.
+
+**Tactic:** Offer free practitioner-tier access to the first cohort of SD practitioners who will use and provide feedback on the GUI. The community is small enough that seeding 20-50 licenses costs nothing and creates the word-of-mouth that drives the rest.
+
+#### 2. Agent Framework Ecosystem
+
+The highest-leverage distribution channel for the builder market. If OpenClaw, Hermes, NanoClaw, and similar frameworks recommend or bundle werk as the structural context layer, adoption follows agent adoption.
 
 **Tactic:** Make the integration trivially easy. A one-liner install. A single CLI command to generate context. MCP server for native agent access. The less friction, the more likely framework authors are to recommend it.
 
 **Tactic:** Produce reference implementations showing agents maintaining werk structures. "Here is how your OpenClaw uses werk to maintain structural coherence across sessions." The demo is the distribution.
-
-#### 2. Structural Dynamics Community
-
-Small but high-conviction. Coaches, practitioners, Fritz readers, Catton students.
-
-**Tactic:** The Foundations course funnels students into the tool. Coach partnerships create bilateral referral loops. Conference presence at SD-adjacent events.
 
 #### 3. Terminal-Native Builder Community
 
@@ -421,8 +466,11 @@ How multiple people share a tension tree, how concurrent writes are handled, whe
 ### The Coherence Offering Implementation
 The workspace-scanning onboarding product is described conceptually. The implementation — what it scans, how it proposes structure, how it handles ambiguity, whether it requires a specific agent — is design and engineering work.
 
+### GUI Platform and Architecture
+Whether the graphical instrument is a web application, a native Mac app (Swift/AppKit), an Electron/Tauri wrapper, or something else. Each has tradeoffs in development speed, distribution, and user experience. The GUI is the premium product and the primary revenue vehicle, so this decision has outsized impact. The choice should be driven by what serves coaches and practitioners best, not by developer preference.
+
 ### Course vs. Product Sequencing
-Whether the Foundations course or the practitioner-ready TUI ships first. They reinforce each other but have different development timelines and audiences. The course can use the CLI before the TUI is ready. The TUI can ship without the course. The question is which sequence maximizes learning and adoption.
+Whether the Foundations course or the GUI ships first. They reinforce each other but have different development timelines and audiences. The course can use the CLI before the GUI is ready. The GUI can ship without the course. The question is which sequence maximizes learning and adoption.
 
 ### Self-Hosting vs. Hosted for Teams
 Whether team-level features require a hosted service (with the associated infrastructure and pricing) or can be achieved through git-based synchronization (lower infrastructure cost, more aligned with the tool's terminal-native character, but harder concurrent write problem).
@@ -462,10 +510,14 @@ The business foundation draws on:
 | **Coherence offering** | The onboarding product that transforms existing workspace chaos into a proposed werk structure. |
 | **Agent-maintained** | A werk store maintained entirely by AI agents, with the human never directly interacting with the instrument. The Alain pattern. |
 | **Co-practice** | Human and AI agent jointly inhabiting and maintaining a tension structure within a single work session. The Moritz pattern. |
-| **Practice layer** | The proprietary instrument features (TUI, dynamics, sessions, ground mode) that turn the open data format into a lived structural dynamics practice. |
+| **Graphical instrument** | The premium GUI product (web or native Mac app) that serves the practitioner/coach market. The primary revenue product. |
+| **Practice layer** | The proprietary instrument features (GUI, dynamics, sessions, coaching analytics) that turn the open data format into a professional structural dynamics practice tool. |
+| **Open-source / premium GUI split** | The business model: CLI + TUI are free and open-source; the graphical instrument is proprietary and paid. Terminal stays free, visual is premium. |
 | **Venture web** | The network of interconnected ventures (Statecraft, Modern Minuteman, Spikes, etc.) within which werk is embedded and from which it derives compounding value. |
 | **Format, not protocol** | The positioning of werk's data model. A file format (like SQLite) that any tool can read, not a protocol (like HTTP) that requires ecosystem governance. |
 | **Agent seat** | The unit of commercial licensing for AI agents with write access to a werk store. |
 | **Structural audit** | Periodic analysis of a tension field's health, patterns, and available structural moves. The Strava model applied to structural dynamics. |
 | **MRP for directed action** | The one-liner positioning. Material Requirements Planning transformed manufacturing coordination; werk transforms knowledge work coordination. |
-| **The three rings** | The concentric market segments: SD practitioners (inner), terminal-native builders (middle), anyone running agents (outer). |
+| **The three rings** | The concentric market segments: SD practitioners and coaches as primary revenue target (inner), terminal-native builders (middle), anyone running agents (outer). |
+| **CreatorTools** | The existing competitive reference point. Ivan Fritz's $130/month course + simple charting tool. Validates willingness to pay; werk surpasses it structurally by an order of magnitude. |
+| **Partnership pathway** | The route to SD community legitimacy: FST (April 2026) → Kira & Katharina → Robert & Rosalind Fritz. Through demonstrated value, not confrontation. |
