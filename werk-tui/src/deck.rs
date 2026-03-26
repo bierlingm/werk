@@ -710,14 +710,15 @@ impl InstrumentApp {
             } else {
                 word_wrap(&p.actual, w).len() as u16
             };
-            // Ensure the middle zone gets at least 8 lines (or half the area).
-            // Reality takes whatever is left after desire + minimum middle.
-            let min_middle: u16 = (area.height / 2).min(8).max(4);
+            // Middle zone priority: compute what the frontier content needs,
+            // then reality gets whatever's left (minimum 1 line + rule).
+            // Frontier content needs: selectables + console header(2) + breathing(2).
+            let middle_content_need = (frontier.selectable_count() as u16) + 4;
             let available_for_reality = area.height
                 .saturating_sub(th)
-                .saturating_sub(min_middle)
+                .saturating_sub(middle_content_need)
                 .saturating_sub(2); // rule + blank
-            let capped_reality = reality_line_count.min(available_for_reality);
+            let capped_reality = reality_line_count.min(available_for_reality.max(1));
             let bh: u16 = {
                 let mut h: u16 = 0;
                 if capped_reality > 0 {
@@ -1019,6 +1020,24 @@ impl InstrumentApp {
                 }
             }
 
+            // S4: "no committed next step" appears in the route zone (above console)
+            let s4_held_only = frontier.route.is_empty()
+                && frontier.overdue.is_empty()
+                && frontier.next.is_none()
+                && !frontier.held.is_empty();
+            if s4_held_only && my < top_limit {
+                if my > middle_start { my += 1; } // breathing
+                let msg = "no committed next step";
+                let prefix_len = cols.left + GUTTER;
+                let pad_right = w.saturating_sub(prefix_len + msg.len());
+                render_line(frame, area.x, my, area.width, &[
+                    (" ".repeat(prefix_len), Style::new()),
+                    (msg.to_string(), STYLES.dim),
+                    (" ".repeat(pad_right), Style::new()),
+                ]);
+                my += 1;
+            }
+
             // --- Console header: enriched boundary with structural readouts (S3) ---
             let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
                 || frontier.next.is_some() || !frontier.held.is_empty()
@@ -1105,24 +1124,7 @@ impl InstrumentApp {
                     .render(Rect::new(area.x, my, area.width, 1), frame);
                 my += 1;
 
-                // S4: Held-only message (no route, no overdue, no next — only held)
-                let s4_held_only = frontier.route.is_empty()
-                    && frontier.overdue.is_empty()
-                    && frontier.next.is_none()
-                    && !frontier.held.is_empty();
-                if s4_held_only && my < top_limit {
-                    my += 1; // breathing
-                    let msg = "no committed next step";
-                    let prefix_len = cols.left + GUTTER;
-                    let pad_right = w.saturating_sub(prefix_len + msg.len());
-                    render_line(frame, area.x, my, area.width, &[
-                        (" ".repeat(prefix_len), Style::new()),
-                        (msg.to_string(), STYLES.dim),
-                        (" ".repeat(pad_right), Style::new()),
-                    ]);
-                    my += 1;
-                    if my < top_limit { my += 1; } // breathing
-                }
+                // (S4 "no committed next step" moved above console header)
             }
 
             // --- Held items (gradual: show N individually, summary for rest) ---
