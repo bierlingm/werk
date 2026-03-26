@@ -704,12 +704,30 @@ impl InstrumentApp {
                 h
             };
 
-            // Reality: always exactly 1 line (truncated with "... · age").
-            // Full text accessible via ? (edit) or orient zoom (future).
-            let bh: u16 = if p.actual.is_empty() {
-                1 // just the rule
+            // Reality height: adaptive. Compute what the middle zone needs,
+            // then reality gets the remaining space (minimum 1 content line).
+            let reality_full_lines = if p.actual.is_empty() {
+                0u16
             } else {
-                3 // blank + 1 reality line + rule
+                word_wrap(&p.actual, w).len() as u16
+            };
+            // Estimate middle zone need from frontier content
+            let middle_need = (frontier.selectable_count() as u16) + 4; // selectables + chrome
+            let space_for_reality = area.height
+                .saturating_sub(th)
+                .saturating_sub(middle_need)
+                .saturating_sub(2); // rule + blank
+            let reality_lines = if p.actual.is_empty() { 0 } else {
+                reality_full_lines.min(space_for_reality.max(1))
+            };
+            let bh: u16 = {
+                let mut h: u16 = 0;
+                if reality_lines > 0 {
+                    h += 1; // blank line before reality
+                    h += reality_lines;
+                }
+                h += 1; // reality rule
+                h
             };
 
             (th, bh, d_lines)
@@ -758,25 +776,85 @@ impl InstrumentApp {
             } else { 0 }
         } else { 0 };
 
-        // Compute space-aware expansion.
-        // Focus detail takes space from accumulated (last priority) but never from
-        // held, so the focused item can't collapse into a summary.
+        // === Two-pass layout: measure → reconcile → render ===
         let middle_start = middle_zone.y;
         let middle_end = middle_zone.y + middle_zone.height;
         let middle_lines = middle_zone.height as usize;
-        frontier.compute_expansion(middle_lines);
 
-        // If focus is active, reduce accumulated to make room for the detail.
-        if focus_detail_height > 0 {
-            let acc_budget = frontier.show_accumulated.saturating_sub(focus_detail_height);
-            frontier.show_accumulated = acc_budget;
-        }
-        // Cache expansion lines so navigation uses the same value
+        // Pass 1: initial expansion (optimistic allocation)
+        frontier.compute_expansion(middle_lines);
         self.last_render_lines.set(middle_lines);
 
-        // During reorder, the grabbed item is tracked by vlist.cursor (sibling index).
-        // Map it to the frontier's cursor index so selection highlighting works.
-        // Otherwise, clamp deck_cursor to the render frontier's selectable count.
+        // Pass 2: measure what each section actually needs (including chrome)
+        let top_lines = {
+            let mut h: usize = 0;
+            // Route
+            let sr = frontier.show_route.min(frontier.route.len());
+            h += sr;
+            if sr < frontier.route.len() { h += 1; } // summary
+            // Overdue + next
+            h += frontier.overdue.len();
+            if frontier.next.is_some() { h += 1; }
+            // "no committed next step" message
+            if frontier.route.is_empty() && frontier.overdue.is_empty()
+                && frontier.next.is_none() && !frontier.held.is_empty() {
+                h += 2; // message + breathing
+            }
+            // Console header + breathing
+            let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
+                || frontier.next.is_some() || !frontier.held.is_empty()
+                || !frontier.accumulated.is_empty();
+            if has_content { h += 2; } // header + breathing
+            // Held
+            let sh = frontier.show_held.min(frontier.held.len());
+            if !frontier.held.is_empty() {
+                h += sh;
+                if sh < frontier.held.len() { h += 1; } // summary
+            }
+            // Input point
+            h += 1;
+            h
+        };
+        let acc_lines = {
+            let sa = frontier.show_accumulated.min(frontier.accumulated.len());
+            let mut h: usize = 0;
+            if !frontier.accumulated.is_empty() {
+                h += sa;
+                if sa < frontier.accumulated.len() { h += 1; } // summary
+            }
+            // Focus detail on accumulated item
+            if focus_detail_height > 0 {
+                if let Some(fi) = self.focused_detail.as_ref().map(|d| d.sibling_index) {
+                    if frontier.accumulated.iter().take(sa).any(|&idx| idx == fi) {
+                        h += focus_detail_height;
+                    }
+                }
+            }
+            h
+        };
+
+        // Pass 3: reconcile — if total exceeds middle, compress accumulated first, then held
+        let total = top_lines + acc_lines;
+        let mut final_show_acc = frontier.show_accumulated.min(frontier.accumulated.len());
+        let mut final_show_held = frontier.show_held.min(frontier.held.len());
+
+        if total > middle_lines {
+            let mut excess = total - middle_lines;
+            // First: reduce accumulated individual items (keep at least summary)
+            while excess > 0 && final_show_acc > 0 {
+                final_show_acc -= 1;
+                excess -= 1;
+            }
+            // Still over? Reduce held individual items (keep at least summary)
+            while excess > 0 && final_show_held > 0 {
+                final_show_held -= 1;
+                excess -= 1;
+            }
+        }
+        frontier.show_accumulated = final_show_acc;
+        frontier.show_held = final_show_held;
+
+        // Cursor and focus setup
         let cursor_idx = if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
             frontier.cursor_for_sibling(
                 self.siblings.iter().position(|s| s.id == *tension_id).unwrap_or(0)
@@ -792,54 +870,22 @@ impl InstrumentApp {
             None
         };
 
-        // Compute minimum space the top-down pass needs BEFORE the bottom-up pass,
-        // so accumulated rendering never pushes past this floor.
-        let min_top_space: u16 = {
-            let mut h: u16 = 1; // input point (always)
-            h += 2; // console header + breathing
-            // Route
-            let shown_r = frontier.show_route.min(frontier.route.len());
-            h += shown_r as u16;
-            if shown_r < frontier.route.len() { h += 1; } // route summary
-            // Overdue + next
-            h += frontier.overdue.len() as u16;
-            if frontier.next.is_some() { h += 1; }
-            // Held
-            if !frontier.held.is_empty() {
-                let shown_h = frontier.show_held.min(frontier.held.len());
-                h += shown_h as u16;
-                if shown_h < frontier.held.len() { h += 1; } // summary
-            }
-            h
-        };
-        let acc_floor = middle_start + min_top_space;
-
         // === Bottom-up pass: accumulated items (gravity toward reality) ===
-        // Render from middle_end upward. We compute positions first, then render.
-
-        let mut acc_top = middle_end; // will be decremented as we place accumulated items
+        let mut acc_top = middle_end;
 
         if !frontier.accumulated.is_empty() {
-            // Clamp shown to what physically fits between acc_floor and middle_end.
-            // Reserve 1 line for summary if not all shown.
-            let acc_space = middle_end.saturating_sub(acc_floor) as usize;
-            let max_shown = if frontier.show_accumulated < frontier.accumulated.len() {
-                acc_space.saturating_sub(1) // leave room for summary line
-            } else {
-                acc_space
-            };
-            let shown = frontier.show_accumulated.min(frontier.accumulated.len()).min(max_shown);
+            let shown = final_show_acc;
             let remaining = frontier.accumulated.len() - shown;
 
             // Remaining: show individually if only 1, else summary
-            if remaining == 1 && acc_top > acc_floor {
+            if remaining == 1 && acc_top > middle_start {
                 acc_top -= 1;
                 let sibling_idx = frontier.accumulated[shown];
                 let entry = &self.siblings[sibling_idx];
                 let glyph = status_glyph(entry.status);
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
                 self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
-            } else if remaining > 1 && acc_top > acc_floor {
+            } else if remaining > 1 && acc_top > middle_start {
                 acc_top -= 1;
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
 
@@ -876,7 +922,7 @@ impl InstrumentApp {
             let mut acc_focus_y: Option<(u16, u16)> = None; // (start_y, limit_y) for deferred focus render
 
             for i in (0..shown).rev() {
-                if acc_top <= acc_floor { break; }
+                if acc_top <= middle_start { break; }
                 let sibling_idx = frontier.accumulated[i];
                 // Reserve extra space for focus detail below the item
                 if focused_sibling == Some(sibling_idx) {
@@ -885,7 +931,7 @@ impl InstrumentApp {
                     // Remember where to render focus detail (below the item line)
                     acc_focus_y = Some((acc_top, acc_top + reserve));
                 }
-                if acc_top <= acc_floor { break; }
+                if acc_top <= middle_start { break; }
                 acc_top -= 1;
                 let entry = &self.siblings[sibling_idx];
                 let glyph = match entry.status {
@@ -905,7 +951,7 @@ impl InstrumentApp {
             }
         }
 
-        // top_limit = where the bottom-up pass stopped (already respects acc_floor)
+        // top_limit = where the bottom-up pass stopped
         let top_limit = acc_top;
         let mut my = middle_start;
 
@@ -1457,7 +1503,6 @@ impl InstrumentApp {
 
         if !has_reality { return; }
 
-        // Single-line reality: truncate to fit width, always show age suffix.
         let text_zone = zones[1];
         if text_zone.height == 0 { return; }
 
@@ -1467,20 +1512,46 @@ impl InstrumentApp {
             format!(" \u{00B7} {}", reality_age)
         };
         let age_w = age_suffix.chars().count();
-        let text_budget = w.saturating_sub(age_w);
 
-        let reality_chars: Vec<char> = parent.actual.chars().collect();
-        let display = if reality_chars.len() <= text_budget {
-            parent.actual.clone()
+        let full_lines = word_wrap(&parent.actual, w);
+        let fits = full_lines.len() as u16 <= text_zone.height;
+
+        if fits {
+            // Full text fits — render all lines, age on last line
+            let mut lines: Vec<Line> = Vec::new();
+            for (i, line_text) in full_lines.iter().enumerate() {
+                if i == full_lines.len() - 1 && !age_suffix.is_empty() {
+                    lines.push(Line::from_spans([
+                        Span::styled(line_text.as_str(), STYLES.dim),
+                        Span::styled(&age_suffix, STYLES.dim),
+                    ]));
+                } else {
+                    lines.push(Line::from(Span::styled(line_text.as_str(), STYLES.dim)));
+                }
+            }
+            Paragraph::new(Text::from_lines(lines))
+                .render(text_zone, frame);
+        } else if text_zone.height == 1 {
+            // Single line: truncate with "..." + age
+            let text_budget = w.saturating_sub(age_w + 3); // 3 for "..."
+            let truncated: String = parent.actual.chars().take(text_budget).collect();
+            render_line(frame, text_zone.x, text_zone.y, text_zone.width, &[
+                (format!("{}...", truncated), STYLES.dim),
+                (age_suffix, STYLES.dim),
+            ]);
         } else {
-            let truncated: String = reality_chars[..text_budget.saturating_sub(3)].iter().collect();
-            format!("{}...", truncated)
-        };
-
-        render_line(frame, text_zone.x, text_zone.y, text_zone.width, &[
-            (display, STYLES.dim),
-            (age_suffix, STYLES.dim),
-        ]);
+            // Multi-line truncated: show N-1 full lines, last line = "..." + age
+            let avail = (text_zone.height - 1) as usize;
+            let mut lines: Vec<Line> = full_lines.iter().take(avail)
+                .map(|l| Line::from(Span::styled(l.as_str(), STYLES.dim)))
+                .collect();
+            lines.push(Line::from_spans([
+                Span::styled("...", STYLES.dim),
+                Span::styled(&age_suffix, STYLES.dim),
+            ]));
+            Paragraph::new(Text::from_lines(lines))
+                .render(text_zone, frame);
+        }
     }
 
     /// Render inline focus detail below a child line (V7).
