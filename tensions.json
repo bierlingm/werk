@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-25T22:44:54Z",
+  "flushed_at": "2026-03-26T08:50:23Z",
   "summary": {
-    "active": 51,
+    "active": 53,
     "released": 6,
-    "resolved": 29,
-    "total": 86
+    "resolved": 30,
+    "total": 89
   },
   "tensions": [
     {
@@ -349,7 +349,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "no public-facing surface exists; werk is CLI-only and single-user. werk.horse domain is owned but unused (acquired for a different product). werk.bank is the ideal domain but costs $999",
+      "actual": "werk-web crate exists: Axum server with REST API (GET/POST/PATCH tensions, SSE live updates) calling sd-core directly via dedicated store thread. Interactive HTML frontend serves from 'werk serve' command — desired above reality card layout, gap visualization, live create/edit/resolve. Designed for Tauri migration: store-thread pattern maps to Tauri commands. No public deployment yet.",
       "created_at": "2026-03-24T17:52:27.124793+00:00",
       "desired": "a public web surface exists where others can view (part of) the tension tree and interact with it — prototype for demonstrating werk and inviting cooperation via Spikes or similar feedback mechanisms",
       "horizon": null,
@@ -789,7 +789,7 @@
       "status": "Released"
     },
     {
-      "actual": "Consolidation plan written: 5 steps (cache frontier, unify cursor, fix reorder/frontier, deck at root, remove dead code). 15KB implementation prompt prepared. Dual cursor, dual renderer, and frontier mismatch identified as root cause of persistent display bugs.",
+      "actual": "Steps 1-5 complete (cached frontier, unified cursor, reorder fix, deck at root, dead code removed — net -1550 lines). Post-refactor fixes: global undo/redo (u/U), month names in horizon parser, root active filter, focus compression, route summary wording, single-line reality truncation. Remaining: accumulated still overlaps held/input on small screens despite acc_floor — the expansion algorithm and physical rendering are not fully reconciled. Reality should be multi-line adaptive (not always 1 line). Layout needs a proper two-pass approach where middle zone content determines reality budget, not the reverse.",
       "created_at": "2026-03-25T19:20:11.335786+00:00",
       "desired": "TUI architectural consolidation — unified cursor, single frontier per frame, deck at root, remove old renderer",
       "horizon": null,
@@ -811,7 +811,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "CreatorTools.net charges $130/month for simple structural tension charts; ~50-200 active SD practitioners globally; Fritz (early 80s) still teaches; 2 certified instructors (Schutze in Berlin, Higgs in Portland); no community infrastructure (no forum, Slack, or directory); practitioners use pen-and-paper, recorded consultations, and Zoom; no real software tool exists for the practice",
+      "actual": "CreatorTools.net researched in depth — charges $130/month for course + simple charting tool with telescoping. Community mapped: ~50-200 active practitioners, 2 certified instructors. Moritz registered for FST April 2026, has email thread with Kira & Katharina (fst@robertfritz.com). Draft outreach email to Katharina composed. Business foundation document updated to reorient around SD practitioners as primary market. Web UI prototype and Tauri tech choice made for the premium product.",
       "created_at": "2026-03-25T20:14:51.079047+00:00",
       "desired": "werk is the standard practice tool for structural dynamics practitioners and coaches — the successor to what Fritz once offered, and the obvious thing to charge for",
       "horizon": null,
@@ -855,7 +855,7 @@
       "status": "Active"
     },
     {
-      "actual": "only the terminal TUI and CLI exist; non-technical users find the terminal ugly and unapproachable; no GUI work has begun",
+      "actual": "Tauri 2.0 desktop app exists and opens natively on macOS. werk-app/src-tauri/ has the Rust backend (store actor, 8 commands), werk-app/src-web/ has the adapted HTML frontend. Full tension tree loads, all CRUD gestures work through native IPC. werk-web Axum server also works (werk serve). Two GUI paths operational: native Tauri app and browser via Axum. Not yet a practice tool — needs polish, deeper SD feel, step-level actions, proper icon/bundling.",
       "created_at": "2026-03-25T20:15:19.805413+00:00",
       "desired": "werk has a graphical interface — browser or native Mac app — that non-terminal users find inviting and natural to use, and that serves as the premium product",
       "horizon": null,
@@ -866,7 +866,7 @@
       "status": "Active"
     },
     {
-      "actual": "no evaluation done; options are wide open",
+      "actual": "Tauri selected. Research documented. Architecture validated: werk-web's store-thread channel pattern maps directly to Tauri commands. Ready to resolve once Tauri scaffold exists and proves the pattern.",
       "created_at": "2026-03-25T20:15:27.863960+00:00",
       "desired": "the GUI technology choice is made — web app, Tauri, native SwiftUI, or other — with clear rationale for the SD practitioner audience",
       "horizon": null,
@@ -874,10 +874,10 @@
       "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
       "position": null,
       "short_code": 83,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "no GUI exists",
+      "actual": "Live interactive web UI at werk serve. Create tension, evolve desire, update reality, resolve, reopen, decompose (add child) — all via API calls, no terminal needed. Search with auto-expand, filter by status. SSE auto-refreshes on any mutation. Missing: step-level actions (resolve/edit individual children from the UI), horizon management, position/reorder, release, notes. Not yet at parity with the core practice loop.",
       "created_at": "2026-03-25T20:15:35.801566+00:00",
       "desired": "the GUI reaches feature parity with the core practice loop — create tension, see the structure, gesture through it, track dynamics",
       "horizon": null,
@@ -888,7 +888,7 @@
       "status": "Active"
     },
     {
-      "actual": "no design work done; no visual language established for a graphical surface",
+      "actual": "Spatial law enforced: desire at top, theory of closure as vertical bridge, reality at bottom. Warm palette, generous spacing, no terminal aesthetic. Structural dynamics vocabulary in the UI (evolve desire, update reality, decompose, theory of closure). Bridge line connects children visually from desire toward reality. But still feels more like a list than a structure you inhabit. Needs: better gap feel, step-level interaction, descended view that makes the theory of closure a reasoning surface not just indented items.",
       "created_at": "2026-03-25T20:15:37.757810+00:00",
       "desired": "the GUI has visual design that expresses structural dynamics — not a generic task manager skin but something that makes the practice feel right",
       "horizon": null,
@@ -937,7 +937,7 @@
       "desired": "root-level epochs — the root tension tracks epoch boundaries for its own desire/reality lifecycle, visible in the deck bottom bar",
       "horizon": null,
       "id": "01KMKC5Z5DPQ0W1QVYJABQ8ACP",
-      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 89,
       "status": "Active"
@@ -951,6 +951,39 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 90,
+      "status": "Active"
+    },
+    {
+      "actual": "not started — desire/reality are currently non-selectable fixed zones. Shift+Enter is a V9 placeholder. Prior epochs are only indicated as a count in the bottom bar.",
+      "created_at": "2026-03-26T07:39:59.238879+00:00",
+      "desired": "cursor can select desire and reality anchor zones — enables orient zoom (Shift+Enter) for full-text expand, and cursor-through to prior epochs below reality",
+      "horizon": null,
+      "id": "01KMMHBYC6P22P0PHB5TZ2Q69G",
+      "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
+      "position": null,
+      "short_code": 91,
+      "status": "Active"
+    },
+    {
+      "actual": "broken — Store::init() takes an advisory file lock for the entire session. CLI commands fail with 'store is locked' while TUI is open. Lock should wrap individual write transactions, not the whole session.",
+      "created_at": "2026-03-26T07:40:32.531656+00:00",
+      "desired": "advisory lock is write-scoped, not session-scoped — CLI commands should be able to read and write alongside a running TUI",
+      "horizon": null,
+      "id": "01KMMHCYWKJ5MR5GYPMRBGM2J6",
+      "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
+      "position": null,
+      "short_code": 92,
+      "status": "Active"
+    },
+    {
+      "actual": "Tauri 2.0 scaffold complete in werk-app/. Store actor pattern (dedicated OS thread for !Send Store, mpsc channels). 8 Tauri commands: get_tree, create_tension, update_desired, update_reality, resolve_tension, reopen_tension, get_tension, position_tension. Web frontend adapted from werk-web — uses __TAURI_INTERNALS__.invoke() for all IPC. Compiles clean, opens a native macOS window, loads and displays the full tension tree. Creating/updating tensions works live. No Tauri CLI installed yet (cargo run -p werk-app works directly).",
+      "created_at": "2026-03-26T08:11:32.624134+00:00",
+      "desired": "werk ships as a Tauri desktop app — the web frontend wraps in a native window, Axum server replaced by Tauri command layer",
+      "horizon": null,
+      "id": "01KMMK5QCGEY9RXFHMDNP2H9ZX",
+      "parent_id": "01KMGFKYZMWQAH7SFJR09A9DTR",
+      "position": null,
+      "short_code": 93,
       "status": "Active"
     }
   ]
