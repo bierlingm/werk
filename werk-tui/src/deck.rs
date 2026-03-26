@@ -711,11 +711,15 @@ impl InstrumentApp {
             } else {
                 word_wrap(&p.actual, w.saturating_sub(reality_age_reserve)).len() as u16
             };
+            // Cap reality height on small screens to preserve middle zone.
+            // Full text is accessible via ? (edit reality).
+            let max_reality_lines: u16 = if area.height < 30 { 3 } else if area.height < 45 { 5 } else { reality_line_count };
+            let capped_reality = reality_line_count.min(max_reality_lines);
             let bh: u16 = {
                 let mut h: u16 = 0;
-                if reality_line_count > 0 {
+                if capped_reality > 0 {
                     h += 1; // blank line before reality
-                    h += reality_line_count;
+                    h += capped_reality;
                 }
                 h += 1; // reality rule
                 h
@@ -801,6 +805,28 @@ impl InstrumentApp {
             None
         };
 
+        // Compute minimum space the top-down pass needs BEFORE the bottom-up pass,
+        // so accumulated rendering never pushes past this floor.
+        let min_top_space: u16 = {
+            let mut h: u16 = 1; // input point (always)
+            h += 2; // console header + breathing
+            // Route
+            let shown_r = frontier.show_route.min(frontier.route.len());
+            h += shown_r as u16;
+            if shown_r < frontier.route.len() { h += 1; } // route summary
+            // Overdue + next
+            h += frontier.overdue.len() as u16;
+            if frontier.next.is_some() { h += 1; }
+            // Held
+            if !frontier.held.is_empty() {
+                let shown_h = frontier.show_held.min(frontier.held.len());
+                h += shown_h as u16;
+                if shown_h < frontier.held.len() { h += 1; } // summary
+            }
+            h
+        };
+        let acc_floor = middle_start + min_top_space;
+
         // === Bottom-up pass: accumulated items (gravity toward reality) ===
         // Render from middle_end upward. We compute positions first, then render.
 
@@ -856,7 +882,7 @@ impl InstrumentApp {
             let mut acc_focus_y: Option<(u16, u16)> = None; // (start_y, limit_y) for deferred focus render
 
             for i in (0..shown).rev() {
-                if acc_top <= middle_start { break; }
+                if acc_top <= acc_floor { break; }
                 let sibling_idx = frontier.accumulated[i];
                 // Reserve extra space for focus detail below the item
                 if focused_sibling == Some(sibling_idx) {
@@ -865,7 +891,7 @@ impl InstrumentApp {
                     // Remember where to render focus detail (below the item line)
                     acc_focus_y = Some((acc_top, acc_top + reserve));
                 }
-                if acc_top <= middle_start { break; }
+                if acc_top <= acc_floor { break; }
                 acc_top -= 1;
                 let entry = &self.siblings[sibling_idx];
                 let glyph = match entry.status {
@@ -885,28 +911,8 @@ impl InstrumentApp {
             }
         }
 
-        // The top-down section must not overlap with the accumulated section.
-        // Guarantee enough room for the entire top-down pass:
-        // route items/summary + overdue + next + console + held items/summary + input point.
-        let min_top_space: u16 = {
-            let mut h: u16 = 1; // input point (always)
-            h += 2; // console header + breathing
-            // Route
-            let shown_r = frontier.show_route.min(frontier.route.len());
-            h += shown_r as u16;
-            if shown_r < frontier.route.len() { h += 1; } // route summary
-            // Overdue + next
-            h += frontier.overdue.len() as u16;
-            if frontier.next.is_some() { h += 1; }
-            // Held
-            if !frontier.held.is_empty() {
-                let shown_h = frontier.show_held.min(frontier.held.len());
-                h += shown_h as u16;
-                if shown_h < frontier.held.len() { h += 1; } // summary
-            }
-            h
-        };
-        let top_limit = acc_top.max(middle_start + min_top_space);
+        // top_limit = where the bottom-up pass stopped (already respects acc_floor)
+        let top_limit = acc_top;
         let mut my = middle_start;
 
         // === Top-down pass: route → overdue → next → separator → held → input ===
