@@ -1,0 +1,16 @@
+[package]
+name = "werk-app"
+version = "0.1.0"
+edition = "2024"
+description = "Native desktop app for werk — structural dynamics instrument"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+sd-core = { path = "../../sd-core" }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+dirs = "5"
