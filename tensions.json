@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-26T11:35:58Z",
+  "flushed_at": "2026-03-26T11:37:05Z",
   "summary": {
-    "active": 53,
+    "active": 54,
     "released": 6,
     "resolved": 32,
-    "total": 91
+    "total": 92
   },
   "tensions": [
     {
@@ -1006,6 +1006,17 @@
       "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
       "position": null,
       "short_code": 95,
+      "status": "Active"
+    },
+    {
+      "actual": "unspoken intent since the beginning. werk -g currently just means a workspace at ~/.werk. The deeper vision: global workspace knows about all registered local workspaces. Cross-field patterns (where is energy going, which fields are stagnant). If root level of a single workspace is a command center for that field, global is the command center for all fields. Connects to logbase (cross-workspace query), survey view (cross-field temporal overview), and the mobile app (which field am I looking at right now).",
+      "created_at": "2026-03-26T11:36:55.312911+00:00",
+      "desired": "the global workspace is a meta-command-center across all workspaces — register, view, filter, flit between fields, query the logbase across all of them",
+      "horizon": null,
+      "id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 96,
       "status": "Active"
     }
   ]
