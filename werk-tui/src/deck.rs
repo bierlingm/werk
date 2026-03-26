@@ -785,74 +785,66 @@ impl InstrumentApp {
         frontier.compute_expansion(middle_lines);
         self.last_render_lines.set(middle_lines);
 
-        // Pass 2: measure what each section actually needs (including chrome)
-        let top_lines = {
-            let mut h: usize = 0;
+        // Pass 2+3: reconcile — if total exceeds middle, compress in priority order.
+        // Priority: accumulated individuals → accumulated summary → held individuals.
+        // Input point and held summary never disappear.
+        let mut final_show_acc = frontier.show_accumulated.min(frontier.accumulated.len());
+        let mut final_show_held = frontier.show_held.min(frontier.held.len());
+        let mut hide_acc_summary = false;
+
+        let recount = |sa: usize, sh: usize, hide_acc: bool| -> usize {
+            let mut top: usize = 0;
             // Route
             let sr = frontier.show_route.min(frontier.route.len());
-            h += sr;
-            if sr < frontier.route.len() { h += 1; } // summary
-            // Overdue + next
-            h += frontier.overdue.len();
-            if frontier.next.is_some() { h += 1; }
-            // "no committed next step" message
+            top += sr;
+            if sr < frontier.route.len() { top += 1; }
+            top += frontier.overdue.len();
+            if frontier.next.is_some() { top += 1; }
             if frontier.route.is_empty() && frontier.overdue.is_empty()
                 && frontier.next.is_none() && !frontier.held.is_empty() {
-                h += 2; // message + breathing
+                top += 2; // "no committed next step" + breathing
             }
-            // Console header + breathing
             let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
                 || frontier.next.is_some() || !frontier.held.is_empty()
                 || !frontier.accumulated.is_empty();
-            if has_content { h += 2; } // header + breathing
-            // Held
-            let sh = frontier.show_held.min(frontier.held.len());
+            if has_content { top += 2; } // console + breathing
             if !frontier.held.is_empty() {
-                h += sh;
-                if sh < frontier.held.len() { h += 1; } // summary
+                top += sh;
+                if sh < frontier.held.len() { top += 1; } // summary
             }
-            // Input point
-            h += 1;
-            h
-        };
-        let acc_lines = {
-            let sa = frontier.show_accumulated.min(frontier.accumulated.len());
-            let mut h: usize = 0;
-            if !frontier.accumulated.is_empty() {
-                h += sa;
-                if sa < frontier.accumulated.len() { h += 1; } // summary
+            top += 1; // input point
+            // Accumulated
+            let mut acc: usize = 0;
+            if !frontier.accumulated.is_empty() && !hide_acc {
+                acc += sa;
+                if sa < frontier.accumulated.len() { acc += 1; }
             }
-            // Focus detail on accumulated item
-            if focus_detail_height > 0 {
-                if let Some(fi) = self.focused_detail.as_ref().map(|d| d.sibling_index) {
-                    if frontier.accumulated.iter().take(sa).any(|&idx| idx == fi) {
-                        h += focus_detail_height;
-                    }
-                }
-            }
-            h
+            top + acc
         };
 
-        // Pass 3: reconcile — if total exceeds middle, compress accumulated first, then held
-        let total = top_lines + acc_lines;
-        let mut final_show_acc = frontier.show_accumulated.min(frontier.accumulated.len());
-        let mut final_show_held = frontier.show_held.min(frontier.held.len());
-
-        if total > middle_lines {
-            let mut excess = total - middle_lines;
-            // First: reduce accumulated individual items (keep at least summary)
-            while excess > 0 && final_show_acc > 0 {
-                final_show_acc -= 1;
-                excess -= 1;
-            }
-            // Still over? Reduce held individual items (keep at least summary)
-            while excess > 0 && final_show_held > 0 {
-                final_show_held -= 1;
-                excess -= 1;
-            }
+        // Step 1: reduce accumulated individuals
+        while recount(final_show_acc, final_show_held, hide_acc_summary) > middle_lines
+            && final_show_acc > 0
+        {
+            final_show_acc -= 1;
         }
-        frontier.show_accumulated = final_show_acc;
+        // Step 2: hide accumulated summary entirely
+        if recount(final_show_acc, final_show_held, hide_acc_summary) > middle_lines
+            && final_show_acc == 0
+        {
+            hide_acc_summary = true;
+        }
+        // Step 3: reduce held individuals (kept summary always visible)
+        while recount(final_show_acc, final_show_held, hide_acc_summary) > middle_lines
+            && final_show_held > 0
+        {
+            final_show_held -= 1;
+        }
+
+        frontier.show_accumulated = if hide_acc_summary { 0 } else { final_show_acc };
         frontier.show_held = final_show_held;
+        // Mark accumulated as empty for rendering if summary is hidden
+        let acc_hidden = hide_acc_summary && final_show_acc == 0;
 
         // Cursor and focus setup
         let cursor_idx = if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
@@ -873,8 +865,8 @@ impl InstrumentApp {
         // === Bottom-up pass: accumulated items (gravity toward reality) ===
         let mut acc_top = middle_end;
 
-        if !frontier.accumulated.is_empty() {
-            let shown = final_show_acc;
+        if !frontier.accumulated.is_empty() && !acc_hidden {
+            let shown = frontier.show_accumulated;
             let remaining = frontier.accumulated.len() - shown;
 
             // Remaining: show individually if only 1, else summary
@@ -1661,7 +1653,10 @@ impl InstrumentApp {
                     "p position \u{00B7} Enter focus \u{00B7} r resolve".to_string(),
                 CursorTarget::AccumulatedItem(_) =>
                     "l descend \u{00B7} Enter focus".to_string(),
-                _ => String::new(),
+                CursorTarget::InputPoint =>
+                    "a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality".to_string(),
+                CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated =>
+                    String::new(),
             }
         } else {
             String::new()
