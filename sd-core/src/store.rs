@@ -116,14 +116,33 @@ impl From<StoreError> for SdError {
     }
 }
 
+/// RAII guard for write-scoped file locking.
+///
+/// Holds an exclusive file lock while alive. Releases on drop.
+/// Re-entrant guards (owns_lock = false) are no-ops on drop.
+struct WriteLockGuard<'a> {
+    #[allow(dead_code)]
+    store: &'a Store,
+    _lock_file: Option<File>,
+    owns_lock: bool,
+}
+
+impl Drop for WriteLockGuard<'_> {
+    fn drop(&mut self) {
+        if self.owns_lock {
+            self.store.write_locked.set(false);
+        }
+    }
+}
+
 /// The persistent store for tensions and mutations.
 ///
 /// Uses fsqlite for storage. Note: fsqlite's Connection uses Rc internally,
 /// so Store cannot be sent between threads.
 ///
-/// File-based stores acquire an exclusive lock (`sd.db.lock`) so only one
-/// process can write at a time. The lock is held for the lifetime of the
-/// Store and released on drop.
+/// File-based stores use write-scoped locking (`sd.db.lock`): each write
+/// operation acquires an exclusive lock for its duration, then releases.
+/// This allows multiple processes (e.g., TUI + CLI) to coexist.
 ///
 /// # Events
 ///
@@ -138,9 +157,10 @@ pub struct Store {
     active_gesture_id: Option<String>,
     /// Pending actual_at timestamp for the next mutation(s). Supports "I did this yesterday."
     pending_actual_at: Option<DateTime<Utc>>,
-    /// Holds the exclusive file lock for the lifetime of this Store.
-    /// None for in-memory stores.
-    _lock_file: Option<File>,
+    /// Directory containing the lock file (.werk/). None for in-memory stores.
+    lock_dir: Option<PathBuf>,
+    /// Re-entrancy guard for write lock (prevents double-locking in nested calls).
+    write_locked: std::cell::Cell<bool>,
 }
 
 impl Store {
@@ -149,9 +169,9 @@ impl Store {
     /// Creates `.werk/sd.db` with the correct schema. Idempotent —
     /// opening an existing database preserves data.
     ///
-    /// Acquires an exclusive file lock so only one process can write
-    /// at a time. Returns `StoreError::StoreLocked` if another process
-    /// already holds the lock.
+    /// Uses write-scoped locking: each write operation acquires an exclusive
+    /// file lock for its duration, then releases. Multiple processes can
+    /// coexist (e.g., CLI commands while TUI is open).
     pub fn init(path: &std::path::Path) -> Result<Self, StoreError> {
         let werk_dir = path.join(".werk");
         std::fs::create_dir_all(&werk_dir).map_err(|e| {
@@ -161,8 +181,6 @@ impl Store {
                 StoreError::IoError(format!("failed to create .werk directory: {}", e))
             }
         })?;
-
-        let lock_file = Self::acquire_lock(&werk_dir)?;
 
         let db_path = werk_dir.join("sd.db");
 
@@ -181,16 +199,17 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
-            _lock_file: Some(lock_file),
+            lock_dir: Some(werk_dir),
+            write_locked: std::cell::Cell::new(false),
         };
         store.create_schema()?;
         Ok(store)
     }
 
-    /// Initialize a store without acquiring a file lock.
+    /// Initialize a store without write locking.
     ///
-    /// Intended for tests and read-only tooling that should not contend
-    /// with a running TUI.
+    /// Intended for tests and read-only tooling where concurrent write
+    /// protection is not needed.
     pub fn init_unlocked(path: &std::path::Path) -> Result<Self, StoreError> {
         let werk_dir = path.join(".werk");
         std::fs::create_dir_all(&werk_dir).map_err(|e| {
@@ -212,7 +231,8 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
-            _lock_file: None,
+            lock_dir: None,
+            write_locked: std::cell::Cell::new(false),
         };
         store.create_schema()?;
         Ok(store)
@@ -239,7 +259,8 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
-            _lock_file: None,
+            lock_dir: None,
+            write_locked: std::cell::Cell::new(false),
         };
         store.create_schema()?;
         Ok(store)
@@ -277,6 +298,24 @@ impl Store {
             Ok(false) => Err(StoreError::StoreLocked),
             Err(e) => Err(StoreError::IoError(format!("failed to acquire lock: {}", e))),
         }
+    }
+
+    /// Acquire an exclusive file lock for the duration of a write operation.
+    ///
+    /// Returns a guard that releases the lock on drop. Re-entrant: if the
+    /// current call stack already holds the lock (nested write calls), the
+    /// guard is a no-op. No-op for in-memory/unlocked stores (lock_dir is None).
+    fn write_lock(&self) -> Result<WriteLockGuard<'_>, StoreError> {
+        if self.write_locked.get() {
+            // Re-entrant: outer caller owns the lock
+            return Ok(WriteLockGuard { store: self, _lock_file: None, owns_lock: false });
+        }
+        let lock_file = match &self.lock_dir {
+            Some(d) => Some(Self::acquire_lock(d)?),
+            None => None,
+        };
+        self.write_locked.set(true);
+        Ok(WriteLockGuard { store: self, _lock_file: lock_file, owns_lock: true })
     }
 
     fn backup_db(werk_dir: &std::path::Path, db_path: &std::path::Path) {
@@ -571,6 +610,7 @@ impl Store {
         parent_id: Option<String>,
         horizon: Option<Horizon>,
     ) -> Result<Tension, SdError> {
+        let _lock = self.write_lock()?;
         let mut tension = Tension::new_full(desired, actual, parent_id, horizon)?;
 
         // Auto-assign short_code
@@ -650,6 +690,7 @@ impl Store {
         parent_actual_snapshot: Option<String>,
         parent_snapshot_json: Option<String>,
     ) -> Result<Tension, SdError> {
+        let _lock = self.write_lock()?;
         let mut tension = Tension::new_full_with_snapshots(
             desired,
             actual,
@@ -741,6 +782,7 @@ impl Store {
     /// This is a low-level method for recording arbitrary mutations.
     /// Most operations automatically record appropriate mutations.
     pub fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         // Use the mutation's gesture_id if set, otherwise fall back to store's active gesture
         let effective_gesture_id = mutation.gesture_id()
             .map(|g| g.to_owned())
@@ -1252,6 +1294,7 @@ impl Store {
     /// For use within an already-active transaction. Call `begin_transaction()`
     /// before using this method, and `commit_transaction()` after all updates.
     pub fn update_actual_no_tx(&self, id: &str, new_actual: &str) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         if new_actual.is_empty() {
             return Err(SdError::ValidationError(
                 "actual cannot be empty".to_owned(),
@@ -1289,6 +1332,7 @@ impl Store {
     ///
     /// Persists the change and records a mutation.
     pub fn update_parent(&self, id: &str, new_parent_id: Option<&str>) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         let mut tension = self
             .get_tension(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?
@@ -1352,6 +1396,7 @@ impl Store {
     ///
     /// The new_horizon can be None to clear the horizon.
     pub fn update_horizon(&self, id: &str, new_horizon: Option<Horizon>) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         let mut tension = self
             .get_tension(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?
@@ -1421,6 +1466,7 @@ impl Store {
     /// are atomically reparented to null (becoming roots) and a parent_id
     /// mutation is recorded for each child.
     pub fn update_status(&self, id: &str, new_status: TensionStatus) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         let mut tension = self
             .get_tension(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?
@@ -1545,6 +1591,7 @@ impl Store {
     }
 
     fn update_field(&self, id: &str, field: &str, new_value: &str) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         if new_value.is_empty() {
             return Err(SdError::ValidationError(format!(
                 "{} cannot be empty",
@@ -1938,6 +1985,7 @@ impl Store {
     ///
     /// Returns an error if the tension doesn't exist.
     pub fn delete_tension(&self, id: &str) -> Result<(), SdError> {
+        let _lock = self.write_lock()?;
         // Get the tension to delete
         let tension = self
             .get_tension(id)
@@ -2048,6 +2096,7 @@ impl Store {
     /// Records a mutation and persists the change.
     /// Returns true if the position was actually changed, false if it was already the target value.
     pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<bool, SdError> {
+        let _lock = self.write_lock()?;
         let conn = self.conn.borrow();
 
         // Get existing tension
@@ -2169,6 +2218,7 @@ impl Store {
         session_id: Option<&str>,
         description: Option<&str>,
     ) -> Result<String, StoreError> {
+        let _lock = self.write_lock()?;
         let id = ulid::Ulid::new().to_string();
         let now = Utc::now();
         let conn = self.conn.borrow();
@@ -2214,6 +2264,7 @@ impl Store {
         children_snapshot_json: Option<&str>,
         trigger_gesture_id: Option<&str>,
     ) -> Result<String, StoreError> {
+        let _lock = self.write_lock()?;
         let id = ulid::Ulid::new().to_string();
         let now = Utc::now();
         let conn = self.conn.borrow();
@@ -2963,17 +3014,25 @@ mod tests {
     // ── Concurrent Access ──────────────────────────────────────────
 
     #[test]
-    fn test_concurrent_access_blocked() {
+    fn test_concurrent_stores_coexist() {
+        // With write-scoped locking, multiple stores can open the same database.
+        // The lock is only held during individual write operations.
         let temp_dir = tempfile::tempdir().unwrap();
-        let _store1 = Store::init(temp_dir.path()).unwrap();
+        let store1 = Store::init(temp_dir.path()).unwrap();
+        let store2 = Store::init(temp_dir.path()).unwrap();
 
-        // A second init while the first is alive should fail with StoreLocked
-        let result = Store::init(temp_dir.path());
-        match result {
-            Err(StoreError::StoreLocked) => {} // expected
-            Err(other) => panic!("expected StoreLocked, got: {}", other), // ubs:ignore test assertion
-            Ok(_) => panic!("expected StoreLocked error, but init succeeded"), // ubs:ignore test assertion
-        }
+        // Both can read
+        assert!(store1.get_roots().unwrap().is_empty());
+        assert!(store2.get_roots().unwrap().is_empty());
+
+        // Both can write (sequentially — each acquires/releases the lock)
+        let t1 = store1.create_tension("goal 1", "reality 1").unwrap();
+        let t2 = store2.create_tension("goal 2", "reality 2").unwrap();
+
+        // Both see each other's writes
+        assert_eq!(store1.get_roots().unwrap().len(), 2);
+        assert!(store2.get_tension(&t1.id).unwrap().is_some());
+        assert!(store1.get_tension(&t2.id).unwrap().is_some());
     }
 
     #[test]
@@ -2983,9 +3042,9 @@ mod tests {
             let store1 = Store::init(temp_dir.path()).unwrap();
             let t = store1.create_tension("goal", "reality").unwrap();
             t.id.clone()
-        }; // store1 dropped, lock released
+        }; // store1 dropped
 
-        // Re-opening after drop should succeed
+        // Re-opening should succeed
         let store2 = Store::init(temp_dir.path()).unwrap();
         let retrieved = store2.get_tension(&tension_id).unwrap();
         assert!(retrieved.is_some());

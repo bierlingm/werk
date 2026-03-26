@@ -177,19 +177,12 @@ impl InstrumentApp {
                 if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
+                } else if self.toggle_summary_expansion() {
+                    // Enter on a summary line toggles expansion — handled
+                } else if self.enter_anchor_edit() {
+                    // Enter on desire/reality anchor opens edit for that field
                 } else if let Some(entry) = self.action_target().cloned() {
-                    let now = chrono::Utc::now();
-                    let raw_children = self.engine.store()
-                        .get_children(&entry.id)
-                        .unwrap_or_default();
-                    let child_ids: Vec<&str> = raw_children.iter().map(|c| c.id.as_str()).collect();
-                    let child_counts = self.engine.store()
-                        .count_children_by_parent(&child_ids)
-                        .unwrap_or_default();
-                    let children: Vec<crate::state::FieldEntry> = raw_children.iter().map(|c| {
-                        let cc = child_counts.get(&c.id).copied().unwrap_or(0);
-                        crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
-                    }).collect();
+                    let children = self.load_focus_children(&entry.id);
                     let deadline_label = entry.horizon_label.clone();
                     let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
                     self.focused_detail = Some(crate::deck::FocusedDetail {
@@ -238,18 +231,7 @@ impl InstrumentApp {
                     self.focused_detail = None;
                 } else if let Some(entry) = self.action_target().cloned() {
                     if entry.child_count > 0 {
-                        let now = chrono::Utc::now();
-                        let raw_children = self.engine.store()
-                            .get_children(&entry.id)
-                            .unwrap_or_default();
-                        let child_ids: Vec<&str> = raw_children.iter().map(|c| c.id.as_str()).collect();
-                        let child_counts = self.engine.store()
-                            .count_children_by_parent(&child_ids)
-                            .unwrap_or_default();
-                        let children: Vec<crate::state::FieldEntry> = raw_children.iter().map(|c| {
-                            let cc = child_counts.get(&c.id).copied().unwrap_or(0);
-                            crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
-                        }).collect();
+                        let children = self.load_focus_children(&entry.id);
                         let sibling_idx = self.deck_selected_sibling_index().unwrap_or(0);
                         self.focused_detail = Some(crate::deck::FocusedDetail {
                             sibling_index: sibling_idx,
@@ -1148,6 +1130,132 @@ impl InstrumentApp {
             if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
                 self.deck_cursor_to_sibling(idx);
             }
+        }
+    }
+
+    /// Load children for a focus detail view, filtering by epoch boundary.
+    /// Resolved/released children from prior epochs are excluded.
+    fn load_focus_children(&self, tension_id: &str) -> Vec<crate::state::FieldEntry> {
+        let now = chrono::Utc::now();
+        let raw_children = self.engine.store()
+            .get_children(tension_id)
+            .unwrap_or_default();
+
+        // Get the focused tension's epoch boundary
+        let epoch_boundary = self.engine.store()
+            .get_last_epoch_timestamp(tension_id)
+            .ok()
+            .flatten();
+
+        // Filter: keep active children always, resolved/released only if in current epoch
+        let filtered: Vec<_> = raw_children.iter().filter(|c| {
+            match c.status {
+                sd_core::TensionStatus::Active => true,
+                sd_core::TensionStatus::Resolved | sd_core::TensionStatus::Released => {
+                    match epoch_boundary {
+                        Some(boundary) => {
+                            // Need the child's last status change timestamp
+                            let last_status = self.engine.store()
+                                .get_last_mutation_timestamps(&[c.id.as_str()], &["status"])
+                                .ok()
+                                .and_then(|m| m.get(&c.id).copied())
+                                .unwrap_or(c.created_at);
+                            last_status >= boundary
+                        }
+                        None => true, // no epoch = show all
+                    }
+                }
+            }
+        }).collect();
+
+        let child_ids: Vec<&str> = filtered.iter().map(|c| c.id.as_str()).collect();
+        let child_counts = self.engine.store()
+            .count_children_by_parent(&child_ids)
+            .unwrap_or_default();
+
+        filtered.iter().map(|c| {
+            let cc = child_counts.get(&c.id).copied().unwrap_or(0);
+            crate::state::FieldEntry::from_tension(c, c.created_at, cc, c.created_at, now)
+        }).collect()
+    }
+
+    /// Enter edit mode for the desire/reality anchor under the cursor.
+    /// Returns true if the cursor was on an anchor and edit was entered.
+    fn enter_anchor_edit(&mut self) -> bool {
+        let frontier = match self.cached_frontier.as_ref() {
+            Some(f) => f,
+            None => return false,
+        };
+        let target = frontier.cursor_target(self.deck_cursor.index);
+        let pid = match self.parent_id.clone() {
+            Some(pid) => pid,
+            None => return false,
+        };
+        match target {
+            crate::deck::CursorTarget::Desire => {
+                let desired = self.parent_tension.as_ref()
+                    .map(|t| t.desired.clone()).unwrap_or_default();
+                self.input_buffer = desired.clone();
+                self.text_input.set_value(&desired);
+                self.text_input.set_focused(true);
+                self.text_input.select_all();
+                self.input_mode = InputMode::Editing {
+                    tension_id: pid,
+                    field: EditField::Desire,
+                };
+                true
+            }
+            crate::deck::CursorTarget::Reality => {
+                let actual = self.parent_tension.as_ref()
+                    .map(|t| t.actual.clone()).unwrap_or_default();
+                self.input_buffer = actual.clone();
+                self.text_input.set_value(&actual);
+                self.text_input.set_focused(true);
+                self.text_input.select_all();
+                self.input_mode = InputMode::Editing {
+                    tension_id: pid,
+                    field: EditField::Reality,
+                };
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Toggle expansion of the summary zone under the cursor.
+    /// Returns true if the cursor was on a summary and the toggle was applied.
+    fn toggle_summary_expansion(&mut self) -> bool {
+        let frontier = match self.cached_frontier.as_ref() {
+            Some(f) => f,
+            None => return false,
+        };
+        let target = frontier.cursor_target(self.deck_cursor.index);
+        match target {
+            crate::deck::CursorTarget::RouteSummary => {
+                self.route_expanded = !self.route_expanded;
+                self.recompute_frontier();
+                let count = self.cached_frontier.as_ref()
+                    .map(|f| f.selectable_count()).unwrap_or(0);
+                self.deck_cursor.clamp(count);
+                true
+            }
+            crate::deck::CursorTarget::Held => {
+                self.held_expanded = !self.held_expanded;
+                self.recompute_frontier();
+                let count = self.cached_frontier.as_ref()
+                    .map(|f| f.selectable_count()).unwrap_or(0);
+                self.deck_cursor.clamp(count);
+                true
+            }
+            crate::deck::CursorTarget::Accumulated => {
+                self.accumulated_expanded = !self.accumulated_expanded;
+                self.recompute_frontier();
+                let count = self.cached_frontier.as_ref()
+                    .map(|f| f.selectable_count()).unwrap_or(0);
+                self.deck_cursor.clamp(count);
+                true
+            }
+            _ => false,
         }
     }
 }

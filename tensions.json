@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-26T09:41:25Z",
+  "flushed_at": "2026-03-26T10:45:49Z",
   "summary": {
-    "active": 53,
+    "active": 52,
     "released": 6,
-    "resolved": 30,
-    "total": 89
+    "resolved": 32,
+    "total": 90
   },
   "tensions": [
     {
@@ -19,7 +19,7 @@
       "status": "Active"
     },
     {
-      "actual": "TUI is the primary experience. V1-V8 complete with Console V2 Phase 1. Pathway palettes (#58) operational — the PATHWAY experiential state is now implemented. Position toggle (p), reworked add/edit UX, reorder fixes, flicker elimination. Architectural consolidation plan written: 5-step refactor to unify dual cursor, cache frontier per frame, fix reorder/frontier interaction, enable deck at root level, remove old renderer. Ready for execution in next session.",
+      "actual": "TUI is the primary experience. Architectural consolidation (#76) landed: unified cursor, single renderer, cached frontier, two-pass layout. Net -1550 lines. Summary affordances, selectable desire/reality anchors, write-scoped locking all implemented. Minimum visibility guarantee: every non-empty zone keeps 1-line summary under compression. Focus detail filters by epoch. V1-V8 complete. Pathway palettes operational. Remaining: focus zoom redesign (#94), survey view (#18), threshold mechanics (#19).",
       "created_at": "2026-03-24T17:52:25.922309+00:00",
       "desired": "werk is a FrankenTUI-first application where the terminal interface is the primary experience",
       "horizon": "2026-05-30",
@@ -789,7 +789,7 @@
       "status": "Released"
     },
     {
-      "actual": "Steps 1-5 complete + 13 bug-fix commits. Net -1550 lines dead code. Two-pass layout (measure → reconcile → render) prevents overlap: accumulated compresses first (individuals → summary → hidden), then held (individuals → summary). Input point never disappears. Global undo/redo, month names in horizon, adaptive reality truncation. Open: summary affordances undefined (expand? focus? peek?), selectable desire/reality anchors (#91), write-scoped locking (#92), root-level epochs (#89/#90).",
+      "actual": "Summary affordances landed (Enter on route/held/accumulated summaries toggles expansion). Write-scoped locking (#92 resolved) — WriteLockGuard RAII pattern, per-write file lock, CLI commands work alongside TUI. Selectable desire/reality anchors (#91 resolved) — cursor reaches top/bottom zones, Enter opens edit. Focus detail filters by epoch boundary. Reconciliation guarantees every non-empty zone keeps 1-line minimum; focus detail compresses before summaries disappear. Open: focus zoom redesign (detail card vs miniature descent), root-level epochs (#89/#90).",
       "created_at": "2026-03-25T19:20:11.335786+00:00",
       "desired": "TUI architectural consolidation — unified cursor, single frontier per frame, deck at root, remove old renderer",
       "horizon": null,
@@ -962,7 +962,7 @@
       "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
       "position": null,
       "short_code": 91,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "broken — Store::init() takes an advisory file lock for the entire session. CLI commands fail with 'store is locked' while TUI is open. Lock should wrap individual write transactions, not the whole session.",
@@ -973,7 +973,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 92,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Tauri 2.0 scaffold complete in werk-app/. Store actor pattern (dedicated OS thread for !Send Store, mpsc channels). 8 Tauri commands: get_tree, create_tension, update_desired, update_reality, resolve_tension, reopen_tension, get_tension, position_tension. Web frontend adapted from werk-web — uses __TAURI_INTERNALS__.invoke() for all IPC. Compiles clean, opens a native macOS window, loads and displays the full tension tree. Creating/updating tensions works live. No Tauri CLI installed yet (cargo run -p werk-app works directly).",
@@ -984,6 +984,17 @@
       "parent_id": "01KMGFKYZMWQAH7SFJR09A9DTR",
       "position": null,
       "short_code": 93,
+      "status": "Active"
+    },
+    {
+      "actual": "Current focus shows children inline, duplicating what descent provides. Design insight: focus should give higher density on ONE tension's own facts without context switch. Descent is for working inside children. The deck IS the console — the console boundary is visual chrome, not a separate surface.",
+      "created_at": "2026-03-26T10:44:30.235641+00:00",
+      "desired": "focus zoom shows a detail card (full desire/reality text, temporal facts, recent notes, child count breakdown) — not a miniature descent",
+      "horizon": null,
+      "id": "01KMMVXSWVKTT6CVG5W0JDC1TX",
+      "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
+      "position": null,
+      "short_code": 94,
       "status": "Active"
     }
   ]

@@ -84,6 +84,12 @@ pub struct InstrumentApp {
     // Cached frontier — computed once per frame, shared between render and navigation.
     pub cached_frontier: Option<crate::deck::Frontier>,
 
+    // Summary expansion overrides — toggled by Enter on summary lines.
+    // When true, compute_expansion's compression is overridden to show all items.
+    pub route_expanded: bool,
+    pub held_expanded: bool,
+    pub accumulated_expanded: bool,
+
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
 }
@@ -144,6 +150,9 @@ impl InstrumentApp {
             focused_detail: None,
             pathway_state: None,
             cached_frontier: None,
+            route_expanded: false,
+            held_expanded: false,
+            accumulated_expanded: false,
             session_log: crate::session_log::SessionLog::new(),
         };
         app.load_siblings();
@@ -191,6 +200,9 @@ impl InstrumentApp {
             focused_detail: None,
             pathway_state: None,
             cached_frontier: None,
+            route_expanded: false,
+            held_expanded: false,
+            accumulated_expanded: false,
             session_log: crate::session_log::SessionLog::new(),
         }
     }
@@ -332,6 +344,11 @@ impl InstrumentApp {
 
         // Compute alerts
         self.compute_alerts();
+
+        // Reset expansion overrides on data change
+        self.route_expanded = false;
+        self.held_expanded = false;
+        self.accumulated_expanded = false;
 
         // Recompute cached frontier and clamp deck cursor
         self.recompute_frontier();
@@ -536,6 +553,21 @@ impl InstrumentApp {
             )
         };
         frontier.compute_expansion(self.last_render_lines.get());
+        // Set desire/reality anchor selectability based on whether we're descended
+        frontier.has_desire_anchor = self.parent_tension.is_some();
+        frontier.has_reality_anchor = self.parent_tension.as_ref()
+            .map(|p| !p.actual.is_empty())
+            .unwrap_or(false);
+        // Apply user-toggled expansion overrides
+        if self.route_expanded {
+            frontier.show_route = frontier.route.len();
+        }
+        if self.held_expanded {
+            frontier.show_held = frontier.held.len();
+        }
+        if self.accumulated_expanded {
+            frontier.show_accumulated = frontier.accumulated.len();
+        }
         self.cached_frontier = Some(frontier);
     }
 
