@@ -711,9 +711,9 @@ impl InstrumentApp {
             } else {
                 word_wrap(&p.actual, w.saturating_sub(reality_age_reserve)).len() as u16
             };
-            // Cap reality height on small screens to preserve middle zone.
-            // Full text is accessible via ? (edit reality).
-            let max_reality_lines: u16 = if area.height < 30 { 3 } else if area.height < 45 { 5 } else { reality_line_count };
+            // Reality gets up to 25% of screen height, ensuring the middle zone
+            // has adequate space. Full text accessible via ? (edit reality).
+            let max_reality_lines: u16 = (area.height / 4).max(2);
             let capped_reality = reality_line_count.min(max_reality_lines);
             let bh: u16 = {
                 let mut h: u16 = 0;
@@ -837,15 +837,14 @@ impl InstrumentApp {
             let remaining = frontier.accumulated.len() - shown;
 
             // Remaining: show individually if only 1, else summary
-            if remaining == 1 {
-                // Show the single remaining item instead of a summary
+            if remaining == 1 && acc_top > acc_floor {
                 acc_top -= 1;
                 let sibling_idx = frontier.accumulated[shown];
                 let entry = &self.siblings[sibling_idx];
                 let glyph = status_glyph(entry.status);
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
                 self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
-            } else if remaining > 1 {
+            } else if remaining > 1 && acc_top > acc_floor {
                 acc_top -= 1;
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
 
@@ -1460,22 +1459,44 @@ impl InstrumentApp {
 
         if !has_reality { return; }
 
-        // Reality text with word wrap via Paragraph
+        // Reality text with word wrap, truncated with "..." + age when zone is too small.
         let text_zone = zones[1];
         if text_zone.height == 0 { return; }
 
-        // Build text with age suffix inline
-        // Build a single Line with reality text + age suffix; Paragraph wraps it
-        let mut spans = vec![Span::styled(&parent.actual, STYLES.dim)];
-        if !reality_age.is_empty() {
-            spans.push(Span::styled(" \u{00B7} ", STYLES.dim));
-            spans.push(Span::styled(reality_age, STYLES.dim));
-        }
-        let reality_text = Text::from(Line::from_spans(spans));
+        let age_suffix = if reality_age.is_empty() {
+            String::new()
+        } else {
+            format!(" \u{00B7} {}", reality_age)
+        };
+        let age_w = age_suffix.chars().count();
+        let text_w = w.saturating_sub(age_w);
 
-        Paragraph::new(reality_text)
-            .wrap(WrapMode::Word)
-            .render(text_zone, frame);
+        // Check if full text fits in the zone
+        let full_lines = word_wrap(&parent.actual, w);
+        if full_lines.len() as u16 <= text_zone.height {
+            // Full text fits — render with age on the last line
+            let mut spans = vec![Span::styled(&parent.actual, STYLES.dim)];
+            if !age_suffix.is_empty() {
+                spans.push(Span::styled(&age_suffix, STYLES.dim));
+            }
+            Paragraph::new(Text::from(Line::from_spans(spans)))
+                .wrap(WrapMode::Word)
+                .render(text_zone, frame);
+        } else {
+            // Truncated — word-wrap to (height-1) lines, then last line = "..." + age
+            let avail = text_zone.height.saturating_sub(1) as usize;
+            let wrapped = word_wrap(&parent.actual, text_w);
+            let shown: Vec<Line> = wrapped.iter().take(avail)
+                .map(|l| Line::from(Span::styled(l.as_str(), STYLES.dim)))
+                .collect();
+            let mut lines = shown;
+            lines.push(Line::from_spans([
+                Span::styled("...", STYLES.dim),
+                Span::styled(&age_suffix, STYLES.dim),
+            ]));
+            Paragraph::new(Text::from_lines(lines))
+                .render(text_zone, frame);
+        }
     }
 
     /// Render inline focus detail below a child line (V7).
