@@ -183,7 +183,7 @@ cargo install --path werk-cli   # install to PATH
 ## Current tension tree
 
 ```
-└── #2 [2026-06] werk is a mature tool for practicing st...  [6/13] (3 released)
+└── #2 [2026-06] werk is a mature tool for practicing st...  [6/14] (3 released)
     ├── #3 [2026-05-30] PRESSURE werk is a FrankenTUI-fir...  [4/8] (2 released)
     │   ├── #15 TUI rebuilt around the operating envelope as primary i...  [0/3]
     │   │   ├── #18 survey view designed and implemented — temporal framing,...
@@ -234,10 +234,11 @@ cargo install --path werk-cli   # install to PATH
     │   ├── #84 the GUI reaches feature parity with the core practice loop —...
     │   ├── #85 the GUI has visual design that expresses structural dynamics...
     │   └── #95 werk has a mobile app — iOS and/or Android — that brings the...
-    └── #90 the root level is a command center — structural overview, ...  [0/1]
-        └── #89 logbase — a searchable, queryable substrate of all prior des...
+    ├── #90 the root level is a command center — structural overview, ...  [0/1]
+    │   └── #89 logbase — a searchable, queryable substrate of all prior des...
+    └── #96 the global workspace is a meta-command-center across all workspa...
 
-Total: 91  Active: 53  Resolved: 32  Released: 6
+Total: 92  Active: 54  Resolved: 32  Released: 6
 ```
 
 ## License
