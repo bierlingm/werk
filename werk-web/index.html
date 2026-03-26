@@ -3,457 +3,939 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>werk — tension tree</title>
+<title>werk — structural dynamics instrument</title>
 <style>
   :root {
     --bg: #faf8f5;
+    --bg-warm: #f5f1ec;
     --card: #ffffff;
     --border: #e8e4df;
+    --border-light: #f0ece7;
     --text: #3d3832;
-    --text-secondary: #8a8279;
-    --text-muted: #b5ada4;
+    --text-secondary: #6b635a;
+    --text-muted: #a89f94;
+    --text-faint: #ccc5bc;
     --accent: #c47d4e;
+    --accent-hover: #b06d3e;
     --accent-light: #f5ebe3;
-    --green: #6b9e6b;
+    --accent-lighter: #faf5f0;
+    --green: #5a8a5a;
     --green-light: #e8f2e8;
-    --amber: #c9a84c;
+    --green-dark: #4a7a4a;
+    --amber: #b8952e;
     --amber-light: #faf3e0;
     --red: #c46b6b;
     --red-light: #fae8e8;
-    --blue: #6b8ec4;
+    --blue: #5a7eb8;
     --blue-light: #e8eff8;
-    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
-    --shadow-hover: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 1px 4px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04);
     --radius: 12px;
+    --radius-sm: 8px;
+    --radius-lg: 16px;
+    --transition: 0.2s ease;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.6;
-    padding: 40px 20px;
+    min-height: 100vh;
   }
 
-  .container {
-    max-width: 900px;
+  /* ── Top Bar ── */
+  .top-bar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-sm);
+  }
+  .top-bar-inner {
+    max-width: 960px;
     margin: 0 auto;
-  }
-
-  header {
-    text-align: center;
-    margin-bottom: 48px;
-  }
-
-  header h1 {
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-
-  header p {
-    font-size: 15px;
-    color: var(--text-secondary);
-  }
-
-  .stats-bar {
     display: flex;
-    justify-content: center;
-    gap: 32px;
-    margin-top: 20px;
-    padding: 16px 24px;
-    background: var(--card);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
   }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .brand span { font-size: 12px; color: var(--text-muted); }
 
-  header .stats-bar-wrap {
-    text-align: center;
+  .top-actions { display: flex; gap: 10px; align-items: center; }
+
+  .connection-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-faint);
+    transition: background var(--transition);
   }
+  .connection-dot.connected { background: var(--green); }
+  .connection-dot.error { background: var(--red); }
 
-  .stat {
-    text-align: center;
-  }
-
-  .stat-value {
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--accent);
-  }
-
-  .stat-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .tree {
-    margin-top: 8px;
-  }
-
-  .tension-group {
-    margin-bottom: 4px;
-  }
-
-  .tension-card {
-    background: var(--card);
+  .search-box { position: relative; }
+  .search-box input {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 20px;
-    cursor: pointer;
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
-    position: relative;
-  }
-
-  .tension-card:hover {
-    box-shadow: var(--shadow-hover);
-    border-color: #d5cfc8;
-  }
-
-  .tension-card.expanded {
-    border-color: var(--accent);
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
-
-  .tension-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .tension-chevron {
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    transition: transform 0.2s ease;
-    margin-top: 2px;
-  }
-
-  .tension-card.expanded .tension-chevron {
-    transform: rotate(90deg);
-    color: var(--accent);
-  }
-
-  .tension-chevron svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .tension-main {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .tension-title-row {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .tension-code {
+    padding: 7px 12px 7px 32px;
     font-size: 13px;
-    font-weight: 600;
-    color: var(--accent);
-    flex-shrink: 0;
-    background: var(--accent-light);
-    padding: 1px 8px;
-    border-radius: 6px;
-  }
-
-  .tension-desired {
-    font-size: 15px;
-    font-weight: 500;
+    width: 200px;
+    background: var(--bg);
     color: var(--text);
-    line-height: 1.4;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
   }
-
-  .tension-badges {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-    flex-wrap: wrap;
-    align-items: center;
+  .search-box input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196,125,78,0.1);
   }
-
-  .badge {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 2px 10px;
-    border-radius: 20px;
-    letter-spacing: 0.3px;
-  }
-
-  .badge-closure {
-    background: var(--green-light);
-    color: var(--green);
-  }
-
-  .badge-closure.none {
-    background: #f0eeec;
+  .search-box input::placeholder { color: var(--text-faint); }
+  .search-box svg {
+    position: absolute; left: 10px; top: 50%;
+    transform: translateY(-50%); width: 14px; height: 14px;
     color: var(--text-muted);
   }
 
-  .badge-horizon {
-    background: var(--blue-light);
-    color: var(--blue);
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500; border: none;
+    cursor: pointer; transition: all var(--transition);
+    white-space: nowrap;
   }
-
-  .badge-sequencing {
-    background: var(--amber-light);
-    color: var(--amber);
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--bg-warm); color: var(--text-secondary); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border-light); }
+  .btn-ghost { background: transparent; color: var(--text-muted); padding: 5px 8px; font-size: 12px; }
+  .btn-ghost:hover { background: var(--bg-warm); color: var(--text-secondary); }
+  .btn-small { padding: 3px 9px; font-size: 11px; }
+  .btn-icon {
+    padding: 5px; border-radius: 6px; background: transparent;
+    border: none; cursor: pointer; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
   }
+  .btn-icon:hover { background: var(--bg-warm); color: var(--text-secondary); }
+  .btn svg { width: 14px; height: 14px; }
 
-  .badge-overdue {
-    background: var(--red-light);
-    color: var(--red);
-  }
-
-  .badge-containment {
-    background: var(--red-light);
-    color: var(--red);
-  }
-
-  .closure-bar-wrap {
+  /* ── Filter Row ── */
+  .controls-row {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 12px 24px 4px;
     display: flex;
-    align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filter-chip {
+    padding: 4px 12px; border-radius: 16px;
+    font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--text-secondary); cursor: pointer;
+    transition: all var(--transition); user-select: none;
+  }
+  .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .chip-count { margin-left: 3px; opacity: 0.7; font-weight: 400; }
+
+  .stats-inline {
+    margin-left: auto;
+    display: flex; gap: 14px; align-items: center;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .stat-num { font-weight: 600; }
+  .stat-num.s-active { color: var(--accent); }
+  .stat-num.s-resolved { color: var(--green); }
+  .stat-num.s-total { color: var(--text-secondary); }
+
+  /* ── Main ── */
+  .main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 12px 24px 80px;
   }
 
-  .closure-bar {
-    width: 60px;
-    height: 5px;
-    background: #eee;
-    border-radius: 3px;
-    overflow: hidden;
-  }
+  /* ═══════════════════════════════════════════════════════
+     THE TENSION — a vertical structure.
 
-  .closure-bar-fill {
-    height: 100%;
-    background: var(--green);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-  }
+     The one spatial law: desired outcome ABOVE current reality.
 
-  .tension-detail {
-    display: none;
-    background: var(--card);
-    border: 1px solid var(--accent);
-    border-top: none;
-    border-bottom-left-radius: var(--radius);
-    border-bottom-right-radius: var(--radius);
-    padding: 20px 20px 20px 52px;
-  }
+     Desire (top) — the aimed-at future
+     Theory of closure (middle) — children bridging the gap
+     Reality (bottom) — where things stand now
 
-  .tension-detail.open {
-    display: block;
-  }
+     The vertical axis: now, through enacted movement,
+     toward aimed-at future.
+     ═══════════════════════════════════════════════════════ */
 
-  .detail-section {
+  .tension {
     margin-bottom: 16px;
   }
 
-  .detail-section:last-child {
-    margin-bottom: 0;
+  .tension-frame {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .tension-frame:hover {
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+  }
+  .tension-frame.open {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+  }
+  .tension-frame.status-resolved { opacity: 0.55; }
+  .tension-frame.status-resolved:hover { opacity: 0.8; }
+  .tension-frame.status-released { opacity: 0.4; }
+  .tension-frame.status-released:hover { opacity: 0.65; }
+
+  /* ── DESIRE — top of the tension ── */
+  .tension-desire {
+    padding: 14px 18px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
   }
 
-  .detail-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
-    margin-bottom: 4px;
+  .tension-toggle {
+    flex-shrink: 0; margin-top: 2px;
+    width: 16px; height: 16px;
+    color: var(--text-faint);
+    transition: all var(--transition);
+  }
+  .tension-frame.open .tension-toggle {
+    transform: rotate(90deg); color: var(--accent);
+  }
+  .tension-toggle svg { width: 12px; height: 12px; }
+
+  .desire-content { flex: 1; min-width: 0; }
+
+  .desire-top {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
   }
 
-  .detail-text {
-    font-size: 14px;
-    color: var(--text-secondary);
-    line-height: 1.6;
+  .t-code {
+    font-size: 11px; font-weight: 600;
+    color: var(--accent); background: var(--accent-lighter);
+    padding: 1px 6px; border-radius: 5px;
+    font-variant-numeric: tabular-nums; flex-shrink: 0;
   }
 
-  .children {
-    margin-left: 28px;
-    padding-left: 16px;
-    border-left: 2px solid var(--border);
-    margin-top: 4px;
+  .desire-text {
+    font-size: 14px; font-weight: 500;
+    color: var(--text); line-height: 1.45;
   }
 
-  .depth-0 > .tension-group > .tension-card { border-left: 3px solid var(--accent); }
-  .depth-1 > .tension-group > .tension-card { border-left: 3px solid var(--blue); }
-  .depth-2 > .tension-group > .tension-card { border-left: 3px solid var(--green); }
-  .depth-3 > .tension-group > .tension-card { border-left: 3px solid var(--amber); }
-
-  .leaf-indicator {
-    color: var(--text-muted);
-    font-size: 12px;
+  .desire-meta {
+    display: flex; gap: 6px; margin-top: 5px;
+    flex-wrap: wrap; align-items: center;
   }
 
-  @media (max-width: 600px) {
-    body { padding: 20px 12px; }
-    .children { margin-left: 12px; padding-left: 12px; }
-    .tension-card { padding: 12px 14px; }
-    .tension-detail { padding: 14px 14px 14px 36px; }
-    header h1 { font-size: 22px; }
+  .badge {
+    font-size: 9px; font-weight: 600; padding: 2px 7px;
+    border-radius: 10px; letter-spacing: 0.3px; text-transform: uppercase;
+  }
+  .badge-active { background: var(--accent-light); color: var(--accent); }
+  .badge-resolved { background: var(--green-light); color: var(--green); }
+  .badge-released { background: #f0eeec; color: var(--text-muted); }
+  .badge-horizon { background: var(--blue-light); color: var(--blue); font-size: 10px; text-transform: none; font-weight: 500; }
+  .badge-overdue { background: var(--red-light); color: var(--red); }
+
+  .closure-bar {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 10px; color: var(--text-muted);
+  }
+  .closure-track {
+    width: 32px; height: 3px; background: var(--border-light);
+    border-radius: 2px; overflow: hidden;
+  }
+  .closure-fill {
+    height: 100%; background: var(--green); border-radius: 2px;
+  }
+
+  /* ── THEORY OF CLOSURE — children bridging the gap ── */
+  .theory-of-closure {
+    padding: 2px 0 2px 36px;
+    position: relative;
+  }
+
+  /* The vertical bridge line: desire down toward reality */
+  .theory-of-closure::before {
+    content: '';
+    position: absolute;
+    left: 26px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent) 0%, var(--border) 100%);
+    border-radius: 1px;
+  }
+
+  .closure-step {
+    padding: 6px 14px;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--transition);
+    border-bottom: 1px solid var(--border-light);
+  }
+  .closure-step:last-child { border-bottom: none; }
+  .closure-step:hover { background: var(--bg-warm); }
+
+  /* Connector from bridge line to step */
+  .closure-step::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 14px;
+    width: 8px;
+    height: 2px;
+    background: var(--border);
+  }
+
+  .step-desire {
+    font-size: 13px; color: var(--text);
+    line-height: 1.4;
+    display: flex; align-items: baseline; gap: 6px;
+  }
+  .step-code {
+    font-size: 10px; color: var(--text-muted);
+    font-weight: 600; flex-shrink: 0;
+  }
+  .step-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0; position: relative; top: -1px;
+  }
+  .step-dot.s-active { background: var(--accent); }
+  .step-dot.s-resolved { background: var(--green); }
+  .step-dot.s-released { background: var(--text-faint); }
+
+  .step-text { flex: 1; }
+  .step-text.resolved { text-decoration: line-through; color: var(--text-muted); }
+
+  .step-meta {
+    font-size: 10px; color: var(--text-faint);
+    margin-top: 2px; padding-left: 13px;
+  }
+
+  /* Nested children (deeper theory) */
+  .step-children {
+    padding-left: 18px;
+    border-left: 1px solid var(--border-light);
+    margin-left: 6px;
+    margin-top: 2px;
+  }
+
+  /* ── REALITY — bottom of the tension ── */
+  .tension-reality {
+    display: none;
+    padding: 10px 18px 14px 44px;
+    background: var(--bg);
+    border-top: 1px solid var(--border-light);
+  }
+  .tension-frame.open .tension-reality { display: block; }
+
+  .reality-label {
+    font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text-faint); margin-bottom: 3px;
+  }
+
+  .reality-text {
+    font-size: 13px; color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .reality-text em { color: var(--text-faint); font-style: italic; }
+
+  /* ── Actions ── */
+  .tension-actions {
+    display: none;
+    padding: 8px 18px 10px 44px;
+    background: var(--bg);
+    border-top: 1px solid var(--border-light);
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .tension-frame.open .tension-actions { display: flex; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+    z-index: 200; padding: 40px 20px; overflow-y: auto;
+  }
+  .modal-overlay.open { display: flex; justify-content: center; align-items: flex-start; }
+  .modal {
+    background: var(--card); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg); width: 100%; max-width: 520px;
+    padding: 28px; position: relative; animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .modal-close { position: absolute; top: 14px; right: 14px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); margin-bottom: 5px;
+  }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 12px;
+    font-size: 13px; font-family: inherit; color: var(--text);
+    background: var(--bg); outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196,125,78,0.1);
+  }
+  .form-group textarea { resize: vertical; min-height: 72px; }
+  .form-hint { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  .form-error { font-size: 11px; color: var(--red); margin-top: 4px; display: none; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #2d2a26; color: #e8e0d6;
+    padding: 10px 18px; border-radius: var(--radius);
+    font-size: 13px; box-shadow: var(--shadow-lg); z-index: 300;
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.3s ease;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.toast-error { background: var(--red); color: white; }
+  .toast.toast-success { background: var(--green-dark); color: white; }
+
+  /* ── Empty / Loading ── */
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+  .empty-state p { font-size: 15px; margin-bottom: 6px; }
+  .empty-state small { font-size: 12px; color: var(--text-faint); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; } 50% { opacity: 1; }
+  }
+  .loading-dots span { animation: pulse 1.2s infinite; font-size: 20px; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  .hl { background: var(--amber-light); border-radius: 2px; padding: 0 1px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .top-bar-inner { flex-direction: column; align-items: stretch; }
+    .search-box input { width: 100%; }
+    .main { padding: 8px 12px 60px; }
+    .controls-row { padding: 8px 12px 4px; }
+    .brand span { display: none; }
+    .theory-of-closure { padding-left: 24px; }
+    .theory-of-closure::before { left: 14px; }
+    .tension-reality { padding-left: 32px; }
+    .tension-actions { padding-left: 32px; }
   }
 </style>
 </head>
 <body>
-<div class="container">
-  <header>
-    <h1>werk</h1>
-    <p>tension tree</p>
-    <div class="stats-bar-wrap">
-      <div class="stats-bar" id="stats-bar"></div>
+
+<div class="top-bar">
+  <div class="top-bar-inner">
+    <div class="brand">
+      <h1>werk</h1>
+      <span>structural dynamics</span>
     </div>
-  </header>
-  <div class="tree" id="tree"></div>
+    <div class="top-actions">
+      <div class="connection-dot" id="connectionDot" title="connecting"></div>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" placeholder="Search... (Ctrl+K)" />
+      </div>
+      <button class="btn btn-primary" onclick="openAddModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+        New tension
+      </button>
+    </div>
+  </div>
 </div>
 
+<div class="controls-row" id="controlsRow"></div>
+
+<div class="main" id="main">
+  <div class="empty-state">
+    <div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>
+    <p>Loading</p>
+  </div>
+</div>
+
+<!-- Create Tension -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('addModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Create a tension</h2>
+    <div class="form-group">
+      <label>Desired outcome</label>
+      <textarea id="addDesired" placeholder="What do you want to be true?"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Current reality</label>
+      <textarea id="addActual" placeholder="Where do things stand right now?"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Parent (optional)</label>
+      <select id="addParent"><option value="">Root tension</option></select>
+    </div>
+    <div class="form-group">
+      <label>Horizon (optional)</label>
+      <input type="text" id="addHorizon" placeholder="2026-06 or 2026-05-15" />
+      <div class="form-hint">When is this aimed at?</div>
+    </div>
+    <div class="form-error" id="addError"></div>
+    <button class="btn btn-primary" id="addBtn" onclick="submitCreate()" style="width:100%;justify-content:center;margin-top:6px;">Create</button>
+  </div>
+</div>
+
+<!-- Evolve Desire -->
+<div class="modal-overlay" id="desireModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('desireModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Evolve desire</h2>
+    <p id="desireCtx" style="font-size:12px;color:var(--text-muted);margin-bottom:14px;"></p>
+    <div class="form-group">
+      <label>Desired outcome</label>
+      <textarea id="desireText"></textarea>
+    </div>
+    <div class="form-error" id="desireError"></div>
+    <button class="btn btn-primary" onclick="submitDesire()" style="width:100%;justify-content:center;">Save</button>
+  </div>
+</div>
+
+<!-- Update Reality -->
+<div class="modal-overlay" id="realityModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('realityModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Update reality</h2>
+    <p id="realityCtx" style="font-size:12px;color:var(--text-muted);margin-bottom:14px;"></p>
+    <div class="form-group">
+      <label>Where do things stand now?</label>
+      <textarea id="realityText"></textarea>
+    </div>
+    <div class="form-error" id="realityError"></div>
+    <button class="btn btn-primary" onclick="submitReality()" style="width:100%;justify-content:center;">Save</button>
+  </div>
+</div>
+
+<!-- Resolve -->
+<div class="modal-overlay" id="resolveModal">
+  <div class="modal">
+    <button class="btn-icon modal-close" onclick="closeModal('resolveModal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2>Resolve tension</h2>
+    <p id="resolveCtx" style="font-size:13px;color:var(--text);margin-bottom:14px;"></p>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:18px;">
+      The desired state has been achieved. Desire and reality meet.
+    </p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="closeModal('resolveModal')" style="flex:1;justify-content:center;">Cancel</button>
+      <button class="btn btn-primary" onclick="submitResolve()" style="flex:1;justify-content:center;background:var(--green);">Resolve</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-const DATA = {"tensions": [{"id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "short_code": 2, "desired": "werk is a mature tool for practicing structural dynamics \u2014 individually and cooperatively", "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, pathway palettes operational, primary experience functional with known architectural debt being addressed), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).", "status": "Active", "parent_id": null, "created_at": "2026-03-24T17:52:25.892325+00:00", "horizon": "2026-06", "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 6, "closure_total": 15}, {"id": "01KMGFKXT2AC0EM3C3347TM2KS", "short_code": 3, "desired": "werk is a FrankenTUI-first application where the terminal interface is the primary experience", "actual": "TUI is the primary experience. V1-V8 complete with Console V2 Phase 1. Pathway palettes (#58) operational \u2014 the PATHWAY experiential state is now implemented. Position toggle (p), reworked add/edit UX, reorder fixes, flicker elimination. Architectural consolidation plan written: 5-step refactor to unify dual cursor, cache frontier per frame, fix reorder/frontier interaction, enable deck at root level, remove old renderer. Ready for execution in next session.", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-24T17:52:25.922309+00:00", "horizon": "2026-05-30", "overdue": false, "containment_violation": false, "sequencing_pressure": true, "closure_resolved": 3, "closure_total": 9}, {"id": "01KMGFKXTZYXZJ6ZQQXB632771", "short_code": 4, "desired": "a clear structural model exists for how multiple participants hold and evolve shared tension fields", "actual": "Fritz's framework addresses collective structure hierarchically; a git-snapshot cooperation model is articulated (export JSON, fork/merge via PRs, owner reviews diffs) but not yet implemented; the peer-to-peer evolutionary model remains a research question", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-24T17:52:25.951776+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 2}, {"id": "01KMGFKXVNA0AQ2F8DTTGFX0FF", "short_code": 5, "desired": "the Foundations for Structural Thinking course has been completed and its insights on collective structure are integrated into the cooperative model", "actual": "course is scheduled for end of April 2026; no direct input yet from the structural consulting methodology on cooperative dynamics", "status": "Active", "parent_id": "01KMGFKXTZYXZJ6ZQQXB632771", "created_at": "2026-03-24T17:52:25.973793+00:00", "horizon": "2026-06", "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKY13827YVY23E14BX4X7", "short_code": 10, "desired": "CLI is a complete, honest interface to the structure \u2014 foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands", "actual": "CLI has foundation vocabulary (survey, ground, horizon, note testimony, hold/position, compose, epoch). JSON output on all commands. Context command provides structural JSON (context --all, --urgent, <id>) with urgency, staleness, frontier. Batch applies YAML mutations grouped as one gesture. run/watch deleted. Agent orchestration vocabulary purged. `werk mcp` subcommand starts stdio MCP server \u2014 the protocol surface. Remaining gaps: help output is flat (30+ commands alphabetically), no grouped help by framework.", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-24T17:52:26.147317+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 6, "closure_total": 9}, {"id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "short_code": 13, "desired": "the conceptual foundation is implemented \u2014 data model supports delta versioning, gesture grouping, order of operations distinct from horizon, held steps, and the five temporal concepts", "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 \u2014 may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-24T17:52:26.260351+00:00", "horizon": "2026-06", "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 4, "closure_total": 10}, {"id": "01KMGFKY6K86DEVGP7DAEZ5MZ0", "short_code": 15, "desired": "TUI rebuilt around the operating envelope as primary interaction surface \u2014 frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access", "actual": "V1-V8 complete. Console V2 Phase 1 surgical fixes applied. Pathway palettes in TUI (#58) operational. Position toggle (p key), add/edit UX reworked (Enter=create, Tab=more fields, Esc=cancel). Reorder fixes (skip non-active, correct boundary calculation, full deck visible during drag). Flicker fix (tick subscription removed, DB change detection on user input). Console header next-deadline chip corrected. Remaining: survey view (#18), threshold mechanics (#19). Known architectural debt: dual cursor (vlist vs deck_cursor), dual renderer (render_field vs render_deck), frontier expansion mismatch \u2014 consolidation plan written for next session.", "status": "Active", "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS", "created_at": "2026-03-24T17:52:26.323765+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 3}, {"id": "01KMGFKY77N5K8SBR6WXXXRGPX", "short_code": 16, "desired": "complete state machine specification \u2014 all states, transitions, key bindings per state, designed in XState/Stately before Rust implementation", "actual": "State machine exists implicitly in TUI: InputMode enum has 8 states (Normal, Adding, Editing, Annotating, Confirming, Moving, Reordering, Searching, Help) plus focus zoom and peek as render-layer states. Transitions are implemented in update.rs key handlers. Not formally specified in XState/Stately \u2014 was built organically during V1-V8. The formal spec question is whether the current implicit machine needs to be extracted and validated, or whether the working implementation is sufficient.", "status": "Active", "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "created_at": "2026-03-24T17:52:26.343123+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKY978G7EE8XFH0XXMC6C", "short_code": 18, "desired": "survey view designed and implemented \u2014 temporal framing, structural annotations, frame widening/narrowing, context-carrying yaw transition", "actual": "survey view conceptually defined in foundation document but no concrete layout, no implementation", "status": "Active", "parent_id": "01KMGFKY6K86DEVGP7DAEZ5MZ0", "created_at": "2026-03-24T17:52:26.407354+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKY9WR1AM9ZA1FTMSA1YP", "short_code": 19, "desired": "threshold mechanics implemented \u2014 tap/hold navigation, lingering space visual treatment, screen boundary signals", "actual": "thresholds conceptually defined. No implementation. Hold-key detection feasibility untested across terminals", "status": "Active", "parent_id": "01KMGFKY6K86DEVGP7DAEZ5MZ0", "created_at": "2026-03-24T17:52:26.428256+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKYAJYH8QFVVZGMKFDQGW", "short_code": 20, "desired": "data model extended \u2014 gesture grouping (gesture table), run/session tracking (run table), epoch markers, notes as first-class mutations, held vs positioned as explicit state", "actual": "Schema fully extended: 3 new tables (gestures, sessions, epochs), 3 new columns (gesture_id + actual_at on mutations, parent_snapshot_json on tensions). Gesture context wired into Store with process-scoped session model. All 11 CLI mutation commands + batch create gestures. Mutation replay tolerates note/position/deleted. CLI: werk hold, werk position, werk resolve --actual-at. Parent snapshots auto-populated as JSON on child creation. Foundation doc updated (sessions, gesture data model, actual_at). Remaining: epoch trigger path, session TUI lifecycle.", "status": "Active", "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "created_at": "2026-03-24T17:52:26.450418+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 2, "closure_total": 3}, {"id": "01KMGFKYSX6XVT54YP35H0KYMT", "short_code": 30, "desired": "epoch creation has a trigger path \u2014 CLI or TUI prompts 'start a new epoch?' when desire/reality changes, snapshotting the current delta", "actual": "CLI trigger path complete: reality and desire commands auto-create epoch boundaries. Manual 'werk epoch' command available. --no-epoch flag for corrections. TUI inline edits (\\!/?) go through engine.update_desired/actual but don't yet trigger epoch boundaries \u2014 the epoch logic lives in the CLI command layer, not the store. Minor gap.", "status": "Active", "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "created_at": "2026-03-24T17:52:26.941206+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKYZMWQAH7SFJR09A9DTR", "short_code": 34, "desired": "a public web surface exists where others can view (part of) the tension tree and interact with it \u2014 prototype for demonstrating werk and inviting cooperation via Spikes or similar feedback mechanisms", "actual": "no public-facing surface exists; werk is CLI-only and single-user. werk.horse domain is owned but unused (acquired for a different product). werk.bank is the ideal domain but costs $999", "status": "Active", "parent_id": "01KMGFKXTZYXZJ6ZQQXB632771", "created_at": "2026-03-24T17:52:27.124793+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZ0T0RTV9XQBJNVV2QJR", "short_code": 35, "desired": "epoch and session lifecycle are fully operational", "actual": "Epoch lifecycle operational: auto-boundaries on reality/desire updates (CLI), manual 'werk epoch' command, epoch span queries (mutations per epoch across descendants), epoch list/show. Session lifecycle: TUI calls start_session/end_session, session telemetry logging added. Remaining gap: TUI doesn't yet trigger epoch boundaries on inline desire/reality edits.", "status": "Active", "parent_id": "01KMGFKYAJYH8QFVVZGMKFDQGW", "created_at": "2026-03-24T17:52:27.162135+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZ232H55DEMZKX2A4VCJ", "short_code": 36, "desired": "werk has a sustainable business model that funds continued development while remaining fundamentally true to the conceptual foundation", "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-24T17:52:27.203679+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 7}, {"id": "01KMGFKZ3TYJPB2KZCCHG0ADEJ", "short_code": 37, "desired": "werk is publicly known as the structural intent layer for agentic work \u2014 builders in the terminal-native AI ecosystem recognize it", "actual": "nobody outside immediate circle knows werk exists; no public content, no posts, no demos", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-24T17:52:27.258074+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 2}, {"id": "01KMGFKZ57D35JP7ZWX35Z8V0G", "short_code": 38, "desired": "the open-format / proprietary-instrument split is implemented and clearly communicated", "actual": "synthesis articulated in business foundation doc but not yet reflected in licensing, README, or release strategy", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-24T17:52:27.303759+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZ6NSQQJCZ433ZD5Z0QH", "short_code": 39, "desired": "at least one revenue stream is active and generating income", "actual": "six revenue streams identified and reasoned through; none activated; practitioner license is first candidate", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-24T17:52:27.349144+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZ84CCZYFSN7XX0539AX", "short_code": 40, "desired": "werk integrates naturally with Statecraft services, Modern Minuteman operations, and Spikes feedback loops", "actual": "integration points mapped in business foundation doc; no implementation; Statecraft website already lists werk as a tool", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-24T17:52:27.396784+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 3}, {"id": "01KMGFKZAWPKEWRCS8VYV7S3PM", "short_code": 41, "desired": "first public post about werk published \u2014 X post with Remotion video addressed to Jeffrey Emanuel and the agentic coding community", "actual": "post drafted; video script drafted; neither published", "status": "Active", "parent_id": "01KMGFKZ3TYJPB2KZCCHG0ADEJ", "created_at": "2026-03-24T17:52:27.484361+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZCAX2NHZ124DNE191GK", "short_code": 42, "desired": "coherence offering designed \u2014 one-liner or agent prompt that transforms existing workspace into a proposed werk structure", "actual": "concept articulated in business foundation doc; no implementation; no design doc", "status": "Active", "parent_id": "01KMGFKZ3TYJPB2KZCCHG0ADEJ", "created_at": "2026-03-24T17:52:27.530097+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZRZSF1TVCQDE9H7B9TW", "short_code": 45, "desired": "TUI yank \u2014 copy tension snapshots to clipboard for handoff to agent sessions", "actual": "No clipboard integration exists in TUI. User must manually retype or remember tension details when switching to an agent session.", "status": "Active", "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS", "created_at": "2026-03-24T17:52:27.935460+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFKZTWZM69H3ZX7EYHA5ED", "short_code": 46, "desired": "threshold detection as independent structural signal logic \u2014 urgency crossings, horizon drift, containment violations surfaceable without coupling to any invocation mechanism", "actual": "Watch daemon deleted. Pathway palette infrastructure in werk-shared detects containment violations and sequencing pressure independently of invocation mechanism \u2014 triggers on add, move, position gestures across CLI and MCP. Temporal calculus computes urgency/critical-path/drift per-query. What's missing: cross-temporal threshold monitoring (detecting when urgency *crosses* a boundary between queries), horizon drift alerts, and surfacing these signals in the TUI.", "status": "Active", "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "created_at": "2026-03-24T17:52:27.996872+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFM016NG8KWPY8M0VA1CW6", "short_code": 48, "desired": "staging mechanism \u2014 propose/pending/confirm/reject for asynchronous draft mutations. Multiple independent proposals, each separately confirmable/rejectable. For complex human restructuring and agent-proposed changes held for review.", "actual": "No staging mechanism exists. Batch command applies YAML mutations immediately. No concept of pending/draft mutations.", "status": "Active", "parent_id": "01KMGFKY13827YVY23E14BX4X7", "created_at": "2026-03-24T17:52:28.198153+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFM038HQJEDSZF6020BJ09", "short_code": 49, "desired": "structural transformation gestures (split, merge, restructure) and cross-tension provenance \u2014 the foundation and data model support identity-topology-changing operations with lineage tracking", "actual": "Foundation lists 12 operative gestures, all treating tensions as stable identity containers. Split/merge/restructure are performed ad-hoc through desire rewrites and fresh creates, damaging ghost geometry. No provenance field exists. Epochs are per-tension only \u2014 cannot represent phase transitions that span tension boundaries. The #25 split into #25+#49 demonstrated the cost: 6 incoherent epochs on #25, amnesiac #49.", "status": "Active", "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "created_at": "2026-03-24T17:52:28.264233+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFM08BTSSN3GH8VZ218ZFA", "short_code": 51, "desired": "werk has a proper documentation surface \u2014 reference docs for each crate, user guide, and foundation for a docs site", "actual": "README.md covers the essentials. No docs/ directory, no crate-level reference docs, no user guide, no docs site. Foundation doc exists but is a design document, not user-facing documentation.", "status": "Active", "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS", "created_at": "2026-03-24T17:52:28.427042+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY", "short_code": 52, "desired": "CLI terminology and command structure reviewed and coherent \u2014 tree/forest distinction resolved, log/logbook commands exist, epoch subcommands rationalized, reading commands have clear boundaries", "actual": "README review surfaced terminology gaps: tree shows the forest (not a subtree), no log/logbook command exists (vocabulary from tui-shaping.md), epoch subcommands use flag style not subcommand style, reading commands (diff/ground/insights/survey/trajectory) have unclear boundaries to new users. Needs systematic terminology pass.", "status": "Active", "parent_id": "01KMGFKY13827YVY23E14BX4X7", "created_at": "2026-03-24T17:52:28.506906+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFM0JW0VAMTBQD3E7E0CYB", "short_code": 54, "desired": "batch positioning exists \u2014 reorder multiple tensions in one gesture", "actual": "position command accepts single tension + position. No way to set a new order wholesale or partially in one gesture. Batch YAML supports SetPosition but no dedicated reorder command.", "status": "Active", "parent_id": "01KMGFKY13827YVY23E14BX4X7", "created_at": "2026-03-24T17:52:28.764360+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGFM19RBECDW1QGBH2VM6NT", "short_code": 58, "desired": "pathway palettes in TUI \u2014 inline option sets presented via ftui when gestures create structural signals (containment violations, sequencing pressure). Uses shared palette types from werk-shared. The TUI analog of CLI pathway palettes.", "actual": "Pathway palettes operational in TUI. Containment violation and sequencing pressure palettes surface as inline overlays after horizon edits, add-with-horizon, move, and reorder. j/k navigate options, Enter/number selects, Esc dismisses. Uses shared palette infrastructure from werk-shared. PATHWAY experiential state implemented.", "status": "Active", "parent_id": "01KMGFKY6K86DEVGP7DAEZ5MZ0", "created_at": "2026-03-24T17:52:29.496367+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMGRMX9JAF284M1NP0AYGTAF", "short_code": 62, "desired": "Waterlight collaboration has a clear shape \u2014 what Mist gets from werk's structural urgency, what the hook contract looks like, and how AI composition (not functional coupling) handles the interpretive layer", "actual": "Second response received from Skinner/Claude with: Mist routing model (5-tier), full Prism cycle on MRP thesis (6-model adversarial), and hook payload spec. Comprehensive reply drafted and sent covering: type corrections (urgency nullable/>1.0, trajectory enum, risk booleans), Prism response accepting Blue precision fixes, articulating creative-vs-reactive orientation thesis and anti-capture traceability, raising observational analysis design question. HookEvent enriched with parent_id and current_reality per spec. post_release hook added. Awaiting their survey --json reader and a real tension to run through Prism.", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-24T20:30:15.346756+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJN4MTDH3MQB1M39HEYPXCH", "short_code": 65, "desired": "observational analysis stance is decided \u2014 clear boundary between fact, signal, and dynamic in the instrument's output, with trajectory classification and projection layer each assigned to the correct side of that boundary", "actual": "Design note drafted (observational-analysis-stance.md). Recommends Stance B: keep trajectory enum as signal, quarantine projections to ground mode. Three open sub-questions: opt-in vs default for trajectory in external surfaces, gap_magnitude continuity, Mist bridge implications. No decision committed yet.", "status": "Active", "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q", "created_at": "2026-03-25T14:07:25.517074+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJTECRB48A2H9D1TRVQH3YJ", "short_code": 66, "desired": "Statecraft integration point is defined \u2014 what a client session looks like when werk is the structural layer, shared tree vs export vs live view", "actual": "no definition yet; Statecraft website lists werk as a tool but the integration shape is unspecified", "status": "Active", "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX", "created_at": "2026-03-25T15:40:07.819880+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJTEP0C5FWFETZ3389CZC4J", "short_code": 67, "desired": "Modern Minuteman operations use werk as the planning instrument \u2014 what operations means here, whether it's the task backbone for MM content production", "actual": "no definition; MM operates but werk isn't part of that workflow yet", "status": "Active", "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX", "created_at": "2026-03-25T15:40:17.292065+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJTEQRJA6WVX0K3Z3PRZB3F", "short_code": 68, "desired": "Spikes feedback loops connect to werk tensions \u2014 how audience signal maps back to structural tensions, whether via hook or ingest or manual", "actual": "no definition; Spikes exists as a concept but no signal pathway to werk is designed", "status": "Active", "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX", "created_at": "2026-03-25T15:40:19.090544+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJV5AKKY3H468YCS52WD640", "short_code": 69, "desired": "first $1000 earned through practical means \u2014 proving someone will pay for what werk enables", "actual": "three candidate paths identified: setup calls (service), donations (requires public presence first), build something obviously valuable (product). No validation on any path yet.", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-25T15:52:39.283174+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 3}, {"id": "01KMJV5PPKA66E225CP5PKN2EW", "short_code": 70, "desired": "setup calls offered \u2014 install werk, walk through structural dynamics, configure a tension tree for someone's real project", "actual": "no offering exists; would need a price, a booking mechanism, and at least one person to pitch it to", "status": "Active", "parent_id": "01KMJV5AKKY3H468YCS52WD640", "created_at": "2026-03-25T15:52:51.667490+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJV5R8XJQEX12XE3KEH8332", "short_code": 71, "desired": "something obviously valuable is built and priced \u2014 a packaged product or skill that people encounter and want to pay for", "actual": "candidates: werk-as-claude-skill (zero install SD practice), hosted structural audit, productized tension tree session. Nothing built or validated.", "status": "Active", "parent_id": "01KMJV5AKKY3H468YCS52WD640", "created_at": "2026-03-25T15:52:53.277041+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMJV5T3H5TRHKRXND86GVQPK", "short_code": 72, "desired": "public presence exists sufficient for donations/sponsors to flow", "actual": "depends on #37; no public visibility yet beyond statecraft.systems listing", "status": "Active", "parent_id": "01KMJV5AKKY3H468YCS52WD640", "created_at": "2026-03-25T15:52:55.153190+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMK71AT70GWEGJ8ZCQV0WDJP", "short_code": 76, "desired": "TUI architectural consolidation \u2014 unified cursor, single frontier per frame, deck at root, remove old renderer", "actual": "Consolidation plan written: 5 steps (cache frontier, unify cursor, fix reorder/frontier, deck at root, remove dead code). 15KB implementation prompt prepared. Dual cursor, dual renderer, and frontier mismatch identified as root cause of persistent display bugs.", "status": "Active", "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS", "created_at": "2026-03-25T19:20:11.335786+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKA5DP7EVQV8CZY93WY9636", "short_code": 78, "desired": "werk is the standard practice tool for structural dynamics practitioners and coaches \u2014 the successor to what Fritz once offered, and the obvious thing to charge for", "actual": "CreatorTools.net charges $130/month for simple structural tension charts; ~50-200 active SD practitioners globally; Fritz (early 80s) still teaches; 2 certified instructors (Schutze in Berlin, Higgs in Portland); no community infrastructure (no forum, Slack, or directory); practitioners use pen-and-paper, recorded consultations, and Zoom; no real software tool exists for the practice", "status": "Active", "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ", "created_at": "2026-03-25T20:14:51.079047+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 3}, {"id": "01KMKA5WYV2AKGXD46VK2T90YY", "short_code": 79, "desired": "Fritz's discontinued tool is researched \u2014 what it was, what it did, what practitioners relied on, what's missed, and how werk can surpass it", "actual": "CreatorTools.net (Ivan Fritz, Robert's son) still operates at $130/month \u2014 offers 'structural tension charts' that are essentially goal-tracking forms (desired outcome, current reality, 12 action steps with checkboxes). No hierarchy, no dynamics, no temporal logic. LifeStudio iPad app preceded it (~2015), discontinued ~2019. A PDF chart template also exists. The tool is weak, not gone \u2014 which is better for us: the market is paying for something werk already surpasses", "status": "Active", "parent_id": "01KMKA5DP7EVQV8CZY93WY9636", "created_at": "2026-03-25T20:15:06.715700+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKA5YVCQ5FZPGTWJJ76BP5Z", "short_code": 80, "desired": "SD practitioners and coaches have validated werk as useful for their practice \u2014 at least three have tried it and given feedback", "actual": "no practitioner outside Moritz has seen werk; Nicholas Catton is Fritz-influenced but not confirmed formally certified \u2014 runs coaching in San Diego; the two certified Fritz instructors are Katharina Schutze (Berlin, since 2004) and Kira Higgs (Portland, since 2019); Fritz Japan practice also exists; no outreach attempted yet", "status": "Active", "parent_id": "01KMKA5DP7EVQV8CZY93WY9636", "created_at": "2026-03-25T20:15:08.652647+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKA60RCXPW1KW3CYGWQHVPG", "short_code": 81, "desired": "werk is packaged and priced for coaches \u2014 per-seat, per-client licensing that fits how coaching practices actually work", "actual": "CreatorTools.net pricing: $130/month, $428/3-months, $1,300/year \u2014 for a course + simple charting tool. FST training: 4-day live online (price unlisted). SCCP: $125/quarter workshops + $150/critique. This establishes a price anchor \u2014 practitioners already pay $130/month for far less than what werk offers structurally", "status": "Active", "parent_id": "01KMKA5DP7EVQV8CZY93WY9636", "created_at": "2026-03-25T20:15:10.604891+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKA69QXJW7VC2YYS6TFZ1AB", "short_code": 82, "desired": "werk has a graphical interface \u2014 browser or native Mac app \u2014 that non-terminal users find inviting and natural to use, and that serves as the premium product", "actual": "only the terminal TUI and CLI exist; non-technical users find the terminal ugly and unapproachable; no GUI work has begun", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-25T20:15:19.805413+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 3}, {"id": "01KMKA6HKQ6MVZ2P5PQCMTTQFH", "short_code": 83, "desired": "the GUI technology choice is made \u2014 web app, Tauri, native SwiftUI, or other \u2014 with clear rationale for the SD practitioner audience", "actual": "no evaluation done; options are wide open", "status": "Active", "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB", "created_at": "2026-03-25T20:15:27.863960+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKA6SBS2QVJD0HTNJZJGCJE", "short_code": 84, "desired": "the GUI reaches feature parity with the core practice loop \u2014 create tension, see the structure, gesture through it, track dynamics", "actual": "no GUI exists", "status": "Active", "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB", "created_at": "2026-03-25T20:15:35.801566+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKA6V8XGXEXCKK4KEC52KXD", "short_code": 85, "desired": "the GUI has visual design that expresses structural dynamics \u2014 not a generic task manager skin but something that makes the practice feel right", "actual": "no design work done; no visual language established for a graphical surface", "status": "Active", "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB", "created_at": "2026-03-25T20:15:37.757810+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}, {"id": "01KMKAHCQF4DG03SMJKAR7S47Z", "short_code": 86, "desired": "test", "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, pathway palettes operational, primary experience functional with known architectural debt being addressed), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).", "status": "Active", "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC", "created_at": "2026-03-25T20:21:23.311931+00:00", "horizon": null, "overdue": false, "containment_violation": false, "sequencing_pressure": false, "closure_resolved": 0, "closure_total": 0}], "summary": {"total": 82, "active": 48, "resolved": 29, "released": 5}};
-
-function buildTree(tensions) {
-  const byParent = {};
-  const roots = [];
-  for (const t of tensions) {
-    const pid = t.parent_id || '__root__';
-    if (!byParent[pid]) byParent[pid] = [];
-    byParent[pid].push(t);
-    if (!t.parent_id) roots.push(t);
+// ── API ──
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
   }
-  return { roots, byParent };
+  const res = await fetch('/api' + path, opts);
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error || `HTTP ${res.status}`);
+  }
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('json')) return res.json();
+  return {};
 }
 
-function formatHorizon(h) {
-  if (!h) return null;
-  const d = new Date(h + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', day: undefined });
+// ── Data ──
+let tensions = [], summary = {}, byId = {}, childrenOf = {}, roots = [];
+let openSet = new Set(), activeFilter = 'all', searchQuery = '', editId = null;
+
+async function loadData() {
+  try {
+    const d = await api('GET', '/tensions');
+    tensions = d.tensions || [];
+    summary = d.summary || {};
+    byId = {}; childrenOf = {};
+    tensions.forEach(t => { byId[t.id] = t; childrenOf[t.id] = []; });
+    tensions.forEach(t => {
+      if (t.parent_id && childrenOf[t.parent_id]) childrenOf[t.parent_id].push(t);
+    });
+    Object.values(childrenOf).forEach(arr =>
+      arr.sort((a, b) => (a.position ?? 9999) - (b.position ?? 9999) || (a.short_code||0) - (b.short_code||0))
+    );
+    roots = tensions.filter(t => !t.parent_id)
+      .sort((a, b) => (a.position ?? 9999) - (b.position ?? 9999) || (a.short_code||0) - (b.short_code||0));
+    setConn('connected');
+    render();
+  } catch(e) {
+    setConn('error');
+    document.getElementById('main').innerHTML =
+      `<div class="empty-state"><p>Cannot connect</p><small>${esc(e.message)}</small></div>`;
+  }
 }
 
-function chevronSVG() {
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+// ── SSE ──
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onopen = () => setConn('connected');
+  es.onerror = () => setConn('error');
+  for (const ev of ['tension_created','tension_updated','tension_resolved','tension_released','tension_reopened']) {
+    es.addEventListener(ev, () => loadData());
+  }
+}
+function setConn(s) {
+  const d = document.getElementById('connectionDot');
+  d.className = 'connection-dot ' + s; d.title = s;
 }
 
-function renderTension(t, byParent, depth) {
-  const children = byParent[t.id] || [];
-  const hasChildren = children.length > 0;
-  const closurePct = t.closure_total > 0 ? Math.round((t.closure_resolved / t.closure_total) * 100) : -1;
+// ── Helpers ──
+function esc(s) { return !s ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function hl(text, q) {
+  if (!q || !text) return esc(text || '');
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i === -1) return esc(text);
+  return esc(text.slice(0,i)) + '<span class="hl">' + esc(text.slice(i,i+q.length)) + '</span>' + hl(text.slice(i+q.length), q);
+}
+function getChildren(id) { return childrenOf[id] || []; }
+function countDesc(id) { return getChildren(id).reduce((n, c) => n + 1 + countDesc(c.id), 0); }
+function countResolved(id) { return getChildren(id).reduce((n, c) => n + (c.status==='Resolved'?1:0) + countResolved(c.id), 0); }
 
-  let badges = '';
+function matchesFilter(t) {
+  if (activeFilter === 'all') return true;
+  if (activeFilter === 'active') return t.status === 'Active';
+  if (activeFilter === 'resolved') return t.status === 'Resolved';
+  if (activeFilter === 'released') return t.status === 'Released';
+  if (activeFilter === 'overdue') return t.overdue;
+  return true;
+}
+function matchesSearch(t) {
+  if (!searchQuery) return true;
+  const q = searchQuery.toLowerCase();
+  return (t.desired||'').toLowerCase().includes(q) || (t.actual||'').toLowerCase().includes(q) || ('#'+t.short_code).includes(q);
+}
+function visible(t) { return matchesFilter(t) && matchesSearch(t); }
+function subtreeVisible(id) {
+  const t = byId[id];
+  return t && (visible(t) || getChildren(id).some(c => subtreeVisible(c.id)));
+}
 
-  if (t.closure_total > 0) {
-    badges += '<div class="closure-bar-wrap">' +
-      '<span class="badge badge-closure">' + t.closure_resolved + '/' + t.closure_total + '</span>' +
-      '<div class="closure-bar"><div class="closure-bar-fill" style="width:' + closurePct + '%"></div></div>' +
-      '</div>';
-  } else if (hasChildren) {
-    badges += '<span class="badge badge-closure none">leaf children</span>';
+// ── Render ──
+function renderControls() {
+  const overdue = tensions.filter(t => t.overdue).length;
+  const filters = [
+    { key: 'all', label: 'All', count: tensions.length },
+    { key: 'active', label: 'Active', count: summary.active || 0 },
+    { key: 'resolved', label: 'Resolved', count: summary.resolved || 0 },
+    { key: 'released', label: 'Released', count: summary.released || 0 },
+  ];
+  if (overdue > 0) filters.push({ key: 'overdue', label: 'Overdue', count: overdue });
+  document.getElementById('controlsRow').innerHTML = filters.map(f =>
+    `<button class="filter-chip${activeFilter===f.key?' active':''}" onclick="activeFilter='${f.key}';render();">${f.label}<span class="chip-count">${f.count}</span></button>`
+  ).join('') +
+  `<div class="stats-inline">
+    <span><span class="stat-num s-active">${summary.active||0}</span> active</span>
+    <span><span class="stat-num s-resolved">${summary.resolved||0}</span> resolved</span>
+    <span><span class="stat-num s-total">${summary.total||0}</span> total</span>
+  </div>`;
+}
+
+/* A step in the theory of closure */
+function renderStep(t, depth) {
+  const ch = getChildren(t.id).filter(c => subtreeVisible(c.id));
+  const dotClass = t.status==='Resolved' ? 's-resolved' : t.status==='Released' ? 's-released' : 's-active';
+  const textClass = t.status==='Resolved' ? 'resolved' : '';
+
+  let meta = [];
+  if (t.horizon) meta.push(`<span class="badge ${t.overdue?'badge-overdue':'badge-horizon'}">${t.overdue?'overdue ':''}${esc(t.horizon)}</span>`);
+  const totalCh = countDesc(t.id);
+  const resolvedCh = countResolved(t.id);
+  if (totalCh > 0) {
+    const pct = Math.round((resolvedCh/totalCh)*100);
+    meta.push(`<span class="closure-bar"><span class="closure-track"><span class="closure-fill" style="width:${pct}%"></span></span>${resolvedCh}/${totalCh}</span>`);
   }
 
-  if (t.horizon) {
-    badges += '<span class="badge badge-horizon">' + formatHorizon(t.horizon) + '</span>';
-  }
-  if (t.sequencing_pressure) {
-    badges += '<span class="badge badge-sequencing">sequencing pressure</span>';
-  }
-  if (t.overdue) {
-    badges += '<span class="badge badge-overdue">overdue</span>';
-  }
-  if (t.containment_violation) {
-    badges += '<span class="badge badge-containment">containment issue</span>';
+  let childrenHtml = '';
+  if (ch.length > 0 && openSet.has(t.id)) {
+    childrenHtml = '<div class="step-children">' + ch.map(c => renderStep(c, depth+1)).join('') + '</div>';
   }
 
-  const id = 'tension-' + t.short_code;
+  return `<div class="closure-step" onclick="event.stopPropagation();toggleOpen('${t.id}')">
+    <div class="step-desire">
+      <div class="step-dot ${dotClass}"></div>
+      <span class="step-code">#${t.short_code}</span>
+      <span class="step-text ${textClass}">${hl(t.desired, searchQuery)}</span>
+    </div>
+    ${meta.length ? '<div class="step-meta">'+meta.join(' ')+'</div>' : ''}
+    ${childrenHtml}
+  </div>`;
+}
 
-  let html = '<div class="tension-group">';
-  html += '<div class="tension-card" id="' + id + '" onclick="toggleTension(' + t.short_code + ')">';
-  html += '<div class="tension-header">';
-  html += '<div class="tension-chevron">' + (hasChildren || t.actual ? chevronSVG() : '<span class="leaf-indicator">&middot;</span>') + '</div>';
-  html += '<div class="tension-main">';
-  html += '<div class="tension-title-row">';
-  html += '<span class="tension-code">#' + t.short_code + '</span>';
-  html += '<span class="tension-desired">' + escapeHTML(t.desired) + '</span>';
-  html += '</div>';
-  if (badges) {
-    html += '<div class="tension-badges">' + badges + '</div>';
+/* A root tension — the full vertical structure:
+   DESIRE at top, theory of closure in middle, REALITY at bottom */
+function renderTension(t) {
+  const isOpen = openSet.has(t.id);
+  const statusClass = 'status-' + t.status.toLowerCase();
+  const ch = getChildren(t.id).filter(c => subtreeVisible(c.id));
+  const totalDesc = countDesc(t.id);
+  const resolvedDesc = countResolved(t.id);
+
+  // Desire badges
+  let badges = `<span class="badge badge-${t.status.toLowerCase()}">${t.status}</span>`;
+  if (t.horizon) badges += `<span class="badge ${t.overdue?'badge-overdue':'badge-horizon'}">${t.overdue?'overdue ':''}${esc(t.horizon)}</span>`;
+  if (totalDesc > 0) {
+    const pct = Math.round((resolvedDesc/totalDesc)*100);
+    badges += `<div class="closure-bar"><div class="closure-track"><div class="closure-fill" style="width:${pct}%"></div></div>${resolvedDesc}/${totalDesc}</div>`;
   }
-  html += '</div></div></div>';
 
-  // Detail panel
-  html += '<div class="tension-detail" id="detail-' + t.short_code + '">';
-  if (t.actual) {
-    html += '<div class="detail-section"><div class="detail-label">Current Reality</div>';
-    html += '<div class="detail-text">' + escapeHTML(t.actual) + '</div></div>';
+  // Theory of closure
+  let theoryHtml = '';
+  if (isOpen && ch.length > 0) {
+    theoryHtml = `<div class="theory-of-closure">${ch.map(c => renderStep(c, 0)).join('')}</div>`;
   }
-  html += '</div>';
 
-  // Children
-  if (hasChildren) {
-    html += '<div class="children depth-' + (depth + 1) + '" id="children-' + t.short_code + '">';
-    for (const child of children) {
-      html += renderTension(child, byParent, depth + 1);
+  // Reality
+  const realityText = t.actual ? hl(t.actual, searchQuery) : '<em>No reality articulated yet</em>';
+
+  // Actions — gestures available on this tension
+  let actions = '';
+  if (isOpen) {
+    if (t.status === 'Active') {
+      actions = `
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openDesireModal('${t.id}')">Evolve desire</button>
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openRealityModal('${t.id}')">Update reality</button>
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openResolveModal('${t.id}')" style="color:var(--green);">Resolve</button>
+        <button class="btn btn-ghost btn-small" onclick="event.stopPropagation();openAddModal('${t.id}')">Decompose</button>`;
+    } else {
+      actions = `<button class="btn btn-ghost btn-small" onclick="event.stopPropagation();doReopen('${t.id}')">Reopen</button>`;
     }
-    html += '</div>';
   }
 
-  html += '</div>';
-  return html;
+  return `<div class="tension">
+    <div class="tension-frame ${isOpen?'open':''} ${statusClass}">
+      <div class="tension-desire" onclick="toggleOpen('${t.id}')">
+        <div class="tension-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+        <div class="desire-content">
+          <div class="desire-top">
+            <span class="t-code">#${t.short_code}</span>
+            <span class="desire-text">${hl(t.desired, searchQuery)}</span>
+          </div>
+          <div class="desire-meta">${badges}</div>
+        </div>
+      </div>
+      ${theoryHtml}
+      <div class="tension-reality">
+        <div class="reality-label">current reality</div>
+        <div class="reality-text">${realityText}</div>
+      </div>
+      <div class="tension-actions">${actions}</div>
+    </div>
+  </div>`;
 }
 
-function escapeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-function toggleTension(code) {
-  const card = document.getElementById('tension-' + code);
-  const detail = document.getElementById('detail-' + code);
-  if (!card || !detail) return;
-
-  const isExpanded = card.classList.contains('expanded');
-  card.classList.toggle('expanded');
-  detail.classList.toggle('open');
-}
-
-function init() {
-  const { roots, byParent } = buildTree(DATA.tensions);
-
-  // Stats
-  const total = DATA.tensions.length;
-  const withHorizon = DATA.tensions.filter(t => t.horizon).length;
-  const seqPressure = DATA.tensions.filter(t => t.sequencing_pressure).length;
-  const totalResolved = DATA.tensions.reduce((s, t) => s + t.closure_resolved, 0);
-  const totalClosure = DATA.tensions.reduce((s, t) => s + t.closure_total, 0);
-
-  document.getElementById('stats-bar').innerHTML =
-    '<div class="stat"><div class="stat-value">' + total + '</div><div class="stat-label">Tensions</div></div>' +
-    '<div class="stat"><div class="stat-value">' + roots.length + '</div><div class="stat-label">Root</div></div>' +
-    '<div class="stat"><div class="stat-value">' + withHorizon + '</div><div class="stat-label">With Horizon</div></div>' +
-    (seqPressure > 0 ? '<div class="stat"><div class="stat-value">' + seqPressure + '</div><div class="stat-label">Seq. Pressure</div></div>' : '');
-
-  // Render tree
-  let html = '<div class="depth-0">';
-  for (const root of roots) {
-    html += renderTension(root, byParent, 0);
+function render() {
+  renderControls();
+  const main = document.getElementById('main');
+  if (tensions.length === 0) {
+    main.innerHTML = '<div class="empty-state"><p>No tensions yet</p><small>Create your first tension to begin</small></div>';
+    return;
   }
-  html += '</div>';
-  document.getElementById('tree').innerHTML = html;
+  const vis = roots.filter(r => subtreeVisible(r.id));
+  if (vis.length === 0) {
+    main.innerHTML = '<div class="empty-state"><p>No tensions match</p><small>Try a different filter or search</small></div>';
+    return;
+  }
+  main.innerHTML = vis.map(renderTension).join('');
 }
 
-init();
+// ── Interactions ──
+function toggleOpen(id) {
+  if (openSet.has(id)) openSet.delete(id); else openSet.add(id);
+  render();
+}
+
+let searchTimer;
+document.getElementById('searchInput').addEventListener('input', function(e) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchQuery = e.target.value.trim();
+    if (searchQuery) {
+      tensions.forEach(t => {
+        if (matchesSearch(t) && t.parent_id) {
+          let pid = t.parent_id;
+          while (pid) { openSet.add(pid); pid = byId[pid] ? byId[pid].parent_id : null; }
+        }
+      });
+    }
+    render();
+  }, 200);
+});
+
+// ── Modals ──
+function closeModal(id) { document.getElementById(id).classList.remove('open'); editId = null; }
+
+function openAddModal(parentId) {
+  document.getElementById('addModal').classList.add('open');
+  document.getElementById('addDesired').value = '';
+  document.getElementById('addActual').value = '';
+  document.getElementById('addHorizon').value = '';
+  document.getElementById('addError').style.display = 'none';
+  document.getElementById('addBtn').disabled = false;
+  const sel = document.getElementById('addParent');
+  sel.innerHTML = '<option value="">Root tension</option>';
+  tensions.filter(t => t.status==='Active')
+    .sort((a,b) => (a.short_code||0)-(b.short_code||0))
+    .forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = `#${t.short_code} \u2014 ${t.desired.slice(0,50)}`;
+      if (parentId === t.id) o.selected = true;
+      sel.appendChild(o);
+    });
+  document.getElementById('addDesired').focus();
+}
+
+async function submitCreate() {
+  const desired = document.getElementById('addDesired').value.trim();
+  const actual = document.getElementById('addActual').value.trim();
+  const parent = document.getElementById('addParent').value;
+  const horizon = document.getElementById('addHorizon').value.trim();
+  if (!desired) return showFormErr('addError', 'Enter a desired outcome');
+  document.getElementById('addBtn').disabled = true;
+  try {
+    const body = { desired };
+    if (actual) body.actual = actual;
+    if (parent) body.parent_id = parent;
+    if (horizon) body.horizon = horizon;
+    await api('POST', '/tensions', body);
+    closeModal('addModal');
+    toast('Tension created', 'success');
+    await loadData();
+  } catch(e) { showFormErr('addError', e.message); }
+  finally { document.getElementById('addBtn').disabled = false; }
+}
+
+function openDesireModal(id) {
+  editId = id; const t = byId[id];
+  document.getElementById('desireCtx').textContent = `#${t.short_code} \u2014 ${t.desired}`;
+  document.getElementById('desireText').value = t.desired;
+  document.getElementById('desireError').style.display = 'none';
+  document.getElementById('desireModal').classList.add('open');
+  document.getElementById('desireText').focus();
+}
+async function submitDesire() {
+  const v = document.getElementById('desireText').value.trim();
+  if (!v) return showFormErr('desireError', 'Enter the desired outcome');
+  try {
+    await api('PATCH', `/tensions/${editId}/desired`, { value: v });
+    closeModal('desireModal'); toast('Desire evolved', 'success'); await loadData();
+  } catch(e) { showFormErr('desireError', e.message); }
+}
+
+function openRealityModal(id) {
+  editId = id; const t = byId[id];
+  document.getElementById('realityCtx').textContent = `#${t.short_code} \u2014 ${t.desired}`;
+  document.getElementById('realityText').value = t.actual || '';
+  document.getElementById('realityError').style.display = 'none';
+  document.getElementById('realityModal').classList.add('open');
+  document.getElementById('realityText').focus();
+}
+async function submitReality() {
+  const v = document.getElementById('realityText').value.trim();
+  if (!v) return showFormErr('realityError', 'Enter current reality');
+  try {
+    await api('PATCH', `/tensions/${editId}/reality`, { value: v });
+    closeModal('realityModal'); toast('Reality updated', 'success'); await loadData();
+  } catch(e) { showFormErr('realityError', e.message); }
+}
+
+function openResolveModal(id) {
+  editId = id; const t = byId[id];
+  document.getElementById('resolveCtx').textContent = `#${t.short_code} \u2014 ${t.desired}`;
+  document.getElementById('resolveModal').classList.add('open');
+}
+async function submitResolve() {
+  try {
+    await api('POST', `/tensions/${editId}/resolve`);
+    closeModal('resolveModal'); toast('Tension resolved', 'success'); await loadData();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function doReopen(id) {
+  try {
+    await api('POST', `/tensions/${id}/reopen`);
+    toast('Reopened', 'success'); await loadData();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function showFormErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.style.display = 'block';
+}
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (type==='error'?' toast-error':type==='success'?' toast-success':'');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    editId = null;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault(); document.getElementById('searchInput').focus();
+  }
+});
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) { ov.classList.remove('open'); editId = null; } });
+});
+
+// ── Init ──
+loadData();
+connectSSE();
 </script>
 </body>
 </html>
