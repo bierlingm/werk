@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-26T10:51:13Z",
+  "flushed_at": "2026-03-26T11:35:58Z",
   "summary": {
-    "active": 52,
+    "active": 53,
     "released": 6,
     "resolved": 32,
-    "total": 90
+    "total": 91
   },
   "tensions": [
     {
@@ -14,7 +14,7 @@
       "horizon": "2026-06",
       "id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "parent_id": null,
-      "position": 2,
+      "position": 1,
       "short_code": 2,
       "status": "Active"
     },
@@ -932,9 +932,9 @@
       "status": "Active"
     },
     {
-      "actual": "not started — root level currently shows no accumulated zone and no epoch boundary",
+      "actual": "Conceptual: reality updates already create epoch layers (auto-snapshot on desire/reality change). Data exists as epoch table rows with desire_snapshot, reality_snapshot, children_snapshot_json. Not yet queryable as a substrate — no search, no comparison, no cross-tension timeline. Ghost geometry (desire-reality triangle morphology over time) identified as the visual representation. Stack model: current reality is top layer, prior realities are navigable layers below. Desire evolution displays differently from reality evolution in the stack.",
       "created_at": "2026-03-25T20:50:06.125363+00:00",
-      "desired": "root-level epochs — the root tension tracks epoch boundaries for its own desire/reality lifecycle, visible in the deck bottom bar",
+      "desired": "logbase — a searchable, queryable substrate of all prior desire/reality/epoch layers across the entire field, accessible from root view and all surfaces (CLI, MCP, TUI, web, desktop, mobile)",
       "horizon": null,
       "id": "01KMKC5Z5DPQ0W1QVYJABQ8ACP",
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
@@ -943,9 +943,9 @@
       "status": "Active"
     },
     {
-      "actual": "inquiry stage — currently root level filters to active-only, has no epoch boundary, no accumulated zone, and no desire/reality anchors. The single-root pattern (#2) already serves as de facto container. Question: should this be formalized in the data model (implicit root tension) or remain a UI-level convention?",
+      "actual": "Design inquiry advanced significantly. Key insights: (1) Root level is NOT a deck — it is a command center / takeoff view, fundamentally different from descended stream view. (2) Survey view (tab-flip, time-first) is the missing half — at root level, structural and temporal axes collapse into one surface. (3) The logbase (not logbook) is a searchable live substrate of all prior desire/reality/epoch layers — computational and queryable, not just sequential record. Ghost geometry of expanding/contracting desire-reality triangles represents change over time. (4) Field-as-tension (Direction E) rejected — root visibility comes from aggregate surfaces, not data model formalization. (5) Root view should include: root tensions for descent, temporal vitals/patterns, structural signals, searchable logbase access, yankable context for AI sessions. Multiple panes could show battlefield overview alongside individual tension work.",
       "created_at": "2026-03-25T22:44:54.475353+00:00",
-      "desired": "the root level behaves as a quasi-tension — the field itself is a container with desire/reality/epochs, not just a flat list of unrelated roots",
+      "desired": "the root level is a command center — structural overview, temporal vitals, logbase access, mission preparation — where stream (deck) and survey (time-first) orientations collapse into one surface",
       "horizon": null,
       "id": "01KMKJR62B2HDAKYKPR3V190YS",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
@@ -995,6 +995,17 @@
       "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
       "position": null,
       "short_code": 94,
+      "status": "Active"
+    },
+    {
+      "actual": "not started — no mobile technology choice made. Tauri 2.0 supports mobile targets (iOS/Android) which could share the web frontend. Native Swift/Kotlin is the alternative. The logbase and all surfaces (CLI, MCP, TUI, web, desktop, mobile) should share the same queryable substrate.",
+      "created_at": "2026-03-26T11:35:39.455972+00:00",
+      "desired": "werk has a mobile app — iOS and/or Android — that brings the practice into the pocket, with touch-native gestures for the core loop",
+      "horizon": null,
+      "id": "01KMMYVF5Z5GV2MW5CK0F6F15R",
+      "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
+      "position": null,
+      "short_code": 95,
       "status": "Active"
     }
   ]
