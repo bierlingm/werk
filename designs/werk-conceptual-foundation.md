@@ -405,6 +405,22 @@ These are available for configuration, evolution, or removal based on use:
 - **Specific visual chrome** — border types, background shifts, envelope demarcation style are design choices, not sacred
 - **Number and specifics of responsive breakpoints** — practical choices, not sacred ones
 
+### Glyph Vocabulary (active and banked)
+
+Shapes communicate structural meaning without words. The diamond family is the instrument's primary visual language.
+
+**Active:**
+- **◆** desire — the declared, complete vision. Filled = definite, generative.
+- **◇** reality — the incomplete present. Hollow = gap, what's lacking.
+- **⏱** deadline/horizon — the temporal aim.
+
+**Banked (reserved for future use):**
+- **◈** diamond with dot — tension with children (theory of closure populated), or focused/selected item.
+- **✦/✧** four-pointed stars, filled/hollow — temporal events, notes, moments of change.
+- **◆◇ half-splits** (left-filled/right-filled diamonds) — partial completion, directional flow.
+- **⟐** diamond with horizontal line — held state, paused, crossed.
+- **◫** four-diamond cluster — structure, composition, children as group.
+
 ### Obsoleted Concepts (from prior design versions)
 - **Three-depth model (field/gaze/analysis)** — replaced by the zoom axis (normal/focus/orient) which is continuous and contextual
 - **Gaze cards as inline expansion** — the function (progressive disclosure, detail without losing context) is preserved through zoom; the specific mechanism (cyan-bordered inline card) is obsoleted

@@ -35,6 +35,9 @@ pub struct Styles {
     pub text: Style,
     /// Bold white (selected tension name).
     pub text_bold: Style,
+    /// Subdued text — between normal and dim. For secondary content that should
+    /// still be readable (e.g., reality in detail cards).
+    pub subdued: Style,
     /// Dim text (labels, chrome, resolved).
     pub dim: Style,
     /// Amber for warnings.
@@ -56,6 +59,7 @@ pub struct Styles {
 pub static STYLES: LazyLock<Styles> = LazyLock::new(|| Styles {
     text: Style::new().fg(CLR_DEFAULT),
     text_bold: Style::new().fg(PackedRgba::rgb(255, 255, 255)).bold(),
+    subdued: Style::new().fg(PackedRgba::rgb(160, 160, 160)),
     dim: Style::new().fg(CLR_DIM),
     amber: Style::new().fg(CLR_AMBER),
     red: Style::new().fg(CLR_RED),

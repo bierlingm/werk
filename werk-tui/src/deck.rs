@@ -267,7 +267,11 @@ impl Frontier {
         for (i, entry) in siblings.iter().enumerate() {
             match entry.status {
                 TensionStatus::Active => {
-                    frontier.route.push(i);
+                    if entry.position.is_some() {
+                        frontier.route.push(i);
+                    } else {
+                        frontier.held.push(i);
+                    }
                 }
                 TensionStatus::Resolved | TensionStatus::Released => {
                     let in_current_epoch = match epoch_boundary {
@@ -616,11 +620,19 @@ impl DeckCursor {
 pub enum ZoomLevel {
     Normal,
     Focus,
+    Peek,
     #[allow(dead_code)]
     Orient,
 }
 
-/// Detail for a focused element (V7).
+impl ZoomLevel {
+    /// True if inline detail is showing (either Focus or Peek).
+    pub fn has_detail(&self) -> bool {
+        matches!(self, ZoomLevel::Focus | ZoomLevel::Peek)
+    }
+}
+
+/// Detail for a focused element (V7 → detail card).
 #[derive(Debug, Clone)]
 pub struct FocusedDetail {
     /// The sibling index of the focused element.
@@ -629,12 +641,23 @@ pub struct FocusedDetail {
     pub desired: String,
     /// The focused child's reality text.
     pub actual: String,
-    /// The focused child's children as FieldEntries (for render_child_line).
-    pub children: Vec<FieldEntry>,
     /// The focused child's short code.
     pub short_code: Option<i32>,
     /// The focused child's deadline label.
     pub deadline_label: Option<String>,
+    // Temporal facts
+    pub created_age: String,
+    pub last_reality_age: String,
+    pub last_desire_age: String,
+    pub temporal_urgency: f64,
+    // Structure
+    pub child_count: usize,
+    pub child_active: usize,
+    pub child_resolved: usize,
+    pub child_released: usize,
+    pub child_held: usize,
+    // Notes (most recent first, capped)
+    pub recent_notes: Vec<(String, String)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -796,13 +819,15 @@ impl InstrumentApp {
         // desire, reality) stays visible. Positions are finalized on commit.
 
         // V7: measure inline focus detail height (used for accumulated item spacing)
-        let focus_detail_height: usize = if self.deck_zoom == ZoomLevel::Focus {
+        let focus_detail_height: usize = if self.deck_zoom.has_detail() {
             if let Some(ref detail) = self.focused_detail {
-                let ch = detail.children.len();
-                let rl = if detail.actual.is_empty() { 0 } else {
-                    word_wrap(&detail.actual, w).len()
+                let text_w = w.saturating_sub(cols.left + GUTTER + HELD_INDENT * 2);
+                let reality_lines = if detail.actual.is_empty() { 0 } else {
+                    word_wrap(&detail.actual, text_w).len()
                 };
-                ch + rl
+                let meta_line = 1; // combined temporal + structure
+                let note_lines = detail.recent_notes.len().min(3);
+                reality_lines + meta_line + note_lines
             } else { 0 }
         } else { 0 };
 
@@ -859,14 +884,30 @@ impl InstrumentApp {
         };
 
         // Step 1: reduce accumulated individuals
+        // But never hide the focused item if it's in the accumulated zone.
+        let min_show_acc = if self.deck_zoom.has_detail() {
+            if let Some(ref detail) = self.focused_detail {
+                frontier.accumulated.iter().position(|&si| si == detail.sibling_index)
+                    .map(|pos| pos + 1)
+                    .unwrap_or(0)
+            } else { 0 }
+        } else { 0 };
         while recount(final_show_acc, final_show_held, effective_focus_height) > middle_lines
-            && final_show_acc > 0
+            && final_show_acc > min_show_acc
         {
             final_show_acc -= 1;
         }
         // Step 2: reduce held individuals (summary always stays)
+        // But never hide the focused item — it must remain individually visible.
+        let min_show_held = if self.deck_zoom.has_detail() {
+            if let Some(ref detail) = self.focused_detail {
+                frontier.held.iter().position(|&si| si == detail.sibling_index)
+                    .map(|pos| pos + 1)  // must show at least up to this index
+                    .unwrap_or(0)
+            } else { 0 }
+        } else { 0 };
         while recount(final_show_acc, final_show_held, effective_focus_height) > middle_lines
-            && final_show_held > 0
+            && final_show_held > min_show_held
         {
             final_show_held -= 1;
         }
@@ -892,7 +933,7 @@ impl InstrumentApp {
                 frontier.selectable_count().saturating_sub(1)
             )
         };
-        let focused_sibling = if self.deck_zoom == ZoomLevel::Focus {
+        let focused_sibling = if self.deck_zoom.has_detail() {
             self.focused_detail.as_ref().map(|d| d.sibling_index)
         } else {
             None
@@ -912,7 +953,7 @@ impl InstrumentApp {
                 let entry = &self.siblings[sibling_idx];
                 let glyph = status_glyph(entry.status);
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
-                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
+                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
             } else if remaining > 1 && acc_top > middle_start {
                 acc_top -= 1;
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
@@ -965,10 +1006,10 @@ impl InstrumentApp {
                 let glyph = match entry.status {
                     TensionStatus::Resolved => "\u{2713}",  // ✓
                     TensionStatus::Released => "~",
-                    _ => "\u{00B7}",
+                    _ => "\u{25c6}",                        // ◆ fallback
                 };
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(sibling_idx);
-                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0);
+                self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
 
                 // Render focus detail below this accumulated item (top-down within reserved space)
                 if focused_sibling == Some(sibling_idx) {
@@ -1017,7 +1058,7 @@ impl InstrumentApp {
                 let entry = &self.siblings[sibling_idx];
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Route(sibling_idx);
                 let glyph = status_glyph(entry.status);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(STYLES.cyan));
                 my += 1;
                 // V7: inline focus expansion
                 if focused_sibling == Some(sibling_idx) {
@@ -1033,7 +1074,7 @@ impl InstrumentApp {
                 let entry = &self.siblings[sibling_idx];
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
                 let glyph = status_glyph(entry.status);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(STYLES.cyan));
                 my += 1;
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
@@ -1061,7 +1102,7 @@ impl InstrumentApp {
                 if my >= top_limit { break; }
                 let entry = &self.siblings[sibling_idx];
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, true, 0);
+                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, true, 0, Some(STYLES.cyan));
                 my += 1;
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
@@ -1075,7 +1116,7 @@ impl InstrumentApp {
                 if my < top_limit {
                     let entry = &self.siblings[next_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25B8}", is_selected, false, 0);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, false, 0, Some(STYLES.green));
                     my += 1;
                     if focused_sibling == Some(next_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1200,7 +1241,7 @@ impl InstrumentApp {
                     let sibling_idx = frontier.held[i];
                     let entry = &self.siblings[sibling_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, HELD_INDENT);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c7}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1213,7 +1254,7 @@ impl InstrumentApp {
                     let sibling_idx = frontier.held[shown_held];
                     let entry = &self.siblings[sibling_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{00B7}", is_selected, false, HELD_INDENT);
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c7}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1223,9 +1264,9 @@ impl InstrumentApp {
                 } else if held_remaining > 1 && my < top_limit {
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
                     let text = if shown_held == 0 {
-                        format!("\u{00B7} {} held", frontier.held.len())
+                        format!("\u{25c7} {} held", frontier.held.len())
                     } else {
-                        format!("\u{00B7} {} more held", held_remaining)
+                        format!("\u{25c7} {} more held", held_remaining)
                     };
                     self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, HELD_INDENT);
                     my += 1;
@@ -1306,6 +1347,7 @@ impl InstrumentApp {
         is_selected: bool,
         is_overdue: bool,
         extra_indent: usize,
+        glyph_color: Option<Style>,
     ) {
         let is_done = entry.status == TensionStatus::Resolved
             || entry.status == TensionStatus::Released;
@@ -1327,10 +1369,10 @@ impl InstrumentApp {
             STYLES.text
         };
 
-        let glyph_style = if is_overdue && !is_selected {
-            base_style // inherit the escalated overdue style
-        } else {
+        let glyph_style = if is_selected || is_overdue {
             base_style
+        } else {
+            glyph_color.unwrap_or(base_style)
         };
 
         // Left column: deadline
@@ -1480,10 +1522,16 @@ impl InstrumentApp {
             }
 
             let text_style = if selected { STYLES.selected } else { STYLES.text_bold };
+            if i == 0 {
+                let glyph_style = if selected { STYLES.selected } else { STYLES.cyan };
+                spans.push(("\u{25c6} ".to_string(), glyph_style));
+            } else {
+                spans.push(("  ".to_string(), text_style)); // align continuation
+            }
             spans.push((line_text.clone(), text_style));
 
             if i == 0 {
-                let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + line_text.chars().count();
+                let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + 2 + line_text.chars().count();
                 let gap = w.saturating_sub(text_used + desire_right_w);
                 if gap >= GUTTER {
                     let right_style = if selected { STYLES.selected } else { STYLES.dim };
@@ -1545,41 +1593,55 @@ impl InstrumentApp {
         };
         let age_w = age_suffix.chars().count();
 
-        let full_lines = word_wrap(&parent.actual, w);
+        let glyph_prefix = "\u{25c7} "; // ◇ prefix
+        let full_lines = word_wrap(&parent.actual, w.saturating_sub(2));
         let fits = full_lines.len() as u16 <= text_zone.height;
 
         let text_style = if selected { STYLES.selected } else { STYLES.dim };
+        let glyph_style = if selected { STYLES.selected } else { STYLES.subdued };
 
         if fits {
             // Full text fits — render all lines, age on last line
             let mut lines: Vec<Line> = Vec::new();
             for (i, line_text) in full_lines.iter().enumerate() {
+                let prefix = if i == 0 { glyph_prefix } else { "  " };
+                let prefix_style = if i == 0 { glyph_style } else { text_style };
                 if i == full_lines.len() - 1 && !age_suffix.is_empty() {
                     lines.push(Line::from_spans([
+                        Span::styled(prefix, prefix_style),
                         Span::styled(line_text.as_str(), text_style),
                         Span::styled(&age_suffix, text_style),
                     ]));
                 } else {
-                    lines.push(Line::from(Span::styled(line_text.as_str(), text_style)));
+                    lines.push(Line::from_spans([
+                        Span::styled(prefix, prefix_style),
+                        Span::styled(line_text.as_str(), text_style),
+                    ]));
                 }
             }
             Paragraph::new(Text::from_lines(lines))
                 .render(text_zone, frame);
         } else if text_zone.height == 1 {
             // Single line: truncate with "..." + age
-            let text_budget = w.saturating_sub(age_w + 3); // 3 for "..."
+            let text_budget = w.saturating_sub(age_w + 3 + 2); // 3 for "...", 2 for glyph
             let truncated: String = parent.actual.chars().take(text_budget).collect();
             render_line(frame, text_zone.x, text_zone.y, text_zone.width, &[
+                (glyph_prefix.to_string(), glyph_style),
                 (format!("{}...", truncated), text_style),
                 (age_suffix, text_style),
             ]);
         } else {
             // Multi-line truncated: show N-1 full lines, last line = "..." + age
             let avail = (text_zone.height - 1) as usize;
-            let mut lines: Vec<Line> = full_lines.iter().take(avail)
-                .map(|l| Line::from(Span::styled(l.as_str(), text_style)))
+            let mut lines: Vec<Line> = full_lines.iter().enumerate().take(avail)
+                .map(|(i, l)| {
+                    let pfx = if i == 0 { glyph_prefix } else { "  " };
+                    let ps = if i == 0 { glyph_style } else { text_style };
+                    Line::from_spans([Span::styled(pfx, ps), Span::styled(l.as_str(), text_style)])
+                })
                 .collect();
             lines.push(Line::from_spans([
+                Span::styled("  ", text_style),
                 Span::styled("...", text_style),
                 Span::styled(&age_suffix, text_style),
             ]));
@@ -1588,8 +1650,9 @@ impl InstrumentApp {
         }
     }
 
-    /// Render inline focus detail below a child line (V7).
-    /// Shows children (with right-column annotations) and reality.
+    /// Render inline focus detail card below a child line.
+    /// The focused line already shows desire — the card shows everything else:
+    /// reality, temporal facts, child count, recent notes.
     /// `parent_indent` is the indent of the parent item (0 for route, HELD_INDENT for held).
     /// Returns the number of lines consumed.
     fn render_inline_focus(
@@ -1606,33 +1669,75 @@ impl InstrumentApp {
         let mut y = start_y;
         if y >= limit_y { return 0; }
 
-        // Children indent further than the parent item
         let child_indent = parent_indent + HELD_INDENT;
+        let indent_str = " ".repeat(cols.left + GUTTER + child_indent);
+        let text_w = w.saturating_sub(cols.left + GUTTER + child_indent);
+        if text_w == 0 { return 0; }
 
-        // Children rendered with render_child_line (indented deeper than parent)
-        for child in &detail.children {
-            if y >= limit_y { break; }
-            let glyph = status_glyph(child.status);
-            self.render_child_line(frame, x, y, w, cols, child, glyph, false, false, child_indent);
+        // 1. Reality (the thing you never see in the list — subdued weight)
+        if !detail.actual.is_empty() {
+            let reality_lines = word_wrap(&detail.actual, text_w);
+            for line_text in &reality_lines {
+                if y >= limit_y { return y - start_y; }
+                render_line(frame, x, y, w as u16, &[
+                    (indent_str.clone(), STYLES.subdued),
+                    (line_text.clone(), STYLES.subdued),
+                ]);
+                y += 1;
+            }
+        }
+
+        // 2. Metadata line: intent → bridge → trace (mirrors deck top→bottom)
+        if y >= limit_y { return y - start_y; }
+        {
+            let mut parts: Vec<String> = Vec::new();
+            // Intent (left): deadline/horizon — the aimed-at future
+            if let Some(ref dl) = detail.deadline_label {
+                parts.push(format!("\u{23f1} {}", dl));
+            }
+            // Bridge (middle): child count — theory of closure
+            if detail.child_count > 0 {
+                let done = detail.child_resolved + detail.child_released;
+                let mut child_part = format!("{}/{}", done, detail.child_count);
+                if detail.child_held > 0 {
+                    child_part.push_str(&format!(" {} held", detail.child_held));
+                }
+                parts.push(child_part);
+            }
+            // Trace (right): temporal ages — what happened when
+            parts.push(format!("born {}", detail.created_age));
+            if detail.last_desire_age != detail.created_age {
+                parts.push(format!("\u{25c6} {}", detail.last_desire_age));
+            }
+            if detail.last_reality_age != detail.created_age {
+                parts.push(format!("\u{25c7} {}", detail.last_reality_age));
+            }
+            let meta_text = parts.join(" \u{00b7} ");
+            render_line(frame, x, y, w as u16, &[
+                (indent_str.clone(), STYLES.dim),
+                (meta_text, STYLES.dim),
+            ]);
             y += 1;
         }
 
-        // Reality (dim, word-wrapped) — no blank line, dim text is visually distinct
-        if !detail.actual.is_empty() && y < limit_y {
-            let avail = limit_y.saturating_sub(y);
-            if avail > 0 {
-                let indent_str = " ".repeat(cols.left + GUTTER + child_indent);
-                let text_w = w.saturating_sub(cols.left + GUTTER + child_indent);
-                let reality_lines = word_wrap(&detail.actual, text_w);
-                for line_text in &reality_lines {
-                    if y >= limit_y { break; }
-                    render_line(frame, x, y, w as u16, &[
-                        (indent_str.clone(), STYLES.dim),
-                        (line_text.clone(), STYLES.dim),
-                    ]);
-                    y += 1;
-                }
-            }
+        // 3. Notes (fill remaining space, cap at 3)
+        let max_notes = 3.min(detail.recent_notes.len());
+        for (age, text) in detail.recent_notes.iter().take(max_notes) {
+            if y >= limit_y { return y - start_y; }
+            let age_w = age.len() + 2;
+            let note_avail = text_w.saturating_sub(age_w + 2);
+            let truncated = if text.len() > note_avail {
+                format!("{}\u{2026}", &text[..note_avail.saturating_sub(1)])
+            } else {
+                text.clone()
+            };
+            let pad = text_w.saturating_sub(2 + truncated.len() + age.len());
+            let note_line = format!("\u{203b} {}{}{}", truncated, " ".repeat(pad), age);
+            render_line(frame, x, y, w as u16, &[
+                (indent_str.clone(), STYLES.dim),
+                (note_line, STYLES.dim),
+            ]);
+            y += 1;
         }
 
         y - start_y
@@ -1688,13 +1793,13 @@ impl InstrumentApp {
             let target = frontier.cursor_target(self.deck_cursor.index);
             match target {
                 CursorTarget::Desire =>
-                    "! edit desire \u{00B7} Enter focus".to_string(),
+                    "e edit desire \u{00B7} Enter focus".to_string(),
                 CursorTarget::Route(_) | CursorTarget::Next(_) =>
-                    "Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve".to_string(),
+                    "e edit \u{00B7} Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve".to_string(),
                 CursorTarget::Overdue(_) =>
                     "r resolve \u{00B7} ~ release \u{00B7} l descend".to_string(),
                 CursorTarget::HeldItem(_) =>
-                    "p position \u{00B7} Enter focus \u{00B7} r resolve".to_string(),
+                    "e edit \u{00B7} p position \u{00B7} Enter focus \u{00B7} r resolve".to_string(),
                 CursorTarget::AccumulatedItem(_) =>
                     "l descend \u{00B7} Enter focus".to_string(),
                 CursorTarget::InputPoint =>
@@ -1702,7 +1807,7 @@ impl InstrumentApp {
                 CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated =>
                     "Enter expand \u{00B7} j/k navigate".to_string(),
                 CursorTarget::Reality =>
-                    "? edit reality \u{00B7} Enter focus".to_string(),
+                    "e edit reality \u{00B7} Enter focus".to_string(),
             }
         } else {
             String::new()
@@ -1763,7 +1868,7 @@ impl InstrumentApp {
 /// All items get a glyph for visual rhythm — · for active, ✓ for resolved, ~ for released.
 fn status_glyph(status: TensionStatus) -> &'static str {
     match status {
-        TensionStatus::Active => "\u{00B7}",     // · subtle bullet
+        TensionStatus::Active => "\u{25c6}",     // ◆ committed, declared
         TensionStatus::Resolved => "\u{2713}",   // ✓
         TensionStatus::Released => "~",
     }
