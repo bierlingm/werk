@@ -1,0 +1,21 @@
+[package]
+name = "werk-web"
+version = "0.1.0"
+edition = "2021"
+description = "Web interface for werk — structural dynamics instrument"
+
+[lib]
+name = "werk_web"
+path = "src/lib.rs"
+
+[dependencies]
+sd-core = { path = "../sd-core" }
+werk-shared = { path = "../werk-shared" }
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-core = "0.3"
