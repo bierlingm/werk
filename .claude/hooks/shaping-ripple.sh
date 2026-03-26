@@ -1,0 +1,1 @@
+/Users/moritzbierling/.local/share/shaping-skills/hooks/shaping-ripple.sh
