@@ -11,10 +11,10 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sd_core::Mutation;
 use serde::Serialize;
-use werk_shared::{Config, HookEvent, HookRunner};
+use werk_shared::{format_timestamp, Config, HookEvent, HookRunner};
 
 const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
 
@@ -368,9 +368,13 @@ pub fn cmd_note_list(output: &Output, id: Option<String>) -> Result<(), WerkErro
             output
                 .success(&format!("{} ({})", label, notes.len()))
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
+            let now = Utc::now();
             for note in &notes {
+                let ts = DateTime::parse_from_rfc3339(&note.timestamp)
+                    .map(|dt| format_timestamp(dt.with_timezone(&Utc), now))
+                    .unwrap_or_else(|_| note.timestamp[..19].replace('T', " "));
                 println!("\n{}. {}", note.number, &note.text);
-                println!("   {}", &note.timestamp[..19].replace('T', " "));
+                println!("   {}", ts);
             }
         }
     }

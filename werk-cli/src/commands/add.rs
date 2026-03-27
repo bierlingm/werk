@@ -98,11 +98,16 @@ pub fn cmd_add(
                 werk_shared::display_id(tension.short_code, &tension.id)
             ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
-        println!("  Desired: {}", &tension.desired);
-        println!("  Reality: {}", &tension.actual);
-        println!("  Status:  {}", &tension.status);
+        println!("  Desired:  {}", &tension.desired);
+        println!("  Reality:  {}", &tension.actual);
         if let Some(pid) = &tension.parent_id {
-            println!("  Parent:  {}", pid);
+            let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+            let parent = all_tensions.iter().find(|t| &t.id == pid);
+            let parent_display = werk_shared::display_id_named(
+                parent.and_then(|t| t.short_code), pid,
+                &parent.map(|t| t.desired.as_str()).unwrap_or(""), 50,
+            );
+            println!("  Parent:   {}", parent_display);
         }
         if let Some(h) = &tension.horizon {
             println!("  Deadline: {}", h);

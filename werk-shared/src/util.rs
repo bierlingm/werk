@@ -20,6 +20,28 @@ pub fn display_id(short_code: Option<i32>, ulid: &str) -> String {
     }
 }
 
+/// Tension identifier with truncated desired state for structural context.
+///
+/// Example: `#52 — CLI is ergonomic, forgiving, and self-docum...`
+pub fn display_id_named(short_code: Option<i32>, ulid: &str, desired: &str, max_name_len: usize) -> String {
+    let id = display_id(short_code, ulid);
+    format!("{} — {}", id, truncate(desired, max_name_len))
+}
+
+/// Format a timestamp for human display.
+///
+/// Relative for < 7 days ("just now", "2 days ago"), date for older ("Mar 20").
+pub fn format_timestamp(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let secs = (now - dt).num_seconds().max(0);
+    if secs < 604800 {
+        // Less than 7 days: relative
+        relative_time(dt, now)
+    } else {
+        // 7+ days: compact date
+        dt.format("%b %d").to_string()
+    }
+}
+
 /// Format a datetime as a human-readable relative time string.
 pub fn relative_time(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let secs = (now - dt).num_seconds().max(0);

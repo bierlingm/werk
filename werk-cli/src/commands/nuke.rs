@@ -41,6 +41,17 @@ pub fn cmd_nuke(output: &Output, confirm: bool, global: bool) -> Result<(), Werk
         )));
     }
 
+    // Count tensions for the preview message
+    let tension_count = if !global {
+        Workspace::discover()
+            .ok()
+            .and_then(|ws| ws.open_store().ok())
+            .and_then(|s| s.list_tensions().ok())
+            .map(|t| t.len())
+    } else {
+        None
+    };
+
     // If not confirmed, just show what would be deleted
     if !confirm {
         if output.is_structured() {
@@ -55,8 +66,10 @@ pub fn cmd_nuke(output: &Output, confirm: bool, global: bool) -> Result<(), Werk
             output
                 .info(&format!("Would delete: {}", werk_dir.display()))
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
+            if let Some(count) = tension_count {
+                println!("  {} tension(s) will be permanently lost.", count);
+            }
             println!("\nPass --confirm to proceed with deletion.");
-            println!("All data in this workspace will be permanently lost.");
         }
         return Ok(());
     }

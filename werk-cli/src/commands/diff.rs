@@ -6,7 +6,7 @@ use crate::workspace::Workspace;
 use chrono::{DateTime, Datelike, NaiveDate, Utc, Weekday};
 use serde::Serialize;
 use std::collections::BTreeMap;
-use werk_shared::relative_time;
+use werk_shared::{display_id, relative_time, truncate};
 
 /// Parse a human-friendly `--since` value into a `DateTime<Utc>`.
 ///
@@ -260,23 +260,19 @@ pub fn cmd_diff(output: &Output, since: String) -> Result<(), WerkError> {
         println!();
 
         for change in &changes {
-            let id_short = &change.tension_id[..8.min(change.tension_id.len())];
-            println!("  {} ({})", change.tension_desired, id_short);
+            let tension_sc = tension_map.get(&change.tension_id).and_then(|t| t.short_code);
+            let id_display = display_id(tension_sc, &change.tension_id);
+            println!("  {} {}", id_display, truncate(&change.tension_desired, 60));
 
             for m in &change.mutations {
                 let ts = chrono::DateTime::parse_from_rfc3339(&m.timestamp)
                     .map(|dt| relative_time(dt.with_timezone(&Utc), now))
                     .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
 
-                if m.field == "created" {
-                    println!("    {:<10}created", ts);
-                } else {
-                    let old = m.old_value.as_deref().unwrap_or("(none)");
-                    println!(
-                        "    {:<10}{}: \"{}\" -> \"{}\"",
-                        ts, m.field, old, m.new_value
-                    );
-                }
+                let summary = super::show::format_mutation_summary(
+                    &m.field, m.old_value.as_deref(), &m.new_value
+                );
+                println!("    {:>12}  {}", ts, summary);
             }
             println!();
         }
