@@ -526,15 +526,15 @@ impl InstrumentApp {
             return;
         }
 
-        let left_w = SURVEY_INDENT.len() + HORIZON_COL_W;
-        // Main column fills most of the width. Right column is computed per-line
-        // from actual content (closure ratio is short, no need to reserve fixed space).
-        let main_w = w.saturating_sub(left_w);
+        // Width allocation is per-line: each line computes its own text budget
+        // from w, left indent, tree prefix, and right column content.
 
         let expansions = compute_band_expansion(items, self.survey_cursor, area.height as usize);
 
         let mut lines: Vec<Line> = Vec::new();
         let mut cursor_line: usize = 0;
+        // Track band header lines for sticky pinning.
+        let mut band_headers: Vec<(usize, Line)> = Vec::new(); // (line_index, header_line)
 
         for (band, exp) in &expansions {
             // Blank line before band (except first).
@@ -547,12 +547,14 @@ impl InstrumentApp {
             let count_label = format!(" ({})", exp.count);
             let rule_w = w.saturating_sub(4 + band_label.len() + count_label.len() + 3);
             let rule = "\u{2500}".repeat(rule_w);
-            lines.push(Line::from_spans([
+            let header_line = Line::from_spans([
                 Span::styled(
                     format!("{SURVEY_INDENT}\u{2500}\u{2500} {band_label}{count_label} {rule}"),
                     STYLES.dim,
                 ),
-            ]));
+            ]);
+            band_headers.push((lines.len(), header_line.clone()));
+            lines.push(header_line);
 
             // Which items from this band to show.
             let (show_start, show_end) = if exp.show >= exp.count {
@@ -588,6 +590,22 @@ impl InstrumentApp {
                 ]));
             }
 
+            // Sticky provider: if the first visible item is a tree child whose
+            // provider scrolled off, insert the provider line here so the
+            // deadline context is always visible with its inheritors.
+            if let Some(first_visible) = items.get(show_start) {
+                if let Some(ref pid) = first_visible.horizon_provider_id {
+                    // Provider is off-screen if it's before show_start.
+                    let provider_off = items[exp.start..show_start].iter()
+                        .any(|it| &it.tension_id == pid);
+                    if provider_off {
+                        if let Some(provider) = items.iter().find(|it| &it.tension_id == pid) {
+                            lines.push(render_provider_line(provider, false, w));
+                        }
+                    }
+                }
+            }
+
             // Render visible items. Tree prefixes are pre-computed during loading.
             for idx in show_start..show_end {
                 let item = &items[idx];
@@ -597,9 +615,9 @@ impl InstrumentApp {
                 }
 
                 if item.tree_prefix.is_empty() {
-                    lines.push(render_provider_line(item, is_selected, w, main_w));
+                    lines.push(render_provider_line(item, is_selected, w));
                 } else {
-                    lines.push(render_tree_child_line(item, is_selected, w, main_w));
+                    lines.push(render_tree_child_line(item, is_selected, w));
                 }
             }
 
@@ -620,12 +638,36 @@ impl InstrumentApp {
             }
         }
 
-        // Scroll so the cursor line is visible.
+        // Per-line rendering: render each line individually into its own 1-row
+        // Rect. This gives the diff engine clean cell boundaries (no scroll-shift)
+        // and avoids the all-white glitch that Paragraph::scroll causes.
         let available = area.height as usize;
-        let scroll = compute_scroll(cursor_line, available, lines.len());
+        let view_offset = compute_scroll(cursor_line, available, lines.len());
 
-        let text = Text::from_lines(lines);
-        Paragraph::new(text).scroll((scroll as u16, 0)).render(area, frame);
+        let visible_lines = &lines[view_offset..lines.len().min(view_offset + available)];
+        for (row, line) in visible_lines.iter().enumerate() {
+            Paragraph::new(Text::from(line.clone()))
+                .render(Rect::new(area.x, area.y + row as u16, area.width, 1), frame);
+        }
+
+        // Sticky band header: if the band header for the cursor's band has
+        // scrolled off the top, overlay it at row 0.
+        if self.survey_cursor < items.len() {
+            if let Some((header_line_idx, header_line)) = band_headers.iter()
+                .rev()
+                .find(|(idx, _)| {
+                    // Find the band header whose line index is <= cursor_line
+                    // (i.e., the band the cursor is in).
+                    *idx <= cursor_line
+                })
+            {
+                if *header_line_idx < view_offset {
+                    // Band header scrolled off — pin it at the top.
+                    Paragraph::new(Text::from(header_line.clone()))
+                        .render(Rect::new(area.x, area.y, area.width, 1), frame);
+                }
+            }
+        }
     }
 
     /// Render the survey bottom bar.
@@ -675,7 +717,6 @@ fn render_provider_line(
     item: &SurveyItem,
     is_selected: bool,
     w: usize,
-    main_w: usize,
 ) -> Line {
     // Plain text for the horizon column. Emoji-range glyphs (⏱) cause width
     // misalignment: unicode-width reports 1 cell but terminals render 2.
@@ -689,8 +730,13 @@ fn render_provider_line(
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
-    let desire_w = main_w.saturating_sub(right_w + 2);
+    let left_used = SURVEY_INDENT.len() + HORIZON_COL_W;
+    let desire_w = w.saturating_sub(left_used + right_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
+
+    // Gap between text and right column to push right flush-right.
+    let text_w = desire_text.chars().count();
+    let gap = w.saturating_sub(left_used + text_w + right_w);
 
     let style_text = if is_selected { STYLES.selected } else { STYLES.text };
     let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
@@ -704,7 +750,7 @@ fn render_provider_line(
         Span::styled(SURVEY_INDENT.to_string(), style_dim),
         Span::styled(horizon_str, style_horizon),
         Span::styled(desire_text, style_text),
-        Span::styled("  ".to_string(), style_dim),
+        Span::styled(" ".repeat(gap), style_dim),
         Span::styled(right_text, style_dim),
     ];
 
@@ -720,15 +766,18 @@ fn render_tree_child_line(
     item: &SurveyItem,
     is_selected: bool,
     w: usize,
-    main_w: usize,
 ) -> Line {
     let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
     let prefix_w = item.tree_prefix.chars().count();
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
-    let desire_w = main_w.saturating_sub(prefix_w + right_w + 2);
+    let left_used = base_indent + prefix_w;
+    let desire_w = w.saturating_sub(left_used + right_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
+
+    let text_w = desire_text.chars().count();
+    let gap = w.saturating_sub(left_used + text_w + right_w);
 
     let style_text = if is_selected { STYLES.selected } else { STYLES.text };
     let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
@@ -737,7 +786,7 @@ fn render_tree_child_line(
         Span::styled(" ".repeat(base_indent), style_dim),
         Span::styled(item.tree_prefix.clone(), style_dim),
         Span::styled(desire_text, style_text),
-        Span::styled("  ".to_string(), style_dim),
+        Span::styled(" ".repeat(gap), style_dim),
         Span::styled(right_text, style_dim),
     ];
 

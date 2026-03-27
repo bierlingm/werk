@@ -65,7 +65,7 @@ pub static STYLES: LazyLock<Styles> = LazyLock::new(|| Styles {
     red: Style::new().fg(CLR_RED),
     cyan: Style::new().fg(CLR_CYAN),
     green: Style::new().fg(CLR_GREEN),
-    selected: Style::new().fg(PackedRgba::rgb(255, 255, 255)).bg(CLR_SELECTED_BG).bold(),
+    selected: Style::new().fg(PackedRgba::rgb(255, 255, 255)).bg(CLR_SELECTED_BG),
     label: Style::new().fg(CLR_DIM),
     lever: Style::new().fg(CLR_DIM),
 });
