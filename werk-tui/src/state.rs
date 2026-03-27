@@ -104,10 +104,9 @@ pub enum InputMode {
 
 #[derive(Debug, Clone)]
 pub enum AddStep {
-    Name,
-    Desire { name: String },
-    Reality { name: String, desire: String },
-    Horizon { name: String, desire: String, reality: String },
+    Desire,
+    Reality { desire: String },
+    Horizon { desire: String, reality: String },
 }
 
 #[derive(Debug, Clone)]

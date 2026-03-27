@@ -237,10 +237,9 @@ impl InstrumentApp {
         crate::helpers::clear_area(frame, prompt_area);
 
         let (label, hint) = match step {
-            AddStep::Name => ("name", ""),
-            AddStep::Desire { .. } => ("desire", "  (Esc to skip)"),
-            AddStep::Reality { .. } => ("reality", ""),
-            AddStep::Horizon { .. } => ("horizon", "  e.g. 2026-W13 or tomorrow  (Esc to skip)"),
+            AddStep::Desire => ("desire", "  (Enter to create, Tab for more)"),
+            AddStep::Reality { .. } => ("reality", "  (Enter to create, Tab for more)"),
+            AddStep::Horizon { .. } => ("horizon", "  e.g. 2026-W13 or tomorrow"),
         };
 
         let lines = vec![
