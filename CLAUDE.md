@@ -15,6 +15,8 @@ Run `cargo run --bin werk -- show <id>` for details on any tension.
 - **TUI** — `cargo run --bin werk` (or `werk` if installed). The primary experience. A session.
 - **CLI** — `cargo run --bin werk -- <command>`. Every gesture as a command. Sessionless.
 - **MCP** — `cargo run --bin werk -- mcp`. Protocol surface for AI agents. Stdio transport, 30 tools, direct library calls.
+- **Web** — `cargo run --bin werk -- serve`. Axum server at http://localhost:3749. Serves HTML frontend + REST API. Not a WASM app — do not use `trunk`.
+- **Desktop** — `cd werk-app && cargo tauri dev`. Tauri app. Requires `cargo install tauri-cli`.
 
 ## The Four Frameworks
 

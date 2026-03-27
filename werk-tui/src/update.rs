@@ -67,6 +67,11 @@ impl Model for InstrumentApp {
         frame.set_cursor(None);
 
         let area = Rect::new(0, 0, frame.width(), frame.height());
+
+        // Clear the ENTIRE visible area to black/dim before rendering anything.
+        // This prevents stale Cell::default() (WHITE fg) from bleeding through
+        // on margins, blank lines, hints rows, or any cell the widgets skip.
+        crate::helpers::clear_area_styled(frame, area);
         let show_hints = area.height >= 6;
 
         // Layout: content + lever + hints

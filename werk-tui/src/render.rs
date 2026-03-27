@@ -89,7 +89,7 @@ impl InstrumentApp {
 
     pub fn render_help(&self, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.content_area(*area);
-        crate::helpers::clear_area(frame, area);
+        crate::helpers::clear_area_styled(frame, area);
 
         let w = area.width as usize;
         let content_w = w.min(72);
@@ -234,7 +234,7 @@ impl InstrumentApp {
         let sibling_lines = self.siblings.len() as u16;
         let prompt_y = area.y + header_lines + sibling_lines;
         let prompt_area = Rect::new(area.x, prompt_y, area.width, 4);
-        crate::helpers::clear_area(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area);
 
         let (label, hint) = match step {
             AddStep::Desire => ("desire", "  (Enter to create, Tab for more)"),
@@ -264,7 +264,7 @@ impl InstrumentApp {
         let area = self.content_area(*area);
         let cy = area.height / 2;
         let prompt_area = Rect::new(area.x, area.y + cy.saturating_sub(3), area.width, 6);
-        crate::helpers::clear_area(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area);
 
         let (action, desired) = match kind {
             ConfirmKind::Resolve { desired, .. } => ("resolve", desired.as_str()),
@@ -318,7 +318,7 @@ impl InstrumentApp {
         let cy = area.height / 2;
         let top_y = area.y + cy.saturating_sub(total_h / 2);
         let prompt_area = Rect::new(area.x, top_y, area.width, total_h.min(area.height));
-        crate::helpers::clear_area(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area);
 
         let mut lines: Vec<Line> = Vec::new();
 
@@ -378,7 +378,7 @@ impl InstrumentApp {
         let panel_x = area.x + INDENT.len() as u16;
         let panel_w = area.width.saturating_sub(INDENT.len() as u16);
         let prompt_area = Rect::new(panel_x, area.y + bottom_y, panel_w, panel_h);
-        crate::helpers::clear_area(frame, Rect::new(area.x, area.y + bottom_y, area.width, panel_h + 1));
+        crate::helpers::clear_area_styled(frame, Rect::new(area.x, area.y + bottom_y, area.width, panel_h + 1));
 
         let label = match field {
             EditField::Desire => "desire",
@@ -444,7 +444,7 @@ impl InstrumentApp {
         let area = self.content_area(*area);
         let bottom_y = area.height.saturating_sub(4);
         let prompt_area = Rect::new(area.x, area.y + bottom_y, area.width, 3);
-        crate::helpers::clear_area(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area);
 
         let label_text = format!("{}  note: ", INDENT);
         let label_w = label_text.len() as u16;
@@ -480,7 +480,7 @@ impl InstrumentApp {
 
     pub fn render_search(&self, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.content_area(*area);
-        crate::helpers::clear_area(frame, area);
+        crate::helpers::clear_area_styled(frame, area);
 
         let mut lines: Vec<Line> = Vec::new();
 
