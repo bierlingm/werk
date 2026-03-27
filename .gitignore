@@ -1,8 +1,10 @@
 /target
 **/.werk/
 
-# bv (beads viewer) local config and caches
+# Runtime state (not source)
 .bv/
+.beads/
+.factory/
 
 # Video production
 video/node_modules/

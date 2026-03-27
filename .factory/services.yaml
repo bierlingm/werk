@@ -1,7 +1,0 @@
-commands:
-  build: cargo build --workspace
-  test: cargo test --workspace
-  test-sd-core: cargo test --package sd-core
-  test-cli: cargo test --package werk
-  lint: cargo clippy --workspace
-  typecheck: cargo check --workspace
