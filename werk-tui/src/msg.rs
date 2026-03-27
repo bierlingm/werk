@@ -36,6 +36,9 @@ pub enum Msg {
     /// Raw event passthrough — carries full modifier info for TextInput widget.
     RawEvent(Event),
 
+    // Yaw
+    BackTab, // Shift+Tab — return yaw (go back without pivoting)
+
     // Zoom
     ShiftSubmit, // Shift+Enter — orient zoom (V9)
 
@@ -79,6 +82,7 @@ impl From<Event> for Msg {
                     KeyCode::Backspace => Msg::Backspace,
                     KeyCode::Delete => Msg::RawEvent(Event::Key(key)),
                     KeyCode::Tab => Msg::Tab,
+                    KeyCode::BackTab => Msg::BackTab,
                     KeyCode::Up if key.shift() => Msg::MoveUp,
                     KeyCode::Down if key.shift() => Msg::MoveDown,
                     KeyCode::Up => Msg::Up,

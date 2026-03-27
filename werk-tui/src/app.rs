@@ -94,6 +94,15 @@ pub struct InstrumentApp {
     pub held_expanded: bool,
     pub accumulated_expanded: bool,
 
+    // View orientation — Stream (deck) or Survey (time-first)
+    pub view_orientation: crate::state::ViewOrientation,
+    /// Cursor position in the survey item list.
+    pub survey_cursor: usize,
+    /// All active tensions for the survey view, sorted by time band.
+    pub survey_items: Vec<crate::survey::SurveyItem>,
+    /// Saved stream state for Shift+Tab return (parent_id, cursor index).
+    pub pre_survey_state: Option<(Option<String>, usize)>,
+
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
 }
@@ -159,6 +168,10 @@ impl InstrumentApp {
             route_expanded: false,
             held_expanded: false,
             accumulated_expanded: false,
+            view_orientation: crate::state::ViewOrientation::Stream,
+            survey_cursor: 0,
+            survey_items: Vec::new(),
+            pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
         };
         app.load_siblings();
@@ -211,6 +224,10 @@ impl InstrumentApp {
             route_expanded: false,
             held_expanded: false,
             accumulated_expanded: false,
+            view_orientation: crate::state::ViewOrientation::Stream,
+            survey_cursor: 0,
+            survey_items: Vec::new(),
+            pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
         }
     }
