@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-26T18:05:06Z",
+  "flushed_at": "2026-03-27T06:16:19Z",
   "summary": {
     "active": 52,
     "released": 7,
@@ -140,7 +140,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "V1-V8 complete. Console V2 Phase 1 surgical fixes applied. Pathway palettes in TUI (#58) operational. Position toggle (p key), add/edit UX reworked (Enter=create, Tab=more fields, Esc=cancel). Reorder fixes (skip non-active, correct boundary calculation, full deck visible during drag). Flicker fix (tick subscription removed, DB change detection on user input). Console header next-deadline chip corrected. Remaining: survey view (#18), threshold mechanics (#19). Known architectural debt: dual cursor (vlist vs deck_cursor), dual renderer (render_field vs render_deck), frontier expansion mismatch — consolidation plan written for next session.",
+      "actual": "V1-V8 complete. Architectural consolidation (#76) resolved: unified cursor, single renderer, cached frontier, two-pass layout, net -1550 lines dead code removed. Focus zoom (#94) resolved: detail card with reality/temporal/notes, Focus/Peek zoom levels, diamond glyph vocabulary. Notes gesture polish landed: TextInput for annotating, heterogeneous accumulated zone (notes interleaved with resolved/released by timestamp), UTF-8 safe truncation, adaptive sizing. Pathway palettes (#58) operational. Position toggle, add/edit UX, reorder fixes, flicker fix, epoch mechanics all landed. Remaining: survey view (#18), threshold mechanics (#19).",
       "created_at": "2026-03-24T17:52:26.323765+00:00",
       "desired": "TUI rebuilt around the operating envelope as primary interaction surface — frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access",
       "horizon": null,
