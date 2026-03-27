@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-27T18:34:34Z",
+  "flushed_at": "2026-03-27T18:37:29Z",
   "summary": {
-    "active": 69,
+    "active": 67,
     "released": 7,
-    "resolved": 46,
+    "resolved": 48,
     "total": 122
   },
   "tensions": [
@@ -1240,7 +1240,7 @@
       "status": "Active"
     },
     {
-      "actual": "CLAUDE.md still describes the old CLI state (flat help, no mention of examples, non-interactive mode, dry-run, or show design principles). Doesn't capture the output design principles from the show redesign session.",
+      "actual": "CLAUDE.md updated with two new sections: CLI Conventions (--json, --help with examples, framework grouping, non-interactive mode, --dry-run, note shorthand, short codes) and CLI Output Design Principles (7 principles from show redesign: first-principles thinking, information hierarchy, no redundancy, most-recent-first, honest attribution, compact layout, shared conventions). Future sessions will reference these.",
       "created_at": "2026-03-27T18:32:34.841261+00:00",
       "desired": "CLAUDE.md reflects current CLI capabilities — help grouping, examples, non-interactive mode, dry-run, show redesign principles, note shorthand, shared output conventions",
       "horizon": null,
@@ -1248,7 +1248,7 @@
       "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
       "position": 1,
       "short_code": 117,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "onboarding.md covers first 5 minutes. troubleshooting.md covers common issues. dynamics-guide.md covers interpretive frameworks. No guide for the intermediate practitioner — the gap between 'I created my first tension' and 'I have 50 tensions and use epochs'",
@@ -1284,7 +1284,7 @@
       "status": "Active"
     },
     {
-      "actual": "today's session produced CLI output design principles (information hierarchy, no redundancy, most-recent-first, honest attribution) captured only as werk notes on tensions. Not in any canonical document that future sessions would reference.",
+      "actual": "The CLI output design principles are now captured in CLAUDE.md under 'CLI Output Design Principles' — the canonical location that every session reads first. The 7 principles (first-principles thinking, information hierarchy, no redundancy, most-recent-first, honest attribution, compact layout, shared conventions) are durable instructions that future agents will follow. A separate designs/ document isn't needed — CLAUDE.md is the right home for operational principles that guide implementation.",
       "created_at": "2026-03-27T18:32:42.805122+00:00",
       "desired": "design principles from implementation sessions are captured in canonical docs — CLI output principles, structural dynamics vocabulary decisions, what's sacred and why",
       "horizon": null,
@@ -1292,7 +1292,7 @@
       "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
       "position": 2,
       "short_code": 121,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Repo audit complete. Strengths: 7-crate workspace with clear separation, designs/ well-organized with archive, .gitignore lean and correct, tensions.json deliberately tracked via pre-commit. Issues found: (1) .beads/ database tracked in git (should be gitignored — runtime state); (2) .factory/ validation JSON blobs tracked (120+ test artifacts — should be gitignored or moved to CI); (3) sd-core and werk-app use edition 2024 while other crates use 2021 (intentional but creates nightly dependency); (4) video/ at 639MB is large but active; (5) research/archive/ at 684MB is archival weight. No dead code found. No orphaned artifacts. Crate dependency graph is clean (sd-core at foundation, CLI orchestrates all).",
