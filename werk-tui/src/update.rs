@@ -323,7 +323,7 @@ impl InstrumentApp {
 
             // Acts
             Msg::Char('a') | Msg::StartAdd => {
-                self.input_mode = InputMode::Adding(AddStep::Name);
+                self.input_mode = InputMode::Adding(AddStep::Desire);
                 self.input_buffer.clear();
                 Cmd::none()
             }
@@ -858,22 +858,17 @@ impl InstrumentApp {
             Msg::Backspace => {
                 if self.input_buffer.is_empty() {
                     match &self.input_mode {
-                        InputMode::Adding(AddStep::Name) => {
+                        InputMode::Adding(AddStep::Desire) => {
                             self.input_mode = InputMode::Normal;
                         }
-                        InputMode::Adding(AddStep::Desire { name }) => {
-                            self.input_buffer = name.clone();
-                            self.input_mode = InputMode::Adding(AddStep::Name);
+                        InputMode::Adding(AddStep::Reality { desire }) => {
+                            self.input_buffer = desire.clone();
+                            self.input_mode = InputMode::Adding(AddStep::Desire);
                         }
-                        InputMode::Adding(AddStep::Reality { name, desire }) => {
-                            let (n, d) = (name.clone(), desire.clone());
-                            self.input_buffer = d;
-                            self.input_mode = InputMode::Adding(AddStep::Desire { name: n });
-                        }
-                        InputMode::Adding(AddStep::Horizon { name, desire, reality }) => {
-                            let (n, d, r) = (name.clone(), desire.clone(), reality.clone());
+                        InputMode::Adding(AddStep::Horizon { desire, reality }) => {
+                            let (d, r) = (desire.clone(), reality.clone());
                             self.input_buffer = r;
-                            self.input_mode = InputMode::Adding(AddStep::Reality { name: n, desire: d });
+                            self.input_mode = InputMode::Adding(AddStep::Reality { desire: d });
                         }
                         _ => {}
                     }
@@ -886,34 +881,26 @@ impl InstrumentApp {
                 // Enter = create now with what I have, intelligent defaults for the rest.
                 let buf = self.input_buffer.clone();
                 match self.input_mode.clone() {
-                    InputMode::Adding(AddStep::Name) => {
-                        if buf.is_empty() { return Cmd::none(); } // name is required
-                        // Name becomes desire, reality from parent or empty
+                    InputMode::Adding(AddStep::Desire) => {
+                        if buf.is_empty() { return Cmd::none(); } // desire is required
                         let reality = self.parent_id.as_ref().and_then(|pid| {
                             self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
                         }).unwrap_or_default();
-                        self.create_tension(&buf, "", &reality);
+                        self.create_tension(&buf, &reality);
                     }
-                    InputMode::Adding(AddStep::Desire { name }) => {
-                        let desire = if buf.is_empty() { String::new() } else { buf };
-                        let reality = self.parent_id.as_ref().and_then(|pid| {
-                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
-                        }).unwrap_or_default();
-                        self.create_tension(&name, &desire, &reality);
-                    }
-                    InputMode::Adding(AddStep::Reality { name, desire }) => {
+                    InputMode::Adding(AddStep::Reality { desire }) => {
                         let reality = if buf.is_empty() {
                             self.parent_id.as_ref().and_then(|pid| {
                                 self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
                             }).unwrap_or_default()
                         } else { buf };
-                        self.create_tension(&name, &desire, &reality);
+                        self.create_tension(&desire, &reality);
                     }
-                    InputMode::Adding(AddStep::Horizon { name, desire, reality }) => {
+                    InputMode::Adding(AddStep::Horizon { desire, reality }) => {
                         if buf.is_empty() {
-                            self.create_tension(&name, &desire, &reality);
+                            self.create_tension(&desire, &reality);
                         } else {
-                            self.create_tension_with_horizon(&name, &desire, &reality, &buf);
+                            self.create_tension_with_horizon(&desire, &reality, &buf);
                         }
                     }
                     _ => {}
@@ -934,26 +921,22 @@ impl InstrumentApp {
                 // Tab = advance to next field (I want to fill more detail)
                 let buf = self.input_buffer.clone();
                 match self.input_mode.clone() {
-                    InputMode::Adding(AddStep::Name) => {
-                        if buf.is_empty() { return Cmd::none(); } // name required
-                        self.input_buffer.clear();
-                        self.input_mode = InputMode::Adding(AddStep::Desire { name: buf });
-                    }
-                    InputMode::Adding(AddStep::Desire { name }) => {
+                    InputMode::Adding(AddStep::Desire) => {
+                        if buf.is_empty() { return Cmd::none(); } // desire required
                         let prefill = self.parent_id.as_ref().and_then(|pid| {
                             self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
                         }).unwrap_or_default();
                         self.input_buffer = prefill;
-                        self.input_mode = InputMode::Adding(AddStep::Reality { name, desire: buf });
+                        self.input_mode = InputMode::Adding(AddStep::Reality { desire: buf });
                     }
-                    InputMode::Adding(AddStep::Reality { name, desire }) => {
+                    InputMode::Adding(AddStep::Reality { desire }) => {
                         let reality = if buf.is_empty() {
                             self.parent_id.as_ref().and_then(|pid| {
                                 self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
                             }).unwrap_or_default()
                         } else { buf };
                         self.input_buffer.clear();
-                        self.input_mode = InputMode::Adding(AddStep::Horizon { name, desire, reality });
+                        self.input_mode = InputMode::Adding(AddStep::Horizon { desire, reality });
                     }
                     InputMode::Adding(AddStep::Horizon { .. }) => {
                         // Already on last field — Tab wraps to commit (same as Enter)
@@ -1357,9 +1340,7 @@ impl InstrumentApp {
     // Data operations
     // -----------------------------------------------------------------------
 
-    fn create_tension(&mut self, name: &str, desire: &str, reality: &str) {
-        let desired = if desire.is_empty() { name } else { desire };
-        let actual = reality;
+    fn create_tension(&mut self, desired: &str, actual: &str) {
         let parent = self.parent_id.clone();
 
         let result = self

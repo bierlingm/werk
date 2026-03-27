@@ -502,15 +502,14 @@ impl InstrumentApp {
     }
 
     /// Create a tension with a horizon string (e.g. "2026-W13" or "2026-03-20").
-    pub fn create_tension_with_horizon(&mut self, name: &str, desire: &str, reality: &str, horizon_str: &str) {
-        let desired = if desire.is_empty() { name } else { desire };
+    pub fn create_tension_with_horizon(&mut self, desired: &str, actual: &str, horizon_str: &str) {
         let parent = self.parent_id.clone();
 
         // Try to parse horizon (supports natural language like "tomorrow", "2w", "eom")
         let horizon = crate::horizon::parse_horizon(horizon_str).ok();
 
         let has_horizon = horizon.is_some();
-        let result = self.engine.create_tension_full(desired, reality, parent, horizon);
+        let result = self.engine.create_tension_full(desired, actual, parent, horizon);
 
         if let Ok(tension) = result {
             self.set_transient(format!("created: {}", truncate(&tension.desired, 30)));
