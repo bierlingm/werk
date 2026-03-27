@@ -350,10 +350,13 @@ Examples:
     ///
     /// Notes are first-class operative gestures — observational testimony
     /// that accumulates within the current epoch.
+    ///
+    /// Bare args default to add: `werk note 42 "text"` = `werk note add 42 "text"`.
     #[command(after_help = "\
 Examples:
+  werk note 42 \"Found edge case in validation\"
+  werk note \"Workspace-level observation\"
   werk note add 42 \"Found edge case in validation\"
-  werk note add \"Workspace-level observation\"
   werk note rm 42 1                  Retract note #1 from tension 42
   werk note list 42                  List notes for tension 42")]
     Note {
