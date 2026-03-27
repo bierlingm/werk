@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-27T19:03:26Z",
+  "flushed_at": "2026-03-27T19:11:52Z",
   "summary": {
-    "active": 65,
+    "active": 64,
     "released": 7,
-    "resolved": 49,
+    "resolved": 50,
     "total": 121
   },
   "tensions": [
@@ -1284,7 +1284,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Repo audit complete. Strengths: 7-crate workspace with clear separation, designs/ well-organized with archive, .gitignore lean and correct, tensions.json deliberately tracked via pre-commit. Issues found: (1) .beads/ database tracked in git (should be gitignored — runtime state); (2) .factory/ validation JSON blobs tracked (120+ test artifacts — should be gitignored or moved to CI); (3) sd-core and werk-app use edition 2024 while other crates use 2021 (intentional but creates nightly dependency); (4) video/ at 639MB is large but active; (5) research/archive/ at 684MB is archival weight. No dead code found. No orphaned artifacts. Crate dependency graph is clean (sd-core at foundation, CLI orchestrates all).",
+      "actual": "Asset cleanup done: video/ and research/archive/ moved to gitignored local/. .beads/.factory/ already resolved (#123). Remaining: edition choice (#124).",
       "created_at": "2026-03-27T18:33:26.979730+00:00",
       "desired": "repository is clean, well-organized, and intentional — every tracked file has a clear reason, runtime artifacts are gitignored, crate boundaries are respected, root is minimal",
       "horizon": null,
@@ -1317,7 +1317,7 @@
       "status": "Active"
     },
     {
-      "actual": "video/ is 639MB, research/archive/ is 684MB. Both tracked in main git repo. No git-lfs. Cloning the repo means downloading 1.3GB of non-code assets.",
+      "actual": "video/ (25 source files) moved to local/video/, research/archive/ (17 files) moved to local/research/. Both untracked from git. local/ is gitignored. Video-specific .gitignore lines replaced with single local/ entry. Remotion still works from local/video/ — all paths are relative. No files deleted.",
       "created_at": "2026-03-27T18:33:49.208408+00:00",
       "desired": "large assets (video/, research/archive/) have a clear storage strategy — either git-lfs, separate repo, or documented acceptance of the weight",
       "horizon": null,
@@ -1325,7 +1325,7 @@
       "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
       "position": 3,
       "short_code": 125,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Hooks exist in .githooks/ and .claude/ but must be manually copied. Need: werk init --hooks or werk hooks install that sets up git hooks (pre-commit flush + README update) and Claude Code hooks (UBS scan) for the current repo, plus a --global flag for user-wide Claude settings.",
