@@ -56,6 +56,11 @@ pub enum Commands {
     },
 
     /// Create a new tension.
+    #[command(after_help = "\
+Examples:
+  werk add \"Novel drafted\" \"42,000 words written\"
+  werk add -p 10 \"Complete chapter 3\" \"Outline done\"
+  werk add --horizon 2026-06 \"Ship v2.0\" \"Architecture designed\"")]
     Add {
         /// The desired outcome (what you want).
         desired: Option<String>,
@@ -77,9 +82,10 @@ pub enum Commands {
     /// The inverse of decomposing — reveals implicit coherence by
     /// composing existing structure upward. All specified children
     /// must share the same current parent (or all be roots).
-    ///
-    /// Usage: werk compose "desired outcome" "current reality" <id1> [id2 ...]
-    #[command(name = "compose")]
+    #[command(name = "compose", after_help = "\
+Examples:
+  werk compose \"Product launch\" \"Components ready\" 42 43 44
+  werk compose \"Q2 goals\" \"Planning complete\" 10 13 15")]
     Compose {
         /// Desired outcome for the new parent tension.
         desired: String,
@@ -103,6 +109,11 @@ pub enum Commands {
     /// Snapshots the current desire, reality, and children state.
     /// A user-initiated narrative beat when desire or reality shifts
     /// significantly enough to warrant a new delta.
+    #[command(after_help = "\
+Examples:
+  werk epoch 42                      Create epoch boundary
+  werk epoch 42 --list               List all epochs
+  werk epoch 42 --show 2             Show mutations during epoch 2")]
     Epoch {
         /// Tension ID or prefix.
         id: String,
@@ -117,7 +128,11 @@ pub enum Commands {
     },
 
     /// Set or display the deadline of a tension.
-    #[command(alias = "deadline")]
+    #[command(alias = "deadline", after_help = "\
+Examples:
+  werk horizon 42                    Show current horizon and urgency
+  werk horizon 42 2026-06            Set deadline to June 2026
+  werk horizon 42 none               Clear the deadline")]
     Horizon {
         /// Tension ID or prefix.
         id: String,
@@ -128,6 +143,10 @@ pub enum Commands {
     },
 
     /// Display tension details.
+    #[command(after_help = "\
+Examples:
+  werk show 42                       Show by short code
+  werk show --json 42                Structured output for scripts")]
     Show {
         /// Tension ID or prefix (4+ characters).
         id: String,
@@ -138,12 +157,20 @@ pub enum Commands {
     /// Reality updates are epoch boundaries — they snapshot the ending delta
     /// before applying the new reality. Use --no-epoch for minor corrections
     /// that don't warrant a new delta.
-    #[command(alias = "actual")]
+    ///
+    /// Opens $EDITOR if value is omitted and a TTY is available.
+    /// Fails with an error if no value and no TTY (non-interactive use).
+    #[command(alias = "actual", after_help = "\
+Examples:
+  werk reality 42 \"Draft complete, 60k words\"
+  werk reality 42 --no-epoch \"Fix typo in status\"
+  werk reality 42                    Opens $EDITOR with current value")]
     Reality {
         /// Tension ID or prefix.
         id: String,
 
-        /// New reality (opens $EDITOR if omitted).
+        /// New reality. Required in non-interactive contexts (no TTY).
+        /// Opens $EDITOR if omitted and a terminal is available.
         value: Option<String>,
 
         /// Skip epoch creation (for minor corrections).
@@ -156,11 +183,20 @@ pub enum Commands {
     /// Desire updates are epoch boundaries — they snapshot the ending delta
     /// before applying the new desire. Use --no-epoch for minor corrections
     /// that don't warrant a new delta.
+    ///
+    /// Opens $EDITOR if value is omitted and a TTY is available.
+    /// Fails with an error if no value and no TTY (non-interactive use).
+    #[command(after_help = "\
+Examples:
+  werk desire 42 \"Novel published and reviewed\"
+  werk desire 42 --no-epoch \"Fix typo in desired state\"
+  werk desire 42                     Opens $EDITOR with current value")]
     Desire {
         /// Tension ID or prefix.
         id: String,
 
-        /// New desired state (opens $EDITOR if omitted).
+        /// New desired state. Required in non-interactive contexts (no TTY).
+        /// Opens $EDITOR if omitted and a terminal is available.
         value: Option<String>,
 
         /// Skip epoch creation (for minor corrections).
@@ -169,6 +205,12 @@ pub enum Commands {
     },
 
     /// Mark a tension as resolved.
+    #[command(after_help = "\
+Examples:
+  werk resolve 42                    Resolve now
+  werk resolve 42 --actual-at yesterday
+  werk resolve 42 --actual-at 2026-03-20
+  werk resolve 42 --dry-run          Preview without resolving")]
     Resolve {
         /// Tension ID or prefix.
         id: String,
@@ -177,9 +219,17 @@ pub enum Commands {
         /// If omitted, actual resolution time = now.
         #[arg(long)]
         actual_at: Option<String>,
+
+        /// Preview what would happen without making changes.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Release a tension (abandon desired state).
+    #[command(after_help = "\
+Examples:
+  werk release 42 --reason \"No longer relevant after pivot\"
+  werk release 42 -r \"Superseded by tension #55\"")]
     Release {
         /// Tension ID or prefix.
         id: String,
@@ -190,6 +240,10 @@ pub enum Commands {
     },
 
     /// Reopen a resolved or released tension (set status back to Active).
+    #[command(after_help = "\
+Examples:
+  werk reopen 42
+  werk reopen 42 --reason \"Regression found in production\"")]
     Reopen {
         /// Tension ID or prefix.
         id: String,
@@ -200,6 +254,12 @@ pub enum Commands {
     },
 
     /// Snooze a tension until a future date.
+    #[command(after_help = "\
+Examples:
+  werk snooze 42 +3d                 Snooze for 3 days
+  werk snooze 42 +2w                 Snooze for 2 weeks
+  werk snooze 42 2026-04-15          Snooze until specific date
+  werk snooze 42 --clear             Remove snooze")]
     Snooze {
         /// Tension ID or prefix.
         id: String,
@@ -213,6 +273,11 @@ pub enum Commands {
     },
 
     /// Set or clear a recurrence interval on a tension.
+    #[command(after_help = "\
+Examples:
+  werk recur 42 +1w                  Recur weekly
+  werk recur 42 +1d                  Recur daily
+  werk recur 42 --clear              Stop recurring")]
     Recur {
         /// Tension ID or prefix.
         id: String,
@@ -226,12 +291,26 @@ pub enum Commands {
     },
 
     /// Delete a tension (reparents children to grandparent).
+    #[command(after_help = "\
+Examples:
+  werk rm 42                         Delete tension, reparent children
+  werk rm 10                         Delete by short code
+  werk rm 42 --dry-run               Preview deletion without acting")]
     Rm {
         /// Tension ID or prefix.
         id: String,
+
+        /// Preview what would happen without making changes.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Reparent a tension to a new parent.
+    #[command(after_help = "\
+Examples:
+  werk move 42 --parent 10           Move under tension #10
+  werk move 42                       Move to root (no parent)
+  werk move 42 --parent 10 --dry-run Preview without moving")]
     Move {
         /// Tension ID or prefix.
         id: String,
@@ -239,15 +318,26 @@ pub enum Commands {
         /// New parent ID (omit to make root).
         #[arg(short, long)]
         parent: Option<String>,
+
+        /// Preview what would happen without making changes.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Remove a tension from the sequence (set to held/unpositioned).
+    #[command(after_help = "\
+Examples:
+  werk hold 42                       Remove from sequence")]
     Hold {
         /// Tension ID or prefix.
         id: String,
     },
 
     /// Set the position of a tension in the order of operations.
+    #[command(after_help = "\
+Examples:
+  werk position 42 1                 Set as highest priority
+  werk position 42 3                 Set as third in sequence")]
     Position {
         /// Tension ID or prefix.
         id: String,
@@ -260,16 +350,31 @@ pub enum Commands {
     ///
     /// Notes are first-class operative gestures — observational testimony
     /// that accumulates within the current epoch.
+    #[command(after_help = "\
+Examples:
+  werk note add 42 \"Found edge case in validation\"
+  werk note add \"Workspace-level observation\"
+  werk note rm 42 1                  Retract note #1 from tension 42
+  werk note list 42                  List notes for tension 42")]
     Note {
         #[command(subcommand)]
         command: NoteCommand,
     },
 
     /// Show system health summary (structural statistics, temporal alerts).
+    #[command(after_help = "\
+Examples:
+  werk health                        Show health summary
+  werk health --repair               Find and optionally purge no-op mutations
+  werk health --repair --yes         Purge without confirmation (agent-safe)")]
     Health {
         /// Repair: purge no-op mutations where old_value equals new_value.
         #[arg(long)]
         repair: bool,
+
+        /// Skip confirmation prompt (for non-interactive / agent use).
+        #[arg(long)]
+        yes: bool,
     },
 
     /// Show behavioral pattern insights from mutation history.
@@ -300,6 +405,12 @@ pub enum Commands {
     },
 
     /// Show what changed in a time window.
+    #[command(after_help = "\
+Examples:
+  werk diff                          Changes since today (default)
+  werk diff --since yesterday        Changes since yesterday
+  werk diff --since \"3 days ago\"     Changes in last 3 days
+  werk diff --since monday           Changes since Monday")]
     Diff {
         /// Show changes since (e.g., "today", "yesterday", "3 days ago", "2026-03-10", "monday")
         #[arg(long, default_value = "today")]
@@ -307,6 +418,12 @@ pub enum Commands {
     },
 
     /// List tensions with filtering and sorting.
+    #[command(after_help = "\
+Examples:
+  werk list                          Active tensions sorted by urgency
+  werk list --all                    Include resolved and released
+  werk list --urgent                 Only urgent tensions
+  werk list --neglected --sort name  Neglected tensions sorted by name")]
     List {
         /// Show all tensions (including resolved/released).
         #[arg(long)]
@@ -330,6 +447,12 @@ pub enum Commands {
     },
 
     /// Display the tension forest as a tree.
+    #[command(after_help = "\
+Examples:
+  werk tree                          Full active tension forest
+  werk tree 10                       Subtree under tension #10
+  werk tree --all                    Include resolved/released
+  werk tree --json                   Structured output for scripts")]
     Tree {
         /// Tension ID or prefix (show subtree under this tension).
         id: Option<String>,
@@ -366,6 +489,11 @@ pub enum Commands {
     },
 
     /// Output structural context (JSON). Useful for MCP, scripts, or agent consumption.
+    #[command(after_help = "\
+Examples:
+  werk context 42                    Full context for one tension
+  werk context --all                 Context for all active tensions
+  werk context --urgent              Context for urgent tensions only")]
     Context {
         /// Tension ID or prefix (omit for bulk modes).
         id: Option<String>,
@@ -399,6 +527,11 @@ pub enum Commands {
     },
 
     /// Destroy the current workspace (deletes the .werk/ directory).
+    #[command(after_help = "\
+Examples:
+  werk nuke                          Show what would be deleted (dry run)
+  werk nuke --confirm                Actually delete the workspace
+  werk nuke --global --confirm       Delete global workspace (~/.werk/)")]
     Nuke {
         /// Confirm deletion (required for safety).
         #[arg(short = 'y', long)]

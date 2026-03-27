@@ -67,7 +67,7 @@ fn main() {
         Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
         Commands::Reality { id, value, no_epoch } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch),
         Commands::Desire { id, value, no_epoch } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch),
-        Commands::Resolve { id, actual_at } => werk::commands::resolve::cmd_resolve(&output, id, actual_at),
+        Commands::Resolve { id, actual_at, dry_run } => werk::commands::resolve::cmd_resolve(&output, id, actual_at, dry_run),
         Commands::Release { id, reason } => {
             werk::commands::release::cmd_release(&output, id, reason)
         }
@@ -80,8 +80,8 @@ fn main() {
             interval,
             clear,
         } => werk::commands::recur::cmd_recur(&output, id, interval, clear),
-        Commands::Rm { id } => werk::commands::rm::cmd_rm(&output, id),
-        Commands::Move { id, parent } => werk::commands::move_cmd::cmd_move(&output, id, parent),
+        Commands::Rm { id, dry_run } => werk::commands::rm::cmd_rm(&output, id, dry_run),
+        Commands::Move { id, parent, dry_run } => werk::commands::move_cmd::cmd_move(&output, id, parent, dry_run),
         Commands::Hold { id } => werk::commands::hold::cmd_hold(&output, id),
         Commands::Position { id, n } => werk::commands::position::cmd_position(&output, id, n),
         Commands::Note { command } => match command {
@@ -109,7 +109,7 @@ fn main() {
             resolved,
             released,
         } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released),
-        Commands::Health { repair } => werk::commands::health::cmd_health(&output, repair),
+        Commands::Health { repair, yes } => werk::commands::health::cmd_health(&output, repair, yes),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
         Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
         Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),

@@ -46,17 +46,28 @@ fn bar(count: usize, total: usize, width: usize) -> String {
     )
 }
 
-pub fn cmd_health(output: &Output, repair: bool) -> Result<(), WerkError> {
+pub fn cmd_health(output: &Output, repair: bool, yes: bool) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
     if repair {
         let count = store.count_noop_mutations().map_err(WerkError::SdError)?;
         if count > 0 {
-            eprint!("Found {} no-op position mutation(s). Purge? [y/N] ", count);
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).map_err(|e| WerkError::IoError(e.to_string()))?;
-            if input.trim().eq_ignore_ascii_case("y") {
+            let should_purge = if yes {
+                true
+            } else if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                eprint!("Found {} no-op position mutation(s). Purge? [y/N] ", count);
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).map_err(|e| WerkError::IoError(e.to_string()))?;
+                input.trim().eq_ignore_ascii_case("y")
+            } else {
+                return Err(WerkError::InvalidInput(format!(
+                    "found {} no-op mutation(s) but no TTY for confirmation. Use --yes to purge non-interactively:\n  werk health --repair --yes",
+                    count
+                )));
+            };
+
+            if should_purge {
                 let purged = store.purge_noop_mutations().map_err(WerkError::SdError)?;
                 println!("Purged {} no-op position mutation(s)", purged);
             } else {

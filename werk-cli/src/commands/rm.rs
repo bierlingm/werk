@@ -12,16 +12,20 @@ use werk_shared::{Config, HookEvent, HookRunner};
 struct RmResult {
     id: String,
     deleted: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    children_reparented: Vec<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    dry_run: bool,
 }
 
-pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
+pub fn cmd_rm(output: &Output, id: String, dry_run: bool) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
     let mut store = workspace.open_store()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-    let resolver = PrefixResolver::new(tensions);
+    let resolver = PrefixResolver::new(tensions.clone());
 
     // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
@@ -30,6 +34,35 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     let tension_id = tension.id.clone();
     let tension_display = werk_shared::display_id(tension.short_code, &tension.id);
     let tension_desired = tension.desired.clone();
+
+    // Find children that would be reparented
+    let children: Vec<_> = tensions.iter()
+        .filter(|t| t.parent_id.as_deref() == Some(&tension_id))
+        .collect();
+    let children_ids: Vec<String> = children.iter()
+        .map(|c| werk_shared::display_id(c.short_code, &c.id))
+        .collect();
+
+    // Dry run: show what would happen
+    if dry_run {
+        let result = RmResult {
+            id: tension_id.clone(),
+            deleted: false,
+            children_reparented: children_ids.clone(),
+            dry_run: true,
+        };
+        if output.is_structured() {
+            output.print_structured(&result).map_err(WerkError::IoError)?;
+        } else {
+            println!("Would delete tension {}", &tension_display);
+            println!("  Desired: {}", &tension_desired);
+            if !children_ids.is_empty() {
+                println!("  Children reparented to grandparent: {}", children_ids.join(", "));
+            }
+            println!("No changes made.");
+        }
+        return Ok(());
+    }
 
     // Hook infrastructure
     let hooks = Config::load(&workspace)
@@ -52,6 +85,8 @@ pub fn cmd_rm(output: &Output, id: String) -> Result<(), WerkError> {
     let result = RmResult {
         id: tension_id.clone(),
         deleted: true,
+        children_reparented: children_ids,
+        dry_run: false,
     };
 
     if output.is_structured() {

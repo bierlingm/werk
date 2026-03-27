@@ -36,10 +36,15 @@ pub fn cmd_reality(
     let resolver = PrefixResolver::new(tensions);
     let tension = resolver.resolve(&id)?;
 
-    // Get the new value - either from argument or editor
+    // Get the new value - either from argument or editor (TTY only)
     let new_value = match value {
         Some(v) => v,
         None => {
+            if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                return Err(WerkError::InvalidInput(
+                    "value required in non-interactive mode (no TTY). Usage:\n  werk reality <id> \"new reality text\"".to_string(),
+                ));
+            }
             let edited = crate::edit_content(&tension.actual)?;
             match edited {
                 Some(v) => v,
