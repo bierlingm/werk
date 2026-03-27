@@ -14,6 +14,7 @@ pub mod helpers;
 pub mod horizon;
 pub mod search;
 pub mod session_log;
+pub mod survey;
 
 pub use app::InstrumentApp;
 

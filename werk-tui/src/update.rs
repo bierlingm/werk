@@ -31,18 +31,35 @@ impl Model for InstrumentApp {
             self.load_siblings();
         }
 
-        match &self.input_mode {
-            InputMode::Normal => self.update_normal(msg),
-            InputMode::Help => self.update_help(msg),
-            InputMode::Adding(_) => self.update_adding(msg),
-            InputMode::Editing { .. } => self.update_editing(msg),
-            InputMode::Annotating { .. } => self.update_annotating(msg),
-            InputMode::Confirming(_) => self.update_confirming(msg),
-            InputMode::Searching => self.update_searching(msg),
-            InputMode::Moving { .. } => self.update_moving(msg),
-            InputMode::Reordering { .. } => self.update_reordering(msg),
-            InputMode::Pathway => self.update_pathway(msg),
+        // Survey orientation intercepts Normal-mode input.
+        // Non-Normal modes (confirming, editing, annotating) use their own
+        // handlers so gestures work from the survey.
+        let in_survey = self.view_orientation == crate::state::ViewOrientation::Survey;
+        let was_not_normal = !matches!(self.input_mode, InputMode::Normal);
+
+        let cmd = if in_survey && matches!(self.input_mode, InputMode::Normal) {
+            self.update_survey(msg)
+        } else {
+            match &self.input_mode {
+                InputMode::Normal => self.update_normal(msg),
+                InputMode::Help => self.update_help(msg),
+                InputMode::Adding(_) => self.update_adding(msg),
+                InputMode::Editing { .. } => self.update_editing(msg),
+                InputMode::Annotating { .. } => self.update_annotating(msg),
+                InputMode::Confirming(_) => self.update_confirming(msg),
+                InputMode::Searching => self.update_searching(msg),
+                InputMode::Moving { .. } => self.update_moving(msg),
+                InputMode::Reordering { .. } => self.update_reordering(msg),
+                InputMode::Pathway => self.update_pathway(msg),
+            }
+        };
+
+        // Reload survey when returning to Normal after a gesture completes.
+        if in_survey && was_not_normal && matches!(self.input_mode, InputMode::Normal) {
+            self.load_survey_items();
         }
+
+        cmd
     }
 
     fn view(&self, frame: &mut Frame<'_>) {
@@ -61,25 +78,37 @@ impl Model for InstrumentApp {
         let layout = Flex::vertical().constraints(constraints);
         let rects = layout.split(area);
 
-        // Full-screen modes: render ONLY the overlay, skip the deck entirely
-        if matches!(self.input_mode, InputMode::Help) {
-            crate::helpers::clear_area(frame, rects[0]);
-            self.render_help(&rects[0], frame);
-        } else if matches!(self.input_mode, InputMode::Searching) {
-            crate::helpers::clear_area(frame, rects[0]);
-            self.render_search(&rects[0], frame);
-        } else if matches!(self.input_mode, InputMode::Moving { .. }) {
-            crate::helpers::clear_area(frame, rects[0]);
-            self.render_search(&rects[0], frame);
-        } else if self.siblings.is_empty() && self.parent_id.is_none()
-            && !matches!(self.input_mode, InputMode::Adding(_))
-        {
-            self.render_empty(&rects[0], frame);
-        } else {
-            self.render_deck(&rects[0], frame);
+        // Survey orientation — render survey as background, then fall through
+        // to overlay rendering so gestures (confirm, edit, note) work in survey.
+        let in_survey = self.view_orientation == crate::state::ViewOrientation::Survey;
+        if in_survey {
+            self.render_survey(&rects[0], frame);
+            self.render_survey_bar(&rects[1], frame);
+            if show_hints {
+                // Hints area is empty in survey mode — buffer starts clear.
+            }
+            // Don't return — fall through so overlays render on top.
         }
 
-        // Render inline overlays on top of the field (only for non-fullscreen modes)
+        // Full-screen modes: render ONLY the overlay, skip the deck entirely
+        // Render the background (deck or survey) unless already done above.
+        if !in_survey {
+            if matches!(self.input_mode, InputMode::Help) {
+                self.render_help(&rects[0], frame);
+            } else if matches!(self.input_mode, InputMode::Searching) {
+                self.render_search(&rects[0], frame);
+            } else if matches!(self.input_mode, InputMode::Moving { .. }) {
+                self.render_search(&rects[0], frame);
+            } else if self.siblings.is_empty() && self.parent_id.is_none()
+                && !matches!(self.input_mode, InputMode::Adding(_))
+            {
+                self.render_empty(&rects[0], frame);
+            } else {
+                self.render_deck(&rects[0], frame);
+            }
+        }
+
+        // Render inline overlays on top of the background (works for both deck and survey)
         match &self.input_mode {
             InputMode::Adding(step) => {
                 self.render_add_prompt(step, &rects[0], frame);
@@ -96,14 +125,15 @@ impl Model for InstrumentApp {
             InputMode::Pathway => {
                 self.render_pathway(&rects[0], frame);
             }
-            // Full-screen modes already rendered above
             _ => {}
         }
 
-        // Bottom bar
-        self.render_deck_bar(&rects[1], frame);
+        // Bottom bar (survey bar already rendered above if in_survey)
+        if !in_survey {
+            self.render_deck_bar(&rects[1], frame);
+        }
 
-        // Hints — show contextual hints for input modes
+        // Hints
         if show_hints {
             match &self.input_mode {
                 InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &rects[2], frame),
@@ -113,7 +143,7 @@ impl Model for InstrumentApp {
                 InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &rects[2], frame),
                 InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &rects[2], frame),
                 InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &rects[2], frame),
-                _ => self.render_hints(&rects[2], frame),
+                _ => if !in_survey { self.render_hints(&rects[2], frame) },
             }
         }
     }
@@ -253,8 +283,43 @@ impl InstrumentApp {
                 }
                 Cmd::none()
             }
-            // Tab is reserved for field cycling in edit mode — no action in normal mode
-            Msg::Tab | Msg::ExpandGaze => Cmd::none(),
+            // Tab — pivot yaw: open survey centered on the current tension.
+            // Saves stream state so Shift+Tab can return without pivoting.
+            Msg::Tab | Msg::ExpandGaze => {
+                // Save stream position for Shift+Tab return.
+                self.pre_survey_state = Some((
+                    self.parent_id.clone(),
+                    self.deck_cursor.index,
+                ));
+                let focused_id = self.action_target().map(|e| e.id.clone());
+                self.load_survey_items();
+                // Position survey cursor on the focused tension.
+                if let Some(ref id) = focused_id {
+                    if let Some(idx) = self.survey_items.iter().position(|i| &i.tension_id == id) {
+                        self.survey_cursor = idx;
+                    } else {
+                        self.survey_cursor = 0;
+                    }
+                }
+                self.view_orientation = crate::state::ViewOrientation::Survey;
+                Cmd::none()
+            }
+            // Shift+Tab — return yaw: reopen survey at the cursor position
+            // you left it at. No pivot, no reload — just flip back.
+            Msg::BackTab => {
+                if !self.survey_items.is_empty() {
+                    // Save current stream position so Tab from survey can return here.
+                    self.pre_survey_state = Some((
+                        self.parent_id.clone(),
+                        self.deck_cursor.index,
+                    ));
+                    self.view_orientation = crate::state::ViewOrientation::Survey;
+                } else {
+                    // No survey data yet — do a full Tab instead.
+                    return self.update_normal(Msg::Tab);
+                }
+                Cmd::none()
+            }
 
             // Acts
             Msg::Char('a') | Msg::StartAdd => {
@@ -628,6 +693,149 @@ impl InstrumentApp {
             self.load_siblings();
         }
         self.input_mode = InputMode::Normal;
+    }
+
+    pub fn update_survey(&mut self, msg: Msg) -> Cmd<Msg> {
+        use crate::state::ViewOrientation;
+        match msg {
+            Msg::Char('j') | Msg::Down => {
+                if self.survey_cursor + 1 < self.survey_items.len() {
+                    self.survey_cursor += 1;
+                }
+                Cmd::none()
+            }
+            Msg::Char('k') | Msg::Up => {
+                self.survey_cursor = self.survey_cursor.saturating_sub(1);
+                Cmd::none()
+            }
+            Msg::Char('g') | Msg::JumpTop => {
+                self.survey_cursor = 0;
+                Cmd::none()
+            }
+            Msg::Char('G') | Msg::JumpBottom => {
+                if !self.survey_items.is_empty() {
+                    self.survey_cursor = self.survey_items.len() - 1;
+                }
+                Cmd::none()
+            }
+
+            // Tab — pivot yaw: navigate to the selected tension's parent deck,
+            // with cursor on that tension. Changes your structural position.
+            Msg::Tab => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor).cloned() {
+                    self.view_orientation = ViewOrientation::Stream;
+                    // Navigate to the tension's parent context.
+                    let target_parent = self.engine.store()
+                        .get_tension(&item.tension_id).ok().flatten()
+                        .and_then(|t| t.parent_id);
+                    if target_parent != self.parent_id {
+                        // Navigate to a different structural context.
+                        match &target_parent {
+                            Some(pid) => {
+                                let pid = pid.clone();
+                                self.parent_id = Some(pid);
+                                self.load_siblings();
+                            }
+                            None => {
+                                self.parent_id = None;
+                                self.load_siblings();
+                            }
+                        }
+                    }
+                    self.cached_frontier = None;
+                    // Position cursor on the tension.
+                    if let Some(sib_idx) = self.siblings.iter().position(|s| s.id == item.tension_id) {
+                        self.deck_cursor_to_sibling(sib_idx);
+                    }
+                }
+                Cmd::none()
+            }
+
+            // Shift+Tab / Esc — return yaw: go back to exactly where you were
+            // before Tab, without changing structural position.
+            Msg::BackTab | Msg::Cancel => {
+                self.view_orientation = ViewOrientation::Stream;
+                if let Some((saved_parent, saved_cursor)) = self.pre_survey_state.take() {
+                    if saved_parent != self.parent_id {
+                        self.parent_id = saved_parent;
+                        self.load_siblings();
+                    }
+                    self.cached_frontier = None;
+                    self.deck_cursor.index = saved_cursor;
+                }
+                Cmd::none()
+            }
+
+            // h/l — reserved for temporal navigation (pan along time axis).
+            // No-op until temporal depth is implemented.
+            Msg::Char('h') | Msg::Ascend | Msg::Char('l') | Msg::Descend => Cmd::none(),
+
+            // Enter — descend into the selected tension (show its children in stream).
+            Msg::Submit => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor).cloned() {
+                    self.view_orientation = ViewOrientation::Stream;
+                    self.descend(&item.tension_id);
+                }
+                Cmd::none()
+            }
+
+            // --- Gestures on the selected tension (same as stream) ---
+
+            // r — resolve
+            Msg::Char('r') | Msg::StartResolve => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor) {
+                    self.input_mode = InputMode::Confirming(ConfirmKind::Resolve {
+                        tension_id: item.tension_id.clone(),
+                        desired: item.desired.clone(),
+                    });
+                }
+                Cmd::none()
+            }
+            // x — release
+            Msg::Char('x') | Msg::StartRelease => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor) {
+                    self.input_mode = InputMode::Confirming(ConfirmKind::Release {
+                        tension_id: item.tension_id.clone(),
+                        desired: item.desired.clone(),
+                    });
+                }
+                Cmd::none()
+            }
+            // e — edit desire
+            Msg::Char('e') | Msg::StartEdit => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor) {
+                    self.input_buffer = item.desired.clone();
+                    self.text_input.set_value(&item.desired);
+                    self.text_input.set_focused(true);
+                    self.text_input.select_all();
+                    self.input_mode = InputMode::Editing {
+                        tension_id: item.tension_id.clone(),
+                        field: EditField::Desire,
+                    };
+                }
+                Cmd::none()
+            }
+            // n — note
+            Msg::Char('n') | Msg::StartNote => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor) {
+                    self.input_buffer.clear();
+                    self.text_input.set_value("");
+                    self.text_input.set_focused(true);
+                    self.input_mode = InputMode::Annotating {
+                        tension_id: item.tension_id.clone(),
+                    };
+                }
+                Cmd::none()
+            }
+
+            Msg::Char('?') | Msg::ToggleHelp => {
+                self.view_orientation = ViewOrientation::Stream;
+                self.input_mode = InputMode::Help;
+                Cmd::none()
+            }
+            Msg::Char('q') | Msg::Quit => Cmd::quit(),
+            _ => Cmd::none(),
+        }
     }
 
     fn update_help(&mut self, msg: Msg) -> Cmd<Msg> {

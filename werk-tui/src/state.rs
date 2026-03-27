@@ -69,6 +69,15 @@ impl FieldEntry {
     }
 }
 
+/// Top-level view orientation — which axis dominates the display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewOrientation {
+    /// Structure-first: one tension's theory of closure through time.
+    Stream,
+    /// Time-first: all active tensions organized by temporal urgency.
+    Survey,
+}
+
 /// Input mode — what the user is currently doing.
 #[derive(Debug, Clone)]
 pub enum InputMode {

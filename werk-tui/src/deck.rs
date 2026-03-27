@@ -129,9 +129,8 @@ impl ColumnLayout {
     /// `max_age_len` is the longest age string length visible.
     pub fn compute(total_width: usize, deadline_label: Option<&str>, max_id: usize, max_age_len: usize) -> Self {
         // Left column = max of all deadlines in view (min 6)
-        // +2 for ⏱ glyph prefix when deadline exists
         let left = deadline_label
-            .map(|d| (d.chars().count() + 2).max(MIN_LEFT))
+            .map(|d| d.chars().count().max(MIN_LEFT))
             .unwrap_or(MIN_LEFT);
 
         // Right sub-columns: [id][space][→][space][age]
@@ -1463,9 +1462,9 @@ impl InstrumentApp {
             glyph_color.unwrap_or(base_style)
         };
 
-        // Left column: deadline with ⏱ glyph
+        // Left column: deadline label
         let left_str = match entry.horizon_label.as_deref() {
-            Some(dl) => format!("\u{23f1} {}", dl),
+            Some(dl) => dl.to_string(),
             None => String::new(),
         };
         let left_padded = format!("{:<width$}", left_str, width = cols.left);
@@ -1650,8 +1649,7 @@ impl InstrumentApp {
 
             if has_deadline {
                 let left_content = if i == 0 {
-                    let dl_with_glyph = format!("\u{23f1} {}", deadline_str);
-                    format!("{:<width$}", dl_with_glyph, width = cols.left)
+                    format!("{:<width$}", deadline_str, width = cols.left)
                 } else {
                     " ".repeat(cols.left)
                 };
@@ -1831,7 +1829,7 @@ impl InstrumentApp {
             let mut parts: Vec<String> = Vec::new();
             // Intent (left): deadline/horizon — the aimed-at future
             if let Some(ref dl) = detail.deadline_label {
-                parts.push(format!("\u{23f1} {}", dl));
+                parts.push(dl.clone());
             }
             // Bridge (middle): child count — theory of closure
             if detail.child_count > 0 {

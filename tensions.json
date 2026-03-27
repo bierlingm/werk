@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-27T06:16:19Z",
+  "flushed_at": "2026-03-27T13:27:21Z",
   "summary": {
     "active": 52,
     "released": 7,
@@ -140,7 +140,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "V1-V8 complete. Architectural consolidation (#76) resolved: unified cursor, single renderer, cached frontier, two-pass layout, net -1550 lines dead code removed. Focus zoom (#94) resolved: detail card with reality/temporal/notes, Focus/Peek zoom levels, diamond glyph vocabulary. Notes gesture polish landed: TextInput for annotating, heterogeneous accumulated zone (notes interleaved with resolved/released by timestamp), UTF-8 safe truncation, adaptive sizing. Pathway palettes (#58) operational. Position toggle, add/edit UX, reorder fixes, flicker fix, epoch mechanics all landed. Remaining: survey view (#18), threshold mechanics (#19).",
+      "actual": "V1-V8 complete. Survey view (#18) V1 implemented: Tab/Shift+Tab pivot/return yaw, inherited horizons with depth-first tree grouping, zone compression, closure ratios, gestures from survey. Three-times framework (taxis/chronos/kairos) identified — potential third orientation (frontier/kairos view). Unicode width bug found and fixed (⏱ glyph removed from both deck and survey). Remaining on #18: sticky deadline header, NOW zone, frame controls, held steps treatment. Remaining on #15: threshold mechanics (#19), frame widening/narrowing.",
       "created_at": "2026-03-24T17:52:26.323765+00:00",
       "desired": "TUI rebuilt around the operating envelope as primary interaction surface — frontier-centered screen layout, pitch/roll/yaw navigation, threshold mechanics, descended/horizon view toggle, peek gestures, ground mode access",
       "horizon": null,
@@ -154,7 +154,7 @@
       "actual": "State machine exists implicitly in TUI: InputMode enum has 8 states (Normal, Adding, Editing, Annotating, Confirming, Moving, Reordering, Searching, Help) plus focus zoom and peek as render-layer states. Transitions are implemented in update.rs key handlers. Not formally specified in XState/Stately — was built organically during V1-V8. The formal spec question is whether the current implicit machine needs to be extracted and validated, or whether the working implementation is sufficient.",
       "created_at": "2026-03-24T17:52:26.343123+00:00",
       "desired": "complete state machine specification — all states, transitions, key bindings per state, designed in XState/Stately before Rust implementation",
-      "horizon": null,
+      "horizon": "2026-04-10",
       "id": "01KMGFKY77N5K8SBR6WXXXRGPX",
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
@@ -173,7 +173,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "survey view conceptually defined in foundation document but no concrete layout, no implementation",
+      "actual": "Survey view V1 implemented and iterated: Tab/Shift+Tab yaw with pivot/return semantics, inherited horizons with tree grouping under deadline providers, zone compression with above/below indicators, structural depth indentation, closure ratios on right column, gesture support (r/x/e/n) from survey. Band labels: unframed/later/approaching/imminent/overdue. Three-times framework (taxis/chronos/kairos) identified. Design docs produced. Sticky deadline header, NOW zone, and frontier/kairos view not yet implemented.",
       "created_at": "2026-03-24T17:52:26.407354+00:00",
       "desired": "survey view designed and implemented — temporal framing, structural annotations, frame widening/narrowing, context-carrying yaw transition",
       "horizon": null,
@@ -943,7 +943,7 @@
       "status": "Active"
     },
     {
-      "actual": "Design inquiry advanced significantly. Key insights: (1) Root level is NOT a deck — it is a command center / takeoff view, fundamentally different from descended stream view. (2) Survey view (tab-flip, time-first) is the missing half — at root level, structural and temporal axes collapse into one surface. (3) The logbase (not logbook) is a searchable live substrate of all prior desire/reality/epoch layers — computational and queryable, not just sequential record. Ghost geometry of expanding/contracting desire-reality triangles represents change over time. (4) Field-as-tension (Direction E) rejected — root visibility comes from aggregate surfaces, not data model formalization. (5) Root view should include: root tensions for descent, temporal vitals/patterns, structural signals, searchable logbase access, yankable context for AI sessions. Multiple panes could show battlefield overview alongside individual tension work.",
+      "actual": "Design inquiry complete. Three design docs produced: command-center-and-time-axis.md, visualization-research.md, three-orientations.md. Key decisions: (1) 2D lattice (structure x time) with stream/survey/frontier as zoom presets. (2) Three temporal axes: taxis, chronos, kairos. (3) NOW zone = command center embedded in survey. (4) Tab is binary stream<->field-wide, with survey/frontier as sub-choice. Survey V1 is implemented and functional. Frontier/kairos view designed but not built.",
       "created_at": "2026-03-25T22:44:54.475353+00:00",
       "desired": "the root level is a command center — structural overview, temporal vitals, logbase access, mission preparation — where stream (deck) and survey (time-first) orientations collapse into one surface",
       "horizon": null,
