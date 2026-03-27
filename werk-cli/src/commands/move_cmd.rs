@@ -18,7 +18,7 @@ struct MoveResult {
     signals: Vec<palette::Palette>,
 }
 
-pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(), WerkError> {
+pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bool) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
     let mut store = workspace.open_store()?;
@@ -62,6 +62,32 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>) -> Result<(
     } else {
         None
     };
+
+    // Dry run: validate and preview without mutating
+    if dry_run {
+        let result = MoveResult {
+            id: tension_id.clone(),
+            parent_id: new_parent_id.clone(),
+            old_parent_id,
+            signals: Vec::new(),
+        };
+        if output.is_structured() {
+            output.print_structured(&result).map_err(WerkError::IoError)?;
+        } else {
+            match &new_parent_id {
+                Some(pid) => {
+                    println!("Would move tension {} under {}", &tension_display, werk_shared::display_id(
+                        tensions.iter().find(|t| &t.id == pid).and_then(|t| t.short_code), pid
+                    ));
+                }
+                None => {
+                    println!("Would move tension {} to root", &tension_display);
+                }
+            }
+            println!("No changes made.");
+        }
+        return Ok(());
+    }
 
     // Perform the move via store
     let _ = store.begin_gesture(Some(&format!("move {}", &tension_id)));

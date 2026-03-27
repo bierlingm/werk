@@ -39,6 +39,11 @@ pub fn cmd_desire(
     let new_value = match value {
         Some(v) => v,
         None => {
+            if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                return Err(WerkError::InvalidInput(
+                    "value required in non-interactive mode (no TTY). Usage:\n  werk desire <id> \"new desired state\"".to_string(),
+                ));
+            }
             let edited = crate::edit_content(&tension.desired)?;
             match edited {
                 Some(v) => v,

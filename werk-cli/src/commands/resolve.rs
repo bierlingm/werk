@@ -15,12 +15,15 @@ struct ResolveResult {
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     actual_at: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    dry_run: bool,
 }
 
 pub fn cmd_resolve(
     output: &Output,
     id: String,
     actual_at: Option<String>,
+    dry_run: bool,
 ) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
@@ -49,6 +52,27 @@ pub fn cmd_resolve(
         Some(s) => Some(parse_actual_at(s)?),
         None => None,
     };
+
+    // Dry run: validate and preview without mutating
+    if dry_run {
+        let result = ResolveResult {
+            id: tension.id.clone(),
+            status: "Resolved".to_string(),
+            actual_at: actual_at.clone(),
+            dry_run: true,
+        };
+        if output.is_structured() {
+            output.print_structured(&result).map_err(WerkError::IoError)?;
+        } else {
+            println!("Would resolve tension {}", werk_shared::display_id(tension.short_code, &tension.id));
+            println!("  Status: {} -> Resolved", old_status);
+            if let Some(at) = &actual_at {
+                println!("  Actually done: {}", at);
+            }
+            println!("No changes made.");
+        }
+        return Ok(());
+    }
 
     // Hook infrastructure
     let hooks = Config::load(&workspace)
@@ -84,6 +108,7 @@ pub fn cmd_resolve(
         id: tension.id.clone(),
         status: "Resolved".to_string(),
         actual_at: actual_at.clone(),
+        dry_run: false,
     };
 
     if output.is_structured() {

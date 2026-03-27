@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-27T14:30:41Z",
+  "flushed_at": "2026-03-27T17:21:47Z",
   "summary": {
-    "active": 52,
+    "active": 53,
     "released": 7,
-    "resolved": 33,
-    "total": 92
+    "resolved": 36,
+    "total": 96
   },
   "tensions": [
     {
@@ -547,7 +547,7 @@
       "status": "Active"
     },
     {
-      "actual": "README review surfaced terminology gaps: tree shows the forest (not a subtree), no log/logbook command exists, epoch subcommands use flag style not subcommand style, reading commands have unclear boundaries. Session finding: CLI is not forgiving to agents or fast-typing humans — add rejects --desire/--reality (positional-only), note requires subcommand (werk note 94 text fails, needs werk note add 94 text). Help output is flat (30+ commands alphabetically), no usage examples in per-command help (werk add -h shows args but not how to actually use them), no grouped help by framework.",
+      "actual": "Agent-friendliness audit complete and all three gaps closed: (1) every command has usage examples in --help via after_help — 23 commands covered; (2) CLI is fully non-interactive — health --repair accepts --yes, reality/desire fail fast on no-TTY with actionable error; (3) --dry-run added to resolve, rm, move. Remaining from original #52 scope: help still flat (not grouped by framework), note doesn't default to add, add doesn't accept --desire/--reality named args.",
       "created_at": "2026-03-24T17:52:28.506906+00:00",
       "desired": "CLI is ergonomic, forgiving, and self-documenting — accepts both positional and named args for common fields, note defaults to add, every command has usage examples in help text, help is grouped by framework not alphabetical, agents and humans get the same friction-free experience",
       "horizon": null,
@@ -1017,6 +1017,50 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 96,
+      "status": "Active"
+    },
+    {
+      "actual": "Every command now has after_help examples showing real invocations with short codes. Covers: add, compose, epoch, horizon, show, reality, desire, resolve, release, reopen, snooze, recur, rm, move, hold, position, note, health, list, tree, context, diff, nuke. Examples use short codes throughout (no ULIDs).",
+      "created_at": "2026-03-27T15:59:59.636088+00:00",
+      "desired": "every --help includes 2-3 usage examples — agents pattern-match off examples faster than descriptions",
+      "horizon": null,
+      "id": "01KMR0C6MM2EM60JGXGE6XMCKF",
+      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "position": 3,
+      "short_code": 97,
+      "status": "Resolved"
+    },
+    {
+      "actual": "health --repair now accepts --yes to skip confirmation; without --yes and no TTY, fails fast with actionable error and correct usage. reality/desire commands detect no-TTY when value is omitted and fail fast with usage hint instead of trying to open $EDITOR. All three interactive prompts eliminated for non-interactive contexts.",
+      "created_at": "2026-03-27T16:00:05.651545+00:00",
+      "desired": "CLI is fully non-interactive — no stdin prompts, no $EDITOR fallback; every input passable as a flag, fail-fast when no TTY detected",
+      "horizon": null,
+      "id": "01KMR0CCGKAWMQPC28YAWTPHSA",
+      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "position": 1,
+      "short_code": 98,
+      "status": "Resolved"
+    },
+    {
+      "actual": "resolve, rm, and move all support --dry-run. Validates all inputs (prefix resolution, status checks, cycle detection) then previews the operation without mutating. Both human and JSON output include dry_run flag. rm dry-run additionally shows children that would be reparented.",
+      "created_at": "2026-03-27T16:00:23.109182+00:00",
+      "desired": "--dry-run on all destructive single commands — agents preview before committing",
+      "horizon": null,
+      "id": "01KMR0CXJ58YAJAY5WKTVBBRB6",
+      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "position": 2,
+      "short_code": 99,
+      "status": "Resolved"
+    },
+    {
+      "actual": "short codes work within a single workspace; no addressing scheme for cross-workspace references; ULIDs remain internal primary keys but are never needed at the user level",
+      "created_at": "2026-03-27T17:21:06.352779+00:00",
+      "desired": "cross-workspace addressing scheme exists — workspace-prefixed short codes (e.g. werk:42, @global:42) distinguish tensions when looking across workspaces without exposing ULIDs to the user",
+      "horizon": null,
+      "id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
+      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "position": null,
+      "short_code": 100,
       "status": "Active"
     }
   ]
