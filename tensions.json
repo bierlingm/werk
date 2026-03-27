@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-27T18:12:17Z",
+  "flushed_at": "2026-03-27T18:34:34Z",
   "summary": {
-    "active": 58,
+    "active": 69,
     "released": 7,
     "resolved": 46,
-    "total": 111
+    "total": 122
   },
   "tensions": [
     {
@@ -536,12 +536,12 @@
       "status": "Resolved"
     },
     {
-      "actual": "README.md covers the essentials. No docs/ directory, no crate-level reference docs, no user guide, no docs site. Foundation doc exists but is a design document, not user-facing documentation.",
+      "actual": "Comprehensive audit complete. What exists: (1) werk-conceptual-foundation.md (57KB, canonical authority); (2) README.md (excellent, 9/10, but no deep tutorials); (3) CLAUDE.md (focused agent/developer guide); (4) 14 active design docs in designs/ with proper archive; (5) SKILL.md + onboarding.md + troubleshooting.md + dynamics-guide.md in skills/; (6) TUI DESIGN_SYSTEM.md (professional); (7) CLI now self-documents with examples in every --help and framework grouping; (8) code-level docs in every lib.rs. What's missing: (1) no unified user guide beyond 5-min onboarding — no 'scaling from 1 to 50 tensions' guide; (2) rustdoc not published; (3) no MCP integration guide; (4) session learnings like today's CLI design principles not captured canonically; (5) CLAUDE.md doesn't reflect the CLI improvements shipped today.",
       "created_at": "2026-03-24T17:52:28.427042+00:00",
-      "desired": "werk has a proper documentation surface — reference docs for each crate, user guide, and foundation for a docs site",
+      "desired": "werk has excellent documentation — the conceptual foundation is canonical, a user guide exists for practitioners at every stage, crate-level rustdoc is published, the CLI self-documents with examples, design decisions are traceable, and session learnings are captured in the right places",
       "horizon": null,
       "id": "01KMGFM08BTSSN3GH8VZ218ZFA",
-      "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 51,
       "status": "Active"
@@ -1227,6 +1227,127 @@
       "position": 2,
       "short_code": 115,
       "status": "Resolved"
+    },
+    {
+      "actual": "Four polish items identified in CLI output audit: (1) diff needs --compact or per-tension limit for multi-day windows, (2) epoch show nesting uses flat indentation — box-drawing would improve readability, (3) survey has no urgency column unlike list, (4) config get/set doesn't show which file was modified",
+      "created_at": "2026-03-27T18:29:29.655438+00:00",
+      "desired": "CLI polish pass — diff compact mode, epoch box-drawing, survey urgency column, config file path display",
+      "horizon": null,
+      "id": "01KMR8XYDQKE4WZ629MYQKQKZ2",
+      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "position": null,
+      "short_code": 116,
+      "status": "Active"
+    },
+    {
+      "actual": "CLAUDE.md still describes the old CLI state (flat help, no mention of examples, non-interactive mode, dry-run, or show design principles). Doesn't capture the output design principles from the show redesign session.",
+      "created_at": "2026-03-27T18:32:34.841261+00:00",
+      "desired": "CLAUDE.md reflects current CLI capabilities — help grouping, examples, non-interactive mode, dry-run, show redesign principles, note shorthand, shared output conventions",
+      "horizon": null,
+      "id": "01KMR93K8SHHDERJV8200QVEE8",
+      "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
+      "position": 1,
+      "short_code": 117,
+      "status": "Active"
+    },
+    {
+      "actual": "onboarding.md covers first 5 minutes. troubleshooting.md covers common issues. dynamics-guide.md covers interpretive frameworks. No guide for the intermediate practitioner — the gap between 'I created my first tension' and 'I have 50 tensions and use epochs'",
+      "created_at": "2026-03-27T18:32:36.913815+00:00",
+      "desired": "a practitioner's guide exists — covers the first tension through scaling to complex multi-level structures, when to epoch, how to read the frontier, pattern recognition, and common anti-patterns",
+      "horizon": null,
+      "id": "01KMR93N9H66024HRFR36X57BZ",
+      "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
+      "position": 3,
+      "short_code": 118,
+      "status": "Active"
+    },
+    {
+      "actual": "30 tools listed in SKILL.md with categories. No usage guide showing how an agent should interact with werk — when to use context vs show, batch vs individual gestures, how to read the frontier and act on it",
+      "created_at": "2026-03-27T18:32:38.864404+00:00",
+      "desired": "MCP integration guide exists — how to connect agents, which tools to use for what, patterns for agent-driven structural dynamics practice",
+      "horizon": null,
+      "id": "01KMR93Q6GRG8GGK5TDMWS2ACD",
+      "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
+      "position": 4,
+      "short_code": 119,
+      "status": "Active"
+    },
+    {
+      "actual": "code-level docs in every lib.rs and most modules. cargo doc likely works but not published or hosted. No inline examples in doc comments.",
+      "created_at": "2026-03-27T18:32:40.835999+00:00",
+      "desired": "crate-level rustdoc is generated and accessible — each public API documented with examples",
+      "horizon": null,
+      "id": "01KMR93S43XCGEK93NBHAZCC89",
+      "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
+      "position": 5,
+      "short_code": 120,
+      "status": "Active"
+    },
+    {
+      "actual": "today's session produced CLI output design principles (information hierarchy, no redundancy, most-recent-first, honest attribution) captured only as werk notes on tensions. Not in any canonical document that future sessions would reference.",
+      "created_at": "2026-03-27T18:32:42.805122+00:00",
+      "desired": "design principles from implementation sessions are captured in canonical docs — CLI output principles, structural dynamics vocabulary decisions, what's sacred and why",
+      "horizon": null,
+      "id": "01KMR93V1NBRGKEF7EHYAN645P",
+      "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
+      "position": 2,
+      "short_code": 121,
+      "status": "Active"
+    },
+    {
+      "actual": "Repo audit complete. Strengths: 7-crate workspace with clear separation, designs/ well-organized with archive, .gitignore lean and correct, tensions.json deliberately tracked via pre-commit. Issues found: (1) .beads/ database tracked in git (should be gitignored — runtime state); (2) .factory/ validation JSON blobs tracked (120+ test artifacts — should be gitignored or moved to CI); (3) sd-core and werk-app use edition 2024 while other crates use 2021 (intentional but creates nightly dependency); (4) video/ at 639MB is large but active; (5) research/archive/ at 684MB is archival weight. No dead code found. No orphaned artifacts. Crate dependency graph is clean (sd-core at foundation, CLI orchestrates all).",
+      "created_at": "2026-03-27T18:33:26.979730+00:00",
+      "desired": "repository is clean, well-organized, and intentional — every tracked file has a clear reason, runtime artifacts are gitignored, crate boundaries are respected, root is minimal",
+      "horizon": null,
+      "id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 122,
+      "status": "Active"
+    },
+    {
+      "actual": ".beads/ database and .factory/validation/ JSON blobs (120+ files) are tracked in git as runtime state. These are generated artifacts, not source.",
+      "created_at": "2026-03-27T18:33:45.357634+00:00",
+      "desired": ".beads/ and .factory/ runtime artifacts gitignored — only configuration tracked, not generated state",
+      "horizon": null,
+      "id": "01KMR95R4D4746K99R1ZNYJMZG",
+      "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "position": 1,
+      "short_code": 123,
+      "status": "Active"
+    },
+    {
+      "actual": "sd-core and werk-app use edition 2024 (nightly), other 5 crates use 2021. Creates hard nightly dependency. No documentation of why 2024 is needed.",
+      "created_at": "2026-03-27T18:33:47.253284+00:00",
+      "desired": "Rust edition choice is intentional and documented — either standardize on 2021 or document why sd-core needs 2024",
+      "horizon": null,
+      "id": "01KMR95SZNEXNTFB5WR0XF8RPN",
+      "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "position": 2,
+      "short_code": 124,
+      "status": "Active"
+    },
+    {
+      "actual": "video/ is 639MB, research/archive/ is 684MB. Both tracked in main git repo. No git-lfs. Cloning the repo means downloading 1.3GB of non-code assets.",
+      "created_at": "2026-03-27T18:33:49.208408+00:00",
+      "desired": "large assets (video/, research/archive/) have a clear storage strategy — either git-lfs, separate repo, or documented acceptance of the weight",
+      "horizon": null,
+      "id": "01KMR95VWRRYPG33YANDZ710HS",
+      "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "position": 3,
+      "short_code": 125,
+      "status": "Active"
+    },
+    {
+      "actual": "Hooks exist in .githooks/ and .claude/ but must be manually copied. Need: werk init --hooks or werk hooks install that sets up git hooks (pre-commit flush + README update) and Claude Code hooks (UBS scan) for the current repo, plus a --global flag for user-wide Claude settings.",
+      "created_at": "2026-03-27T18:34:06.332672+00:00",
+      "desired": "CLI command to install werk hooks into a repo",
+      "horizon": null,
+      "id": "01KMR96CKWD1S3QXYV66FEQ2RP",
+      "parent_id": null,
+      "position": null,
+      "short_code": 126,
+      "status": "Active"
     }
   ]
 }
