@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-27T17:46:53Z",
+  "flushed_at": "2026-03-27T18:12:17Z",
   "summary": {
-    "active": 59,
+    "active": 58,
     "released": 7,
-    "resolved": 42,
-    "total": 108
+    "resolved": 46,
+    "total": 111
   },
   "tensions": [
     {
@@ -85,7 +85,7 @@
       "status": "Released"
     },
     {
-      "actual": "CLI has foundation vocabulary (survey, ground, horizon, note testimony, hold/position, compose, epoch). JSON output on all commands. Context command provides structural JSON (context --all, --urgent, <id>) with urgency, staleness, frontier. Batch applies YAML mutations grouped as one gesture. run/watch deleted. Agent orchestration vocabulary purged. `werk mcp` subcommand starts stdio MCP server — the protocol surface. Remaining gaps: help output is flat (30+ commands alphabetically), no grouped help by framework.",
+      "actual": "CLI has foundation vocabulary, JSON output on all commands, context command for agent consumption, batch mutations with dry-run, MCP server via werk mcp. Help grouped by framework (Structure/Action/Time/Framing/System). Every command has usage examples in --help. Non-interactive mode (--yes, no-TTY fail-fast). --dry-run on destructive commands. show redesigned with premium output. Note defaults to add. Diff collapses position spam. Shared display conventions enforced. Remaining: staging mechanism (#48), batch positioning (#54), cross-workspace addressing (#100).",
       "created_at": "2026-03-24T17:52:26.147317+00:00",
       "desired": "CLI is a complete, honest interface to the structure — foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands",
       "horizon": "2026-05",
@@ -547,7 +547,7 @@
       "status": "Active"
     },
     {
-      "actual": "Agent-friendliness audit complete and all three gaps closed: (1) every command has usage examples in --help via after_help — 23 commands covered; (2) CLI is fully non-interactive — health --repair accepts --yes, reality/desire fail fast on no-TTY with actionable error; (3) --dry-run added to resolve, rm, move. Remaining from original #52 scope: help still flat (not grouped by framework), note doesn't default to add, add doesn't accept --desire/--reality named args.",
+      "actual": "All desired features complete: (1) usage examples in every --help — 23 commands; (2) non-interactive — health --yes, reality/desire fail-fast on no-TTY; (3) --dry-run on resolve/rm/move; (4) show redesigned from first principles — parent context, inherited deadlines, concise activity log; (5) note defaults to add — bare args work; (6) help grouped by framework via --help; (7) diff collapses position spam; (8) cross-command consistency via shared conventions. Premium CLI output achieved.",
       "created_at": "2026-03-24T17:52:28.506906+00:00",
       "desired": "CLI is ergonomic, forgiving, and self-documenting — accepts both positional and named args for common fields, note defaults to add, every command has usage examples in help text, help is grouped by framework not alphabetical, agents and humans get the same friction-free experience",
       "horizon": null,
@@ -555,7 +555,7 @@
       "parent_id": "01KMGFKY13827YVY23E14BX4X7",
       "position": 2,
       "short_code": 52,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "`reopen --reason` implemented. Records reason as a reopen_reason mutation within the gesture. Both CLI and MCP surfaces support it. Pattern follows release --reason.",
@@ -1025,7 +1025,7 @@
       "desired": "every --help includes 2-3 usage examples — agents pattern-match off examples faster than descriptions",
       "horizon": null,
       "id": "01KMR0C6MM2EM60JGXGE6XMCKF",
-      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "parent_id": null,
       "position": 3,
       "short_code": 97,
       "status": "Resolved"
@@ -1036,7 +1036,7 @@
       "desired": "CLI is fully non-interactive — no stdin prompts, no $EDITOR fallback; every input passable as a flag, fail-fast when no TTY detected",
       "horizon": null,
       "id": "01KMR0CCGKAWMQPC28YAWTPHSA",
-      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "parent_id": null,
       "position": 1,
       "short_code": 98,
       "status": "Resolved"
@@ -1047,7 +1047,7 @@
       "desired": "--dry-run on all destructive single commands — agents preview before committing",
       "horizon": null,
       "id": "01KMR0CXJ58YAJAY5WKTVBBRB6",
-      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "parent_id": null,
       "position": 2,
       "short_code": 99,
       "status": "Resolved"
@@ -1058,7 +1058,7 @@
       "desired": "cross-workspace addressing scheme exists — workspace-prefixed short codes (e.g. werk:42, @global:42) distinguish tensions when looking across workspaces without exposing ULIDs to the user",
       "horizon": null,
       "id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
-      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
       "position": null,
       "short_code": 100,
       "status": "Active"
@@ -1135,7 +1135,7 @@
       "desired": "show command output is premium — information hierarchy serves the reader, parent shows context, inherited deadlines visible, activity log is concise and most-recent-first, no redundant data",
       "horizon": null,
       "id": "01KMR611NRQ86VFM09P374YFSB",
-      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "parent_id": null,
       "position": null,
       "short_code": 107,
       "status": "Resolved"
@@ -1193,6 +1193,39 @@
       "parent_id": null,
       "position": 4,
       "short_code": 112,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Arg rewriting in main.rs: when note is followed by something that's not add/rm/list/--help, injects 'add' automatically. werk note 42 text, werk note text, and werk note add 42 text all work. Explicit subcommands unchanged.",
+      "created_at": "2026-03-27T18:07:29.424724+00:00",
+      "desired": "note defaults to add — werk note 88 \"text\" works without explicit subcommand",
+      "horizon": null,
+      "id": "01KMR7NN4GG70071DFEWQBSMKM",
+      "parent_id": null,
+      "position": 1,
+      "short_code": 113,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Framework grouping added as after_long_help on the CLI root. Shows 5 groups: Structure (add, compose, move, rm, show, tree, context), Action (reality, desire, resolve, release, reopen, hold, position, note), Time (horizon, snooze, recur, epoch, diff), Framing (list, survey, ground, trajectory, insights, health), System (init, config, flush, batch, nuke, mcp, serve). Visible via --help (long), short -h shows flat list with 'see more with --help' hint.",
+      "created_at": "2026-03-27T18:07:31.547187+00:00",
+      "desired": "top-level help grouped by framework — Architecture of Space, Grammar of Action, Calculus of Time, Logic of Framing, system",
+      "horizon": null,
+      "id": "01KMR7NQ6VKS887WYNDMQMN55A",
+      "parent_id": null,
+      "position": 3,
+      "short_code": 114,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Consecutive position mutations collapsed: runs of 3+ position changes show as single line with count (e.g. 'positioned at 1 (28 position changes)'). Runs of 1-2 shown normally. Non-position mutations break runs. Reduced diff output significantly — #4 tension went from 28 lines to 1.",
+      "created_at": "2026-03-27T18:07:47.139466+00:00",
+      "desired": "diff output is concise — collapses repeated position mutations, limits mutations per tension, shows summary not exhaustive log",
+      "horizon": null,
+      "id": "01KMR7P6E3XRN6XN7FBXGF7C13",
+      "parent_id": null,
+      "position": 2,
+      "short_code": 115,
       "status": "Resolved"
     }
   ]

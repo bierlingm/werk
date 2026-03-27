@@ -264,15 +264,54 @@ pub fn cmd_diff(output: &Output, since: String) -> Result<(), WerkError> {
             let id_display = display_id(tension_sc, &change.tension_id);
             println!("  {} {}", id_display, truncate(&change.tension_desired, 60));
 
-            for m in &change.mutations {
-                let ts = chrono::DateTime::parse_from_rfc3339(&m.timestamp)
-                    .map(|dt| relative_time(dt.with_timezone(&Utc), now))
-                    .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
+            // Collapse consecutive position/hold mutations into summary lines
+            let mut i = 0;
+            while i < change.mutations.len() {
+                let m = &change.mutations[i];
+                let is_position = m.field == "position";
 
-                let summary = super::show::format_mutation_summary(
-                    &m.field, m.old_value.as_deref(), &m.new_value
-                );
-                println!("    {:>12}  {}", ts, summary);
+                if is_position {
+                    // Count consecutive position mutations
+                    let run_start = i;
+                    while i < change.mutations.len() && change.mutations[i].field == "position" {
+                        i += 1;
+                    }
+                    let run_len = i - run_start;
+
+                    if run_len > 2 {
+                        // Collapse: show first, summary, last
+                        let first = &change.mutations[run_start];
+                        let last = &change.mutations[i - 1];
+                        let first_ts = chrono::DateTime::parse_from_rfc3339(&first.timestamp)
+                            .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                            .unwrap_or_else(|_| first.timestamp[..19].replace('T', " "));
+                        let last_summary = super::show::format_mutation_summary(
+                            &last.field, last.old_value.as_deref(), &last.new_value
+                        );
+                        println!("    {:>12}  {} ({} position changes)", first_ts, last_summary, run_len);
+                    } else {
+                        // 1-2 position mutations: show normally
+                        for j in run_start..i {
+                            let pm = &change.mutations[j];
+                            let ts = chrono::DateTime::parse_from_rfc3339(&pm.timestamp)
+                                .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                                .unwrap_or_else(|_| pm.timestamp[..19].replace('T', " "));
+                            let summary = super::show::format_mutation_summary(
+                                &pm.field, pm.old_value.as_deref(), &pm.new_value
+                            );
+                            println!("    {:>12}  {}", ts, summary);
+                        }
+                    }
+                } else {
+                    let ts = chrono::DateTime::parse_from_rfc3339(&m.timestamp)
+                        .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                        .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
+                    let summary = super::show::format_mutation_summary(
+                        &m.field, m.old_value.as_deref(), &m.new_value
+                    );
+                    println!("    {:>12}  {}", ts, summary);
+                    i += 1;
+                }
             }
             println!();
         }

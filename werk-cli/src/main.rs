@@ -18,7 +18,23 @@ use werk::output::Output;
 /// Operative instrument for structural dynamics.
 #[derive(Parser, Debug)]
 #[command(name = "werk")]
-#[command(version, about, long_about = None)]
+#[command(version, about, after_long_help = "\
+Commands by framework:
+
+  Structure (Architecture of Space)
+    add, compose, move, rm, show, tree, context
+
+  Action (Grammar of Action)
+    reality, desire, resolve, release, reopen, hold, position, note
+
+  Time (Calculus of Time)
+    horizon, snooze, recur, epoch, diff
+
+  Framing (Logic of Framing)
+    list, survey, ground, trajectory, insights, health
+
+  System
+    init, config, flush, batch, nuke, mcp, serve")]
 struct Cli {
     /// Output in JSON format.
     #[arg(short, long, global = true)]
@@ -39,7 +55,23 @@ fn main() {
         return;
     }
 
-    let args = Cli::parse();
+    // Rewrite `werk note <arg> ...` to `werk note add <arg> ...`
+    // when <arg> is not a recognized subcommand (add, rm, list).
+    // This makes `werk note 42 "text"` work as shorthand for `werk note add 42 "text"`.
+    let cli_args: Vec<String> = {
+        let mut args: Vec<String> = std::env::args().collect();
+        if let Some(note_pos) = args.iter().position(|a| a == "note") {
+            let next = args.get(note_pos + 1).map(|s| s.as_str());
+            match next {
+                Some("add") | Some("rm") | Some("list") | Some("--help") | Some("-h") | None => {}
+                Some(_) => {
+                    args.insert(note_pos + 1, "add".to_string());
+                }
+            }
+        }
+        args
+    };
+    let args = Cli::parse_from(cli_args);
     let output = Output::new(args.json);
 
     // Check mutation status before dispatch consumes the command.
