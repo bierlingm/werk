@@ -45,19 +45,11 @@ When modifying command output, follow these principles:
 6. **Compact layout** — multiple co-read facts on one line (Status + Created, Position + Last act).
 7. **Shared conventions** — use `display_id_named()` for parent context, `format_timestamp()` for consistent times, `format_mutation_summary()` for concise mutation display. All in `werk-shared`.
 
-## What's Sacred
+## Structural Invariants
 
-- Desired outcome above current reality (the one spatial law)
-- Theory of closure (children as composed bridge from reality to desire)
-- Frontier of action / operating envelope as primary interaction surface
-- Signal by exception (silence as default)
-- Gesture as unit of change
-- Locality (signal propagates one level)
-- Structure determines behavior
+Before changing data model, display order, or signal logic, check `designs/werk-conceptual-foundation.md`. The sacred core is defined there — desired above actual, theory of closure, signal by exception, gesture as unit of change, locality, structure determines behavior. If a change would violate one of these, stop and discuss.
 
-## What's Not Sacred
-
-Phase glyphs, color assignments, specific visual chrome, computed dynamics display, breakpoints. See the foundation document for the full list.
+Everything else (glyphs, colors, chrome, display breakpoints) is changeable.
 
 ## Code Quality
 
