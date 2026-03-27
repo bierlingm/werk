@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-27T19:11:52Z",
+  "flushed_at": "2026-03-27T20:10:43Z",
   "summary": {
-    "active": 64,
+    "active": 62,
     "released": 7,
-    "resolved": 50,
+    "resolved": 52,
     "total": 121
   },
   "tensions": [
@@ -173,7 +173,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Survey view V1 complete: Tab/Shift+Tab pivot/return yaw, inherited horizons with depth-first tree grouping under deadline providers, zone compression with above/below indicators, closure ratios right-aligned, per-line rendering (fixes white glitch), sticky band headers, sticky provider headers, gestures (r/x/e/n) from survey. Known issue: orphaned tree connectors when intermediate nodes scroll off — needs breadcrumb-style ancestor pinning. Bold removed from selection style globally (caused SGR bleed).",
+      "actual": "Survey view V1.3: NOW zone (dim temporal separator between imminent and overdue, or at bottom when no overdue), field vitals in bottom bar. Held step treatment with position glyphs matching deck (green next-step, cyan route, subdued held). Inline breadcrumb ancestor pinning for orphaned tree connectors. Simplified right column (zero-padded ID only). Approaching band always expanded (min 5 items). Band headers padded to full width. Sticky band header tracks cursor band explicitly. Bayesian diff strategy disabled for deterministic rendering. clear_area_styled uses TRANSPARENT bg for light-mode compatibility. Light mode tension #101 created with decomposed steps #102-#106. Remaining: white glitch still intermittent, sticky header edge cases at band boundaries, render_survey growing.",
       "created_at": "2026-03-24T17:52:26.407354+00:00",
       "desired": "survey view designed and implemented — temporal framing, structural annotations, frame widening/narrowing, context-carrying yaw transition",
       "horizon": "2026-04-10",
@@ -1284,7 +1284,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Asset cleanup done: video/ and research/archive/ moved to gitignored local/. .beads/.factory/ already resolved (#123). Remaining: edition choice (#124).",
+      "actual": "All 3 children resolved. Runtime artifacts gitignored (#123), distribution assets moved to local/ (#124→#125), all crates on edition 2024 (#124). Repo tracks only source, designs, and config.",
       "created_at": "2026-03-27T18:33:26.979730+00:00",
       "desired": "repository is clean, well-organized, and intentional — every tracked file has a clear reason, runtime artifacts are gitignored, crate boundaries are respected, root is minimal",
       "horizon": null,
@@ -1292,7 +1292,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 122,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": ".beads/ and .factory/ added to .gitignore. Both directories removed from git tracking (git rm --cached). 138 files untracked. Local files preserved — only git index affected.",
@@ -1300,21 +1300,21 @@
       "desired": ".beads/ and .factory/ runtime artifacts gitignored — only configuration tracked, not generated state",
       "horizon": null,
       "id": "01KMR95R4D4746K99R1ZNYJMZG",
-      "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "parent_id": null,
       "position": 1,
       "short_code": 123,
       "status": "Resolved"
     },
     {
-      "actual": "sd-core and werk-app use edition 2024 (nightly), other 5 crates use 2021. Creates hard nightly dependency. No documentation of why 2024 is needed.",
+      "actual": "All 7 crates standardized on edition 2024. ftui (FrankenTUI) requires it — the nightly dependency was already real, now it's consistent. Two trivial ref-pattern fixes for edition 2024 migration (deck.rs, config.rs).",
       "created_at": "2026-03-27T18:33:47.253284+00:00",
       "desired": "Rust edition choice is intentional and documented — either standardize on 2021 or document why sd-core needs 2024",
       "horizon": null,
       "id": "01KMR95SZNEXNTFB5WR0XF8RPN",
-      "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "parent_id": null,
       "position": 2,
       "short_code": 124,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "video/ (25 source files) moved to local/video/, research/archive/ (17 files) moved to local/research/. Both untracked from git. local/ is gitignored. Video-specific .gitignore lines replaced with single local/ entry. Remotion still works from local/video/ — all paths are relative. No files deleted.",
@@ -1322,7 +1322,7 @@
       "desired": "large assets (video/, research/archive/) have a clear storage strategy — either git-lfs, separate repo, or documented acceptance of the weight",
       "horizon": null,
       "id": "01KMR95VWRRYPG33YANDZ710HS",
-      "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
+      "parent_id": null,
       "position": 3,
       "short_code": 125,
       "status": "Resolved"
