@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-27T18:37:29Z",
+  "flushed_at": "2026-03-27T18:38:11Z",
   "summary": {
-    "active": 67,
+    "active": 66,
     "released": 7,
-    "resolved": 48,
+    "resolved": 49,
     "total": 122
   },
   "tensions": [
@@ -1306,7 +1306,7 @@
       "status": "Active"
     },
     {
-      "actual": ".beads/ database and .factory/validation/ JSON blobs (120+ files) are tracked in git as runtime state. These are generated artifacts, not source.",
+      "actual": ".beads/ and .factory/ added to .gitignore. Both directories removed from git tracking (git rm --cached). 138 files untracked. Local files preserved — only git index affected.",
       "created_at": "2026-03-27T18:33:45.357634+00:00",
       "desired": ".beads/ and .factory/ runtime artifacts gitignored — only configuration tracked, not generated state",
       "horizon": null,
@@ -1314,7 +1314,7 @@
       "parent_id": "01KMR95663ZC9YXHTXXB25KX5G",
       "position": 1,
       "short_code": 123,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "sd-core and werk-app use edition 2024 (nightly), other 5 crates use 2021. Creates hard nightly dependency. No documentation of why 2024 is needed.",
