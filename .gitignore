@@ -6,9 +6,5 @@
 .beads/
 .factory/
 
-# Video production
-video/node_modules/
-video/out/
-video/public/music/
-video/public/fonts/
-video/public/*.mp3
+# Local operational/distribution assets (not source)
+local/
