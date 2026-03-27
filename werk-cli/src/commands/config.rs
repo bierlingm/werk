@@ -40,7 +40,7 @@ pub fn cmd_config(
     };
 
     match command {
-        super::ConfigCommand::Set { ref key, ref value } => {
+        super::ConfigCommand::Set { key, value } => {
             // Validate key is not empty
             if key.is_empty() {
                 return Err(WerkError::InvalidInput(
@@ -83,7 +83,7 @@ pub fn cmd_config(
 
             Ok(())
         }
-        super::ConfigCommand::Get { ref key } => {
+        super::ConfigCommand::Get { key } => {
             // Validate key is not empty
             if key.is_empty() {
                 return Err(WerkError::InvalidInput(

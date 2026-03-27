@@ -1094,7 +1094,7 @@ impl InstrumentApp {
 
                         // Render focus detail below this accumulated item
                         if is_focused_child {
-                            if let (Some((_fy_start, fy_limit)), Some(ref detail)) = (acc_focus_y, &self.focused_detail) {
+                            if let (Some((_fy_start, fy_limit)), Some(detail)) = (acc_focus_y, &self.focused_detail) {
                                 self.render_inline_focus(frame, area.x, acc_top + 1, fy_limit, w, &cols, detail, 0);
                             }
                         }
