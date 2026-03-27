@@ -37,6 +37,17 @@ use crate::theme::STYLES;
 // Data types
 // ---------------------------------------------------------------------------
 
+/// Field-wide vitals for the NOW zone in the survey.
+#[derive(Debug, Clone, Default)]
+pub struct FieldVitals {
+    pub active: usize,
+    pub overdue: usize,
+    pub imminent: usize,
+    pub approaching: usize,
+    pub held_unframed: usize,
+    pub stale_realities: usize,
+}
+
 /// Which temporal band a tension belongs to.
 /// Variant order determines display order: top of screen (future/desire)
 /// to bottom (past/reality), honouring the one spatial law.
@@ -90,6 +101,10 @@ pub struct SurveyItem {
     pub band: TimeBand,
     /// 0.0 = fresh, 1.0 = at deadline, >1.0 = overdue.
     pub urgency: f64,
+    /// True if the tension has no position (acknowledged but uncommitted to sequence).
+    pub is_held: bool,
+    /// True if this is the next positioned step in its parent's sequence (lowest position).
+    pub is_next: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -120,11 +135,26 @@ impl InstrumentApp {
             std::collections::HashMap::new();
         let mut resolved_counts: std::collections::HashMap<&str, usize> =
             std::collections::HashMap::new();
+        // Track the lowest-positioned active child per parent (= "next step").
+        let mut next_step_per_parent: std::collections::HashMap<&str, (&str, i32)> =
+            std::collections::HashMap::new();
         for t in &all {
             if let Some(ref pid) = t.parent_id {
                 *child_counts.entry(pid.as_str()).or_insert(0) += 1;
                 if t.status == TensionStatus::Resolved {
                     *resolved_counts.entry(pid.as_str()).or_insert(0) += 1;
+                }
+                // Track next step: lowest position among active positioned children.
+                if t.status == TensionStatus::Active {
+                    if let Some(pos) = t.position {
+                        let entry = next_step_per_parent.entry(pid.as_str());
+                        entry.and_modify(|(id, cur_pos)| {
+                            if pos < *cur_pos {
+                                *id = t.id.as_str();
+                                *cur_pos = pos;
+                            }
+                        }).or_insert((t.id.as_str(), pos));
+                    }
                 }
             }
         }
@@ -152,6 +182,12 @@ impl InstrumentApp {
                 let has_children = total_children > 0;
                 let resolved_children = resolved_counts.get(t.id.as_str()).copied().unwrap_or(0);
 
+                // Is this tension the "next step" in its parent's sequence?
+                let is_next = t.parent_id.as_deref()
+                    .and_then(|pid| next_step_per_parent.get(pid))
+                    .map(|(next_id, _)| *next_id == t.id.as_str())
+                    .unwrap_or(false);
+
                 SurveyItem {
                     tension_id: t.id.clone(),
                     short_code: t.short_code,
@@ -167,6 +203,8 @@ impl InstrumentApp {
                     tree_prefix: String::new(), // computed after tree ordering
                     band,
                     urgency,
+                    is_held: t.position.is_none(),
+                    is_next,
                 }
             })
             .collect();
@@ -185,6 +223,39 @@ impl InstrumentApp {
         // Phase 2: Within each band, reorder into depth-first tree order
         // grouped by provider, and compute tree prefixes.
         items = tree_order_within_bands(items);
+
+        // Compute field vitals for the NOW zone.
+        let mut vitals = FieldVitals {
+            active: items.len(),
+            ..Default::default()
+        };
+        for item in &items {
+            match item.band {
+                TimeBand::Overdue => vitals.overdue += 1,
+                TimeBand::ThisWeek => vitals.imminent += 1,
+                TimeBand::ThisMonth => vitals.approaching += 1,
+                _ => {}
+            }
+            if item.is_held && item.band == TimeBand::NoDeadline {
+                vitals.held_unframed += 1;
+            }
+        }
+        // Stale realities: active tensions whose last 'actual' mutation is >7 days old.
+        let active_ids: Vec<&str> = all.iter()
+            .filter(|t| t.status == TensionStatus::Active)
+            .map(|t| t.id.as_str())
+            .collect();
+        if let Ok(last_actuals) = self.engine.store().get_last_mutation_timestamps(&active_ids, &["actual"]) {
+            let stale_cutoff = now - chrono::Duration::days(7);
+            for t in all.iter().filter(|t| t.status == TensionStatus::Active) {
+                match last_actuals.get(&t.id) {
+                    Some(ts) if *ts < stale_cutoff => vitals.stale_realities += 1,
+                    None => {} // never updated — not stale, just new
+                    _ => {}
+                }
+            }
+        }
+        self.field_vitals = vitals;
 
         // Clamp cursor.
         if !items.is_empty() && self.survey_cursor >= items.len() {
@@ -437,11 +508,15 @@ struct BandExpansion {
     show: usize,
 }
 
+/// Minimum items to show for temporally-close bands (overdue/imminent/approaching).
+const TEMPORAL_BAND_MIN: usize = 5;
+
 /// Compute how many items to show per band given available rows.
 fn compute_band_expansion(
     items: &[SurveyItem],
     cursor: usize,
     available_rows: usize,
+    now_zone_lines: usize,
 ) -> Vec<(TimeBand, BandExpansion)> {
     // Identify non-empty bands and their ranges.
     let mut bands: Vec<(TimeBand, usize, usize)> = Vec::new(); // (band, start, count)
@@ -463,23 +538,35 @@ fn compute_band_expansion(
 
     // Each band needs: 1 header line + at least 1 content line (item or summary).
     // Blank line between bands (except first): bands.len() - 1.
-    let overhead = bands.len() * 2 + bands.len().saturating_sub(1);
+    // NOW zone: counted via now_zone_lines parameter.
+    let overhead = bands.len() * 2 + bands.len().saturating_sub(1) + now_zone_lines;
     let content_rows = available_rows.saturating_sub(overhead);
 
     // First pass: give every band 1 line (summary).
     let mut allocs: Vec<usize> = vec![1; bands.len()];
     let mut used = bands.len(); // 1 per band
 
-    // Second pass: expand the cursor's band up to its full count.
+    // Second pass: temporal bands near NOW get a minimum floor.
+    // Overdue, imminent, approaching should always expand (up to TEMPORAL_BAND_MIN).
+    for (bi, (band, _, count)) in bands.iter().enumerate() {
+        if matches!(band, TimeBand::Overdue | TimeBand::ThisWeek | TimeBand::ThisMonth) {
+            let floor = TEMPORAL_BAND_MIN.min(*count);
+            let extra = floor.saturating_sub(allocs[bi]);
+            let can_give = content_rows.saturating_sub(used).min(extra);
+            allocs[bi] += can_give;
+            used += can_give;
+        }
+    }
+
+    // Third pass: expand the cursor's band up to its full count.
     if let Some(cursor_idx) = bands.iter().position(|b| Some(b.0) == cursor_band) {
         let max = bands[cursor_idx].2;
-        let can_give = content_rows.saturating_sub(used).min(max.saturating_sub(1));
+        let can_give = content_rows.saturating_sub(used).min(max.saturating_sub(allocs[cursor_idx]));
         allocs[cursor_idx] += can_give;
         used += can_give;
     }
 
-    // Third pass: distribute remaining rows to other bands (overdue first, then this_week, etc).
-    // Iterate in reverse order of TimeBand (overdue = most important to expand).
+    // Fourth pass: distribute remaining rows to other bands (overdue first, then this_week, etc).
     let priority_order: Vec<usize> = {
         let mut idxs: Vec<usize> = (0..bands.len()).collect();
         idxs.sort_by(|&a, &b| bands[b].0.cmp(&bands[a].0));
@@ -529,31 +616,55 @@ impl InstrumentApp {
         // Width allocation is per-line: each line computes its own text budget
         // from w, left indent, tree prefix, and right column content.
 
-        let expansions = compute_band_expansion(items, self.survey_cursor, area.height as usize);
+        // NOW zone: 2 lines (blank + rule). No vitals in the zone itself — they go in the bar.
+        let now_zone_lines = 2;
+        let expansions = compute_band_expansion(
+            items, self.survey_cursor, area.height as usize,
+            now_zone_lines,
+        );
 
         let mut lines: Vec<Line> = Vec::new();
         let mut cursor_line: usize = 0;
         // Track band header lines for sticky pinning.
         let mut band_headers: Vec<(usize, Line)> = Vec::new(); // (line_index, header_line)
+        // Track which band header the cursor belongs to (by index into band_headers).
+        let mut cursor_band_header: usize = 0;
+
+        let mut prev_band: Option<TimeBand> = None;
+        let has_overdue_band = expansions.iter().any(|(b, _)| *b == TimeBand::Overdue);
 
         for (band, exp) in &expansions {
-            // Blank line before band (except first).
-            if !lines.is_empty() {
-                lines.push(Line::from_spans([Span::raw("")]));
+            // Insert NOW zone between imminent (ThisWeek) and overdue.
+            if *band == TimeBand::Overdue {
+                render_now_zone(w, &mut lines, prev_band.is_some());
             }
 
-            // Band header.
+            // Blank line before band (except first and except after NOW zone).
+            // Must be full-width styled span — empty Span::raw("") leaves all
+            // cells at Cell::default() (WHITE fg), causing the all-white glitch.
+            if !lines.is_empty() && *band != TimeBand::Overdue {
+                lines.push(Line::from_spans([Span::styled(" ".repeat(w), STYLES.dim)]));
+            }
+
+            // Band header — padded to full width to prevent bleed-through when sticky.
             let band_label = band.label();
             let count_label = format!(" ({})", exp.count);
             let rule_w = w.saturating_sub(4 + band_label.len() + count_label.len() + 3);
             let rule = "\u{2500}".repeat(rule_w);
+            let mut header_text = format!("{SURVEY_INDENT}\u{2500}\u{2500} {band_label}{count_label} {rule}");
+            while header_text.chars().count() < w {
+                header_text.push('\u{2500}');
+            }
             let header_line = Line::from_spans([
-                Span::styled(
-                    format!("{SURVEY_INDENT}\u{2500}\u{2500} {band_label}{count_label} {rule}"),
-                    STYLES.dim,
-                ),
+                Span::styled(header_text, STYLES.dim),
             ]);
             band_headers.push((lines.len(), header_line.clone()));
+            // Track if cursor is in THIS band.
+            if self.survey_cursor >= exp.start
+                && self.survey_cursor < exp.start + exp.count
+            {
+                cursor_band_header = band_headers.len() - 1;
+            }
             lines.push(header_line);
 
             // Which items from this band to show.
@@ -582,12 +693,10 @@ impl InstrumentApp {
             // "... N above" summary at top of visible window.
             if hidden_above > 0 {
                 let style = STYLES.dim;
-                lines.push(Line::from_spans([
-                    Span::styled(
-                        format!("{SURVEY_INDENT}{:>width$}\u{2191} {hidden_above} above", "", width = HORIZON_COL_W),
-                        style,
-                    ),
-                ]));
+                let text = format!("{SURVEY_INDENT}{:>width$}\u{2191} {hidden_above} above", "", width = HORIZON_COL_W);
+                let mut spans = vec![Span::styled(text, style)];
+                pad_to_width(&mut spans, w, style);
+                lines.push(Line::from_spans(spans));
             }
 
             // Sticky provider: if the first visible item is a tree child whose
@@ -607,11 +716,55 @@ impl InstrumentApp {
             }
 
             // Render visible items. Tree prefixes are pre-computed during loading.
+            // Build set of visible item IDs for breadcrumb detection.
+            let visible_ids: std::collections::HashSet<&str> = (show_start..show_end)
+                .map(|i| items[i].tension_id.as_str())
+                .collect();
+            // Map from id → item for all items in this band (for breadcrumb lookup).
+            let band_item_map: std::collections::HashMap<&str, &SurveyItem> =
+                items[exp.start..exp.start + exp.count].iter()
+                    .map(|it| (it.tension_id.as_str(), it))
+                    .collect();
+            let mut breadcrumbs_inserted: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+
             for idx in show_start..show_end {
                 let item = &items[idx];
                 let is_selected = idx == self.survey_cursor;
                 if is_selected {
                     cursor_line = lines.len();
+                }
+
+                // Breadcrumb: if this is a tree child whose parent is not visible,
+                // insert dimmed breadcrumb lines for missing ancestors.
+                if !item.tree_prefix.is_empty() {
+                    if let Some(ref pid) = item.parent_id {
+                        if !visible_ids.contains(pid.as_str()) && !breadcrumbs_inserted.contains(pid.as_str()) {
+                            // Walk up to find all missing ancestors up to the provider.
+                            let mut missing_chain: Vec<&SurveyItem> = Vec::new();
+                            let mut current_pid = Some(pid.as_str());
+                            for _ in 0..20 {
+                                match current_pid {
+                                    Some(cpid) if !visible_ids.contains(cpid) => {
+                                        if let Some(ancestor) = band_item_map.get(cpid) {
+                                            missing_chain.push(ancestor);
+                                            current_pid = ancestor.parent_id.as_deref();
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            // Insert breadcrumbs top-down (reverse the chain).
+                            for ancestor in missing_chain.iter().rev() {
+                                if !breadcrumbs_inserted.contains(&ancestor.tension_id) {
+                                    breadcrumbs_inserted.insert(ancestor.tension_id.clone());
+                                    lines.push(render_breadcrumb_line(ancestor, w));
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if item.tree_prefix.is_empty() {
@@ -629,13 +782,18 @@ impl InstrumentApp {
                     cursor_line = lines.len();
                 }
                 let style = if summary_selected { STYLES.selected } else { STYLES.dim };
-                lines.push(Line::from_spans([
-                    Span::styled(
-                        format!("{SURVEY_INDENT}{:>width$}\u{2193} {hidden_below} below", "", width = HORIZON_COL_W),
-                        style,
-                    ),
-                ]));
+                let text = format!("{SURVEY_INDENT}{:>width$}\u{2193} {hidden_below} below", "", width = HORIZON_COL_W);
+                let mut spans = vec![Span::styled(text, style)];
+                pad_to_width(&mut spans, w, style);
+                lines.push(Line::from_spans(spans));
             }
+
+            prev_band = Some(*band);
+        }
+
+        // NOW zone at the bottom if there's no overdue band.
+        if !has_overdue_band && !expansions.is_empty() {
+            render_now_zone(w, &mut lines, true);
         }
 
         // Per-line rendering: render each line individually into its own 1-row
@@ -650,19 +808,10 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, area.y + row as u16, area.width, 1), frame);
         }
 
-        // Sticky band header: if the band header for the cursor's band has
-        // scrolled off the top, overlay it at row 0.
+        // Sticky header: always pin the cursor's band header when it scrolls off.
         if self.survey_cursor < items.len() {
-            if let Some((header_line_idx, header_line)) = band_headers.iter()
-                .rev()
-                .find(|(idx, _)| {
-                    // Find the band header whose line index is <= cursor_line
-                    // (i.e., the band the cursor is in).
-                    *idx <= cursor_line
-                })
-            {
+            if let Some((header_line_idx, header_line)) = band_headers.get(cursor_band_header) {
                 if *header_line_idx < view_offset {
-                    // Band header scrolled off — pin it at the top.
                     Paragraph::new(Text::from(header_line.clone()))
                         .render(Rect::new(area.x, area.y, area.width, 1), frame);
                 }
@@ -670,20 +819,31 @@ impl InstrumentApp {
         }
     }
 
-    /// Render the survey bottom bar.
+    /// Render the survey bottom bar with field vitals.
     pub fn render_survey_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
         let content = self.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
-        let total = self.survey_items.len();
-        let overdue = self.survey_items.iter().filter(|i| i.band == TimeBand::Overdue).count();
+        let v = &self.field_vitals;
 
-        let left = if overdue > 0 {
-            format!("{overdue} overdue")
-        } else {
-            format!("{total} active")
-        };
-        let center = "Tab pivot \u{00B7} Shift+Tab return \u{00B7} j/k navigate \u{00B7} Enter descend";
+        // Left: vitals summary.
+        let mut vitals_parts: Vec<String> = Vec::new();
+        vitals_parts.push(format!("{} active", v.active));
+        if v.overdue > 0 {
+            vitals_parts.push(format!("{} overdue", v.overdue));
+        }
+        if v.imminent > 0 {
+            vitals_parts.push(format!("{} imminent", v.imminent));
+        }
+        if v.held_unframed > 0 {
+            vitals_parts.push(format!("{} held", v.held_unframed));
+        }
+        if v.stale_realities > 0 {
+            vitals_parts.push(format!("{} stale", v.stale_realities));
+        }
+        let left = vitals_parts.join(" \u{00B7} ");
+
+        let center = "Tab pivot \u{00B7} j/k navigate \u{00B7} Enter descend";
 
         let w = bar_area.width as usize;
         let left_w = left.chars().count();
@@ -691,7 +851,7 @@ impl InstrumentApp {
         let center_start = w.saturating_sub(center_w) / 2;
 
         let mut spans: Vec<Span> = Vec::new();
-        spans.push(Span::styled(&left, if overdue > 0 { STYLES.amber } else { STYLES.dim }));
+        spans.push(Span::styled(&left, if v.overdue > 0 { STYLES.amber } else { STYLES.dim }));
 
         if center_start > left_w + 1 {
             let pad = " ".repeat(center_start - left_w);
@@ -712,7 +872,7 @@ impl InstrumentApp {
 
 /// Render a provider/standalone item line (has own deadline or no deadline).
 ///
-/// Layout: `  Jun      desire text...                   #2 → [4/8]`
+/// Layout: `  Jun    ◆ desire text...                   #2 → [4/8]`
 fn render_provider_line(
     item: &SurveyItem,
     is_selected: bool,
@@ -728,9 +888,13 @@ fn render_provider_line(
         None => " ".repeat(HORIZON_COL_W),
     };
 
+    let glyph = position_glyph(item);
+    let glyph_str = format!("{glyph} ");
+    let glyph_w = 2; // glyph + space
+
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
-    let left_used = SURVEY_INDENT.len() + HORIZON_COL_W;
+    let left_used = SURVEY_INDENT.len() + HORIZON_COL_W + glyph_w;
     let desire_w = w.saturating_sub(left_used + right_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
 
@@ -740,6 +904,7 @@ fn render_provider_line(
 
     let style_text = if is_selected { STYLES.selected } else { STYLES.text };
     let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
+    let style_glyph = if is_selected { STYLES.selected } else { glyph_style(item) };
     let style_horizon = if item.urgency > 1.0 {
         if is_selected { STYLES.selected } else { STYLES.amber }
     } else {
@@ -749,6 +914,7 @@ fn render_provider_line(
     let mut spans = vec![
         Span::styled(SURVEY_INDENT.to_string(), style_dim),
         Span::styled(horizon_str, style_horizon),
+        Span::styled(glyph_str, style_glyph),
         Span::styled(desire_text, style_text),
         Span::styled(" ".repeat(gap), style_dim),
         Span::styled(right_text, style_dim),
@@ -761,7 +927,7 @@ fn render_provider_line(
 /// Render a tree-child item line (inherits deadline from a provider ancestor).
 /// Uses the pre-computed tree_prefix for proper │/├/└ connector lines.
 ///
-/// Layout: `          │ ├ desire text...               #18 → [0/3]`
+/// Layout: `          │ ├ ◆ desire text...               #18 → [0/3]`
 fn render_tree_child_line(
     item: &SurveyItem,
     is_selected: bool,
@@ -769,10 +935,13 @@ fn render_tree_child_line(
 ) -> Line {
     let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
     let prefix_w = item.tree_prefix.chars().count();
+    let glyph = position_glyph(item);
+    let glyph_str = format!("{glyph} ");
+    let glyph_w = 2; // glyph + space
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
-    let left_used = base_indent + prefix_w;
+    let left_used = base_indent + prefix_w + glyph_w;
     let desire_w = w.saturating_sub(left_used + right_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
 
@@ -781,10 +950,12 @@ fn render_tree_child_line(
 
     let style_text = if is_selected { STYLES.selected } else { STYLES.text };
     let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
+    let style_glyph = if is_selected { STYLES.selected } else { glyph_style(item) };
 
     let mut spans = vec![
         Span::styled(" ".repeat(base_indent), style_dim),
         Span::styled(item.tree_prefix.clone(), style_dim),
+        Span::styled(glyph_str, style_glyph),
         Span::styled(desire_text, style_text),
         Span::styled(" ".repeat(gap), style_dim),
         Span::styled(right_text, style_dim),
@@ -794,17 +965,86 @@ fn render_tree_child_line(
     Line::from_spans(spans)
 }
 
-/// Build the right column: #code + → (children) + closure ratio.
-/// Trace-facing data (facts about the tension's state).
+/// Position glyph: ◆ for positioned (route), ✧ for held — matches deck glyphs.
+fn position_glyph(item: &SurveyItem) -> &'static str {
+    if item.is_held { "\u{2727}" } else { "\u{25c6}" }
+}
+
+/// Glyph color matching the deck view: green for next step, cyan for route, subdued for held.
+fn glyph_style(item: &SurveyItem) -> ftui::style::Style {
+    if item.is_held { STYLES.subdued } else if item.is_next { STYLES.green } else { STYLES.cyan }
+}
+
+/// Build the right column: just the tension ID number, zero-padded to 2 digits.
 fn build_right_col(item: &SurveyItem) -> String {
-    let code_str = item.short_code.map(|c| format!("#{c}")).unwrap_or_default();
-    let children_indicator = if item.has_children { " \u{2192}" } else { "" };
-    let closure_str = if item.has_children {
-        format!(" [{}/{}]", item.closure.0, item.closure.1)
-    } else {
-        String::new()
-    };
-    format!("{code_str}{children_indicator}{closure_str}")
+    item.short_code.map(|c| format!("{c:02}")).unwrap_or_default()
+}
+
+/// Render the NOW zone separator — a clean dim rule marking the temporal present.
+fn render_now_zone(w: usize, lines: &mut Vec<Line>, add_blank_before: bool) {
+    if add_blank_before {
+        lines.push(Line::from_spans([Span::styled(" ".repeat(w), STYLES.dim)]));
+    }
+    let now_rule_w = w.saturating_sub(4 + 5 + 4); // "  ── NOW ──..."
+    let half = now_rule_w / 2;
+    let left_rule = "\u{2500}".repeat(half);
+    let right_rule = "\u{2500}".repeat(now_rule_w - half);
+    let mut text = format!("{SURVEY_INDENT}{left_rule} NOW {right_rule}");
+    // Pad to full width to prevent bleed-through from underlying lines.
+    while text.chars().count() < w {
+        text.push(' ');
+    }
+    lines.push(Line::from_spans([
+        Span::styled(text, STYLES.dim),
+    ]));
+}
+
+/// Render a dimmed breadcrumb line for an ancestor that scrolled off-screen.
+/// Same layout as a regular line but fully dim — provides structural context.
+fn render_breadcrumb_line(item: &SurveyItem, w: usize) -> Line {
+    let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
+    let glyph = position_glyph(item);
+    let glyph_str = format!("{glyph} ");
+    let glyph_w = 2;
+    let right_text = build_right_col(item);
+    let right_w = right_text.chars().count();
+
+    if item.tree_prefix.is_empty() {
+        // Provider-level breadcrumb.
+        let left_used = base_indent + glyph_w;
+        let desire_w = w.saturating_sub(left_used + right_w + 2);
+        let desire_text = truncate_desired(&item.desired, desire_w);
+        let text_w = desire_text.chars().count();
+        let gap = w.saturating_sub(left_used + text_w + right_w);
+
+        let mut spans = vec![
+            Span::styled(" ".repeat(base_indent), STYLES.dim),
+            Span::styled(glyph_str, STYLES.dim),
+            Span::styled(desire_text, STYLES.dim),
+            Span::styled(" ".repeat(gap), STYLES.dim),
+            Span::styled(right_text, STYLES.dim),
+        ];
+        pad_to_width(&mut spans, w, STYLES.dim);
+        return Line::from_spans(spans);
+    }
+
+    let prefix_w = item.tree_prefix.chars().count();
+    let left_used = base_indent + prefix_w + glyph_w;
+    let desire_w = w.saturating_sub(left_used + right_w + 2);
+    let desire_text = truncate_desired(&item.desired, desire_w);
+    let text_w = desire_text.chars().count();
+    let gap = w.saturating_sub(left_used + text_w + right_w);
+
+    let mut spans = vec![
+        Span::styled(" ".repeat(base_indent), STYLES.dim),
+        Span::styled(item.tree_prefix.clone(), STYLES.dim),
+        Span::styled(glyph_str, STYLES.dim),
+        Span::styled(desire_text, STYLES.dim),
+        Span::styled(" ".repeat(gap), STYLES.dim),
+        Span::styled(right_text, STYLES.dim),
+    ];
+    pad_to_width(&mut spans, w, STYLES.dim);
+    Line::from_spans(spans)
 }
 
 fn pad_to_width(spans: &mut Vec<Span>, w: usize, style: ftui::style::Style) {

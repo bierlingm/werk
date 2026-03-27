@@ -70,7 +70,7 @@ pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
 
 /// Launch the Operative Instrument TUI.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    use ftui::App;
+    use ftui::{Program, ProgramConfig, RuntimeDiffConfig};
 
     // Install panic handler that restores terminal before printing the panic.
     // Without this, a panic leaves the terminal in raw mode and may corrupt the DB WAL.
@@ -88,14 +88,43 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("\nwerk TUI crashed. Your data is backed up in .werk/backups/");
     }));
 
+    // Disable Bayesian diff strategy to prevent the "all white" rendering glitch.
+    //
+    // Root cause: reset_for_frame() marks ALL cells dirty every frame, which
+    // inflates the Bayesian change-rate estimate. This causes the strategy to
+    // oscillate between FullRedraw and diff modes. During diff-only frames,
+    // un-re-emitted cells rely on the terminal preserving its display state.
+    // Some terminals (especially under DEC 2026 sync output) can lose that
+    // state during focus changes, compositor redraws, or rapid keypresses,
+    // causing persistent "all white" or "all black" corruption that the diff
+    // engine never repairs because it thinks those cells are unchanged.
+    //
+    // Fix: disable Bayesian selection and dirty-row optimization so every frame
+    // uses a full cell-by-cell diff (DiffStrategy::Full). This still skips
+    // unchanged cells (not a FullRedraw) but compares every cell against
+    // prev_buffer, preventing strategy oscillation.
+    let diff_config = RuntimeDiffConfig::default()
+        .with_bayesian_enabled(false)
+        .with_dirty_rows_enabled(false);
+    let config = ProgramConfig::fullscreen()
+        .with_diff_config(diff_config);
+
     let result = match load_field() {
         Ok((store, entries)) => {
             let app = InstrumentApp::new(store, entries);
-            App::fullscreen(app).run()
+            let mut program = Program::with_config(app, config)?;
+            program.run()
         }
         Err(_) => {
             let app = InstrumentApp::new_empty();
-            App::fullscreen(app).run()
+            let fallback_config = ProgramConfig::fullscreen()
+                .with_diff_config(
+                    RuntimeDiffConfig::default()
+                        .with_bayesian_enabled(false)
+                        .with_dirty_rows_enabled(false),
+                );
+            let mut program = Program::with_config(app, fallback_config)?;
+            program.run()
         }
     };
 

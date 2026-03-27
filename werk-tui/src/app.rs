@@ -100,6 +100,8 @@ pub struct InstrumentApp {
     pub survey_cursor: usize,
     /// All active tensions for the survey view, sorted by time band.
     pub survey_items: Vec<crate::survey::SurveyItem>,
+    /// Field-wide vitals for the NOW zone.
+    pub field_vitals: crate::survey::FieldVitals,
     /// Saved stream state for Shift+Tab return (parent_id, cursor index).
     pub pre_survey_state: Option<(Option<String>, usize)>,
 
@@ -171,6 +173,7 @@ impl InstrumentApp {
             view_orientation: crate::state::ViewOrientation::Stream,
             survey_cursor: 0,
             survey_items: Vec::new(),
+            field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
         };
@@ -227,6 +230,7 @@ impl InstrumentApp {
             view_orientation: crate::state::ViewOrientation::Stream,
             survey_cursor: 0,
             survey_items: Vec::new(),
+            field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
         }
