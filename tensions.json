@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-27T18:48:47Z",
+  "flushed_at": "2026-03-27T18:56:59Z",
   "summary": {
     "active": 66,
     "released": 7,
@@ -536,7 +536,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Comprehensive audit complete. What exists: (1) werk-conceptual-foundation.md (57KB, canonical authority); (2) README.md (excellent, 9/10, but no deep tutorials); (3) CLAUDE.md (focused agent/developer guide); (4) 14 active design docs in designs/ with proper archive; (5) SKILL.md + onboarding.md + troubleshooting.md + dynamics-guide.md in skills/; (6) TUI DESIGN_SYSTEM.md (professional); (7) CLI now self-documents with examples in every --help and framework grouping; (8) code-level docs in every lib.rs. What's missing: (1) no unified user guide beyond 5-min onboarding — no 'scaling from 1 to 50 tensions' guide; (2) rustdoc not published; (3) no MCP integration guide; (4) session learnings like today's CLI design principles not captured canonically; (5) CLAUDE.md doesn't reflect the CLI improvements shipped today.",
+      "actual": "Conceptual foundation document amended (2026-03-27): terminology standardized (survey view, deck view, session), unimplemented features clearly marked as future with tension references (thresholds #19, split/merge #49, logbase #89, staging #48), stale concepts removed (over/under flags, aimed execution point, resolution velocity, cass reference), new concepts added (snooze, recurrence, three temporal orientations taxis/chronos/kairos, short codes, pathway palette independence insight), ⏱ glyph note added, StatusLine obsolescence decided. CLAUDE.md updated in prior commit. Two children resolved (#117, #121).",
       "created_at": "2026-03-24T17:52:28.427042+00:00",
       "desired": "werk has excellent documentation — the conceptual foundation is canonical, a user guide exists for practitioners at every stage, crate-level rustdoc is published, the CLI self-documents with examples, design decisions are traceable, and session learnings are captured in the right places",
       "horizon": null,
