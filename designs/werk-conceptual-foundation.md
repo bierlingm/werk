@@ -1,6 +1,7 @@
 # Werk: Conceptual Foundation
 
 **Emerged:** 2026-03-20 through 2026-03-22, through sustained dialogue
+**Last amended:** 2026-03-27 (terminology standardization, implementation grounding, temporal orientations)
 **Status:** Living document. This sits above all design system plans and implementation documents. Changes here propagate downward; changes below do not propagate upward without explicit amendment.
 
 ---
@@ -10,6 +11,8 @@
 This is the conceptual foundation of werk — the operative instrument for structural dynamics practice. It captures the principles, structures, and vocabulary that the instrument embodies. Design system plans, implementation specifications, and UI documents derive from this foundation; they do not define it.
 
 This document emerged from direct reasoning about what the instrument is for, what it affords, and what it must preserve. It is grounded in the structural dynamics framework as taught by Nicholas Catton and rooted in Robert Fritz's creative process work, in the operative traditions as articulated by Miguel A. Fernandez, in generative anthropology's understanding of gesture and deferral, and in the lived practice of the instrument's creator.
+
+**Implementation status:** Parts I and II are fully implemented and validated through use. Part III describes both implemented features (operating envelope, survey view, sessions, ground mode, operative gestures, navigation) and aspirational design (thresholds, logbook query system, split/merge gestures) — the latter are clearly marked. Part IV defines the four formal frameworks. Part V lists open vocabulary. The instrument is operational across three interface surfaces (TUI, CLI, MCP) with 30+ commands and 30 MCP tools.
 
 ---
 
@@ -143,19 +146,9 @@ The accreted structure (closed epochs, resolved tensions, released tensions, not
 
 Together, the live structure and the logbook form the complete model of a project — one under revision, one settled. There is an instructive difference between: (a) the "live" structure as it is open at any one moment; (b) the "accreted" structure that is no longer under revision or uncertainty; and (c) whatever external artifacts (code, documents, communications) the project produces. The logbook holds (b) and together with (a) constitutes the full structural record from which (c) can be understood, justified, and contextualized.
 
-This means the logbook should be **queryable as structure** — semantic search across epochs, filtering by topic or term or tension, cross-epoch pattern analysis, reconstruction of decision chains. The ability to ask "show me every epoch that touched this concern" or "what was the theory of closure when we made that decision" transforms the logbook from a simple record into a *structural resource*.
+This means the logbook should be **queryable as structure** *(future — tracked as #89 "logbase")* — semantic search across epochs, filtering by topic or term or tension, cross-epoch pattern analysis, reconstruction of decision chains. The ability to ask "show me every epoch that touched this concern" or "what was the theory of closure when we made that decision" transforms the logbook from a simple record into a *structural resource*.
 
-**Query patterns the logbook should support:**
-- "Show me every epoch that touched [concern/term]" — semantic search across epoch content
-- "What was the theory of closure when we made [decision]?" — point-in-time structural reconstruction
-- "How many times has this tension's desire changed?" — trajectory analysis across epochs
-- "What was released and why?" — released tensions as a queryable semantic category
-- "Timeline of reality updates for [tension]" — trace evolution across all epochs
-- "What was happening in [tension B] when [tension A] had its phase transition?" — cross-tension temporal correlation
-
-**Reference implementation:** Jeffrey Emanuel's `cass` (coding agent session search) demonstrates the architecture: multi-backend search (lexical BM25 + semantic embedding + hybrid RRF fusion) against accumulated session histories; temporal bucketing to show activity evolution; context windows showing surrounding conversation not just matches; relationship discovery linking related sessions; aggregation by category for pattern recognition; field selection allowing summary vs. full content at query time; cross-workspace analysis for patterns across projects. The logbook's query system should achieve equivalent capability against the structural record: every desire, reality, note, resolution, release, epoch boundary, and gesture is searchable, filterable, and correlatable.
-
-The analogy extends: geological strata encode Earth's history in queryable form. A well-kept logbook tells the full story of a voyage. Whitehead's perished actual occasions persist as objective data for new occasions of becoming. The logbook is the instrument's memory — not nostalgic, but structurally generative.
+The analogy: geological strata encode Earth's history in queryable form. A well-kept logbook tells the full story of a voyage. Whitehead's perished actual occasions persist as objective data for new occasions of becoming. The logbook is the instrument's memory — not nostalgic, but structurally generative.
 
 ### The Instrument's Boundary
 
@@ -196,8 +189,16 @@ The temporal system is built from two user-set primitives and everything else is
 9. **Actual resolution point** — when the step was done in reality. Auto-recorded at resolution time; optionally overridable for "I did this yesterday" cases (`--actual-at` in CLI). Configuration option for whether the instrument asks. Stored as `actual_at` on the mutation record.
 10. **Reported resolution point** — when the user marked it done in the instrument. Stored as the mutation's `timestamp`. The gap between actual and reported is engagement pattern data.
 
-**Optional temporal refinement (configurable):**
-11. **Aimed execution point** — a personal commitment to a specific date more precise than the deadline or implied window. Rarely needed — the implied window from order + neighboring deadlines usually suffices. Available as a configuration option in ground mode for users who want this precision.
+**Two temporal gestures:**
+11. **Snooze** — temporarily hide a tension until a future date. The tension remains active but is excluded from the frontier and survey until the snooze expires. For deferring without releasing.
+12. **Recurrence** — a tension that re-activates on an interval after resolution. When resolved, it is automatically reopened after the interval. For recurring practices, reviews, or maintenance rhythms.
+
+**Three temporal orientations** (discovered through TUI design):
+- **Taxis** — sequence and order. The positioned steps, the theory of closure as ordered plan. The deck view's primary axis.
+- **Chronos** — calendar and deadline. When things are due, how much time remains, urgency. The survey view's primary axis.
+- **Kairos** — readiness and opportunity. The right moment to act, independent of sequence or calendar. What the frontier surfaces.
+
+These three orientations are not modes to switch between — they coexist. The instrument surfaces all three simultaneously through different visual channels (position for taxis, deadline annotations for chronos, envelope for kairos).
 
 **Structural signals from temporal relationships:**
 - **Sequencing pressure**: order conflicts with deadline ordering — noteworthy, not necessarily wrong
@@ -209,7 +210,7 @@ The temporal system is built from two user-set primitives and everything else is
 
 **Pathway palettes for temporal decisions:** When a gesture creates a structural signal (e.g., setting a child deadline beyond parent), the instrument presents a small set of coherent response options at predictable key positions. Options might include: keep as-is, adjust to fit, promote structurally, adjust the parent, or discard. The user selects or dismisses. This generalizes to any gesture that produces a decision fork.
 
-Pathway palettes are **synchronous instrument feedback** — they appear immediately as part of the gesture flow. In the TUI, they are inline option sets. In the CLI, they are printed response options the user selects or dismisses before the command completes. They are distinct from **staging**, which is asynchronous: a set of draft mutations composed in advance (by human or agent), held in a pending state, reviewable and confirmable/rejectable independently. Staging is for deliberate multi-step restructuring or agent-proposed changes held for review. Pathway palettes are for the instrument responding to what just happened.
+Pathway palettes are **structural signal logic independent of invocation surface** — containment violations and sequencing pressure are detected at the data layer, not the UI layer. In the TUI, palettes will appear as inline option sets. In the CLI, they are printed as informational signals after the gesture completes — the user acts on them by running another command. In JSON output, they appear as a `signals` array for agent consumption. Palettes are distinct from **staging** *(future)*, which is asynchronous: a set of draft mutations composed in advance (by human or agent), held in a pending state, reviewable and confirmable/rejectable independently. Staging is for deliberate multi-step restructuring or agent-proposed changes held for review. Pathway palettes are for the instrument responding to what just happened.
 
 The fractal quality is structural: each tension with a deadline creates a temporal frame, and its children exist within that frame. Navigating down the tree is navigating into finer temporal granularity.
 
@@ -258,12 +259,12 @@ Moving the cursor below current reality enters the **logbook**: previous deltas,
 
 ### The Survey View
 
-The survey view is the complement to the stream view. They are dual projections of the same high-dimensional space (structure × time):
+The survey view is the complement to the deck view. They are dual projections of the same high-dimensional space (structure × time):
 
-- **Stream view**: navigate structure, see time (time annotated on the spine)
+- **Deck view**: navigate structure, see time (time annotated on the spine)
 - **Survey view**: navigate time, see structure (structural context annotated on each element)
 
-The yaw toggle (Tab) transposes axes — flipping between these projections while **carrying the current selection** across the transition. If you're looking at "Design API contract" in the stream and press Tab, you land in the survey with that step highlighted in its temporal frame. And vice versa.
+The yaw toggle (Tab) transposes axes — flipping between these projections while **carrying the current selection** across the transition. If you're looking at "Design API contract" in the deck and press Tab, you land in the survey with that step highlighted in its temporal frame. And vice versa.
 
 **The survey view's primary axis is time.** It shows all steps across all tensions organized by temporal urgency:
 - **Overdue** — steps whose deadlines have passed, across all tensions
@@ -279,7 +280,7 @@ Each step shows its parent tension as a structural annotation (dimmed, on the ri
 - **Long** (this quarter/year): the trajectory shape, the Napoleonic field survey
 - Frame narrows with `[` and widens with `]`
 
-At wider frames, structural groupings become more prominent — steps cluster under their root tensions, showing the field of opportunities as a landscape. The widest frame approaches a **map view** showing root tensions as branches with approaching deadlines and urgency signals. Whether a dedicated third view (full 2D: time × structure simultaneously) is needed, or whether the stream and survey views plus their zoom axes suffice, is an open question to resolve through prototyping.
+At wider frames, structural groupings become more prominent — steps cluster under their root tensions, showing the field of opportunities as a landscape. The widest frame approaches a **map view** showing root tensions as branches with approaching deadlines and urgency signals. Whether a dedicated third view (full 2D: time × structure simultaneously) is needed, or whether the deck and survey views plus their zoom axes suffice, is an open question to resolve through prototyping.
 
 **Relative vs. absolute framing:** Temporal frames can be absolute (this calendar week) or relative (the nearest N deadlines across the field). Relative framing is often more informative — it shows what's pressing regardless of calendar boundaries.
 
@@ -287,17 +288,17 @@ The survey naturally unifies multiple workspaces. If each workspace is a context
 
 The survey answers the Napoleonic question: where across the field of opportunities should energy flow? Which tension offers the best opportunity for advancement right now?
 
-### Sessions (Runs)
+### Sessions
 
-A **session** is the span from opening the instrument to closing it. It is the atomic unit of engagement — a complete cycle of engagement with the structure. (The conceptual term "run" and the implementation term "session" refer to the same thing. "Session" is preferred in code to avoid collision with agent invocation commands.)
+A **session** is the span from opening the instrument to closing it. It is the atomic unit of engagement — a complete cycle of engagement with the structure.
 
-A session records: navigation path, gestures performed, dwell times, thresholds crossed, what was viewed but not changed. Over many sessions, patterns emerge that feed the reflection layer.
+A session records gestures performed and their timestamps. *(Future: navigation path, dwell times, thresholds crossed, what was viewed but not changed. Over many sessions, patterns would feed the reflection layer.)*
 
 **Sessions are process-scoped.** Each TUI instance manages its own session. Multiple open TUI panes are multiple independent sessions. CLI commands and agent mutations operate outside any session — their gestures are sessionless (`session_id = NULL`). This is by design: a session represents *the user inhabiting the instrument*, not merely changing data.
 
-**Takeoff threshold:** On opening, the instrument surfaces a brief ambient orientation — what's at the frontier, what's changed since last session, what's overdue. The user can linger (engage with the orientation) or flick through (land directly at the envelope).
+**Takeoff threshold** *(future)*: On opening, the instrument surfaces a brief ambient orientation — what's at the frontier, what's changed since last session, what's overdue. The user can linger (engage with the orientation) or flick through (land directly at the envelope).
 
-**Landing threshold:** On closing, the instrument surfaces a brief summary of the session and an optional invitation to note anything before closing. This is the debrief moment — the natural point for a compressed reflection.
+**Landing threshold** *(future)*: On closing, the instrument surfaces a brief summary of the session and an optional invitation to note anything before closing. This is the debrief moment — the natural point for a compressed reflection.
 
 Sessions are queryable and searchable — session history that can be examined in ground mode.
 
@@ -305,10 +306,9 @@ Sessions are queryable and searchable — session history that can be examined i
 
 When you're not flying, you're on the ground. **Ground mode** is the debrief and study surface:
 
-- Review session history (session patterns, navigation paths)
-- Study telemetry (creation-to-resolution ratios, temporal frame distribution, engagement rhythms)
-- Examine the full factual record — all mutations, gesture history, epoch transitions
-- Prepare for the next run
+- Examine field statistics, epoch history, and recent gestures *(implemented)*
+- Review session history and navigation patterns *(future)*
+- Study telemetry — creation-to-resolution ratios, temporal frame distribution, engagement rhythms *(future)*
 
 Ground mode surfaces the raw material that the practitioner (or an AI assistant) can interpret through the lens of structural dynamics. The instrument provides the honest record; the reading belongs to the practice.
 
@@ -327,8 +327,10 @@ The instrument's interaction vocabulary is a set of operative gestures:
 - **Evolving desire**: recording how the aim has changed — another narrative beat, this one updating the trajectory
 - **Noting**: articulating an observation, a shift in understanding, a question, or an insight. A note is simultaneously: to notice (perception), to record (compression), and an atomic unit of performance within the instrument (the musical sense). Notes are first-class operative gestures, not secondary annotations.
 - **Reordering**: restructuring the theory of closure
-- **Splitting**: recognizing that a tension contains distinct concerns and dividing it into two or more tensions. The original tension's history becomes shared provenance. The original may be resolved ("split into X and Y"), released ("superseded"), or kept as parent (if it was genuinely the umbrella). A phase transition that changes the identity topology of the structure.
-- **Merging**: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. The absorbed tensions' histories become part of the surviving tension's logbook. Different from composing — composing creates a new parent; merging recognizes identity.
+- **Snoozing**: deferring a tension until a future date without releasing it
+- **Recurring**: setting a tension to re-activate on an interval after resolution
+- **Splitting** *(future — tracked as #49)*: recognizing that a tension contains distinct concerns and dividing it into two or more tensions. A phase transition that changes the identity topology of the structure.
+- **Merging** *(future — tracked as #49)*: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. Different from composing — composing creates a new parent; merging recognizes identity.
 - **Navigating**: moving through the structure (ascending, descending, scanning)
 
 Each of these is a gesture — a compression of intentionality into enacted form.
@@ -341,25 +343,25 @@ The instrument's navigation maps to three independent axes:
 
 **Roll (←/→) — the structure axis.** Right descends into a selected step (opens its descended view as a new context). Left ascends to the parent tension. This is movement through structural depth — deeper into the theory of closure or back out to the containing context.
 
-**Yaw (Tab) — the orientation axis.** Toggles between descended view (depth into one tension) and horizon view (breadth across all tensions at a temporal frame). This is a change of orientation, not a change of position — you're looking at the same structure from a different angle.
+**Yaw (Tab) — the orientation axis.** Toggles between descended view (depth into one tension) and survey view (breadth across all tensions at a temporal frame). This is a change of orientation, not a change of position — you're looking at the same structure from a different angle.
 
 **Zoom (Enter / SHIFT+Enter) — the density axis.** Enter zooms in (focus — higher density, action-ready, configuration options, detail). SHIFT+Enter zooms out (orient — wider context, peripheral awareness, adjacent levels of structure visible). In the survey view, SHIFT+Enter widens the temporal frame. This is the fourth navigational axis — focal length, not position.
 
-Pitch and roll are continuous (you can keep moving). Yaw is binary (stream ↔ survey) and context-carrying (selection travels across the transition). Zoom has three levels (orient / normal / focus). Frame controls (`[`/`]`) adjust temporal scope independently of zoom.
+Pitch and roll are continuous (you can keep moving). Yaw is binary (deck ↔ survey) and context-carrying (selection travels across the transition). Zoom has three levels (orient / normal / focus). Frame controls (`[`/`]`) adjust temporal scope independently of zoom.
 
 **Three types of navigation:**
 - **Traversal** — moving the cursor from one element to another. Pitch, roll. Never mutates structure. Changes where you are.
 - **Framing** — changing what's visible without moving the cursor's structural position. Zoom, frame controls. Changes what you see.
 - **Transition** — crossing a boundary between views or contexts. Yaw, roll into a new tension. Thresholds exist at transitions.
 
-### Thresholds
+### Thresholds *(future — not yet implemented)*
 
 A **threshold** is a navigational boundary where the instrument surfaces contextually relevant information and available actions before the user crosses into a new space. Thresholds exist at:
 
 - **Entering a descended view** — staleness facts, recent changes since last visit
 - **Leaving a descended view after mutations** — structural review invitation ("theory changed — is reality still current?")
 - **Crossing the frontier** (moving from theory zone to trace zone) — overdue steps, held moves, uncompressed resolutions
-- **Toggling to horizon view** (yaw) — cross-structural signals ("3 tensions due this week")
+- **Toggling to survey view** (yaw) — cross-structural signals ("3 tensions due this week")
 - **Returning from a peek or navigation** — "does what you saw change anything here?"
 - **Opening the instrument after absence** — what's at the frontier across the whole structure
 
@@ -381,13 +383,13 @@ This tap/hold distinction maps to physical intuition about movement through door
 The complete specification of the instrument consists of four formal frameworks, each a different type of system appropriate to its domain:
 
 ### 1. Architecture of Space
-How the instrument's navigational and visual space is structured. Defines dimensions, positions within those dimensions, and limits. Encompasses: the one spatial law, the four navigational axes (pitch/roll/yaw/zoom), the descended view layout, the horizon view layout, screen boundary signals, and the operating envelope as dynamic window on the stream.
+How the instrument's navigational and visual space is structured. Defines dimensions, positions within those dimensions, and limits. Encompasses: the one spatial law, the four navigational axes (pitch/roll/yaw/zoom), the descended view layout, the survey view layout, screen boundary signals, and the operating envelope as dynamic window on the stream.
 
 ### 2. Grammar of Action
 How operative gestures compose into meaningful wholes, what's valid in what state, and the state machine governing transitions. Defines: gesture primitives, composition rules, the state machine (NORMAL, INPUT, FOCUSED, ORIENTED, PATHWAY, THRESHOLD states), key bindings per state, pathway palettes as decision forks, and navigation as implicit confirmation.
 
 ### 3. Calculus of Time
-How temporal quantities are set, computed, and produce signals. Defines: two user-set primitives (deadline, order), six computed properties (implied window, urgency, sequencing pressure, critical path, containment, overdue), two recorded facts (actual/reported resolution), optional refinements (aimed execution), and the recursive critical path.
+How temporal quantities are set, computed, and produce signals. Defines: two user-set primitives (deadline, order), six computed properties (implied window, urgency, sequencing pressure, critical path, containment, overdue), two recorded facts (actual/reported resolution), two temporal gestures (snooze, recurrence), three temporal orientations (taxis, chronos, kairos), and the recursive critical path.
 
 ### 4. Logic of Framing
 How context determines what's visible, what's actionable, and what's signaled. Defines: envelope extent rules, zoom density levels, threshold content determination, screen boundary signal selection, and the relationship between state and available gestures (the transition table that becomes the command palette when made user-facing).
@@ -412,7 +414,7 @@ Shapes communicate structural meaning without words. The diamond family is the i
 **Active:**
 - **◆** desire — the declared, complete vision. Filled = definite, generative.
 - **◇** reality — the incomplete present. Hollow = gap, what's lacking.
-- **⏱** deadline/horizon — the temporal aim.
+- **⏱** deadline/horizon — the temporal aim. *(Note: removed from TUI rendering due to Unicode width inconsistencies across terminals; deadline is shown as text annotation instead.)*
 
 **Banked (reserved for future use):**
 - **◈** diamond with dot — tension with children (theory of closure populated), or focused/selected item.
@@ -427,7 +429,7 @@ Shapes communicate structural meaning without words. The diamond family is the i
 - **Alert bar** — replaced by signals in the envelope and at thresholds
 - **Six-color semantic palette as locked** — colors remain open for use-driven assignment
 - **Toast notifications** — replaced by envelope feedback (resolved steps move into envelope) and threshold mechanics
-- **StatusLine/lever as persistent bar** — under evaluation; the envelope and screen boundaries may serve the same orientation function
+- **StatusLine/lever as persistent bar** — superseded by the operating envelope as primary interaction surface; screen boundaries serve the orientation function
 - **Flat list as home screen** — replaced by the operating envelope as primary interaction surface
 - **Text-similarity dynamics** (magnitude via Levenshtein, resolution via text convergence) — replaced by child-resolution-rate and deadline-based computations
 
@@ -449,21 +451,17 @@ Shapes communicate structural meaning without words. The diamond family is the i
 
 **Epoch boundaries:** User-initiated narrative beats — gestures that update articulated desire or reality. Organic, not computed. The felt need for narrative compression is the signal. The instrument can detect candidates but the user marks significance.
 
-**Root tension relationships:** Optionally hierarchical — the user can compose up (create a parent) for one or more root tensions, revealing implicit coherence. The horizon view surfaces relationships without forcing hierarchy. Root tensions compete for finite energy and may support, compete with, or sequence each other. No "meta-structure" needed — just structure.
+**Root tension relationships:** Optionally hierarchical — the user can compose up (create a parent) for one or more root tensions, revealing implicit coherence. The survey view surfaces relationships without forcing hierarchy. Root tensions compete for finite energy and may support, compete with, or sequence each other. No "meta-structure" needed — just structure.
 
 **What the instrument makes visible:** Facts surface automatically when actionable. Signals surface by exception. Telemetry (creation-to-resolution ratios, temporal frame distribution, engagement rhythms) is available in ground mode as raw material for the practitioner's own reading.
 
-**Tension magnitude:** Rebuilt around child-resolution rate (fraction of theory of closure completed). No user-rated metric. Optional binary over/under flag on individual steps to indicate above-average or below-average effort/difficulty, weighting the calculation.
-
-**Resolution velocity:** Steps resolved per unit time within the current epoch. Compared against remaining steps and horizon to assess "on track" / "behind" / "ahead." Optionally weighted by over/under flags.
+**Tension magnitude:** Child-resolution rate (fraction of theory of closure completed). The closure ratio [resolved/total] is the primary measure. No user-rated metric.
 
 **Order of operations vs. temporal horizon:** Order determines vertical position (structural sequence). Horizon is an annotation (deadline constraint). Conflicts between order and horizon are first-class signals (e.g., a step ordered later but with an earlier horizon = sequencing pressure).
 
-**Epoch boundary detection:** The instrument offers "start a new epoch?" at any reality or desire update. The user confirms or dismisses. "Long absence" defined relative to the tension's own run rhythm (Nx the median inter-run gap).
+**Epoch boundary detection:** Reality and desire updates automatically create epoch boundaries (CLI). The `--no-epoch` flag skips for minor corrections. Manual `werk epoch` available for explicit boundaries.
 
-**Sessions (runs):** A session is the span from opening to closing. Process-scoped — each TUI instance manages its own. CLI and agent mutations are sessionless gestures. Records navigation, gestures, dwell times. Takeoff threshold on opening (ambient orientation). Landing threshold on closing (summary + optional debrief note). Sessions are searchable and queryable.
-
-**Ground mode:** The debrief and study surface for when you're not flying. Telemetry, session history, full factual record. Where the raw material lives for the practitioner's own structural reading.
+**Sessions:** Process-scoped — each TUI instance manages its own. CLI and agent mutations are sessionless gestures (`session_id = NULL`).
 
 **Compose up:** First-class gesture — creating a parent for one or more existing tensions. Works at root level and within any descended view. The inverse of decomposing.
 
@@ -507,8 +505,8 @@ This instrument draws on:
 | **Release** | Letting go of a tension without accomplishment. A structural move as significant as resolution. |
 | **Note** | An atomic unit of articulated observation within the instrument. Simultaneously: to notice (perception), to record (compression), and a unit of performance (musical). First-class operative gesture. |
 | **Narrative beat** | A compressed state update — a moment where the user's generative model of their situation requires significant revision. Reality updates and notes are narrative beats. |
-| **Stream view** | Navigate structure, see time. The projection that foregrounds one tension's theory of closure with temporal annotations on the spine. (Working name — may change.) |
-| **Survey view** | Navigate time, see structure. The projection that foregrounds temporal urgency across all tensions with structural annotations. The Napoleonic field survey. (Working name — may change.) |
+| **Deck view** | Navigate structure, see time. The projection that foregrounds one tension's theory of closure with temporal annotations on the spine. The primary view — where the user inhabits a single tension's structure. |
+| **Survey view** | Navigate time, see structure. The projection that foregrounds temporal urgency across all tensions with structural annotations. The Napoleonic field survey. |
 | **Cursor** | The user's focus point — where attention and selection currently sit. Independent of frontier and envelope. |
 | **Traversal** | Moving the cursor between elements. Pitch, roll. Never mutates. |
 | **Framing** | Changing what's visible without moving position. Zoom, frame controls (`[`/`]`). |
@@ -519,17 +517,21 @@ This instrument draws on:
 | **Threshold** | A navigational boundary where the instrument surfaces contextual signals and invitations before the user crosses into a new space. Supports flick-through and linger modes. |
 | **Pitch** | Navigation along the time axis (↑/↓) — up toward desire/future, down toward reality/past. |
 | **Roll** | Navigation along the structure axis (←/→) — right to descend into a child, left to ascend to parent. |
-| **Yaw** | Navigation toggle between depth and breadth — descended view ↔ horizon view. |
-| **Session (Run)** | The span from opening the instrument to closing it. Records navigation path, gestures, dwell times. The atomic unit of engagement. Process-scoped: each TUI instance is its own session; CLI and agent mutations are sessionless. |
+| **Yaw** | Navigation toggle between depth and breadth — deck view ↔ survey view. |
+| **Session** | The span from opening the instrument to closing it. The atomic unit of engagement. Process-scoped: each TUI instance is its own session; CLI and agent mutations are sessionless. |
 | **Ground mode** | The debrief and study surface. Where low-confidence dynamics, telemetry, session history, and coaching-level interpretations live. Not flying — studying. |
 | **Compose** | The gesture of creating a parent for one or more existing tensions. Reveals implicit coherence. The inverse of decomposing. |
 | **Split** | The gesture of dividing a tension into two or more tensions when distinct concerns are recognized within it. A phase transition that changes the identity topology. The original's history becomes shared provenance of the new tensions. |
 | **Merge** | The gesture of combining multiple tensions into one when they are recognized as the same concern. The absorbed tensions' histories join the surviving tension's logbook. Different from composing (which creates a new parent). |
 | **Provenance** | The lineage relationship between tensions created by split or merge. Not containment (parent-child) but origin — where a tension came from structurally. |
 | **Staging** | Asynchronous draft mutations held in a pending state for review before application. For deliberate multi-step restructuring or agent-proposed changes. Distinct from pathway palettes (which are synchronous). |
-| **Peek** | A read-only partial view of an adjacent context (SHIFT+NAVKEY). Slides the adjacent space into partial visibility without leaving the current context. |
-| **Over/under** | An optional binary flag on an action step indicating above-average or below-average effort/difficulty. Weights resolution velocity calculations. |
-| **Pathway palette** | A small set of coherent response options presented at predictable key positions when a gesture produces a structural signal or decision fork. Always small (3-5 options), always dismissable. Synchronous — part of the gesture flow, not deferred. |
+| **Pathway palette** | A small set of coherent response options presented when a gesture produces a structural signal or decision fork. Always small (3-5 options), always dismissable. Detected at the data layer, independent of invocation surface. |
+| **Short code** | The user-facing identifier for a tension (#42). Auto-assigned sequential integer. Used in all CLI interactions instead of the internal ULID. |
+| **Snooze** | Temporarily defer a tension until a future date. The tension remains active but is hidden from the frontier and survey until the date arrives. |
+| **Recurrence** | A tension that re-activates on an interval after resolution. For recurring practices, reviews, or maintenance rhythms. |
+| **Taxis** | The sequential/order orientation of time — positioned steps, theory of closure as ordered plan. The deck view's primary axis. |
+| **Chronos** | The calendar/deadline orientation of time — when things are due, urgency, remaining time. The survey view's primary axis. |
+| **Kairos** | The readiness/opportunity orientation of time — the right moment to act. What the frontier surfaces. |
 | **Critical path** | A child step whose horizon crowds the parent's horizon deadline. The bottleneck in the theory of closure. |
 | **Sequencing pressure** | When a step ordered later has an earlier horizon than a preceding step. The order says "wait" but the deadline says "now." |
 | **Zoom** | Focus/orientation axis (Enter / SHIFT+Enter). Enter zooms in (higher density, action-ready). SHIFT+Enter zooms out (wider context, intake mode). The fourth navigational axis. |
