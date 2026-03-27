@@ -188,70 +188,81 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
-        // Human-readable output
+        // === Identity: the tension IS the gap ===
         println!("Tension {}", werk_shared::display_id(tension.short_code, &tension.id));
-        println!("  Desired:    {}", &tension.desired);
-        println!("  Reality:    {}", &tension.actual);
-        println!("  Status:     {}", &tension.status);
-        println!(
-            "  Created:    {}",
-            relative_time(tension.created_at, now)
-        );
+        println!("  Desired:  {}", &tension.desired);
+        println!("  Reality:  {}", &tension.actual);
 
-        // Parent
-        if let Some(pid) = &tension.parent_id {
-            let parent_sc = all_tensions.iter().find(|t| &t.id == pid).and_then(|t| t.short_code);
-            println!("  Parent:     {}", werk_shared::display_id(parent_sc, pid));
-        }
-
-        // Horizon display
-        if let Some(h) = &tension.horizon {
-            let horizon_str = h.to_string();
-            let interpretation = match h.kind() {
-                HorizonKind::Year(y) => format!("Year {}", y),
-                HorizonKind::Month(y, m) => {
-                    let month_names = [
-                        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
-                        "Nov", "Dec",
-                    ];
-                    format!("{} {}", month_names[(m - 1) as usize], y)
-                }
-                HorizonKind::Day(d) => d.format("%B %d, %Y").to_string(),
-                HorizonKind::DateTime(dt) => dt.format("%B %d, %Y %H:%M UTC").to_string(),
-            };
-
-            let days_remaining = h.range_end().signed_duration_since(now).num_days();
-            let days_str = if days_remaining > 0 {
-                format!(", {} days remaining", days_remaining)
-            } else if days_remaining == 0 {
-                ", today is the deadline".to_string()
-            } else {
-                format!(", {} days past deadline", -days_remaining)
-            };
-
-            println!(
-                "  Deadline:   {} ({}{})",
-                &horizon_str, &interpretation, &days_str
-            );
-        }
-
-        // === Facts ===
+        // === Structural position ===
         println!();
-        println!("Facts:");
+        if let Some(pid) = &tension.parent_id {
+            let parent = all_tensions.iter().find(|t| &t.id == pid);
+            let parent_display = display_id(parent.and_then(|t| t.short_code), pid);
+            let parent_desired = parent.map(|t| truncate(&t.desired, 50)).unwrap_or_default();
+            println!("  Parent:   {} — {}", parent_display, parent_desired);
+        }
+        print!("  Status:   {}", &tension.status);
+        println!("          Created: {}", relative_time(tension.created_at, now));
 
-        // Closure progress (resolved / active theory, with released parenthetical)
+        // Horizon: own or inherited from parent (clearly distinguished)
+        if let Some(h) = &tension.horizon {
+            print_horizon(h, now, None);
+        } else {
+            // Check parent chain for inherited horizon
+            let mut ancestor_id = tension.parent_id.clone();
+            while let Some(aid) = &ancestor_id {
+                if let Some(ancestor) = all_tensions.iter().find(|t| &t.id == aid) {
+                    if let Some(h) = &ancestor.horizon {
+                        let ancestor_display = display_id(ancestor.short_code, &ancestor.id);
+                        print_horizon(h, now, Some(&ancestor_display));
+                        break;
+                    }
+                    ancestor_id = ancestor.parent_id.clone();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Position and last activity on one line
+        let pos_str = if let Some(pos) = tension.position {
+            format!("{} (positioned)", pos)
+        } else if tension.parent_id.is_some() {
+            "held".to_string()
+        } else {
+            String::new()
+        };
+        let last_act_str = if let Some(last) = mutations.last() {
+            format!(
+                "Last act: {} ({})",
+                relative_time(last.timestamp(), now),
+                last.field()
+            )
+        } else {
+            String::new()
+        };
+        if !pos_str.is_empty() {
+            print!("  Position: {}", pos_str);
+            if !last_act_str.is_empty() {
+                println!("    {}", last_act_str);
+            } else {
+                println!();
+            }
+        } else if !last_act_str.is_empty() {
+            println!("  {}", last_act_str);
+        }
+
+        // Closure progress
         let cp = &frontier.closure_progress;
         if cp.total > 0 {
             if cp.released > 0 {
                 println!(
-                    "  Closure:    [{}/{}] ({} released)",
+                    "  Closure:  [{}/{}] ({} released)",
                     cp.resolved, cp.active, cp.released
                 );
             } else {
-                println!("  Closure:    [{}/{}]", cp.resolved, cp.active);
+                println!("  Closure:  [{}/{}]", cp.resolved, cp.active);
             }
-        } else {
-            println!("  Closure:    no children (leaf tension)");
         }
 
         // Urgency (only if horizon exists)
@@ -259,85 +270,67 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             let pct = (urg.value * 100.0).min(999.0);
             if overdue {
                 let days_past = (-urg.time_remaining as f64 / 86400.0).ceil() as i64;
-                println!("  Urgency:    OVERDUE ({} days past deadline)", days_past);
+                println!("  Urgency:  OVERDUE ({} days past deadline)", days_past);
             } else {
                 let days_left = (urg.time_remaining as f64 / 86400.0).floor() as i64;
                 println!(
-                    "  Urgency:    {:.0}% of deadline elapsed ({} days remaining)",
+                    "  Urgency:  {:.0}% elapsed ({} days remaining)",
                     pct, days_left
                 );
             }
         }
 
-        // Last activity
-        if let Some(last) = mutations.last() {
-            println!(
-                "  Last act:   {} ({})",
-                relative_time(last.timestamp(), now),
-                last.field()
-            );
-        } else {
-            println!("  Last act:   no mutations recorded");
-        }
+        // === Signals (by exception — only shown when something needs attention) ===
+        let has_signals = temporal.on_critical_path
+            || temporal.has_containment_violation
+            || !temporal.sequencing_pressures.is_empty()
+            || !temporal.critical_path.is_empty()
+            || !temporal.containment_violations.is_empty()
+            || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false);
 
-        // Position
-        if let Some(pos) = tension.position {
-            println!("  Position:   {} (positioned)", pos);
-        } else if tension.parent_id.is_some() {
-            println!("  Position:   held (unpositioned)");
-        }
+        if has_signals {
+            println!();
+            println!("Signals:");
 
-        // Implied execution window
-        if let Some(ref iw) = temporal.implied_window {
-            let days = iw.duration_seconds as f64 / 86400.0;
-            if days < 0.0 {
-                println!("  Window:     negative ({:.0} days past)", -days);
-            } else {
-                println!("  Window:     {:.0} days", days);
+            if temporal.on_critical_path {
+                println!("  CRITICAL:   on parent's critical path");
             }
-        }
-
-        // Sequencing pressure (signal by exception)
-        for sp in &temporal.sequencing_pressures {
-            let pred_display = werk_shared::display_id(sp.predecessor_short_code, &sp.predecessor_id);
-            let days = sp.gap_seconds as f64 / 86400.0;
-            println!(
-                "  PRESSURE:   deadline is {:.0} days before {} (ordered after)",
-                days, pred_display
-            );
-        }
-
-        // On critical path of parent
-        if temporal.on_critical_path {
-            println!("  CRITICAL:   on parent's critical path");
-        }
-
-        // Containment violation
-        if temporal.has_containment_violation {
-            println!("  VIOLATION:  deadline exceeds parent's deadline");
-        }
-
-        // Children on critical path
-        for cp in &temporal.critical_path {
-            let child_sc = all_tensions.iter().find(|t| t.id == cp.tension_id).and_then(|t| t.short_code);
-            let child_display = werk_shared::display_id(child_sc, &cp.tension_id);
-            let slack_days = cp.slack_seconds as f64 / 86400.0;
-            if slack_days <= 0.0 {
-                println!("  CRITICAL:   {} matches or exceeds deadline", child_display);
-            } else {
-                println!("  CRITICAL:   {} has only {:.0} days slack", child_display, slack_days);
+            if temporal.has_containment_violation {
+                println!("  VIOLATION:  deadline exceeds parent's deadline");
             }
-        }
-
-        // Children with containment violations
-        for cv in &temporal.containment_violations {
-            let child_sc = all_tensions.iter().find(|t| t.id == cv.tension_id).and_then(|t| t.short_code);
-            let child_display = werk_shared::display_id(child_sc, &cv.tension_id);
-            let excess_days = cv.excess_seconds as f64 / 86400.0;
-            println!(
-                "  VIOLATION:  {} deadline exceeds by {:.0} days",
-                child_display, excess_days
-            );
+            for sp in &temporal.sequencing_pressures {
+                let pred_display = display_id(sp.predecessor_short_code, &sp.predecessor_id);
+                let days = sp.gap_seconds as f64 / 86400.0;
+                println!(
+                    "  PRESSURE:   deadline is {:.0} days before {} (ordered after)",
+                    days, pred_display
+                );
+            }
+            for cpath in &temporal.critical_path {
+                let child_sc = all_tensions.iter().find(|t| t.id == cpath.tension_id).and_then(|t| t.short_code);
+                let child_display = display_id(child_sc, &cpath.tension_id);
+                let slack_days = cpath.slack_seconds as f64 / 86400.0;
+                if slack_days <= 0.0 {
+                    println!("  CRITICAL:   {} matches or exceeds deadline", child_display);
+                } else {
+                    println!("  CRITICAL:   {} has only {:.0} days slack", child_display, slack_days);
+                }
+            }
+            for cv in &temporal.containment_violations {
+                let child_sc = all_tensions.iter().find(|t| t.id == cv.tension_id).and_then(|t| t.short_code);
+                let child_display = display_id(child_sc, &cv.tension_id);
+                let excess_days = cv.excess_seconds as f64 / 86400.0;
+                println!(
+                    "  VIOLATION:  {} deadline exceeds by {:.0} days",
+                    child_display, excess_days
+                );
+            }
+            if let Some(ref iw) = temporal.implied_window {
+                let days = iw.duration_seconds as f64 / 86400.0;
+                if days < 0.0 {
+                    println!("  WINDOW:     negative ({:.0} days past)", -days);
+                }
+            }
         }
 
         // === Frontier (signal by exception) ===
@@ -351,47 +344,42 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
                 println!();
                 println!("Frontier:");
 
-                // Next step — always show (this is the action vector)
                 if let Some(ref ns) = frontier.next_step {
                     let ns_display = display_id(ns.short_code, &ns.tension_id);
                     let overdue_marker = if ns.is_overdue { " OVERDUE" } else { "" };
                     println!(
-                        "  Next:       {}{} {}",
+                        "  Next:     {}{} {}",
                         ns_display, overdue_marker, truncate(&ns.desired, 40)
                     );
                 } else if !frontier.held.is_empty() {
-                    // Theory exists but has no committed order — frontier cannot advance
                     let n = frontier.held.len();
                     let noun = if n == 1 { "step" } else { "steps" };
-                    println!("  Sequence:   uncommitted ({} held {})", n, noun);
+                    println!("  Sequence: uncommitted ({} held {})", n, noun);
                 }
 
-                // Overdue (other than next step)
                 if !frontier.overdue.is_empty() {
                     for step in &frontier.overdue {
                         let step_display = display_id(step.short_code, &step.tension_id);
                         println!(
-                            "  Overdue:    {} {}",
+                            "  Overdue:  {} {}",
                             step_display, truncate(&step.desired, 40)
                         );
                     }
                 }
 
-                // Held count (only if next_step exists — otherwise the Sequence line covers it)
                 if !frontier.held.is_empty() && frontier.next_step.is_some() {
-                    println!("  Held:       {} unpositioned", frontier.held.len());
+                    println!("  Held:     {} unpositioned", frontier.held.len());
                 }
 
-                // Recently resolved count — honest about epoch boundary
                 if !frontier.recently_resolved.is_empty() {
                     if epochs.is_empty() {
                         println!(
-                            "  Recent:     {} resolved",
+                            "  Recent:   {} resolved",
                             frontier.recently_resolved.len()
                         );
                     } else {
                         println!(
-                            "  Recent:     {} resolved since last epoch",
+                            "  Recent:   {} resolved since last epoch",
                             frontier.recently_resolved.len()
                         );
                     }
@@ -399,12 +387,12 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             }
         }
 
-        // === Children List ===
+        // === Children ===
         if !result.children.is_empty() {
             println!();
             println!("Children:");
             for child in &result.children {
-                let child_id = werk_shared::display_id(child.short_code, &child.id);
+                let child_id = display_id(child.short_code, &child.id);
                 let status_marker = match child.status.as_str() {
                     "Resolved" => " ✓",
                     "Released" => " ~",
@@ -417,22 +405,137 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
             }
         }
 
-        // === Mutation History (last 10) ===
+        // === Activity (last 10, most recent first, concise summaries) ===
         if !result.mutations.is_empty() {
             println!();
-            println!("Recent mutations:");
-            for m in &result.mutations {
+            println!("Activity:");
+            // Reverse to show most recent first
+            for m in result.mutations.iter().rev() {
                 let ts = DateTime::parse_from_rfc3339(&m.timestamp)
                     .map(|dt| relative_time(dt.with_timezone(&Utc), now))
                     .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
-                let old = m.old_value.as_deref().unwrap_or("(none)");
-                println!(
-                    "  {} [{}] {} -> {}",
-                    ts, &m.field, old, &m.new_value
-                );
+
+                let summary = format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
+                println!("  {:>12}  {}", ts, summary);
             }
         }
     }
 
     Ok(())
+}
+
+/// Format a horizon line for display, distinguishing own vs inherited.
+fn print_horizon(h: &sd_core::Horizon, now: DateTime<Utc>, inherited_from: Option<&str>) {
+    let horizon_str = h.to_string();
+    let interpretation = match h.kind() {
+        HorizonKind::Year(y) => format!("Year {}", y),
+        HorizonKind::Month(y, m) => {
+            let month_names = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
+                "Nov", "Dec",
+            ];
+            format!("{} {}", month_names[(m - 1) as usize], y)
+        }
+        HorizonKind::Day(d) => d.format("%B %d, %Y").to_string(),
+        HorizonKind::DateTime(dt) => dt.format("%B %d, %Y %H:%M UTC").to_string(),
+    };
+
+    let days_remaining = h.range_end().signed_duration_since(now).num_days();
+    let days_str = if days_remaining > 0 {
+        format!(", {} days remaining", days_remaining)
+    } else if days_remaining == 0 {
+        ", today is the deadline".to_string()
+    } else {
+        format!(", {} days past deadline", -days_remaining)
+    };
+
+    match inherited_from {
+        None => println!(
+            "  Deadline: {} ({}{})",
+            &horizon_str, &interpretation, &days_str
+        ),
+        Some(ancestor) => println!(
+            "  Deadline: none (parent {} due {}{})",
+            ancestor, &horizon_str, &days_str
+        ),
+    }
+}
+
+/// Format a mutation into a concise human-readable summary.
+///
+/// Used by `show` (Activity section) and `diff` for consistent mutation display.
+///
+/// Instead of dumping full old→new text, produce a short description
+/// of what changed. The desired/actual text is already shown at the top
+/// of the display — no need to repeat it in the activity log.
+pub fn format_mutation_summary(field: &str, old_value: Option<&str>, new_value: &str) -> String {
+    match field {
+        "created" => {
+            // Creation mutation — don't repeat the desired/actual
+            "created".to_string()
+        }
+        "status" => {
+            match new_value {
+                "Resolved" => "resolved".to_string(),
+                "Released" => "released".to_string(),
+                "Active" => match old_value {
+                    Some(old) => format!("reopened (was {})", old.to_lowercase()),
+                    None => "reopened".to_string(),
+                },
+                _ => format!("status -> {}", new_value),
+            }
+        }
+        "desired" => "desired updated".to_string(),
+        "actual" => "reality updated".to_string(),
+        "position" => {
+            if new_value == "(none)" || new_value == "null" {
+                "held (removed from sequence)".to_string()
+            } else {
+                match old_value {
+                    None | Some("(none)") | Some("null") => format!("positioned at {}", new_value),
+                    Some(_) => format!("repositioned to {}", new_value),
+                }
+            }
+        }
+        "parent" => {
+            if new_value == "(none)" {
+                "moved to root".to_string()
+            } else {
+                format!("moved under {}", truncate(new_value, 30))
+            }
+        }
+        "horizon" => {
+            if new_value == "(none)" {
+                "deadline cleared".to_string()
+            } else {
+                format!("deadline set to {}", new_value)
+            }
+        }
+        "note" => {
+            if old_value.is_some() {
+                format!("note retracted: {}", truncate(new_value, 50))
+            } else {
+                format!("note: {}", truncate(new_value, 50))
+            }
+        }
+        "deleted" => "deleted".to_string(),
+        "snoozed_until" => {
+            if new_value == "(none)" {
+                "snooze cleared".to_string()
+            } else {
+                format!("snoozed until {}", new_value)
+            }
+        }
+        "recurrence" => {
+            if new_value == "(none)" {
+                "recurrence cleared".to_string()
+            } else {
+                format!("recurrence set to {}", new_value)
+            }
+        }
+        _ => {
+            // Fallback for unknown fields
+            format!("{} updated", field)
+        }
+    }
 }

@@ -76,17 +76,26 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
         reason: reason.clone(),
     };
 
+    // Count active children for context
+    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let active_children = all_tensions.iter()
+        .filter(|t| t.parent_id.as_deref() == Some(&tension.id) && t.status == sd_core::TensionStatus::Active)
+        .count();
+
     if output.is_structured() {
         output
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
-        // Human-readable output
         output
             .success(&format!("Released tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Status: {} -> Released", old_status);
         println!("  Reason: {}", &reason);
+        if active_children > 0 {
+            let noun = if active_children == 1 { "child" } else { "children" };
+            println!("  ({} active {} still open)", active_children, noun);
+        }
     }
 
     Ok(())

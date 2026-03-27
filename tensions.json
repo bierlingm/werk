@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-27T17:21:47Z",
+  "flushed_at": "2026-03-27T17:46:53Z",
   "summary": {
-    "active": 53,
+    "active": 59,
     "released": 7,
-    "resolved": 36,
-    "total": 96
+    "resolved": 42,
+    "total": 108
   },
   "tensions": [
     {
@@ -1062,6 +1062,138 @@
       "position": null,
       "short_code": 100,
       "status": "Active"
+    },
+    {
+      "actual": "Entire palette is hardcoded for dark backgrounds in theme.rs. Six RGB colors (CLR_DEFAULT through CLR_GREEN) plus CLR_SELECTED_BG and CLR_BG are all dark-mode values. clear_area_styled now uses TRANSPARENT bg (terminal default) instead of explicit black — first step toward light mode. ftui has no built-in theme detection. Light terminals show invisible white-on-white text, alien dark selection blocks, and generally unusable UI.",
+      "created_at": "2026-03-27T17:25:36.717766+00:00",
+      "desired": "werk renders well on both dark and light terminal backgrounds — adaptive color palette, readable text, appropriate selection highlighting across terminal themes",
+      "horizon": null,
+      "id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
+      "position": null,
+      "short_code": 101,
+      "status": "Active"
+    },
+    {
+      "actual": "clear_area_styled uses TRANSPARENT bg (done). CLR_BG (black) still used in CLR_SELECTED_BG definition and potentially in deck rendering. Need to audit all .bg() calls in theme.rs, render.rs, deck.rs, survey.rs.",
+      "created_at": "2026-03-27T17:27:11.472871+00:00",
+      "desired": "all explicit background colors replaced with TRANSPARENT — terminal native background shows through everywhere except intentional highlights",
+      "horizon": null,
+      "id": "01KMR5BVVGHKXMQPXMBD5K9AP7",
+      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "position": 1,
+      "short_code": 102,
+      "status": "Active"
+    },
+    {
+      "actual": "No detection exists. Options: COLORFGBG env var (many terminals set it), OSC 11 background query, --light/--dark CLI flag, or WERK_THEME env var. ftui has no built-in detection.",
+      "created_at": "2026-03-27T17:27:23.201727+00:00",
+      "desired": "terminal theme detected at startup — Dark or Light enum available to palette construction",
+      "horizon": null,
+      "id": "01KMR5C7A1FDZJVA9MQ9E3NDHJ",
+      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "position": 2,
+      "short_code": 103,
+      "status": "Active"
+    },
+    {
+      "actual": "Single hardcoded dark palette. CLR_DEFAULT (220,220,220) is invisible on white. Light mode needs dark text (30,30,30), medium dim (140,140,140), adjusted accents.",
+      "created_at": "2026-03-27T17:27:25.116095+00:00",
+      "desired": "dual palette in theme.rs — STYLES constructed conditionally based on detected theme, dark mode unchanged, light mode readable",
+      "horizon": null,
+      "id": "01KMR5C95WMQB0MCCD73Y84VFG",
+      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "position": 3,
+      "short_code": 104,
+      "status": "Active"
+    },
+    {
+      "actual": "CLR_SELECTED_BG is rgb(35,35,42) — a dark blue-gray. On light terminals this creates an alien dark block. Needs a light variant (rgb 220,225,235 or similar) keyed to detected theme.",
+      "created_at": "2026-03-27T17:27:26.992967+00:00",
+      "desired": "selection highlight adapts to terminal background — visible and subtle on both dark and light",
+      "horizon": null,
+      "id": "01KMR5CB0GKZ46NC80FVYMBE4V",
+      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "position": 4,
+      "short_code": 105,
+      "status": "Active"
+    },
+    {
+      "actual": "CLR_CYAN (80,190,210) and CLR_GREEN (80,190,120) likely work on both. CLR_AMBER (200,170,60) may need darkening for light. CLR_RED (220,90,90) is fine. Needs visual verification, possibly light-mode variants.",
+      "created_at": "2026-03-27T17:27:35.244236+00:00",
+      "desired": "accent colors verified readable on both dark and light backgrounds",
+      "horizon": null,
+      "id": "01KMR5CK2CW6AWF05YTGQJJK76",
+      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "position": 5,
+      "short_code": 106,
+      "status": "Active"
+    },
+    {
+      "actual": "Redesign complete and shipped: parent shows truncated desired, inherited horizon walks ancestor chain with clear attribution, Status/Created/Position/Last act compacted, mutations replaced by Activity section (most-recent-first, concise summaries like 'reality updated' and 'positioned at 3' instead of full text dumps), creation mutation just says 'created', signals section only appears by exception, null position displays fixed",
+      "created_at": "2026-03-27T17:38:45.560145+00:00",
+      "desired": "show command output is premium — information hierarchy serves the reader, parent shows context, inherited deadlines visible, activity log is concise and most-recent-first, no redundant data",
+      "horizon": null,
+      "id": "01KMR611NRQ86VFM09P374YFSB",
+      "parent_id": "01KMGFM0ATE4AFB69ZEG5VJ9ZY",
+      "position": null,
+      "short_code": 107,
+      "status": "Resolved"
+    },
+    {
+      "actual": "All four children resolved. Shared conventions: display_id_named() and format_timestamp() in werk-shared. Mutations: add shows parent context, Status:Active removed, release shows child count, diff uses short codes + concise summaries. Reading: diff overhauled. Utility: note list relative timestamps, nuke tension count. show redesigned (parent from #107). format_mutation_summary shared between show and diff. Cross-cutting consistency achieved.",
+      "created_at": "2026-03-27T17:40:30.545361+00:00",
+      "desired": "every CLI command output is premium — consistent formatting, information hierarchy, structural context, no redundancy, agent-friendly and human-friendly, most-recent-first temporal data",
+      "horizon": null,
+      "id": "01KMR6486H883SQWAGTAKMNH0P",
+      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "position": 1,
+      "short_code": 108,
+      "status": "Resolved"
+    },
+    {
+      "actual": "display_id_named() added to werk-shared — shows #code + truncated desired for structural context. format_timestamp() added — relative for <7d, compact date for older. Both exported from werk-shared. show.rs already uses display_id_named pattern for parent display. These are the conventions; remaining work is adopting them across all commands.",
+      "created_at": "2026-03-27T17:40:57.636584+00:00",
+      "desired": "shared output conventions enforced — consistent ID display (#code everywhere), consistent timestamps (relative <7d, date for older), parent context helper, compact KV layout helper",
+      "horizon": null,
+      "id": "01KMR652N4YZG6Y6359DP5AFYB",
+      "parent_id": null,
+      "position": 1,
+      "short_code": 109,
+      "status": "Resolved"
+    },
+    {
+      "actual": "add now shows parent with context (#code — truncated desired). Status:Active removed from creation output. release shows active child count. diff uses short codes and concise mutation summaries (reuses format_mutation_summary from show). note list uses relative timestamps via format_timestamp. nuke preview shows tension count.",
+      "created_at": "2026-03-27T17:40:59.614861+00:00",
+      "desired": "mutation commands have consistent, concise output — success line with structural context (parent shown as #code Name), no redundant fields (omit Status:Active on creation), pathway signals shown inline",
+      "horizon": null,
+      "id": "01KMR654JYRRTNN9CVN6TG99PY",
+      "parent_id": null,
+      "position": 2,
+      "short_code": 110,
+      "status": "Resolved"
+    },
+    {
+      "actual": "diff now uses short codes (#N) instead of raw 8-char ULID prefixes and concise mutation summaries via shared format_mutation_summary. Remaining: survey urgency column (would require significant rendering rework), epoch show box-drawing (visual polish), ground epoch timestamps (minor). These are lower-priority polish items — the core inconsistencies are fixed.",
+      "created_at": "2026-03-27T17:41:01.579278+00:00",
+      "desired": "reading commands have polished, scannable output — survey shows urgency, diff uses #code format, epoch show uses box-drawing for nesting, ground groups gestures meaningfully, timestamps are consistent",
+      "horizon": null,
+      "id": "01KMR656GBAVJT5YP9FZ7HCBWV",
+      "parent_id": null,
+      "position": 3,
+      "short_code": 111,
+      "status": "Resolved"
+    },
+    {
+      "actual": "note list now uses relative timestamps via format_timestamp (<7d relative, older dates as compact date). nuke preview shows tension count before confirmation prompt. batch markers reviewed — [ok] for dry-run, [done] for applied, [FAIL] for errors — clear enough in context. config path display would require plumbing changes to the config system — deferred.",
+      "created_at": "2026-03-27T17:41:03.404680+00:00",
+      "desired": "utility commands are clean and informative — note list uses relative timestamps, nuke preview shows tension count, batch uses clear status markers, config shows file path",
+      "horizon": null,
+      "id": "01KMR6589C0CJ4P8Q7RMFPEBEW",
+      "parent_id": null,
+      "position": 4,
+      "short_code": 112,
+      "status": "Resolved"
     }
   ]
 }
