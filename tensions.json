@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-27T14:27:27Z",
+  "flushed_at": "2026-03-27T14:30:41Z",
   "summary": {
     "active": 52,
     "released": 7,
@@ -19,7 +19,7 @@
       "status": "Active"
     },
     {
-      "actual": "TUI is the primary experience. Architectural consolidation (#76) landed: unified cursor, single renderer, cached frontier, two-pass layout. Net -1550 lines. Summary affordances, selectable desire/reality anchors, write-scoped locking all implemented. Minimum visibility guarantee: every non-empty zone keeps 1-line summary under compression. Focus detail filters by epoch. V1-V8 complete. Pathway palettes operational. Remaining: focus zoom redesign (#94), survey view (#18), threshold mechanics (#19).",
+      "actual": "V1-V8 deck view complete. Survey view (V1) shipped in v1.3.0: Tab/Shift+Tab pivot/return yaw, inherited horizons with depth-first tree grouping, zone compression, sticky band+provider headers, per-line rendering, right-aligned closure ratios, gestures from survey. Three rendering bugs fixed (⏱ width, bold SGR bleed, scroll diff thrashing). Remaining: threshold mechanics (#19), survey tree orphan fix (intermediate nodes scrolling off), frame controls, input point rethinking.",
       "created_at": "2026-03-24T17:52:25.922309+00:00",
       "desired": "werk is a FrankenTUI-first application where the terminal interface is the primary experience",
       "horizon": "2026-05-30",
