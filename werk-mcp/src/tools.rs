@@ -1286,12 +1286,14 @@ impl WerkServer {
                 .collect();
 
             let projections = project_tension(t, &mutations, &thresholds, now);
+            // Stance B: signal-level only — trajectory classification and risk flags.
+            // Projections (will_resolve, time_to_resolution, gap extrapolations) quarantined to ground mode.
             let projection = if let Some(proj) = projections.first() {
                 serde_json::json!({
                     "trajectory": format!("{:?}", proj.trajectory),
                     "current_gap": proj.current_gap,
-                    "will_resolve": proj.will_resolve,
-                    "time_to_resolution": proj.time_to_resolution,
+                    "oscillation_risk": proj.oscillation_risk,
+                    "neglect_risk": proj.neglect_risk,
                 })
             } else {
                 serde_json::Value::Null
@@ -1350,7 +1352,7 @@ impl WerkServer {
         }
     }
 
-    #[tool(description = "Show structural trajectory projections. Field-wide funnel or per-tension projection. Optionally show urgency collision windows.")]
+    #[tool(description = "Ground-mode observational analysis: structural trajectory projections and gap extrapolations. This is the analytical layer — forward-looking estimates that go beyond fact and signal. Use for debrief and study, not as action signals. Field-wide funnel or per-tension projection. Optionally show urgency collision windows.")]
     async fn trajectory(
         &self,
         Parameters(p): Parameters<TrajectoryParam>,
