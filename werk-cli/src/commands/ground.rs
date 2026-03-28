@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::TensionStatus;
+use sd_core::{project_tension, ProjectionThresholds, TensionStatus};
 
 #[derive(Serialize)]
 struct EpochSummary {
@@ -43,8 +43,24 @@ struct RecentGesture {
 }
 
 #[derive(Serialize)]
+struct TrajectoryEntry {
+    tension_id: String,
+    tension_short_code: Option<i32>,
+    tension_desired: String,
+    trajectory: String,
+    current_gap: f64,
+    projected_gap_1w: f64,
+    projected_gap_1m: f64,
+    projected_gap_3m: f64,
+    time_to_resolution: Option<i64>,
+    oscillation_risk: bool,
+    neglect_risk: bool,
+}
+
+#[derive(Serialize)]
 struct GroundJson {
     stats: EngagementStats,
+    trajectories: Vec<TrajectoryEntry>,
     epochs: Vec<EpochSummary>,
     recent_gestures: Vec<RecentGesture>,
 }
@@ -146,6 +162,46 @@ pub fn cmd_ground(output: &Output, days: i64) -> Result<(), WerkError> {
     }
     epochs.sort_by(|a, b| b.epoch_count.cmp(&a.epoch_count));
 
+    // Trajectory projections — full analytical layer, ground-mode only (Stance B)
+    let thresholds = ProjectionThresholds::default();
+    let mut trajectories: Vec<TrajectoryEntry> = Vec::new();
+    for tension in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
+        let mutations = store
+            .get_mutations(&tension.id)
+            .map_err(WerkError::StoreError)?;
+        let projections = project_tension(tension, &mutations, &thresholds, now);
+        if let Some(proj) = projections.first() {
+            let find_gap = |idx: usize| -> f64 {
+                projections.get(idx).map(|p| p.projected_gap).unwrap_or(0.0)
+            };
+            trajectories.push(TrajectoryEntry {
+                tension_id: tension.id.clone(),
+                tension_short_code: tension.short_code,
+                tension_desired: tension.desired.clone(),
+                trajectory: format!("{:?}", proj.trajectory),
+                current_gap: proj.current_gap,
+                projected_gap_1w: find_gap(0),
+                projected_gap_1m: find_gap(1),
+                projected_gap_3m: find_gap(2),
+                time_to_resolution: proj.time_to_resolution,
+                oscillation_risk: proj.oscillation_risk,
+                neglect_risk: proj.neglect_risk,
+            });
+        }
+    }
+    // Sort: oscillating/drifting first (most attention-worthy), then stalling, then resolving
+    trajectories.sort_by(|a, b| {
+        fn trajectory_order(t: &str) -> u8 {
+            match t {
+                "Oscillating" => 0,
+                "Drifting" => 1,
+                "Stalling" => 2,
+                _ => 3,
+            }
+        }
+        trajectory_order(&a.trajectory).cmp(&trajectory_order(&b.trajectory))
+    });
+
     let stats = EngagementStats {
         total_tensions: total,
         active,
@@ -162,6 +218,7 @@ pub fn cmd_ground(output: &Output, days: i64) -> Result<(), WerkError> {
     if output.is_structured() {
         let result = GroundJson {
             stats,
+            trajectories,
             epochs,
             recent_gestures,
         };
@@ -183,6 +240,42 @@ pub fn cmd_ground(output: &Output, days: i64) -> Result<(), WerkError> {
             "  {} mutations total  {} in last {} days",
             stats.total_mutations, stats.recent_mutations, days
         );
+
+        // Trajectory projections (observational analysis — ground-mode only)
+        if !trajectories.is_empty() {
+            println!();
+            println!("Trajectories (observational analysis)");
+            for t in &trajectories {
+                let id_display = match t.tension_short_code {
+                    Some(c) => format!("#{}", c),
+                    None => t.tension_id[..8.min(t.tension_id.len())].to_string(),
+                };
+                let arrow = match t.trajectory.as_str() {
+                    "Resolving" => "\u{2193}",
+                    "Stalling" => "\u{2014}",
+                    "Drifting" => "\u{2192}",
+                    "Oscillating" => "\u{2194}",
+                    _ => " ",
+                };
+                let mut flags = Vec::new();
+                if t.oscillation_risk { flags.push("oscillation"); }
+                if t.neglect_risk { flags.push("neglect"); }
+                let ttr = t.time_to_resolution
+                    .map(|s| format_ttr(s))
+                    .unwrap_or_else(|| "unknown".to_string());
+                let flag_str = if flags.is_empty() {
+                    String::new()
+                } else {
+                    format!("  [{}]", flags.join(", "))
+                };
+                println!(
+                    "  {:<6} {} {:<12} gap {:.2} \u{2192} {:.2} \u{2192} {:.2}  ttr {}{}",
+                    id_display, arrow, t.trajectory,
+                    t.projected_gap_1w, t.projected_gap_1m, t.projected_gap_3m,
+                    ttr, flag_str,
+                );
+            }
+        }
 
         // Epoch history
         if !epochs.is_empty() {
@@ -235,6 +328,19 @@ pub fn cmd_ground(output: &Output, days: i64) -> Result<(), WerkError> {
     }
 
     Ok(())
+}
+
+fn format_ttr(seconds: i64) -> String {
+    let days = seconds / 86400;
+    if days < 7 {
+        format!("~{} days", days.max(1))
+    } else if days < 30 {
+        format!("~{} weeks", (days + 3) / 7)
+    } else if days < 365 {
+        format!("~{} months", (days + 15) / 30)
+    } else {
+        format!("~{} years", (days + 182) / 365)
+    }
 }
 
 fn format_age(now: chrono::DateTime<Utc>, then: chrono::DateTime<Utc>) -> String {

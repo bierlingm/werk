@@ -190,7 +190,26 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
     Ok(())
 }
 
+/// Signal-level projection: trajectory classification and risk flags only.
+/// Stance B: the instrument says "here is the pattern" but not "here is where the pattern leads."
+/// Projections (gap extrapolation, time-to-resolution, will-resolve) are quarantined to ground mode.
 pub fn build_projection_json(
+    projections: &[sd_core::TensionProjection],
+) -> serde_json::Value {
+    if let Some(proj) = projections.first() {
+        serde_json::json!({
+            "trajectory": format!("{:?}", proj.trajectory),
+            "current_gap": proj.current_gap,
+            "oscillation_risk": proj.oscillation_risk,
+            "neglect_risk": proj.neglect_risk,
+        })
+    } else {
+        serde_json::Value::Null
+    }
+}
+
+/// Full projection including extrapolations — ground-mode only.
+pub fn build_full_projection_json(
     projections: &[sd_core::TensionProjection],
 ) -> serde_json::Value {
     if let Some(proj) = projections.first() {
