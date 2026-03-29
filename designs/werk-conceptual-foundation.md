@@ -1,7 +1,7 @@
 # Werk: Conceptual Foundation
 
 **Emerged:** 2026-03-20 through 2026-03-22, through sustained dialogue
-**Last amended:** 2026-03-27 (terminology standardization, implementation grounding, temporal orientations)
+**Last amended:** 2026-03-28 (standard of measurement principle, operative identity, addressing/session/gesture open questions)
 **Status:** Living document. This sits above all design system plans and implementation documents. Changes here propagate downward; changes below do not propagate upward without explicit amendment.
 
 ---
@@ -94,6 +94,18 @@ The instrument is not a tool the user consults. It is a **structure the user inh
 
 The instrument is a thermodynamically advantageous structure: it reduces the energy required to maintain coherent directed action across multiple evolving tensions and time horizons. It does this through spatial organization, temporal encoding, and the operative discipline of gesture.
 
+### 10. Standard of Measurement
+
+**Every computation, signal, or relational inference the instrument produces must be anchored to a standard of measurement the user explicitly provides.**
+
+When the user sets a deadline, that enables urgency computation — because the user supplied the temporal reference point. When the user sets an order of operations, that enables sequencing pressure — because the user committed to a sequence. When the user articulates a desired outcome, that enables gap recognition — because the user declared what closure means. The instrument reasons relationally from these user-established standards. It does not originate standards of its own.
+
+This is the epistemological boundary of the instrument. Without a reference point supplied by the user, there is no basis for relational reasoning — and without relation, there is nothing to compute. A tension with no deadline has no urgency. A tension with no order has no sequencing pressure. A tension with no articulated desire has no gap. The instrument does not fill these in; it waits for the user to commit.
+
+The principle extends to interpretation: the instrument will not label a pattern as "compensating" or "oscillating" or "neglected" because these are interpretive acts that require standards the user has not given the instrument — standards about what *should* be happening, what counts as avoidance, what the user's life context demands. These readings belong to the practice (the practitioner, possibly aided by AI), not to the instrument.
+
+This is not a limitation but a structural guarantee. The instrument's outputs are always traceable to something the user said or did. There are no opaque judgments, no hidden heuristics generating conclusions from unstated premises. What the instrument shows, the user can account for — because the user provided the grounds.
+
 ---
 
 ## Part II: Structural Concepts
@@ -149,6 +161,20 @@ Together, the live structure and the logbook form the complete model of a projec
 This means the logbook should be **queryable as structure** *(future — tracked as #89 "logbase")* — semantic search across epochs, filtering by topic or term or tension, cross-epoch pattern analysis, reconstruction of decision chains. The ability to ask "show me every epoch that touched this concern" or "what was the theory of closure when we made that decision" transforms the logbook from a simple record into a *structural resource*.
 
 The analogy: geological strata encode Earth's history in queryable form. A well-kept logbook tells the full story of a voyage. Whitehead's perished actual occasions persist as objective data for new occasions of becoming. The logbook is the instrument's memory — not nostalgic, but structurally generative.
+
+### Operative, Not Managerial
+
+Werk is an operative instrument, not a management one. The difference is structural.
+
+**Management** is the coordination of what exists — allocation, oversight, dependency tracking, resource balancing, permission enforcement. It asks: what depends on what? Who owns this? What's blocked? These are a coordinator's questions, answered by topology: graphs, queues, matrices of responsibility.
+
+**Operations** is the closing of gaps between where you are and where you aim. It asks: what's the structural tension? Is my theory of closure honest? Where is movement possible right now? These are a practitioner's questions, answered by the structure of desire, reality, and the bridge between them.
+
+The instrument serves operations. It does not track dependencies between tensions, enforce permissions on gestures, manage resource allocation, or maintain coordination topology. If tension B cannot advance because tension A hasn't resolved, that is a fact about B's current reality — write it there. The instrument will surface the stagnation. You do not need a formal link to see it; you need an honest reality update.
+
+This has implications for context. Werk works best where people are willing, able, and inclined to actually work together and succeed — high-trust, reality-facing contexts. Small teams, individual practitioners, collaborators who share aims. It is not designed for contexts that need the instrument to enforce dependencies because people won't communicate, or where graphs substitute for honest conversation about what's stuck and why. The instrument assumes its users face reality; it does not coerce them into doing so.
+
+The single-authorship assumption currently built into the instrument is unstated and will be opened up — sessions, gestures, and provenance on assertions will eventually carry multi-player identity. But the operative character persists: even in collaborative use, the instrument serves people doing the work, not people overseeing it.
 
 ### The Instrument's Boundary
 
@@ -468,6 +494,8 @@ Shapes communicate structural meaning without words. The diamond family is the i
 ### Remaining Work
 
 Tracked as tensions in the werk tree. Run `werk tree` for the current state of design, theoretical, and prototyping work.
+
+**Open explorations:** The relationship between deep addressability, expanded gesture vocabulary, and session semantics is being explored in `designs/addressing-sessions-gestures.md`. These threads bear on multi-player identity, authority, provenance, memory, and the LogBase vision.
 
 ---
 
