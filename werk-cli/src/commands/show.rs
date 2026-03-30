@@ -36,6 +36,19 @@ struct ShowResult {
     siblings: Option<Vec<TensionInfo>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     engagement: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    epochs: Option<Vec<ShowEpochInfo>>,
+}
+
+/// Epoch information for show display.
+#[derive(Serialize)]
+struct ShowEpochInfo {
+    number: usize,
+    timestamp: String,
+    desire_snapshot: String,
+    reality_snapshot: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trigger_gesture_id: Option<String>,
 }
 
 /// Mutation information for show display (no tension_id field).
@@ -238,6 +251,23 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         ancestors,
         siblings,
         engagement,
+        epochs: if epochs.is_empty() {
+            None
+        } else {
+            Some(
+                epochs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| ShowEpochInfo {
+                        number: i + 1,
+                        timestamp: e.timestamp.to_rfc3339(),
+                        desire_snapshot: e.desire_snapshot.clone(),
+                        reality_snapshot: e.reality_snapshot.clone(),
+                        trigger_gesture_id: e.trigger_gesture_id.clone(),
+                    })
+                    .collect(),
+            )
+        },
     };
 
     if output.is_structured() {
@@ -491,6 +521,31 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
                 let summary = format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
                 println!("  {:>12}  {}", ts, summary);
+            }
+        }
+
+        // === Epochs (compact summary, --full expands) ===
+        if !epochs.is_empty() {
+            println!();
+            let latest = &epochs[epochs.len() - 1];
+            let age = relative_time(latest.timestamp, now);
+            if full {
+                println!("Epochs ({}):", epochs.len());
+                for (i, e) in epochs.iter().enumerate().rev() {
+                    let e_age = relative_time(e.timestamp, now);
+                    println!(
+                        "  {:>3}.  {}  desire: {}",
+                        i + 1,
+                        e_age,
+                        truncate(&e.desire_snapshot, 50),
+                    );
+                }
+            } else {
+                println!(
+                    "Epochs:     {} (latest {})",
+                    epochs.len(),
+                    age,
+                );
             }
         }
 
