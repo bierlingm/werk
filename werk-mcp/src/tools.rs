@@ -36,6 +36,9 @@ pub struct IdParam {
 pub struct ShowParam {
     /// Tension ID, short code, or ULID prefix.
     pub id: String,
+    /// Include ancestors, siblings, and engagement metrics.
+    #[serde(default)]
+    pub full: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -60,6 +63,33 @@ pub struct ListParam {
     /// Sort by: "urgency" (default), "name", or "deadline".
     #[serde(default = "default_urgency")]
     pub sort: String,
+    /// Only overdue tensions.
+    #[serde(default)]
+    pub overdue: Option<bool>,
+    /// Only tensions approaching deadline within N days.
+    #[serde(default)]
+    pub approaching: Option<i64>,
+    /// Only tensions with no mutations in N days.
+    #[serde(default)]
+    pub stale: Option<i64>,
+    /// Only held (unpositioned) tensions.
+    #[serde(default)]
+    pub held: Option<bool>,
+    /// Only positioned tensions.
+    #[serde(default)]
+    pub positioned: Option<bool>,
+    /// Only root tensions.
+    #[serde(default)]
+    pub root: Option<bool>,
+    /// Only children of this tension.
+    #[serde(default)]
+    pub parent: Option<String>,
+    /// Only tensions with deadlines.
+    #[serde(default)]
+    pub has_deadline: Option<bool>,
+    /// Show tensions changed since (e.g., "today", "yesterday", "3d").
+    #[serde(default)]
+    pub changed_since: Option<String>,
 }
 
 fn default_urgency() -> String {
@@ -125,6 +155,16 @@ pub struct InsightsParam {
 
 fn default_30() -> i64 {
     30
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StatsParam {
+    /// Sections to include. Array of: "temporal", "attention", "changes", "trajectory", "engagement", "drift", "health". Omit or pass "all" for everything. Default: vitals only.
+    #[serde(default)]
+    pub sections: Option<Vec<String>>,
+    /// Time window in days for windowed sections (default: 7).
+    #[serde(default = "default_7")]
+    pub days: i64,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -667,7 +707,7 @@ impl WerkServer {
 
     // ── Read tools ──────────────────────────────────────────────
 
-    #[tool(description = "Show tension details including desired/actual state, status, frontier, temporal signals, children, and recent mutations.")]
+    #[tool(description = "Show tension details including desired/actual state, status, frontier, temporal signals, children, and recent mutations. Pass full=true to include ancestors, siblings, and engagement metrics (replaces context tool).")]
     async fn show(
         &self,
         Parameters(p): Parameters<ShowParam>,
@@ -732,7 +772,7 @@ impl WerkServer {
             })
             .collect();
 
-        let result = serde_json::json!({
+        let mut result = serde_json::json!({
             "id": tension.id,
             "short_code": tension.short_code,
             "desired": tension.desired,
@@ -748,6 +788,48 @@ impl WerkServer {
             "mutations": mutation_infos,
             "children": children_info,
         });
+
+        // Include context data when full=true (absorbs context tool)
+        if p.full.unwrap_or(false) {
+            let thresholds = ProjectionThresholds::default();
+
+            let ancestors: Vec<serde_json::Value> = forest
+                .ancestors(&tension.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|n| serde_json::json!({
+                    "id": n.id(), "short_code": n.tension.short_code,
+                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
+                }))
+                .collect();
+
+            let siblings: Vec<serde_json::Value> = forest
+                .siblings(&tension.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|n| serde_json::json!({
+                    "id": n.id(), "short_code": n.tension.short_code,
+                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
+                }))
+                .collect();
+
+            let pattern = extract_mutation_pattern(&tension, &mutations, thresholds.pattern_window_seconds, now);
+            let engagement = serde_json::json!({
+                "current_gap": gap_magnitude(&tension.desired, &tension.actual),
+                "mutation_count": pattern.mutation_count,
+                "frequency_per_day": pattern.frequency_per_day,
+                "frequency_trend": pattern.frequency_trend,
+                "gap_trend": pattern.gap_trend,
+                "gap_samples": pattern.gap_samples,
+                "mean_interval_seconds": pattern.mean_interval_seconds,
+            });
+
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("ancestors".to_string(), serde_json::json!(ancestors));
+                obj.insert("siblings".to_string(), serde_json::json!(siblings));
+                obj.insert("engagement".to_string(), engagement);
+            }
+        }
 
         json_result(&result)
     }
@@ -829,7 +911,7 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "List tensions with filtering (all/urgent/neglected/stagnant) and sorting (urgency/name/deadline).")]
+    #[tool(description = "List tensions with rich filtering and sorting. Filter by status (all/urgent/neglected/stagnant), overdue, approaching deadline, stale, held, positioned, root, parent, has_deadline, or changed_since. Sort by urgency (default), name, or deadline.")]
     async fn list(
         &self,
         Parameters(p): Parameters<ListParam>,
@@ -1510,6 +1592,254 @@ impl WerkServer {
             "overdue_count": overdue_count,
             "activity_by_day": activity,
         }))
+    }
+
+    #[tool(description = "Field-level summaries, aggregates, and analysis. Default: vitals only. Pass sections array to include: temporal, attention, changes, trajectory, engagement, drift, health, or 'all'. Replaces ground, health, insights, trajectory for field-wide queries.")]
+    async fn stats(
+        &self,
+        Parameters(p): Parameters<StatsParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let (_ws, store) = open_store()?;
+        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
+        let all_mutations = store.all_mutations().map_err(|e| err(e.to_string()))?;
+        let now = Utc::now();
+        let cutoff = now - chrono::Duration::days(p.days);
+
+        let sections = p.sections.unwrap_or_default();
+        let show_all = sections.iter().any(|s| s == "all");
+        let has = |name: &str| show_all || sections.iter().any(|s| s == name);
+
+        // Vitals (always)
+        let active = tensions.iter().filter(|t| t.status == TensionStatus::Active).count();
+        let resolved = tensions.iter().filter(|t| t.status == TensionStatus::Resolved).count();
+        let released = tensions.iter().filter(|t| t.status == TensionStatus::Released).count();
+        let deadlined = tensions.iter().filter(|t| t.horizon.is_some()).count();
+        let overdue_count = tensions.iter().filter(|t| {
+            t.status == TensionStatus::Active && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
+        }).count();
+        let positioned = tensions.iter().filter(|t| t.status == TensionStatus::Active && t.position.is_some()).count();
+        let held = tensions.iter().filter(|t| t.status == TensionStatus::Active && t.position.is_none()).count();
+
+        let recent: Vec<&Mutation> = all_mutations.iter().filter(|m| m.timestamp() >= cutoff).collect();
+        let mut touched = std::collections::HashSet::new();
+        for m in &recent { touched.insert(m.tension_id()); }
+        let avg = if p.days > 0 { recent.len() as f64 / p.days as f64 } else { 0.0 };
+
+        let mut result = serde_json::json!({
+            "vitals": {
+                "active": active, "resolved": resolved, "released": released,
+                "deadlined": deadlined, "overdue": overdue_count,
+                "positioned": positioned, "held": held,
+                "mutations": recent.len(), "tensions_touched": touched.len(),
+                "avg_per_day": (avg * 10.0).round() / 10.0, "period_days": p.days,
+            }
+        });
+
+        if has("temporal") {
+            let forest = Forest::from_tensions(tensions.to_vec()).map_err(|e| err(e.to_string()))?;
+            let frame_end = now + chrono::Duration::days(14);
+
+            let mut approaching: Vec<serde_json::Value> = Vec::new();
+            for t in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
+                if let Some(u) = compute_urgency(t, now) {
+                    let close = u.value > 0.5 || t.horizon.as_ref().map(|h| h.range_end() <= frame_end).unwrap_or(false);
+                    let past = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
+                    if close || past {
+                        approaching.push(serde_json::json!({
+                            "short_code": t.short_code, "desired": t.desired,
+                            "deadline": t.horizon.as_ref().map(|h| h.to_string()),
+                            "urgency": u.value,
+                        }));
+                    }
+                }
+            }
+            approaching.sort_by(|a, b| b["urgency"].as_f64().unwrap_or(0.0).partial_cmp(&a["urgency"].as_f64().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+            approaching.truncate(10);
+
+            let root_ids: Vec<String> = tensions.iter().filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active).map(|t| t.id.clone()).collect();
+            let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
+
+            let mut critical_path: Vec<serde_json::Value> = Vec::new();
+            for rid in &root_ids {
+                for cp in sd_core::detect_critical_path_recursive(&forest, rid, now) {
+                    let child = tension_map.get(&cp.tension_id);
+                    let parent = tension_map.get(&cp.parent_id);
+                    critical_path.push(serde_json::json!({
+                        "parent_short_code": parent.and_then(|t| t.short_code),
+                        "child_short_code": child.and_then(|t| t.short_code),
+                        "child_desired": child.map(|t| t.desired.as_str()).unwrap_or(""),
+                        "slack_days": cp.slack_seconds / 86400,
+                    }));
+                }
+            }
+
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("temporal".to_string(), serde_json::json!({
+                    "approaching": approaching,
+                    "critical_path": critical_path,
+                }));
+            }
+        }
+
+        if has("attention") {
+            let roots: Vec<&sd_core::Tension> = tensions.iter().filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active).collect();
+            let mut root_data: Vec<serde_json::Value> = Vec::new();
+
+            for root in &roots {
+                let mut total = 0usize;
+                let mut desc_touched = 0usize;
+                let children: Vec<&sd_core::Tension> = tensions.iter().filter(|t| t.parent_id.as_deref() == Some(&root.id) && t.status == TensionStatus::Active).collect();
+                let mut branches: Vec<serde_json::Value> = Vec::new();
+
+                for child in &children {
+                    let desc_ids = store.get_descendant_ids(&child.id).map_err(|e| err(e.to_string()))?;
+                    let mut bm = 0usize;
+                    let mut bt = 0usize;
+                    let child_muts = store.get_mutations(&child.id).map_err(|e| err(e.to_string()))?;
+                    let cr = child_muts.iter().filter(|m| m.timestamp() >= cutoff).count();
+                    if cr > 0 { bm += cr; bt += 1; }
+                    for did in &desc_ids {
+                        let dm = store.get_mutations(did).map_err(|e| err(e.to_string()))?;
+                        let dr = dm.iter().filter(|m| m.timestamp() >= cutoff).count();
+                        if dr > 0 { bm += dr; bt += 1; }
+                    }
+                    total += bm; desc_touched += bt;
+                    branches.push(serde_json::json!({
+                        "short_code": child.short_code, "desired": child.desired,
+                        "mutations": bm, "tensions_touched": bt,
+                    }));
+                }
+                branches.sort_by(|a, b| b["mutations"].as_u64().unwrap_or(0).cmp(&a["mutations"].as_u64().unwrap_or(0)));
+
+                root_data.push(serde_json::json!({
+                    "short_code": root.short_code, "desired": root.desired,
+                    "total_mutations": total, "descendants_touched": desc_touched,
+                    "branches": branches,
+                }));
+            }
+            root_data.sort_by(|a, b| b["total_mutations"].as_u64().unwrap_or(0).cmp(&a["total_mutations"].as_u64().unwrap_or(0)));
+
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("attention".to_string(), serde_json::json!({ "roots": root_data }));
+            }
+        }
+
+        if has("trajectory") {
+            let thresholds = ProjectionThresholds::default();
+            let field = project_field(&tensions, &all_mutations, &thresholds, now);
+
+            let buckets = field.funnel.get(&ProjectionHorizon::OneWeek);
+            let collisions: Vec<serde_json::Value> = field.urgency_collisions.iter().map(|c| {
+                serde_json::json!({
+                    "tension_ids": c.tension_ids,
+                    "window": format!("{} to {}", c.window_start.format("%Y-%m-%d"), c.window_end.format("%Y-%m-%d")),
+                    "peak_urgency": c.peak_combined_urgency,
+                })
+            }).collect();
+
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("trajectory".to_string(), serde_json::json!({
+                    "distribution": buckets.map(|b| serde_json::json!({
+                        "resolving": b.resolving, "drifting": b.drifting,
+                        "stalling": b.stalling, "oscillating": b.oscillating,
+                    })),
+                    "collisions": collisions,
+                }));
+            }
+        }
+
+        if has("engagement") {
+            let mut per_tension: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            for m in &recent { *per_tension.entry(m.tension_id().to_string()).or_default() += 1; }
+            let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
+
+            let most = per_tension.iter().max_by_key(|(_, c)| *c);
+            let least = tensions.iter()
+                .filter(|t| t.status == TensionStatus::Active && t.horizon.is_some())
+                .min_by_key(|t| per_tension.get(&t.id).copied().unwrap_or(0));
+
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("engagement".to_string(), serde_json::json!({
+                    "field_frequency": (avg * 10.0).round() / 10.0,
+                    "most_engaged": most.and_then(|(id, c)| tension_map.get(id).map(|t| serde_json::json!({
+                        "short_code": t.short_code, "desired": t.desired,
+                        "frequency": *c as f64 / p.days.max(1) as f64,
+                    }))),
+                    "least_engaged_with_deadline": least.map(|t| serde_json::json!({
+                        "short_code": t.short_code, "desired": t.desired,
+                        "frequency": per_tension.get(&t.id).copied().unwrap_or(0) as f64 / p.days.max(1) as f64,
+                        "deadline": t.horizon.as_ref().map(|h| h.to_string()),
+                    })),
+                }));
+            }
+        }
+
+        if has("drift") {
+            let mut drifts: Vec<serde_json::Value> = Vec::new();
+            for t in tensions.iter().filter(|t| t.status == TensionStatus::Active && t.horizon.is_some()) {
+                let muts = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
+                let drift = detect_horizon_drift(&t.id, &muts);
+                let dtype = format!("{:?}", drift.drift_type);
+                if dtype != "Stable" && drift.change_count > 0 {
+                    drifts.push(serde_json::json!({
+                        "short_code": t.short_code, "desired": t.desired,
+                        "drift_type": dtype, "changes": drift.change_count,
+                        "net_shift_days": drift.net_shift_seconds / 86400,
+                    }));
+                }
+            }
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("drift".to_string(), serde_json::json!(drifts));
+            }
+        }
+
+        if has("health") {
+            let noop = store.count_noop_mutations().map_err(|e| err(e.to_string()))?;
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("health".to_string(), serde_json::json!({ "noop_mutations": noop }));
+            }
+        }
+
+        if has("changes") {
+            let recent_mutations = store.mutations_between(cutoff, now).map_err(|e| err(e.to_string()))?;
+            let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
+
+            let mut epochs_list: Vec<serde_json::Value> = Vec::new();
+            for t in &tensions {
+                let eps = store.get_epochs(&t.id).map_err(|e| err(e.to_string()))?;
+                for ep in &eps {
+                    if ep.timestamp >= cutoff {
+                        epochs_list.push(serde_json::json!({"short_code": t.short_code, "desired": t.desired}));
+                    }
+                }
+            }
+
+            let mut resolutions = Vec::new();
+            let mut new_tensions = Vec::new();
+            let mut seen_r = std::collections::HashSet::new();
+            let mut seen_c = std::collections::HashSet::new();
+
+            for m in &recent_mutations {
+                let t = tension_map.get(m.tension_id());
+                let sc = t.and_then(|t| t.short_code);
+                let des = t.map(|t| t.desired.as_str()).unwrap_or("(deleted)");
+
+                if m.field() == "status" && (m.new_value() == "Resolved" || m.new_value() == "Released") && seen_r.insert(m.tension_id().to_string()) {
+                    resolutions.push(serde_json::json!({"short_code": sc, "desired": des}));
+                }
+                if m.field() == "created" && seen_c.insert(m.tension_id().to_string()) {
+                    new_tensions.push(serde_json::json!({"short_code": sc, "desired": des}));
+                }
+            }
+
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("changes".to_string(), serde_json::json!({
+                    "epochs": epochs_list, "resolutions": resolutions, "new_tensions": new_tensions,
+                }));
+            }
+        }
+
+        json_result(&result)
     }
 
     // ── Gesture tools (mutating) ────────────────────────────────

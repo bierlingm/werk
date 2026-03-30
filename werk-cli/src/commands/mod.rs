@@ -31,6 +31,7 @@ pub mod resolve;
 pub mod rm;
 pub mod show;
 pub mod snooze;
+pub mod stats;
 pub mod survey;
 pub mod trajectory;
 pub mod tree;
@@ -150,6 +151,10 @@ Examples:
     Show {
         /// Tension ID or prefix (4+ characters).
         id: String,
+
+        /// Expanded output: include ancestors, siblings, and engagement metrics.
+        #[arg(long)]
+        full: bool,
     },
 
     /// Update the current reality of a tension.
@@ -364,8 +369,8 @@ Examples:
         command: NoteCommand,
     },
 
-    /// Show system health summary (structural statistics, temporal alerts).
-    #[command(after_help = "\
+    /// System health (superseded by stats --health).
+    #[command(hide = true, after_help = "\
 Examples:
   werk health                        Show health summary
   werk health --repair               Find and optionally purge no-op mutations
@@ -380,7 +385,8 @@ Examples:
         yes: bool,
     },
 
-    /// Show behavioral pattern insights from mutation history.
+    /// Behavioral pattern insights (superseded by stats --attention --engagement).
+    #[command(hide = true)]
     Insights {
         /// Analysis window in days.
         #[arg(long, default_value = "30")]
@@ -389,26 +395,26 @@ Examples:
 
     /// The Napoleonic field survey — all tensions organized by temporal urgency.
     ///
-    /// Navigate time, see structure. Shows overdue steps, upcoming deadlines,
-    /// held steps, and recently resolved across the entire field.
+    /// Equivalent to: list --approaching <days> --overdue --sort urgency
+    /// Kept as a named perspective for vocabulary continuity.
     Survey {
         /// Temporal frame in days (default: 14).
         #[arg(long, default_value = "14")]
         days: i64,
     },
 
-    /// Ground mode — the debrief and study surface.
+    /// Field overview (superseded by stats --all).
     ///
-    /// Shows field statistics, epoch history, and recent gestures.
-    /// Where you study your own patterns when you're not flying.
+    /// Equivalent to: stats --all --days <days>
+    #[command(hide = true)]
     Ground {
         /// Lookback window in days (default: 7).
         #[arg(long, default_value = "7")]
         days: i64,
     },
 
-    /// Show what changed in a time window.
-    #[command(after_help = "\
+    /// Show what changed (superseded by list --changed).
+    #[command(hide = true, after_help = "\
 Examples:
   werk diff                          Changes since today (default)
   werk diff --since yesterday        Changes since yesterday
@@ -421,32 +427,84 @@ Examples:
     },
 
     /// List tensions with filtering and sorting.
+    ///
+    /// The general-purpose query engine. Use flags to filter, sort, and
+    /// format. Absorbs what survey and diff used to do separately.
     #[command(after_help = "\
 Examples:
   werk list                          Active tensions sorted by urgency
   werk list --all                    Include resolved and released
-  werk list --urgent                 Only urgent tensions
-  werk list --neglected --sort name  Neglected tensions sorted by name")]
+  werk list --overdue                Only overdue tensions
+  werk list --approaching 14         Due within 14 days (or overdue)
+  werk list --stale 14               No activity in 14 days
+  werk list --held                   Unpositioned tensions
+  werk list --root                   Root tensions only
+  werk list --parent 2               Children of tension #2
+  werk list --changed today          What changed today (replaces diff)
+  werk list --changed \"3 days ago\"   Changes in last 3 days
+  werk list --sort deadline          Sort by deadline
+  werk list --tree                   Show results as hierarchy
+  werk list --long                   Expanded detail per tension")]
     List {
-        /// Show all tensions (including resolved/released).
+        /// Include resolved and released tensions.
         #[arg(long)]
         all: bool,
 
-        /// Show only urgent tensions.
+        /// Filter by status (active, resolved, released).
         #[arg(long)]
-        urgent: bool,
+        status: Option<String>,
 
-        /// Show only neglected tensions.
+        /// Only overdue tensions (deadline passed, still active).
         #[arg(long)]
-        neglected: bool,
+        overdue: bool,
 
-        /// Show only stagnant tensions (overdue with no recent activity).
+        /// Deadline within N days, or overdue (default: 14).
         #[arg(long)]
-        stagnant: bool,
+        approaching: Option<Option<i64>>,
 
-        /// Sort by field (urgency, name, deadline).
+        /// No mutations in N days (default: 14).
+        #[arg(long)]
+        stale: Option<Option<i64>>,
+
+        /// Only held (unpositioned) tensions.
+        #[arg(long)]
+        held: bool,
+
+        /// Only positioned tensions.
+        #[arg(long)]
+        positioned: bool,
+
+        /// Only root tensions (no parent).
+        #[arg(long)]
+        root: bool,
+
+        /// Only children of this tension.
+        #[arg(long)]
+        parent: Option<String>,
+
+        /// Only tensions with deadlines.
+        #[arg(long)]
+        has_deadline: bool,
+
+        /// Show tensions changed since (e.g., "today", "yesterday", "3d", "2026-03-10").
+        #[arg(long)]
+        changed: Option<String>,
+
+        /// Sort field: urgency, name, deadline, created, updated, position.
         #[arg(long, default_value = "urgency")]
         sort: String,
+
+        /// Reverse sort order.
+        #[arg(long, short)]
+        reverse: bool,
+
+        /// Show results as hierarchy.
+        #[arg(long)]
+        tree: bool,
+
+        /// Expanded detail per tension.
+        #[arg(long)]
+        long: bool,
     },
 
     /// Display the tension forest as a tree.
@@ -475,13 +533,78 @@ Examples:
         /// Show only released tensions.
         #[arg(long)]
         released: bool,
+
+        /// Append field vitals summary.
+        #[arg(long)]
+        stats: bool,
     },
 
-    /// Show structural trajectory projections.
+    /// Field-level summaries, aggregates, and analysis.
     ///
-    /// Without arguments: field-wide structural funnel.
-    /// With a tension ID: per-tension trajectory projection.
-    /// With --collisions: upcoming urgency collision windows.
+    /// Default: field vitals. Use flags to add sections.
+    /// Replaces ground, health, insights, and trajectory as separate commands.
+    #[command(after_help = "\
+Examples:
+  werk stats                         Field vitals (compact summary)
+  werk stats --temporal              Approaching deadlines, critical path, pressure
+  werk stats --attention             Where energy went across root tensions
+  werk stats --changes               Epochs, resolutions, new tensions, reality shifts
+  werk stats --trajectory            Trajectory distribution, urgency collisions
+  werk stats --engagement            Field frequency, most/least engaged
+  werk stats --drift                 Horizon drift patterns
+  werk stats --health                Data integrity checks
+  werk stats --health --repair       Purge noop mutations
+  werk stats --all                   Everything")]
+    Stats {
+        /// Show approaching deadlines, critical path, sequencing pressure, containment violations.
+        #[arg(long)]
+        temporal: bool,
+
+        /// Show mutation distribution across root tensions and branches.
+        #[arg(long)]
+        attention: bool,
+
+        /// Show epochs, resolutions, new tensions, reality shifts.
+        #[arg(long)]
+        changes: bool,
+
+        /// Show trajectory distribution and urgency collisions.
+        #[arg(long)]
+        trajectory: bool,
+
+        /// Show field frequency, most/least engaged tensions.
+        #[arg(long)]
+        engagement: bool,
+
+        /// Show horizon drift patterns.
+        #[arg(long)]
+        drift: bool,
+
+        /// Show data integrity checks (noop mutations, orphans).
+        #[arg(long)]
+        health: bool,
+
+        /// Show all sections.
+        #[arg(long)]
+        all: bool,
+
+        /// Time window in days for windowed sections.
+        #[arg(long, default_value = "7")]
+        days: i64,
+
+        /// Repair: purge noop mutations (requires --health).
+        #[arg(long)]
+        repair: bool,
+
+        /// Skip confirmation prompt (for --repair).
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Trajectory projections (superseded by stats --trajectory).
+    ///
+    /// Per-tension mode (with ID) still unique to this command.
+    #[command(hide = true)]
     Trajectory {
         /// Tension ID or prefix (omit for field-wide projection).
         id: Option<String>,
@@ -491,8 +614,8 @@ Examples:
         collisions: bool,
     },
 
-    /// Output structural context (JSON). Useful for MCP, scripts, or agent consumption.
-    #[command(after_help = "\
+    /// Structural context JSON (superseded by show --json / list --json).
+    #[command(hide = true, after_help = "\
 Examples:
   werk context 42                    Full context for one tension
   werk context --all                 Context for all active tensions

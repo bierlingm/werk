@@ -1,12 +1,12 @@
 //! Show command handler.
 
-use crate::serialize::HorizonRangeJson;
+use crate::serialize::{HorizonRangeJson, TensionInfo, node_to_tension_info};
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_frontier, compute_temporal_signals, compute_urgency, HorizonKind, TensionStatus};
+use sd_core::{compute_frontier, compute_temporal_signals, compute_urgency, extract_mutation_pattern, gap_magnitude, HorizonKind, ProjectionThresholds, TensionStatus};
 use serde::Serialize;
 use werk_shared::{display_id, relative_time, truncate};
 
@@ -28,6 +28,12 @@ struct ShowResult {
     temporal: sd_core::TemporalSignals,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ancestors: Option<Vec<TensionInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    siblings: Option<Vec<TensionInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    engagement: Option<serde_json::Value>,
 }
 
 /// Mutation information for show display (no tension_id field).
@@ -52,7 +58,7 @@ struct ChildInfo {
     completion_ts: Option<DateTime<Utc>>,
 }
 
-pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
+pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
 
@@ -162,6 +168,41 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         })
         .collect();
 
+    // Context data (ancestors, siblings, engagement) — included when --full or --json
+    let include_context = full || output.is_structured();
+    let (ancestors, siblings, engagement) = if include_context {
+        let ancestors: Vec<TensionInfo> = forest
+            .ancestors(&tension.id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|node| node_to_tension_info(node, now))
+            .collect();
+
+        let siblings: Vec<TensionInfo> = forest
+            .siblings(&tension.id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|node| node_to_tension_info(node, now))
+            .collect();
+
+        let thresholds = ProjectionThresholds::default();
+        let pattern = extract_mutation_pattern(tension, &mutations, thresholds.pattern_window_seconds, now);
+        let gap = gap_magnitude(&tension.desired, &tension.actual);
+        let engagement = serde_json::json!({
+            "current_gap": gap,
+            "mutation_count": pattern.mutation_count,
+            "frequency_per_day": pattern.frequency_per_day,
+            "frequency_trend": pattern.frequency_trend,
+            "gap_trend": pattern.gap_trend,
+            "gap_samples": pattern.gap_samples,
+            "mean_interval_seconds": pattern.mean_interval_seconds,
+        });
+
+        (Some(ancestors), Some(siblings), Some(engagement))
+    } else {
+        (None, None, None)
+    };
+
     let result = ShowResult {
         id: tension.id.clone(),
         short_code: tension.short_code,
@@ -181,6 +222,9 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
         temporal: temporal.clone(),
         mutations: mutation_infos,
         children,
+        ancestors,
+        siblings,
+        engagement,
     };
 
     if output.is_structured() {
@@ -417,6 +461,49 @@ pub fn cmd_show(output: &Output, id: String) -> Result<(), WerkError> {
 
                 let summary = format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
                 println!("  {:>12}  {}", ts, summary);
+            }
+        }
+
+        // === Context (--full only) ===
+        if full {
+            if let Some(ref ancestors) = result.ancestors {
+                if !ancestors.is_empty() {
+                    println!();
+                    println!("Ancestors:");
+                    for a in ancestors {
+                        let sc = a.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| a.id[..8.min(a.id.len())].to_string());
+                        println!("  {:<6} {}", sc, truncate(&a.desired, 55));
+                    }
+                }
+            }
+            if let Some(ref siblings) = result.siblings {
+                if !siblings.is_empty() {
+                    println!();
+                    println!("Siblings:");
+                    for s in siblings {
+                        let sc = s.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| s.id[..8.min(s.id.len())].to_string());
+                        let status_marker = match s.status.as_str() {
+                            "Resolved" => " ✓",
+                            "Released" => " ~",
+                            _ => "",
+                        };
+                        println!("  {}{} {}", sc, status_marker, truncate(&s.desired, 50));
+                    }
+                }
+            }
+            if let Some(ref eng) = result.engagement {
+                println!();
+                println!("Engagement:");
+                if let Some(freq) = eng.get("frequency_per_day").and_then(|v| v.as_f64()) {
+                    println!("  Frequency: {:.1}/day", freq);
+                }
+                if let Some(trend) = eng.get("frequency_trend").and_then(|v| v.as_f64()) {
+                    let trend_word = if trend > 0.1 { "accelerating" } else if trend < -0.1 { "declining" } else { "steady" };
+                    println!("  Trend: {}", trend_word);
+                }
+                if let Some(count) = eng.get("mutation_count").and_then(|v| v.as_u64()) {
+                    println!("  Mutations: {} in window", count);
+                }
             }
         }
     }

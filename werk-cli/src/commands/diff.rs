@@ -16,7 +16,7 @@ use werk_shared::{display_id, relative_time, truncate};
 ///   - "N days ago"        -> N days before now at midnight UTC
 ///   - "2026-03-10"        -> ISO date at midnight UTC
 ///   - "monday" … "sunday" -> most recent occurrence of that weekday
-fn parse_since(value: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, WerkError> {
+pub fn parse_since(value: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, WerkError> {
     let v = value.trim().to_lowercase();
 
     // "today"
