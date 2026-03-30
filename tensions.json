@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-30T21:53:00Z",
+  "flushed_at": "2026-03-30T22:05:59Z",
   "summary": {
     "active": 72,
     "released": 7,
@@ -360,7 +360,7 @@
       "status": "Active"
     },
     {
-      "actual": "Epoch lifecycle operational: auto-boundaries on reality/desire updates (CLI), manual 'werk epoch' command, epoch span queries (mutations per epoch across descendants), epoch list/show. Session lifecycle: TUI calls start_session/end_session, session telemetry logging added. Remaining gap: TUI doesn't yet trigger epoch boundaries on inline desire/reality edits.",
+      "actual": "TUI fully wired into gesture/session model. Every TUI mutation (add, resolve, release, edit desire/reality/horizon, reorder, position, hold, note, undo, move) creates a gesture linked to the store session. Sessions start on TUI launch, end on drop. Epoch boundaries carry trigger gesture IDs. Children snapshots match CLI format (actual + position). Telemetry log correlates with store session ID. Multiple concurrent TUIs and CLI/MCP work correctly — each process holds its own session_id, no global state queries.",
       "created_at": "2026-03-24T17:52:27.162135+00:00",
       "desired": "epoch and session lifecycle are fully operational",
       "horizon": null,
