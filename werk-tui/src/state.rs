@@ -116,6 +116,16 @@ pub enum EditField {
     Horizon,
 }
 
+impl EditField {
+    pub fn label(&self) -> &'static str {
+        match self {
+            EditField::Desire => "desire",
+            EditField::Reality => "reality",
+            EditField::Horizon => "horizon",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ConfirmKind {
     Resolve { tension_id: String, desired: String },

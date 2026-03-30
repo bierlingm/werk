@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-30T18:44:56Z",
+  "flushed_at": "2026-03-30T21:53:00Z",
   "summary": {
-    "active": 63,
+    "active": 72,
     "released": 7,
     "resolved": 64,
-    "total": 134
+    "total": 143
   },
   "tensions": [
     {
@@ -1479,6 +1479,105 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 139,
+      "status": "Active"
+    },
+    {
+      "actual": "two FrankenSuite dependencies in use (fsqlite, ftui), both at surface level; evaluation written, eight integrations identified and prioritized",
+      "created_at": "2026-03-30T21:29:15.331282+00:00",
+      "desired": "werk integrates the full FrankenSuite — graph intelligence, visual output, hybrid search, deeper storage and TUI, analytics, sandboxed extensions, voice input",
+      "horizon": "2026-09",
+      "id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 140,
+      "status": "Active"
+    },
+    {
+      "actual": "tension tree is a Forest<Node> in sd-core/src/tree.rs; critical path, containment, sequencing computed by hand in temporal.rs; no graph library in dependencies",
+      "created_at": "2026-03-30T21:29:28.158569+00:00",
+      "desired": "FrankenNetworkX powers structural graph analysis — betweenness centrality reveals bottleneck tensions, topological generations drive a waves view, dag_longest_path replaces hand-rolled critical path, transitive closure shows blast radius of any gesture",
+      "horizon": "2026-05",
+      "id": "01KN0ADMTY1F3DEB5GQYSWT2P3",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 1,
+      "short_code": 141,
+      "status": "Active"
+    },
+    {
+      "actual": "tension tree is text-only on all surfaces; web frontend is vanilla JS with no diagramming; CLI tree is ASCII; no visual output anywhere",
+      "created_at": "2026-03-30T21:29:36.931342+00:00",
+      "desired": "FrankenMermaid renders tension structures visually — flowchart/mindmap for web and desktop, SVG export from CLI, braille/block minimap in TUI, auto-generated diagrams for docs and public content, gantt/timeline for temporal views",
+      "horizon": "2026-06",
+      "id": "01KN0ADXD3NA3SJDXK65MC2QFK",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 2,
+      "short_code": 142,
+      "status": "Active"
+    },
+    {
+      "actual": "TUI search is case-insensitive substring matching with simple scoring; no full-text index; no semantic search; logbase (#89) has no search substrate",
+      "created_at": "2026-03-30T21:29:45.127237+00:00",
+      "desired": "FrankenSearch provides hybrid retrieval across all werk content — BM25 for TUI search, full two-tier (lexical + semantic + RRF fusion) for the logbase, semantic queries via MCP let agents search by meaning not just structure",
+      "horizon": "2026-06",
+      "id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 3,
+      "short_code": 143,
+      "status": "Active"
+    },
+    {
+      "actual": "fsqlite v0.1.2 in use; advisory file lock in Store::init() prevents concurrent access; manual backup logic on init; single-writer constraint documented as invariant",
+      "created_at": "2026-03-30T21:29:54.236327+00:00",
+      "desired": "fsqlite upgraded to use MVCC concurrent writers and RaptorQ self-healing — the advisory file lock is removed, multiple processes safely write to the same store, torn writes are recoverable without manual backups",
+      "horizon": "2026-06",
+      "id": "01KN0AEE9W03FRAMCZDHJQBNH4",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 4,
+      "short_code": 144,
+      "status": "Active"
+    },
+    {
+      "actual": "ftui v0.2 used as rendering substrate only; custom rendering pipeline in render.rs; Bayesian diff disabled; hand-built theme.rs; 106 available widgets mostly unused",
+      "created_at": "2026-03-30T21:30:03.681819+00:00",
+      "desired": "ftui used at depth — built-in widgets replace custom tree/table/indicator rendering, ftui layout system replaces hand-rolled render pipeline, ftui theme infrastructure powers dark/light adaptation",
+      "horizon": "2026-06",
+      "id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 5,
+      "short_code": 145,
+      "status": "Active"
+    },
+    {
+      "actual": "stats are hand-computed aggregation; projection engine uses simple trend lines; export is basic JSON/text; no DataFrame capability",
+      "created_at": "2026-03-30T21:30:21.406516+00:00",
+      "desired": "FrankenPandas powers analytics — stats command uses DataFrames for pivot tables, rolling windows, cross-tabulations; trajectory analysis uses proper statistical functions; export supports Parquet and rich formats; coach dashboards have real data processing",
+      "horizon": "2026-07",
+      "id": "01KN0AF8TYYR9ZPXE1XJCQQR4H",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 6,
+      "short_code": 146,
+      "status": "Active"
+    },
+    {
+      "actual": "hooks are shell commands via event bus; batch mutations are YAML replay; no sandboxing, no deterministic replay, no provenance tracking; cross-workspace sync does not exist",
+      "created_at": "2026-03-30T21:30:32.532810+00:00",
+      "desired": "FrankenEngine sandboxes extensions — user-defined hooks run in a deterministic runtime with cryptographic receipts, batch mutations are programmable scripts not just YAML, cross-workspace sync carries verified provenance",
+      "horizon": "2026-08",
+      "id": "01KN0AFKPMSB3TQKTBGWNCD6YJ",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 7,
+      "short_code": 147,
+      "status": "Active"
+    },
+    {
+      "actual": "no audio input on any surface; all mutation input is typed text; mobile app (#95) not started; coaching workflow (#80) is manual",
+      "created_at": "2026-03-30T21:34:51.655532+00:00",
+      "desired": "FrankenWhisper enables voice-driven practice — speak reality updates, coach sessions transcribed and parsed into mutations, mobile app uses voice as primary input, thinking-out-loud sessions captured as structural observations",
+      "horizon": "2026-09",
+      "id": "01KN0AQGR74SVQ2JSKQR12ZWVX",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 8,
+      "short_code": 148,
       "status": "Active"
     }
   ]

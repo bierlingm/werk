@@ -206,6 +206,35 @@ impl Engine {
         )
     }
 
+    // ── Gesture lifecycle ──────────────────────────────────────────
+
+    /// Begin a gesture within a session (for TUI instances).
+    pub fn begin_gesture_in_session(
+        &mut self,
+        session_id: &str,
+        description: Option<&str>,
+    ) -> Result<String, crate::store::StoreError> {
+        self.store.begin_gesture_in_session(session_id, description)
+    }
+
+    /// Begin a sessionless gesture (for CLI commands).
+    pub fn begin_gesture(
+        &mut self,
+        description: Option<&str>,
+    ) -> Result<String, crate::store::StoreError> {
+        self.store.begin_gesture(description)
+    }
+
+    /// End the current gesture, returning its ID.
+    pub fn end_gesture(&mut self) -> Option<String> {
+        self.store.end_gesture()
+    }
+
+    /// Get the currently active gesture ID, if any.
+    pub fn active_gesture(&self) -> Option<&str> {
+        self.store.active_gesture()
+    }
+
     /// Update the temporal horizon of a tension.
     pub fn update_horizon(
         &mut self,
