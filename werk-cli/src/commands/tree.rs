@@ -58,6 +58,7 @@ pub fn cmd_tree(
     all: bool,
     resolved: bool,
     released: bool,
+    stats: bool,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
@@ -407,6 +408,29 @@ pub fn cmd_tree(
         resolved_count,
         released_count
     );
+
+    if stats {
+        let deadlined = tensions.iter().filter(|t| t.horizon.is_some()).count();
+        let overdue = tensions
+            .iter()
+            .filter(|t| {
+                t.status == TensionStatus::Active
+                    && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
+            })
+            .count();
+        let positioned = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active && t.position.is_some())
+            .count();
+        let held = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active && t.position.is_none())
+            .count();
+        println!(
+            "Deadlined: {}  Overdue: {}  Positioned: {}  Held: {}",
+            deadlined, overdue, positioned, held
+        );
+    }
 
     Ok(())
 }

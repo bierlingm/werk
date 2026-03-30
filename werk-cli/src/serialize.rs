@@ -22,6 +22,7 @@ pub struct HorizonRangeJson {
 #[derive(Serialize, Clone, Debug)]
 pub struct TensionInfo {
     pub id: String,
+    pub short_code: Option<i32>,
     pub desired: String,
     pub actual: String,
     pub status: String,
@@ -58,6 +59,7 @@ pub fn node_to_tension_info(node: &sd_core::Node, now: DateTime<Utc>) -> Tension
 
     TensionInfo {
         id: node.id().to_string(),
+        short_code: node.tension.short_code,
         desired: node.tension.desired.clone(),
         actual: node.tension.actual.clone(),
         status: node.tension.status.to_string(),
@@ -91,6 +93,7 @@ pub fn tension_to_info(
 
     TensionInfo {
         id: tension.id.clone(),
+        short_code: tension.short_code,
         desired: tension.desired.clone(),
         actual: tension.actual.clone(),
         status: tension.status.to_string(),

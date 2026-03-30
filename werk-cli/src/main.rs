@@ -15,23 +15,28 @@ use werk::commands::Commands;
 use werk::error::ErrorCode;
 use werk::output::Output;
 
-/// Operative instrument for structural dynamics.
+/// Operative instrument for structural dynamics practice.
+///
+/// Holds structural tensions — the gap between desired outcome and current
+/// reality — and computes temporal facts from the standards you set. The
+/// instrument surfaces signals by exception and does not interpret. It serves
+/// operations (closing gaps), not management (coordinating existing structure).
 #[derive(Parser, Debug)]
 #[command(name = "werk")]
 #[command(version, about, after_long_help = "\
 Commands by framework:
 
   Structure (Architecture of Space)
-    add, compose, move, rm, show, tree, context
+    add, compose, move, rm, show, tree
 
   Action (Grammar of Action)
     reality, desire, resolve, release, reopen, hold, position, note
 
   Time (Calculus of Time)
-    horizon, snooze, recur, epoch, diff
+    horizon, snooze, recur, epoch
 
   Framing (Logic of Framing)
-    list, survey, ground, trajectory, insights, health
+    list, tree, stats, survey
 
   System
     init, config, flush, batch, nuke, mcp, serve")]
@@ -96,7 +101,7 @@ fn main() {
         Commands::Flush => werk::commands::flush::cmd_flush(&output),
         Commands::Epoch { id, list, show } => werk::commands::epoch::cmd_epoch(&output, id, list, show),
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
-        Commands::Show { id } => werk::commands::show::cmd_show(&output, id),
+        Commands::Show { id, full } => werk::commands::show::cmd_show(&output, id, full),
         Commands::Reality { id, value, no_epoch } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch),
         Commands::Desire { id, value, no_epoch } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch),
         Commands::Resolve { id, actual_at, dry_run } => werk::commands::resolve::cmd_resolve(&output, id, actual_at, dry_run),
@@ -129,23 +134,68 @@ fn main() {
         },
         Commands::List {
             all,
-            urgent,
-            neglected,
-            stagnant,
+            status,
+            overdue,
+            approaching,
+            stale,
+            held,
+            positioned,
+            root,
+            parent,
+            has_deadline,
+            changed,
             sort,
-        } => werk::commands::list::cmd_list(&output, all, urgent, neglected, stagnant, sort),
+            reverse,
+            tree,
+            long,
+        } => {
+            let params = werk::commands::list::ListParams {
+                all,
+                status,
+                overdue,
+                approaching: approaching.map(|opt| opt.unwrap_or(14)),
+                stale: stale.map(|opt| opt.unwrap_or(14)),
+                held,
+                positioned,
+                root,
+                parent,
+                has_deadline,
+                changed,
+                sort,
+                reverse,
+                tree,
+                long,
+            };
+            werk::commands::list::cmd_list(&output, params)
+        }
         Commands::Tree {
             id,
             open,
             all,
             resolved,
             released,
-        } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released),
+            stats,
+        } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released, stats),
         Commands::Health { repair, yes } => werk::commands::health::cmd_health(&output, repair, yes),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
         Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
         Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),
         Commands::Diff { since } => werk::commands::diff::cmd_diff(&output, since),
+        Commands::Stats {
+            temporal,
+            attention,
+            changes,
+            trajectory: traj,
+            engagement,
+            drift,
+            health,
+            all,
+            days,
+            repair,
+            yes,
+        } => werk::commands::stats::cmd_stats(
+            &output, temporal, attention, changes, traj, engagement, drift, health, all, days, repair, yes,
+        ),
         Commands::Trajectory { id, collisions } => {
             werk::commands::trajectory::cmd_trajectory(&output, id, collisions)
         }

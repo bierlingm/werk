@@ -1,14 +1,16 @@
-//! List command handler.
+//! List command handler — the general-purpose query engine.
 //!
-//! Flat listing of tensions with rich filtering and sorting options.
+//! Flat or tree listing of tensions with rich filtering, sorting, and
+//! time-windowed change detection. Absorbs survey and diff functionality.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{compute_urgency, TensionStatus};
+use sd_core::{compute_urgency, Tension, TensionStatus};
 use werk_shared::truncate;
 
 /// JSON output structure for a tension in list.
@@ -19,10 +21,17 @@ struct ListTensionJson {
     desired: String,
     actual: String,
     status: String,
+    parent_id: Option<String>,
     urgency: Option<f64>,
     horizon: Option<String>,
     overdue: bool,
-    tier: String,
+    position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_desired: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    changed_fields: Option<Vec<String>>,
 }
 
 /// JSON output structure for list.
@@ -30,9 +39,49 @@ struct ListTensionJson {
 struct ListJson {
     tensions: Vec<ListTensionJson>,
     count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    since: Option<String>,
 }
 
-fn format_horizon(tension: &sd_core::Tension, now: chrono::DateTime<Utc>) -> String {
+/// All the parameters for list, collected from the clap definition.
+pub struct ListParams {
+    pub all: bool,
+    pub status: Option<String>,
+    pub overdue: bool,
+    pub approaching: Option<i64>,
+    pub stale: Option<i64>,
+    pub held: bool,
+    pub positioned: bool,
+    pub root: bool,
+    pub parent: Option<String>,
+    pub has_deadline: bool,
+    pub changed: Option<String>,
+    pub sort: String,
+    pub reverse: bool,
+    pub tree: bool,
+    pub long: bool,
+}
+
+/// Computed row data for filtering, sorting, and display.
+struct TensionRow {
+    id: String,
+    short_code: Option<i32>,
+    desired: String,
+    actual: String,
+    status: TensionStatus,
+    parent_id: Option<String>,
+    urgency: Option<f64>,
+    horizon_display: String,
+    horizon_raw: Option<String>,
+    overdue: bool,
+    position: Option<i32>,
+    category: Option<String>,
+    parent_desired: Option<String>,
+    depth: usize,
+    changed_fields: Option<Vec<String>>,
+}
+
+fn format_horizon(tension: &Tension, now: DateTime<Utc>) -> String {
     match &tension.horizon {
         Some(h) => {
             let days = h.range_end().signed_duration_since(now).num_days();
@@ -50,28 +99,7 @@ fn format_horizon(tension: &sd_core::Tension, now: chrono::DateTime<Utc>) -> Str
     }
 }
 
-/// Computed row data for filtering and sorting.
-struct TensionRow {
-    id: String,
-    short_code: Option<i32>,
-    desired: String,
-    actual: String,
-    status: TensionStatus,
-    urgency: Option<f64>,
-    horizon_display: String,
-    horizon_raw: Option<String>,
-    overdue: bool,
-    tier: String,
-}
-
-pub fn cmd_list(
-    output: &Output,
-    all: bool,
-    urgent: bool,
-    neglected: bool,
-    stagnant: bool,
-    sort: String,
-) -> Result<(), WerkError> {
+pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
     let now = Utc::now();
@@ -83,10 +111,9 @@ pub fn cmd_list(
             let result = ListJson {
                 tensions: vec![],
                 count: 0,
+                since: None,
             };
-            output
-                .print_structured(&result)
-                .map_err(WerkError::IoError)?;
+            output.print_structured(&result).map_err(WerkError::IoError)?;
         } else {
             output
                 .info("No tensions found")
@@ -95,6 +122,58 @@ pub fn cmd_list(
         return Ok(());
     }
 
+    // Build parent lookup for structural context
+    let parent_lookup: HashMap<String, (Option<i32>, String)> = tensions
+        .iter()
+        .map(|t| (t.id.clone(), (t.short_code, t.desired.clone())))
+        .collect();
+
+    // If --changed, parse the since value and find changed tension IDs
+    let (since_dt, changed_tension_fields) = if let Some(ref since_str) = params.changed {
+        let dt = crate::commands::diff::parse_since(since_str, now)?;
+        let mutations = store.mutations_between(dt, now).map_err(WerkError::StoreError)?;
+        let mut changed: HashMap<String, Vec<String>> = HashMap::new();
+        for m in &mutations {
+            changed
+                .entry(m.tension_id().to_owned())
+                .or_default()
+                .push(m.field().to_owned());
+        }
+        // Deduplicate fields per tension
+        for fields in changed.values_mut() {
+            fields.sort();
+            fields.dedup();
+        }
+        (Some(dt), Some(changed))
+    } else {
+        (None, None)
+    };
+
+    // If --stale, compute last mutation timestamps
+    let stale_threshold = params.stale.map(|days| {
+        now - chrono::Duration::days(days)
+    });
+
+    let last_mutation_ts: Option<HashMap<String, DateTime<Utc>>> = if stale_threshold.is_some() {
+        let ids: Vec<&str> = tensions.iter().map(|t| t.id.as_str()).collect();
+        let fields: Vec<&str> = vec!["actual", "desired", "status", "note"];
+        Some(
+            store
+                .get_last_mutation_timestamps(&ids, &fields)
+                .map_err(WerkError::StoreError)?,
+        )
+    } else {
+        None
+    };
+
+    // Resolve --parent prefix
+    let parent_filter_id = if let Some(ref prefix) = params.parent {
+        let resolver = crate::prefix::PrefixResolver::new(tensions.clone());
+        Some(resolver.resolve(prefix)?.id.clone())
+    } else {
+        None
+    };
+
     // Build rows
     let mut rows: Vec<TensionRow> = Vec::new();
 
@@ -102,22 +181,37 @@ pub fn cmd_list(
         let urgency_val = compute_urgency(tension, now).map(|u| u.value);
         let horizon_display = format_horizon(tension, now);
 
-        let overdue = tension.status == TensionStatus::Active
+        let is_overdue = tension.status == TensionStatus::Active
             && tension
                 .horizon
                 .as_ref()
                 .map(|h| h.is_past(now))
                 .unwrap_or(false);
 
-        let tier = if tension.status == TensionStatus::Resolved
+        let (_parent_sc, parent_desired) = tension
+            .parent_id
+            .as_ref()
+            .and_then(|pid| parent_lookup.get(pid))
+            .map(|(sc, d)| (*sc, Some(d.clone())))
+            .unwrap_or((None, None));
+
+        // Category for survey-style output
+        let category = if tension.status == TensionStatus::Resolved
             || tension.status == TensionStatus::Released
         {
-            "resolved"
-        } else if overdue || urgency_val.map(|u| u > 0.75).unwrap_or(false) {
-            "urgent"
+            Some("resolved".to_string())
+        } else if is_overdue {
+            Some("overdue".to_string())
+        } else if tension.position.is_none() {
+            Some("held".to_string())
         } else {
-            "active"
+            Some("active".to_string())
         };
+
+        let changed_fields = changed_tension_fields
+            .as_ref()
+            .and_then(|cf| cf.get(&tension.id))
+            .cloned();
 
         rows.push(TensionRow {
             id: tension.id.clone(),
@@ -125,31 +219,96 @@ pub fn cmd_list(
             desired: tension.desired.clone(),
             actual: tension.actual.clone(),
             status: tension.status,
+            parent_id: tension.parent_id.clone(),
             urgency: urgency_val,
             horizon_display,
             horizon_raw: tension.horizon.as_ref().map(|h| h.to_string()),
-            overdue,
-            tier: tier.to_string(),
+            overdue: is_overdue,
+            position: tension.position,
+            category,
+            parent_desired,
+            depth: 0, // set below if --tree
+            changed_fields,
         });
     }
 
-    // Apply filters
-    if !all {
+    // ── Apply filters ──────────────────────────────────────────────
+
+    // Status filter
+    if let Some(ref status_filter) = params.status {
+        let target = match status_filter.to_lowercase().as_str() {
+            "active" => TensionStatus::Active,
+            "resolved" => TensionStatus::Resolved,
+            "released" => TensionStatus::Released,
+            _ => {
+                return Err(WerkError::InvalidInput(format!(
+                    "unknown status '{}'. Use active, resolved, or released.",
+                    status_filter
+                )))
+            }
+        };
+        rows.retain(|r| r.status == target);
+    } else if !params.all {
+        // Default: active only
         rows.retain(|r| r.status == TensionStatus::Active);
     }
 
-    if urgent {
-        rows.retain(|r| r.tier == "urgent");
-    }
-
-    // --neglected and --stagnant still filter but no longer depend on old dynamics
-    // They now filter on overdue (as a proxy for neglect/stagnation)
-    if neglected || stagnant {
+    if params.overdue {
         rows.retain(|r| r.overdue);
     }
 
-    // Sort
-    match sort.as_str() {
+    if let Some(approaching_days) = params.approaching {
+        let frame_end = now + chrono::Duration::days(approaching_days);
+        rows.retain(|r| {
+            r.overdue
+                || tensions
+                    .iter()
+                    .find(|t| t.id == r.id)
+                    .and_then(|t| t.horizon.as_ref())
+                    .map(|h| h.range_end() <= frame_end)
+                    .unwrap_or(false)
+        });
+    }
+
+    if let Some(ref stale_ts) = stale_threshold {
+        if let Some(ref ts_map) = last_mutation_ts {
+            rows.retain(|r| {
+                r.status == TensionStatus::Active
+                    && ts_map
+                        .get(&r.id)
+                        .map(|last| last < stale_ts)
+                        .unwrap_or(true) // no mutations at all = stale
+            });
+        }
+    }
+
+    if params.held {
+        rows.retain(|r| r.position.is_none() && r.status == TensionStatus::Active);
+    }
+
+    if params.positioned {
+        rows.retain(|r| r.position.is_some() && r.status == TensionStatus::Active);
+    }
+
+    if params.root {
+        rows.retain(|r| r.parent_id.is_none());
+    }
+
+    if let Some(ref pid) = parent_filter_id {
+        rows.retain(|r| r.parent_id.as_deref() == Some(pid.as_str()));
+    }
+
+    if params.has_deadline {
+        rows.retain(|r| r.horizon_raw.is_some());
+    }
+
+    if changed_tension_fields.is_some() {
+        rows.retain(|r| r.changed_fields.is_some());
+    }
+
+    // ── Sort ───────────────────────────────────────────────────────
+
+    match params.sort.as_str() {
         "urgency" => {
             rows.sort_by(|a, b| {
                 let ua = a.urgency.unwrap_or(-1.0);
@@ -160,7 +319,7 @@ pub fn cmd_list(
         "name" => {
             rows.sort_by(|a, b| a.desired.to_lowercase().cmp(&b.desired.to_lowercase()));
         }
-        "horizon" => {
+        "deadline" | "horizon" => {
             rows.sort_by(|a, b| match (&a.horizon_raw, &b.horizon_raw) {
                 (Some(ha), Some(hb)) => ha.cmp(hb),
                 (Some(_), None) => std::cmp::Ordering::Less,
@@ -168,8 +327,29 @@ pub fn cmd_list(
                 (None, None) => std::cmp::Ordering::Equal,
             });
         }
+        "created" => {
+            // Sort by short_code as proxy for creation order
+            rows.sort_by(|a, b| a.short_code.cmp(&b.short_code));
+        }
+        "updated" => {
+            // Would need last mutation timestamp; fall back to urgency if not available
+            if let Some(ref ts_map) = last_mutation_ts {
+                rows.sort_by(|a, b| {
+                    let ta = ts_map.get(&a.id);
+                    let tb = ts_map.get(&b.id);
+                    tb.cmp(&ta)
+                });
+            }
+        }
+        "position" => {
+            rows.sort_by(|a, b| {
+                let pa = a.position.unwrap_or(i32::MAX);
+                let pb = b.position.unwrap_or(i32::MAX);
+                pa.cmp(&pb)
+            });
+        }
         _ => {
-            // Default to urgency
+            // Default: urgency
             rows.sort_by(|a, b| {
                 let ua = a.urgency.unwrap_or(-1.0);
                 let ub = b.urgency.unwrap_or(-1.0);
@@ -178,7 +358,41 @@ pub fn cmd_list(
         }
     }
 
-    // Output
+    if params.reverse {
+        rows.reverse();
+    }
+
+    // ── Tree mode ──────────────────────────────────────────────────
+
+    if params.tree {
+        // Compute depth for retained rows, then sort by tree order
+        let _retained_ids: HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
+        let tension_map: HashMap<String, &Tension> = tensions
+            .iter()
+            .map(|t| (t.id.clone(), t))
+            .collect();
+
+        // Compute depths
+        for row in &mut rows {
+            let mut depth = 0;
+            let mut pid = row.parent_id.clone();
+            while let Some(p) = pid {
+                depth += 1;
+                pid = tension_map.get(&p).and_then(|t| t.parent_id.clone());
+            }
+            row.depth = depth;
+        }
+
+        // Sort by tree order: root order, then children by position/creation
+        rows.sort_by(|a, b| {
+            let a_path = build_tree_path(a, &tension_map);
+            let b_path = build_tree_path(b, &tension_map);
+            a_path.cmp(&b_path)
+        });
+    }
+
+    // ── Output ─────────────────────────────────────────────────────
+
     if output.is_structured() {
         let json_tensions: Vec<ListTensionJson> = rows
             .iter()
@@ -188,10 +402,14 @@ pub fn cmd_list(
                 desired: r.desired.clone(),
                 actual: r.actual.clone(),
                 status: r.status.to_string(),
+                parent_id: r.parent_id.clone(),
                 urgency: r.urgency,
                 horizon: r.horizon_raw.clone(),
                 overdue: r.overdue,
-                tier: r.tier.clone(),
+                position: r.position,
+                category: r.category.clone(),
+                parent_desired: r.parent_desired.clone(),
+                changed_fields: r.changed_fields.clone(),
             })
             .collect();
 
@@ -199,10 +417,9 @@ pub fn cmd_list(
         let result = ListJson {
             tensions: json_tensions,
             count,
+            since: since_dt.map(|dt| dt.to_rfc3339()),
         };
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
+        output.print_structured(&result).map_err(WerkError::IoError)?;
     } else {
         if rows.is_empty() {
             output
@@ -211,27 +428,14 @@ pub fn cmd_list(
             return Ok(());
         }
 
-        for row in &rows {
-            let id_display = match row.short_code {
-                Some(c) => format!("#{:<4}", c),
-                None => format!("{:<8}", &row.id[..8.min(row.id.len())]),
-            };
-
-            let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
-
-            let urgency_display = match row.urgency {
-                Some(u) => format!("{:>3.0}%", u * 100.0),
-                None => " \u{2014} ".to_string(),
-            };
-
-            println!(
-                "{}  {:<30}  {:>8}{}  {}",
-                id_display,
-                truncate(&row.desired, 30),
-                row.horizon_display,
-                overdue_marker,
-                urgency_display,
-            );
+        if params.tree {
+            print_tree_rows(&rows);
+        } else if params.long {
+            print_long_rows(&rows, now);
+        } else if params.changed.is_some() {
+            print_changed_rows(&rows, now);
+        } else {
+            print_default_rows(&rows);
         }
 
         println!();
@@ -239,4 +443,133 @@ pub fn cmd_list(
     }
 
     Ok(())
+}
+
+// ── Display functions ──────────────────────────────────────────────
+
+fn print_default_rows(rows: &[TensionRow]) {
+    for row in rows {
+        let id_display = match row.short_code {
+            Some(c) => format!("#{:<4}", c),
+            None => format!("{:<8}", &row.id[..8.min(row.id.len())]),
+        };
+
+        let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
+
+        let urgency_display = match row.urgency {
+            Some(u) => format!("{:>3.0}%", u * 100.0),
+            None => " \u{2014} ".to_string(),
+        };
+
+        println!(
+            "{}  {:<30}  {:>8}{}  {}",
+            id_display,
+            truncate(&row.desired, 30),
+            row.horizon_display,
+            overdue_marker,
+            urgency_display,
+        );
+    }
+}
+
+fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 {
+            println!();
+        }
+        let id_display = match row.short_code {
+            Some(c) => format!("#{}", c),
+            None => row.id[..8.min(row.id.len())].to_string(),
+        };
+
+        let status = match row.status {
+            TensionStatus::Active => "active",
+            TensionStatus::Resolved => "resolved",
+            TensionStatus::Released => "released",
+        };
+
+        println!("{} [{}] {}", id_display, status, truncate(&row.desired, 60));
+        println!("  Reality: {}", truncate(&row.actual, 60));
+        if let Some(ref h) = row.horizon_raw {
+            let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
+            println!("  Deadline: {}{}", h, overdue_marker);
+        }
+        if let Some(u) = row.urgency {
+            println!("  Urgency: {:.0}%", u * 100.0);
+        }
+        if let Some(ref pd) = row.parent_desired {
+            let psc = row.parent_id.as_ref().map(|_| "parent").unwrap_or("");
+            println!("  {}: {}", psc, truncate(pd, 50));
+        }
+    }
+}
+
+fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
+    for row in rows {
+        let id_display = match row.short_code {
+            Some(c) => format!("#{:<4}", c),
+            None => format!("{:<8}", &row.id[..8.min(row.id.len())]),
+        };
+
+        let fields = row
+            .changed_fields
+            .as_ref()
+            .map(|f| f.join(", "))
+            .unwrap_or_default();
+
+        println!(
+            "{}  {:<35}  [{}]",
+            id_display,
+            truncate(&row.desired, 35),
+            fields,
+        );
+    }
+}
+
+fn print_tree_rows(rows: &[TensionRow]) {
+    for row in rows {
+        let id_display = match row.short_code {
+            Some(c) => format!("#{}", c),
+            None => row.id[..8.min(row.id.len())].to_string(),
+        };
+
+        let indent = "  ".repeat(row.depth);
+        let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
+        let deadline = row.horizon_raw.as_deref().unwrap_or("");
+        let deadline_display = if deadline.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", deadline)
+        };
+
+        println!(
+            "{}{} {}{}{}",
+            indent,
+            id_display,
+            truncate(&row.desired, 50 - (row.depth * 2).min(40)),
+            deadline_display,
+            overdue_marker,
+        );
+    }
+}
+
+/// Build a sort key for tree ordering: sequence of (position, short_code) tuples from root to node.
+fn build_tree_path(row: &TensionRow, tension_map: &HashMap<String, &Tension>) -> Vec<(i32, i32)> {
+    let mut path = Vec::new();
+    let mut current_id = Some(row.id.clone());
+
+    while let Some(id) = current_id {
+        if let Some(t) = tension_map.get(&id) {
+            path.push((
+                t.position.unwrap_or(i32::MAX),
+                t.short_code.unwrap_or(i32::MAX),
+            ));
+            current_id = t.parent_id.clone();
+        } else {
+            break;
+        }
+    }
+
+    path.reverse();
+    path
 }

@@ -30,7 +30,8 @@ Run `cargo run --bin werk -- show <id>` for details on any tension.
 - **`--json` on every command.** All commands support `--json` for structured output. Agents should always use this.
 - **`--help` with examples.** Every command has 2-3 usage examples in `--help`. Agents pattern-match off these.
 - **`--help` grouped by framework.** Run `werk --help` to see commands organized by Structure, Action, Time, Framing, System.
-- **Non-interactive.** No command blocks on stdin or opens `$EDITOR` without a TTY. `health --repair` accepts `--yes`. `reality`/`desire` require explicit value when no TTY detected.
+- **Non-interactive.** No command blocks on stdin or opens `$EDITOR` without a TTY. `stats --health --repair` accepts `--yes`. `reality`/`desire` require explicit value when no TTY detected.
+- **Reading surface: 4 commands.** `show <id>` (one tension), `list` (query engine with rich filters), `tree` (hierarchy), `stats` (field aggregates). Old commands (`survey`, `diff`, `ground`, `insights`, `trajectory`, `health`, `context`) still exist but are being consolidated into these four.
 - **`--dry-run` on destructive commands.** `resolve`, `rm`, `move` all support `--dry-run` for preview without mutation.
 - **Note defaults to add.** `werk note 42 "text"` works without the explicit `add` subcommand.
 - **Short codes everywhere.** Use `#42` not ULIDs. Short codes are the user-facing addressing scheme.
