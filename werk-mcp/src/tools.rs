@@ -772,6 +772,20 @@ impl WerkServer {
             })
             .collect();
 
+        let epoch_infos: Vec<serde_json::Value> = epochs
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                serde_json::json!({
+                    "number": i + 1,
+                    "timestamp": e.timestamp.to_rfc3339(),
+                    "desire_snapshot": e.desire_snapshot,
+                    "reality_snapshot": e.reality_snapshot,
+                    "trigger_gesture_id": e.trigger_gesture_id,
+                })
+            })
+            .collect();
+
         let mut result = serde_json::json!({
             "id": tension.id,
             "short_code": tension.short_code,
@@ -787,6 +801,7 @@ impl WerkServer {
             "temporal": temporal,
             "mutations": mutation_infos,
             "children": children_info,
+            "epochs": epoch_infos,
         });
 
         // Include context data when full=true (absorbs context tool)
