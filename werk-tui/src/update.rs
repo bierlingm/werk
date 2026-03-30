@@ -404,10 +404,12 @@ impl InstrumentApp {
             Msg::Char('o') => {
                 if let Some(entry) = self.action_target().cloned() {
                     if entry.status != sd_core::TensionStatus::Active {
+                        self.begin_gesture(&format!("reopen {}", &entry.id[..8.min(entry.id.len())]));
                         let _ = self.engine.store().update_status(
                             &entry.id,
                             sd_core::TensionStatus::Active,
                         );
+                        self.engine.end_gesture();
                         self.set_transient("reopened");
                         self.load_siblings();
                     }
@@ -423,19 +425,21 @@ impl InstrumentApp {
                         self.set_transient("only active steps can be positioned");
                     } else if entry.position.is_some() {
                         // Positioned → hold
+                        self.begin_gesture(&format!("hold {}", &entry_id[..8.min(entry_id.len())]));
                         let _ = self.engine.update_position(&entry_id, None);
+                        self.engine.end_gesture();
                         self.set_transient("held");
                         self.load_siblings();
-                        // Track cursor to the moved item
                         if let Some(idx) = self.siblings.iter().position(|s| s.id == entry_id) {
                             self.deck_cursor_to_sibling(idx);
                         }
                     } else {
                         // Held → position at 1 (bottom of sequence = next to act on)
+                        self.begin_gesture(&format!("position {}", &entry_id[..8.min(entry_id.len())]));
                         let _ = self.engine.update_position(&entry_id, Some(1));
+                        self.engine.end_gesture();
                         self.set_transient("positioned");
                         self.load_siblings();
-                        // Track cursor to the moved item
                         if let Some(idx) = self.siblings.iter().position(|s| s.id == entry_id) {
                             self.deck_cursor_to_sibling(idx);
                         }
@@ -1043,17 +1047,18 @@ impl InstrumentApp {
     fn save_current_edit_field(&mut self) {
         let buf = self.input_buffer.clone();
         if let InputMode::Editing { ref tension_id, ref field } = self.input_mode.clone() {
+            let gesture_desc = format!("edit {} #{}", field.label(), tension_id.get(..8).unwrap_or(&tension_id));
+            self.begin_gesture(&gesture_desc);
+
             match field {
                 EditField::Desire => {
                     let _ = self.engine.update_desired(tension_id, &buf);
-                    // V5: desire change on the parent tension closes the current epoch
                     if self.parent_id.as_deref() == Some(tension_id) {
                         self.close_epoch(tension_id);
                     }
                 }
                 EditField::Reality => {
                     let _ = self.engine.update_actual(tension_id, &buf);
-                    // V5: reality change on the parent tension closes the current epoch
                     if self.parent_id.as_deref() == Some(tension_id) {
                         self.close_epoch(tension_id);
                     }
@@ -1072,11 +1077,14 @@ impl InstrumentApp {
                     }
                 }
             }
+
+            self.engine.end_gesture();
         }
     }
 
-    /// V5: Close the current epoch for a tension by creating an epoch snapshot.
-    /// This captures the current desire/reality and children state.
+    /// Close the current epoch for a tension by creating an epoch snapshot.
+    /// Captures current desire/reality and children state. Uses the active
+    /// gesture (if any) as the trigger — call within a gesture boundary.
     fn close_epoch(&mut self, tension_id: &str) {
         if let Ok(Some(t)) = self.engine.store().get_tension(tension_id) {
             let children_json = self.engine.store()
@@ -1087,18 +1095,21 @@ impl InstrumentApp {
                         serde_json::json!({
                             "id": c.id,
                             "desired": c.desired,
+                            "actual": c.actual,
                             "status": format!("{:?}", c.status),
+                            "position": c.position,
                         })
                     }).collect();
                     serde_json::json!({"children": summaries}).to_string()
                 });
 
+            let gesture_id = self.engine.active_gesture().map(|s| s.to_owned());
             let _ = self.engine.store().create_epoch(
                 tension_id,
                 &t.desired,
                 &t.actual,
                 children_json.as_deref(),
-                None, // gesture_id — not tracked in TUI yet
+                gesture_id.as_deref(),
             );
         }
     }
@@ -1114,6 +1125,7 @@ impl InstrumentApp {
                 let buf = self.input_buffer.clone();
                 if !buf.is_empty() {
                     if let InputMode::Annotating { ref tension_id } = self.input_mode.clone() {
+                        self.begin_gesture(&format!("add note {}", &tension_id[..8.min(tension_id.len())]));
                         let _ = self.engine.store().record_mutation(
                             &sd_core::Mutation::new(
                                 tension_id.clone(),
@@ -1123,6 +1135,7 @@ impl InstrumentApp {
                                 buf,
                             ),
                         );
+                        self.engine.end_gesture();
                         self.set_transient("note added");
                         self.load_siblings();
                         // Reload detail and enter Focus so the note is immediately visible
@@ -1176,12 +1189,16 @@ impl InstrumentApp {
             Msg::Char('y') | Msg::Submit => {
                 match self.input_mode.clone() {
                     InputMode::Confirming(ConfirmKind::Resolve { tension_id, desired }) => {
+                        self.begin_gesture(&format!("resolve '{}'", truncate_str(&desired, 30)));
                         let _ = self.engine.resolve(&tension_id);
+                        self.engine.end_gesture();
                         self.set_transient(format!("resolved: {}", truncate_str(&desired, 30)));
                         self.load_siblings();
                     }
                     InputMode::Confirming(ConfirmKind::Release { tension_id, desired }) => {
+                        self.begin_gesture(&format!("release '{}'", truncate_str(&desired, 30)));
                         let _ = self.engine.release(&tension_id);
+                        self.engine.end_gesture();
                         self.set_transient(format!("released: {}", truncate_str(&desired, 30)));
                         self.load_siblings();
                     }
@@ -1300,7 +1317,10 @@ impl InstrumentApp {
                         } else {
                             Some(result.id.as_str())
                         };
+                        let dest = if result.is_root_entry { "root" } else { &result.desired };
+                        self.begin_gesture(&format!("move {} to {}", &tension_id[..8.min(tension_id.len())], truncate_str(dest, 20)));
                         let _ = self.engine.update_parent(&tension_id, new_parent);
+                        self.engine.end_gesture();
                         self.set_transient(format!("moved to {}", if result.is_root_entry { "root" } else { &result.desired }));
                         self.load_siblings();
                         // Check for containment and sequencing after reparent
@@ -1348,9 +1368,11 @@ impl InstrumentApp {
     fn create_tension(&mut self, desired: &str, actual: &str) {
         let parent = self.parent_id.clone();
 
+        self.begin_gesture(&format!("create tension '{}'", truncate_str(desired, 40)));
         let result = self
             .engine
             .create_tension_with_parent(desired, actual, parent);
+        self.engine.end_gesture();
 
         if let Ok(tension) = result {
             self.set_transient(format!("created: {}", truncate_str(&tension.desired, 30)));

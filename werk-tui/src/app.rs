@@ -11,6 +11,10 @@ use crate::state::*;
 pub struct InstrumentApp {
     pub engine: Engine,
 
+    // Store session — identifies this TUI instance in the gesture/session model.
+    // Created on startup, ended on drop. Each TUI holds its own session_id.
+    pub session_id: Option<String>,
+
     // Navigation
     pub parent_id: Option<String>,
     pub parent_tension: Option<Tension>,
@@ -113,6 +117,7 @@ impl InstrumentApp {
     /// Create a new app. Starts at the Field (root level).
     pub fn new(store: Store, all_entries: Vec<FieldEntry>) -> Self {
         let engine = Engine::with_store(store);
+        let session_id = engine.store().start_session().ok();
         let total_count = all_entries.len();
         let total_active = all_entries
             .iter()
@@ -121,6 +126,7 @@ impl InstrumentApp {
 
         let mut app = Self {
             engine,
+            session_id,
             parent_id: None,
             parent_tension: None,
             parent_temporal_indicator: String::new(),
@@ -177,6 +183,9 @@ impl InstrumentApp {
             pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
         };
+        if let Some(ref sid) = app.session_id {
+            app.session_log.set_store_session_id(sid.clone());
+        }
         app.load_siblings();
         app
     }
@@ -186,6 +195,7 @@ impl InstrumentApp {
         let engine = Engine::new_in_memory().expect("failed to create in-memory engine"); // ubs:ignore in-memory SQLite cannot fail
         Self {
             engine,
+            session_id: None,
             parent_id: None,
             parent_tension: None,
             parent_temporal_indicator: String::new(),
@@ -233,6 +243,17 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
+        }
+    }
+
+    /// Begin a gesture linked to this TUI's session.
+    /// Call `engine.end_gesture()` when the mutation is complete.
+    pub fn begin_gesture(&mut self, description: &str) {
+        let sid = self.session_id.clone();
+        if let Some(ref sid) = sid {
+            let _ = self.engine.begin_gesture_in_session(sid, Some(description));
+        } else {
+            let _ = self.engine.begin_gesture(Some(description));
         }
     }
 
@@ -508,12 +529,13 @@ impl InstrumentApp {
     /// Create a tension with a horizon string (e.g. "2026-W13" or "2026-03-20").
     pub fn create_tension_with_horizon(&mut self, desired: &str, actual: &str, horizon_str: &str) {
         let parent = self.parent_id.clone();
-
-        // Try to parse horizon (supports natural language like "tomorrow", "2w", "eom")
         let horizon = crate::horizon::parse_horizon(horizon_str).ok();
-
         let has_horizon = horizon.is_some();
+
+        let desc = format!("create tension '{}'", truncate(desired, 40));
+        self.begin_gesture(&desc);
         let result = self.engine.create_tension_full(desired, actual, parent, horizon);
+        self.engine.end_gesture();
 
         if let Ok(tension) = result {
             self.set_transient(format!("created: {}", truncate(&tension.desired, 30)));
@@ -521,7 +543,6 @@ impl InstrumentApp {
             if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
                 self.deck_cursor_to_sibling(idx);
             }
-            // Check for containment violation if created with a horizon under a parent
             if has_horizon && self.parent_id.is_some() {
                 self.check_containment_palette(&tension.id);
             }
@@ -777,7 +798,8 @@ impl InstrumentApp {
             originally_positioned
         };
 
-        // Assign positions to active items based on array order.
+        // Assign positions to active items based on array order — one gesture for the batch.
+        self.begin_gesture("reorder siblings");
         let mut active_idx = 0usize;
         for sibling in self.siblings.iter() {
             if sibling.status != TensionStatus::Active {
@@ -791,6 +813,7 @@ impl InstrumentApp {
             }
             active_idx += 1;
         }
+        self.engine.end_gesture();
 
         self.reorder_original.clear();
         self.input_mode = InputMode::Normal;
@@ -819,9 +842,11 @@ impl InstrumentApp {
             _ => String::new(),
         };
 
+        self.begin_gesture("cancel reorder");
         for (id, pos) in &self.reorder_original {
             let _ = self.engine.update_position(id, *pos);
         }
+        self.engine.end_gesture();
         self.reorder_original.clear();
         self.input_mode = InputMode::Normal;
         self.load_siblings();
@@ -994,6 +1019,9 @@ impl InstrumentApp {
                 })
                 .unwrap_or_else(|| tension_id[..8].to_string());
 
+            let gesture_desc = format!("{} {} {}", label, field, display_id);
+            self.begin_gesture(&gesture_desc);
+
             match field.as_str() {
                 "desired" => {
                     let _ = self.engine.update_desired(&tension_id, &old_value);
@@ -1023,6 +1051,7 @@ impl InstrumentApp {
                 }
                 _ => {}
             }
+            self.engine.end_gesture();
             self.load_siblings();
         } else {
             self.set_transient(if is_redo { "nothing to redo" } else { "nothing to undo" });
@@ -1047,6 +1076,11 @@ impl InstrumentApp {
 
 impl Drop for InstrumentApp {
     fn drop(&mut self) {
+        // End the store session (structural record)
+        if let Some(ref sid) = self.session_id {
+            let _ = self.engine.store().end_session(sid, None);
+        }
+        // Dump telemetry log (diagnostic record)
         self.session_log.record(crate::session_log::Category::Session,
             format!("session ended ({} events)", self.session_log.total_count()));
         let _ = self.session_log.dump_to_file();

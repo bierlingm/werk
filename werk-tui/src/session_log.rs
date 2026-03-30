@@ -61,6 +61,8 @@ pub struct SessionLog {
     start: Instant,
     /// Total events recorded (including those that rolled off the buffer).
     total_count: usize,
+    /// Store session ID for correlation with the structural session record.
+    store_session_id: Option<String>,
 }
 
 impl SessionLog {
@@ -70,9 +72,15 @@ impl SessionLog {
             events: VecDeque::with_capacity(MAX_EVENTS),
             start: Instant::now(),
             total_count: 0,
+            store_session_id: None,
         };
         log.record(Category::Session, "session started");
         log
+    }
+
+    /// Set the store session ID for correlation.
+    pub fn set_store_session_id(&mut self, id: String) {
+        self.store_session_id = Some(id);
     }
 
     /// Record an event.
@@ -119,8 +127,13 @@ impl SessionLog {
     /// Format the log for file dump.
     pub fn dump(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!("=== Session Log ({} events, {} total) ===\n",
-            self.events.len(), self.total_count));
+        if let Some(ref sid) = self.store_session_id {
+            out.push_str(&format!("=== Session Log [{}] ({} events, {} total) ===\n",
+                &sid[..13.min(sid.len())], self.events.len(), self.total_count));
+        } else {
+            out.push_str(&format!("=== Session Log ({} events, {} total) ===\n",
+                self.events.len(), self.total_count));
+        }
         for event in &self.events {
             out.push_str(&format!("{:>8}ms  {:<8} {}\n",
                 event.elapsed_ms, event.category, event.detail));
