@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-30T18:22:49Z",
+  "flushed_at": "2026-03-30T18:44:56Z",
   "summary": {
-    "active": 67,
+    "active": 63,
     "released": 7,
-    "resolved": 59,
-    "total": 133
+    "resolved": 64,
+    "total": 134
   },
   "tensions": [
     {
@@ -481,7 +481,7 @@
       "status": "Active"
     },
     {
-      "actual": "Three implementation children resolved. Signal glyphs (! ‡ ↥ ⇅ ↝) appear across all three surfaces: show (full detail with onset), list (--long/--signals/--json, with legend), TUI (inline before ID). Drift surfaced as structural signal. Signal computation on demand from mutation log (no persistence). Four design questions remain as held children (#134-#137).",
+      "actual": "All seven children resolved. Signal surfacing complete across all surfaces (show, list, TUI). Four design questions answered: #134 mutation log sufficient (no persistence), #135 --robot flag deferred (low priority, MCP is primary agent surface), #136 attention tracking out of scope (violates Standard of Measurement), #137 signal hooks deferred by design (event types exist, no consumer yet). Decisions are mutually consistent and grounded in sacred core.",
       "created_at": "2026-03-24T17:52:27.996872+00:00",
       "desired": "threshold detection as independent structural signal logic — urgency crossings, horizon drift, containment violations surfaceable without coupling to any invocation mechanism",
       "horizon": null,
@@ -489,7 +489,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 46,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "run command deleted (975 lines), watch command deleted (832 lines), run.rs test file deleted, agent-specific cross-area tests removed, which dependency removed. context command kept as general structural query tool. batch command preserved.",
@@ -1366,7 +1366,7 @@
       "desired": "signal state persistence and cross-query change detection",
       "horizon": null,
       "id": "01KMZEKDSNG1V25KA3MRQTPRJ0",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 129,
       "status": "Resolved"
@@ -1377,7 +1377,7 @@
       "desired": "horizon drift surfaced as structural signal — when a deadline moves, the fact of movement (direction, magnitude) appears at the tension",
       "horizon": null,
       "id": "01KMZEKPJB8NSVSNQ3FF7ASTTA",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 130,
       "status": "Resolved"
@@ -1388,7 +1388,7 @@
       "desired": "TUI renders structural signals inline — overdue, containment, sequencing pressure, critical path, horizon drift appear by exception at the tension",
       "horizon": null,
       "id": "01KMZEKRMJX4GXDQ7X95P05YMR",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 131,
       "status": "Resolved"
@@ -1416,48 +1416,48 @@
       "status": "Resolved"
     },
     {
-      "actual": "question — current stance: mutation log is sufficient, compute on demand (Option A)",
+      "actual": "decided: mutation log is sufficient, no persistence layer. Signals remain a pure function of (mutations, now). Scaling math shows no near-term concern (10K mutations = sub-second). If hooks (#137) are later needed, compute-on-write at mutation time rather than a snapshot table. Purity guarantee — no hidden state that could diverge — is worth more than pre-computed convenience. Consistent with Standard of Measurement: instrument computes from what user provided.",
       "created_at": "2026-03-30T17:53:32.698049+00:00",
       "desired": "should signal state be persisted separately or is the mutation log sufficient as the single source of truth for computing signals at any point in time",
       "horizon": null,
       "id": "01KMZY290TFRE7WYF3EGWKD0GS",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 134,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "question — --json exists but outputs raw data, no metadata envelope. btv/cass/dcg/sc use envelopes with ok/error/elapsed_ms.",
+      "actual": "decided: add --robot as a separate flag (additive, not breaking --json). Envelope pattern {ok, data, error, elapsed_ms} consistent with btv/cass/dcg/sc ecosystem. Low priority — MCP is the primary agent surface with its own protocol envelope. --robot serves CLI-as-agent-tool case, which is secondary. Defer implementation until an agent integration actually needs it.",
       "created_at": "2026-03-30T17:53:39.797710+00:00",
       "desired": "should the CLI adopt a --robot envelope pattern (ok/data/error/elapsed_ms) for agent consumption beyond the current --json raw data output",
       "horizon": null,
       "id": "01KMZY2FYN973SGPV49XCNDHJJ",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 135,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "question — list --changed handles mutation diffs. signal transitions between queries are a different kind of change detection. unclear if same mechanism or different.",
+      "actual": "decided: attention tracking is out of scope. Tracking 'when user last looked' introduces an instrument-originated standard of measurement, violating principle #10. Creates a managerial surveillance dynamic contradicting operative identity. Existing mechanisms suffice: --changed (user-supplied timeframe) and --stale (user-supplied threshold) are both anchored to user standards.",
       "created_at": "2026-03-30T17:53:42.153667+00:00",
       "desired": "does temporal attention tracking (when did the user last look, what changed since) belong in the signal system or is it a separate concern",
       "horizon": null,
       "id": "01KMZY2J8996HSBF7H41S5FVXH",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 136,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "question — no signal transition events exist. hooks could fire when a signal appears or resolves, but this requires either persistence or compute-on-write. deferred.",
+      "actual": "decided: deferred by design. Event types already exist (UrgencyThresholdCrossed, HorizonDriftDetected) but no consumer exists. No daemon, no webhook infra, MCP queries on demand. When a consumer appears (TUI live updates, werk watch), the path is clear: compute-on-write in grammar layer, emit existing event types, subscribe in consumer. Building infrastructure without a consumer violates design discipline.",
       "created_at": "2026-03-30T17:53:44.388059+00:00",
       "desired": "should signal-aware hooks fire on signal transitions and if so what is the trigger mechanism",
       "horizon": null,
       "id": "01KMZY2ME468ZG2RABNGKXNKMR",
-      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "parent_id": null,
       "position": null,
       "short_code": 137,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Survey: zero-padded to fixed 2 digits, no # prefix (e.g. '02', '42'). Deck: zero-padded to variable width (2 or 3 based on max short_code), no # prefix (e.g. '042'). Both omit #. Inconsistency is fixed vs variable width. Zero-padding in deck could also be dropped for cleaner display.",
@@ -1468,6 +1468,17 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 138,
+      "status": "Active"
+    },
+    {
+      "actual": "thresholds are currently hardcoded or caller-supplied (list --approaching takes a duration, list --stale takes days). No user-persisted configuration for signal surfacing breakpoints. Anchored to Standard of Measurement #10: the instrument should not originate thresholds — the user should supply them.",
+      "created_at": "2026-03-30T18:34:43.772603+00:00",
+      "desired": "user-defined signal thresholds — the practitioner sets when signals surface (approaching window, stale duration, urgency glyph breakpoints) rather than hardcoded defaults",
+      "horizon": null,
+      "id": "01KN00DP5WV4JH91EGP2VC7V1A",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 139,
       "status": "Active"
     }
   ]
