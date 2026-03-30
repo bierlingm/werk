@@ -6,7 +6,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_frontier, compute_temporal_signals, compute_urgency, extract_mutation_pattern, gap_magnitude, HorizonKind, ProjectionThresholds, TensionStatus};
+use sd_core::{compute_frontier, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, ProjectionThresholds, TensionStatus};
 use serde::Serialize;
 use werk_shared::{display_id, relative_time, truncate};
 
@@ -26,6 +26,8 @@ struct ShowResult {
     overdue: bool,
     frontier: sd_core::Frontier,
     temporal: sd_core::TemporalSignals,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    horizon_drift: Option<sd_core::HorizonDrift>,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,6 +156,16 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
     // Temporal signals (calculus of time)
     let temporal = compute_temporal_signals(&forest, &tension.id, now);
 
+    // Horizon drift (from mutation history)
+    let horizon_drift = {
+        let drift = detect_horizon_drift(&tension.id, &mutations);
+        if drift.drift_type != HorizonDriftType::Stable {
+            Some(drift)
+        } else {
+            None
+        }
+    };
+
     // Build mutation info (last 10, chronological order - oldest first)
     let mutation_infos: Vec<ShowMutationInfo> = mutations
         .iter()
@@ -220,6 +232,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         overdue,
         frontier: frontier.clone(),
         temporal: temporal.clone(),
+        horizon_drift: horizon_drift.clone(),
         mutations: mutation_infos,
         children,
         ancestors,
@@ -330,23 +343,24 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             || !temporal.sequencing_pressures.is_empty()
             || !temporal.critical_path.is_empty()
             || !temporal.containment_violations.is_empty()
-            || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false);
+            || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false)
+            || horizon_drift.is_some();
 
         if has_signals {
             println!();
             println!("Signals:");
 
             if temporal.on_critical_path {
-                println!("  CRITICAL:   on parent's critical path");
+                println!("  \u{2021} CRITICAL   on parent's critical path");
             }
             if temporal.has_containment_violation {
-                println!("  VIOLATION:  deadline exceeds parent's deadline");
+                println!("  \u{21a5} VIOLATION  deadline exceeds parent's deadline");
             }
             for sp in &temporal.sequencing_pressures {
                 let pred_display = display_id(sp.predecessor_short_code, &sp.predecessor_id);
                 let days = sp.gap_seconds as f64 / 86400.0;
                 println!(
-                    "  PRESSURE:   deadline is {:.0} days before {} (ordered after)",
+                    "  \u{21c5} PRESSURE   deadline is {:.0} days before {} (ordered after)",
                     days, pred_display
                 );
             }
@@ -355,9 +369,9 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 let child_display = display_id(child_sc, &cpath.tension_id);
                 let slack_days = cpath.slack_seconds as f64 / 86400.0;
                 if slack_days <= 0.0 {
-                    println!("  CRITICAL:   {} matches or exceeds deadline", child_display);
+                    println!("  \u{2021} CRITICAL   {} matches or exceeds deadline", child_display);
                 } else {
-                    println!("  CRITICAL:   {} has only {:.0} days slack", child_display, slack_days);
+                    println!("  \u{2021} CRITICAL   {} has only {:.0} days slack", child_display, slack_days);
                 }
             }
             for cv in &temporal.containment_violations {
@@ -365,15 +379,31 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 let child_display = display_id(child_sc, &cv.tension_id);
                 let excess_days = cv.excess_seconds as f64 / 86400.0;
                 println!(
-                    "  VIOLATION:  {} deadline exceeds by {:.0} days",
+                    "  \u{21a5} VIOLATION  {} deadline exceeds by {:.0} days",
                     child_display, excess_days
                 );
             }
             if let Some(ref iw) = temporal.implied_window {
                 let days = iw.duration_seconds as f64 / 86400.0;
                 if days < 0.0 {
-                    println!("  WINDOW:     negative ({:.0} days past)", -days);
+                    println!("  WINDOW      negative ({:.0} days past)", -days);
                 }
+            }
+            if let Some(ref drift) = horizon_drift {
+                let net_days = drift.net_shift_seconds.abs() / 86400;
+                let direction = if drift.net_shift_seconds > 0 { "+" } else { "-" };
+                let since = drift.onset
+                    .map(|ts| format!(" since {}", relative_time(ts, now)))
+                    .unwrap_or_default();
+                let desc = match drift.drift_type {
+                    HorizonDriftType::Tightening => format!("tightened{} (net {}{}d)", since, direction, net_days),
+                    HorizonDriftType::Postponement => format!("postponed{} (net +{}d)", since, net_days),
+                    HorizonDriftType::RepeatedPostponement => format!("postponed {}\u{00d7}{} (net +{}d)", drift.change_count, since, net_days),
+                    HorizonDriftType::Loosening => format!("loosening{} (net {}{}d)", since, direction, net_days),
+                    HorizonDriftType::Oscillating => format!("oscillating{} ({} shifts, net {}{}d)", since, drift.change_count, direction, net_days),
+                    HorizonDriftType::Stable => unreachable!(),
+                };
+                println!("  \u{219d} DRIFT      {}", desc);
             }
         }
 

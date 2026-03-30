@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{compute_urgency, Tension, TensionStatus};
+use sd_core::{compute_temporal_signals, compute_urgency, detect_horizon_drift, Forest, HorizonDriftType, Tension, TensionStatus};
 use werk_shared::truncate;
 
 /// JSON output structure for a tension in list.
@@ -32,6 +32,8 @@ struct ListTensionJson {
     parent_desired: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     changed_fields: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    signals: Vec<String>,
 }
 
 /// JSON output structure for list.
@@ -56,6 +58,7 @@ pub struct ListParams {
     pub parent: Option<String>,
     pub has_deadline: bool,
     pub changed: Option<String>,
+    pub signals: bool,
     pub sort: String,
     pub reverse: bool,
     pub tree: bool,
@@ -79,6 +82,10 @@ struct TensionRow {
     parent_desired: Option<String>,
     depth: usize,
     changed_fields: Option<Vec<String>>,
+    /// Signal glyphs for this tension (computed when --long, --signals, or --json).
+    signal_glyphs: Vec<&'static str>,
+    /// Signal labels for JSON output.
+    signal_labels: Vec<String>,
 }
 
 fn format_horizon(tension: &Tension, now: DateTime<Utc>) -> String {
@@ -229,7 +236,68 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             parent_desired,
             depth: 0, // set below if --tree
             changed_fields,
+            signal_glyphs: vec![],
+            signal_labels: vec![],
         });
+    }
+
+    // ── Compute signals (when needed for display or filtering) ────
+    let compute_signals = params.long || params.signals || output.is_structured();
+    if compute_signals {
+        let forest = Forest::from_tensions(tensions.clone())
+            .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
+
+        for row in &mut rows {
+            // Only compute for active tensions
+            if row.status != TensionStatus::Active {
+                continue;
+            }
+
+            // Overdue (already computed, just add glyph)
+            if row.overdue {
+                row.signal_glyphs.push("!");
+                row.signal_labels.push("overdue".to_string());
+            }
+
+            // Temporal signals from forest
+            let temporal = compute_temporal_signals(&forest, &row.id, now);
+
+            if temporal.on_critical_path {
+                row.signal_glyphs.push("\u{2021}");
+                row.signal_labels.push("critical_path".to_string());
+            }
+            if temporal.has_containment_violation {
+                row.signal_glyphs.push("\u{21a5}");
+                row.signal_labels.push("containment_violation".to_string());
+            }
+            if !temporal.sequencing_pressures.is_empty() {
+                row.signal_glyphs.push("\u{21c5}");
+                row.signal_labels.push("sequencing_pressure".to_string());
+            }
+            // Children signals (critical path and containment on children)
+            if !temporal.critical_path.is_empty() && !temporal.on_critical_path {
+                row.signal_glyphs.push("\u{2021}");
+                row.signal_labels.push("critical_path_parent".to_string());
+            }
+            if !temporal.containment_violations.is_empty() && !temporal.has_containment_violation {
+                row.signal_glyphs.push("\u{21a5}");
+                row.signal_labels.push("containment_violation_parent".to_string());
+            }
+
+            // Horizon drift — only RepeatedPostponement and Oscillating in list (noise threshold)
+            if let Some(horizon) = tensions.iter().find(|t| t.id == row.id).and_then(|t| t.horizon.as_ref()) {
+                let _ = horizon; // confirm horizon exists
+                let mutations = store.get_mutations(&row.id).map_err(WerkError::StoreError)?;
+                let drift = detect_horizon_drift(&row.id, &mutations);
+                match drift.drift_type {
+                    HorizonDriftType::RepeatedPostponement | HorizonDriftType::Oscillating => {
+                        row.signal_glyphs.push("\u{219d}");
+                        row.signal_labels.push(format!("drift:{:?}", drift.drift_type));
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 
     // ── Apply filters ──────────────────────────────────────────────
@@ -304,6 +372,10 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
 
     if changed_tension_fields.is_some() {
         rows.retain(|r| r.changed_fields.is_some());
+    }
+
+    if params.signals {
+        rows.retain(|r| !r.signal_glyphs.is_empty());
     }
 
     // ── Sort ───────────────────────────────────────────────────────
@@ -410,6 +482,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
                 category: r.category.clone(),
                 parent_desired: r.parent_desired.clone(),
                 changed_fields: r.changed_fields.clone(),
+                signals: r.signal_labels.clone(),
             })
             .collect();
 
@@ -438,8 +511,14 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             print_default_rows(&rows);
         }
 
+        // Legend: show glyph key if any signals are present in the output
+        let has_any_signals = rows.iter().any(|r| !r.signal_glyphs.is_empty());
         println!();
-        println!("{} tension(s)", rows.len());
+        if has_any_signals {
+            println!("{} tension(s)  ! overdue  \u{2021} critical path  \u{21a5} containment  \u{21c5} sequencing  \u{219d} drift", rows.len());
+        } else {
+            println!("{} tension(s)", rows.len());
+        }
     }
 
     Ok(())
@@ -461,13 +540,20 @@ fn print_default_rows(rows: &[TensionRow]) {
             None => " \u{2014} ".to_string(),
         };
 
+        let signal_display = if row.signal_glyphs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", row.signal_glyphs.join(""))
+        };
+
         println!(
-            "{}  {:<30}  {:>8}{}  {}",
+            "{}  {:<30}  {:>8}{}  {}{}",
             id_display,
             truncate(&row.desired, 30),
             row.horizon_display,
             overdue_marker,
             urgency_display,
+            signal_display,
         );
     }
 }
@@ -496,6 +582,13 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
         }
         if let Some(u) = row.urgency {
             println!("  Urgency: {:.0}%", u * 100.0);
+        }
+        if !row.signal_glyphs.is_empty() {
+            let signal_str: Vec<String> = row.signal_glyphs.iter()
+                .zip(row.signal_labels.iter())
+                .map(|(g, l)| format!("{} {}", g, l))
+                .collect();
+            println!("  Signals: {}", signal_str.join(", "));
         }
         if let Some(ref pd) = row.parent_desired {
             let psc = row.parent_id.as_ref().map(|_| "parent").unwrap_or("");

@@ -117,6 +117,9 @@ pub struct HorizonDrift {
     pub change_count: usize,
     /// Net shift in seconds (positive = postponed, negative = tightened).
     pub net_shift_seconds: i64,
+    /// When this drift pattern first emerged (timestamp of the mutation that tipped the pattern).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub onset: Option<DateTime<Utc>>,
 }
 
 /// Detect horizon drift pattern from mutation history.
@@ -142,13 +145,14 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
             drift_type: HorizonDriftType::Stable,
             change_count: 0,
             net_shift_seconds: 0,
+            onset: None,
         };
     }
 
-    // Parse horizon mutations and compute shifts
-    let mut shifts: Vec<i64> = Vec::new(); // positive = later, negative = earlier
-    let mut precision_tightenings = 0i32; // higher precision (DateTime < Day < Month < Year)
-    let mut precision_loosenings = 0i32; // lower precision
+    // Parse horizon mutations and compute shifts, tracking timestamps for onset.
+    let mut shifts: Vec<(i64, DateTime<Utc>)> = Vec::new(); // (shift_seconds, timestamp)
+    let mut precision_tightenings = 0i32;
+    let mut precision_loosenings = 0i32;
 
     for mutation in &horizon_mutations {
         let old_horizon = mutation.old_value().and_then(|s| {
@@ -169,47 +173,41 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
                 // Setting horizon for the first time - not a shift
             }
             (Some(old), Some(new)) => {
-                // Compute shift: new.range_end - old.range_end
                 let shift = (new.range_end() - old.range_end()).num_seconds();
-                shifts.push(shift);
+                shifts.push((shift, mutation.timestamp()));
 
-                // Track precision changes (lower precision_level = higher precision)
                 let old_precision = old.precision_level();
                 let new_precision = new.precision_level();
                 if new_precision < old_precision {
-                    // Higher precision (e.g., Year → Month)
                     precision_tightenings += 1;
                 } else if new_precision > old_precision {
-                    // Lower precision (e.g., Day → Month)
                     precision_loosenings += 1;
                 }
             }
-            (Some(_old), None) => {
-                // Clearing horizon - conceptual "infinity" shift, skip for computation
-            }
-            (None, None) => {
-                // Both empty - shouldn't happen but skip
-            }
+            (Some(_old), None) => {}
+            (None, None) => {}
         }
     }
 
-    // Compute net shift
-    let net_shift_seconds: i64 = shifts.iter().sum();
+    let net_shift_seconds: i64 = shifts.iter().map(|(s, _)| s).sum();
 
-    // Count direction changes for oscillation detection
+    // Count direction changes for oscillation detection, tracking when 2nd change occurs.
     let mut direction_changes = 0;
     let mut last_positive: Option<bool> = None;
-    for shift in &shifts {
+    let mut second_direction_change_ts: Option<DateTime<Utc>> = None;
+    for (shift, ts) in &shifts {
         let is_positive = *shift >= 0;
         if let Some(was_positive) = last_positive
             && is_positive != was_positive
         {
             direction_changes += 1;
+            if direction_changes == 2 {
+                second_direction_change_ts = Some(*ts);
+            }
         }
         last_positive = Some(is_positive);
     }
 
-    // Determine drift type
     // CRITICAL: Empty shifts (only None->Some assignments) = Stable baseline
     if shifts.is_empty() {
         return HorizonDrift {
@@ -217,30 +215,34 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
             drift_type: HorizonDriftType::Stable,
             change_count,
             net_shift_seconds: 0,
+            onset: None,
         };
     }
 
     // Priority: Oscillating > Precision-based > Time-based
-    let drift_type = if direction_changes >= 2 {
-        HorizonDriftType::Oscillating
+    let (drift_type, onset) = if direction_changes >= 2 {
+        (HorizonDriftType::Oscillating, second_direction_change_ts)
     } else if precision_tightenings > precision_loosenings {
-        HorizonDriftType::Tightening
+        // Onset: first shift (any direction — precision dominates)
+        (HorizonDriftType::Tightening, Some(shifts[0].1))
     } else if precision_loosenings > precision_tightenings {
-        HorizonDriftType::Loosening
-    } else if shifts.iter().all(|s| *s > 0) {
+        (HorizonDriftType::Loosening, Some(shifts[0].1))
+    } else if shifts.iter().all(|(s, _)| *s > 0) {
         if shifts.len() >= 3 {
-            HorizonDriftType::RepeatedPostponement
+            // RepeatedPostponement: onset = 3rd postponement
+            (HorizonDriftType::RepeatedPostponement, Some(shifts[2].1))
         } else {
-            HorizonDriftType::Postponement
+            // Postponement: onset = 1st postponement
+            (HorizonDriftType::Postponement, Some(shifts[0].1))
         }
-    } else if shifts.iter().all(|s| *s < 0) {
-        HorizonDriftType::Tightening
+    } else if shifts.iter().all(|(s, _)| *s < 0) {
+        (HorizonDriftType::Tightening, Some(shifts[0].1))
     } else if net_shift_seconds > 0 {
-        HorizonDriftType::Loosening
+        (HorizonDriftType::Loosening, Some(shifts[0].1))
     } else if net_shift_seconds < 0 {
-        HorizonDriftType::Tightening
+        (HorizonDriftType::Tightening, Some(shifts[0].1))
     } else {
-        HorizonDriftType::Stable
+        (HorizonDriftType::Stable, None)
     };
 
     HorizonDrift {
@@ -248,6 +250,7 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
         drift_type,
         change_count,
         net_shift_seconds,
+        onset,
     }
 }
 
@@ -1241,6 +1244,7 @@ mod tests {
             drift_type: HorizonDriftType::RepeatedPostponement,
             change_count: 5,
             net_shift_seconds: 12345,
+            onset: None,
         };
         let json = serde_json::to_string(&hd).unwrap();
         let hd2: HorizonDrift = serde_json::from_str(&json).unwrap();
