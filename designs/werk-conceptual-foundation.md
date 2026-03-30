@@ -195,6 +195,55 @@ The instrument's interfaces are:
 
 The didactic function emerges not from the instrument computing dynamics, but from the structure itself making patterns visible. By returning to an honest record of desire, reality, and action over time, the practitioner develops structural awareness — not because the tool diagnosed their patterns, but because the patterns are there in the data for anyone (human or AI) to read. The consciousness is renewed through the craft, not the instrument's assertions.
 
+### Output Taxonomy
+
+The Standard of Measurement and the Instrument's Boundary together define three layers of output. Each layer has a clear home in the instrument's interface surfaces.
+
+**Layer 1 — Structural facts.** Directly computed from user-supplied data with no instrument-originated thresholds. These are the instrument's core output.
+
+| Fact | Anchored to | Computed in |
+|------|------------|-------------|
+| Urgency (elapsed fraction of deadline window) | User-set deadline | `temporal.rs` |
+| Overdue (deadline passed) | User-set deadline | `temporal.rs` |
+| Gap magnitude (desired ≠ actual) | User-articulated desire + reality | `temporal.rs` |
+| Mutation count, frequency, trend | User's own actions over time | `projection.rs` |
+| Gap trend (direction of gap change) | User's desire/reality updates | `projection.rs` |
+| Gap samples (recent gap values) | User's desire/reality updates | `projection.rs` |
+| Mean interval between mutations | User's own action timing | `projection.rs` |
+
+**Layer 2 — Structural signals.** Relational inferences from user-supplied structural relationships. Surfaced by exception.
+
+| Signal | Anchored to | Computed in |
+|--------|------------|-------------|
+| Containment violation (child deadline exceeds parent) | Two user-set deadlines | `temporal.rs` |
+| Sequencing pressure (order vs deadline conflict) | User-set order + deadlines | `temporal.rs` |
+| Critical path (child crowds parent deadline) | Two user-set deadlines | `temporal.rs` |
+| Horizon drift (deadline moved, direction + magnitude) | User's deadline mutations | `temporal.rs` |
+
+**Layer 3 — Practice-layer analysis.** Uses instrument-originated thresholds or extrapolation models. Not asserted as instrument output. Available through analytical surfaces (`trajectory` command, `ground` mode) for study and debrief.
+
+| Analysis | Why practice-layer | Computed in |
+|----------|-------------------|-------------|
+| Trajectory classification (Resolving, Stalling, Drifting, Oscillating) | Thresholds for "neglect frequency," "gap closing," "oscillation" are instrument-originated | `projection.rs` |
+| Risk flags (neglect_risk, oscillation_risk) | Threshold crossings against instrument-originated standards | `projection.rs` |
+| Gap projections (projected gap at 1w/1m/3m) | Linear extrapolation model is instrument-originated | `projection.rs` |
+| Time-to-resolution estimate | Extrapolation from instrument model | `projection.rs` |
+| Will-resolve prediction | Extrapolation from instrument model | `projection.rs` |
+
+**Surface mapping:**
+
+| Interface surface | Carries | Does not carry |
+|-------------------|---------|----------------|
+| `context` (CLI + MCP) | Layer 1 facts + Layer 2 signals | Layer 3 analysis |
+| `show` (CLI + MCP) | Layer 1 facts + Layer 2 signals | Layer 3 analysis |
+| Hook payloads | Layer 1 facts | Layer 3 analysis |
+| `trajectory` command/tool | All three layers | (nothing excluded — framed as analytical) |
+| `ground` mode | All three layers | (nothing excluded — the study surface) |
+| TUI (standard views) | Layer 1 facts + Layer 2 signals | Layer 3 analysis |
+| TUI (ground mode) | All three layers | (nothing excluded) |
+
+This taxonomy is the operational consequence of Sacred Core #10 (Standard of Measurement) applied to the Instrument's Boundary. The full design reasoning is recorded in `designs/observational-analysis-stance.md`.
+
 ### Calculus of Time
 
 The temporal system is built from two user-set primitives and everything else is computed or recorded.

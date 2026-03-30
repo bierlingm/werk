@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-29T05:20:00Z",
+  "flushed_at": "2026-03-30T13:33:44Z",
   "summary": {
-    "active": 62,
+    "active": 66,
     "released": 7,
-    "resolved": 53,
-    "total": 122
+    "resolved": 54,
+    "total": 127
   },
   "tensions": [
     {
@@ -30,7 +30,7 @@
       "status": "Active"
     },
     {
-      "actual": "Fritz's framework addresses collective structure hierarchically; a git-snapshot cooperation model is articulated (export JSON, fork/merge via PRs, owner reviews diffs) but not yet implemented; the peer-to-peer evolutionary model remains a research question",
+      "actual": "Authority, provenance, and multi-player identity surfaced as design questions through community issue evaluation. The operative-not-managerial distinction is now canonized in the conceptual foundation — werk serves operations (closing gaps), not management (coordinating existing structure). This sharpens the multi-participant question: cooperation in werk means shared commitment to closing gaps honestly, not coordination topology. The addressing/sessions/gestures exploration (designs/addressing-sessions-gestures.md) is where the multi-player foundation lives — sessions carry authorship, gestures carry provenance, deep addressability makes everything referenceable across participants.",
       "created_at": "2026-03-24T17:52:25.951776+00:00",
       "desired": "a clear structural model exists for how multiple participants hold and evolve shared tension fields",
       "horizon": null,
@@ -118,7 +118,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. State machine: 8+ states implemented implicitly in TUI (InputMode enum), not formally specified. Epoch boundaries auto-created on CLI reality/desire updates. Remaining gaps: formal state machine extraction (#16 — may not be needed), TUI epoch triggers (#30), cross-temporal threshold monitoring (#46), structural transformations (#49), observational analysis stance decision (#65).",
+      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. Epoch boundaries auto-created on CLI and TUI desire/reality updates. Output taxonomy decided and codified: metrics on standard surfaces, classification/projection on analytical surfaces (trajectory, ground). Remaining gaps: formal state machine extraction (#16), data model completion (#20/#35), threshold signal surfacing (#46), structural transformations (#49).",
       "created_at": "2026-03-24T17:52:26.260351+00:00",
       "desired": "the conceptual foundation is implemented — data model supports delta versioning, gesture grouping, order of operations distinct from horizon, held steps, and the five temporal concepts",
       "horizon": "2026-06",
@@ -481,7 +481,7 @@
       "status": "Active"
     },
     {
-      "actual": "Watch daemon deleted. Pathway palette infrastructure in werk-shared detects containment violations and sequencing pressure independently of invocation mechanism — triggers on add, move, position gestures across CLI and MCP. Temporal calculus computes urgency/critical-path/drift per-query. What's missing: cross-temporal threshold monitoring (detecting when urgency *crosses* a boundary between queries), horizon drift alerts, and surfacing these signals in the TUI.",
+      "actual": "Watch daemon deleted. Pathway palettes detect containment violations and sequencing pressure independently of invocation. Temporal calculus computes urgency/critical-path/drift per-query. With #65 decided (Standard of Measurement): signals surfaced by the instrument must be anchored to user-supplied standards — deadline-based signals (overdue, containment, sequencing pressure, critical path) qualify. Horizon drift detection exists in temporal.rs but nothing surfaces it. No cross-temporal monitoring (detecting changes between queries). TUI shows no structural signals yet.",
       "created_at": "2026-03-24T17:52:27.996872+00:00",
       "desired": "threshold detection as independent structural signal logic — urgency crossings, horizon drift, containment violations surfaceable without coupling to any invocation mechanism",
       "horizon": null,
@@ -668,7 +668,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Design note drafted (observational-analysis-stance.md). Recommends Stance B: keep trajectory enum as signal, quarantine projections to ground mode. Three open sub-questions: opt-in vs default for trajectory in external surfaces, gap_magnitude continuity, Mist bridge implications. No decision committed yet.",
+      "actual": "Decided and implemented. Standard of Measurement (#10) draws the line between metric and classification. Standard surfaces (context, show, hooks) expose engagement metrics — frequency, trend, gap samples, intervals — facts anchored to user actions. Classification (trajectory enum, risk flags) and projections live on analytical surfaces (trajectory command/tool, ground mode) framed as practice-layer analysis. Design note updated with resolution. Code changed: context returns engagement metrics not trajectory; trajectory MCP tool reframed; ground includes analytical trajectory section.",
       "created_at": "2026-03-25T14:07:25.517074+00:00",
       "desired": "observational analysis stance is decided — clear boundary between fact, signal, and dynamic in the instrument's output, with trajectory classification and projection layer each assigned to the correct side of that boundary",
       "horizon": null,
@@ -676,7 +676,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 65,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "no definition yet; Statecraft website lists werk as a tool but the integration shape is unspecified",
@@ -1347,6 +1347,61 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 127,
+      "status": "Active"
+    },
+    {
+      "actual": "Three threads identified and held together in designs/addressing-sessions-gestures.md. Exploratory — no commitments. Key open questions: addressing syntax, gesture/telemetry boundary, session as knowledge substrate vs separate model. Converges with LogBase (#89), ground mode, authority, and multi-player provenance.",
+      "created_at": "2026-03-30T13:00:57.443792+00:00",
+      "desired": "deep addressability, expanded gesture vocabulary, and session semantics form a coherent design",
+      "horizon": null,
+      "id": "01KMZDAH73KMXY5S26HH3GZ5RA",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 128,
+      "status": "Active"
+    },
+    {
+      "actual": "No persistence of signal state between queries. Each invocation computes signals fresh with no awareness of prior state.",
+      "created_at": "2026-03-30T13:23:17.429997+00:00",
+      "desired": "signal state persistence and cross-query change detection",
+      "horizon": null,
+      "id": "01KMZEKDSNG1V25KA3MRQTPRJ0",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 129,
+      "status": "Active"
+    },
+    {
+      "actual": "detect_horizon_drift() exists in temporal.rs, computes drift type and net shift. Nothing surfaces this to the user in any interface.",
+      "created_at": "2026-03-30T13:23:26.411934+00:00",
+      "desired": "horizon drift surfaced as structural signal — when a deadline moves, the fact of movement (direction, magnitude) appears at the tension",
+      "horizon": null,
+      "id": "01KMZEKPJB8NSVSNQ3FF7ASTTA",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 130,
+      "status": "Active"
+    },
+    {
+      "actual": "TUI shows no structural signals. Pathway palettes appear for containment decisions during horizon edits, but ambient signals (overdue, critical path, sequencing pressure) are not rendered.",
+      "created_at": "2026-03-30T13:23:28.530120+00:00",
+      "desired": "TUI renders structural signals inline — overdue, containment, sequencing pressure, critical path, horizon drift appear by exception at the tension",
+      "horizon": null,
+      "id": "01KMZEKRMJX4GXDQ7X95P05YMR",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 131,
+      "status": "Active"
+    },
+    {
+      "actual": "No release cut since output taxonomy change. context CLI/MCP output renamed projection to engagement, carries raw metrics instead of trajectory classification. Breaking change for --json consumers.",
+      "created_at": "2026-03-30T13:31:22.867939+00:00",
+      "desired": "next release shipped — output taxonomy breaking change documented, engagement metrics replace projection on standard surfaces",
+      "horizon": null,
+      "id": "01KMZF27VKVCYW2RDWFZGKS31N",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 132,
       "status": "Active"
     }
   ]

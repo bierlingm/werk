@@ -1,8 +1,10 @@
 # Observational Analysis: Where the Line Sits
 
-**Status:** Active design question. Needs resolution before ground mode ships and before computed trajectory appears in any external-facing surface (MCP, hooks, survey JSON).
+**Status:** Decided. Implemented 2026-03-30.
 
 **Emerged:** 2026-03-25 from reviewing the projection engine (`sd-core/src/projection.rs`) against the conceptual foundation's fact/signal/dynamic hierarchy.
+
+**Decision:** Standard of Measurement (Sacred Core #10) draws the line between metric and classification, not between classification and projection. The instrument's standard surfaces expose engagement metrics (mutation frequency, gap trend, gap samples, intervals) — facts anchored to what the user did. Trajectory classification (the four-category enum) and projections both use instrument-originated thresholds and belong to the practice layer — available through analytical commands (`trajectory`, `ground`) but not asserted as instrument output on standard surfaces (`context`, `show`, hooks). See "Resolution" section at end.
 
 ---
 
@@ -143,10 +145,36 @@ This preserves "honest facts and signals only" for the main instrument while giv
 
 ---
 
-## Open Sub-Questions
+## Sub-Questions (resolved)
 
-1. **Should trajectory classification be opt-in or default in external surfaces?** Currently it would be default. An argument exists for making it opt-in (e.g. `--include-trajectory` flag) to keep the default output strictly factual.
+1. **Should trajectory classification be opt-in or default in external surfaces?** Resolved: neither. Trajectory classification does not appear on standard surfaces at all. Standard surfaces carry engagement metrics. Classification is available through analytical surfaces (`trajectory` command/tool, `ground` mode).
 
-2. **Does gap_magnitude need to become continuous for trajectory to be meaningful?** The current binary (0/1) implementation means gap_samples is a sequence of discrete flips. Classification still works (oscillation detection is well-served by binary data), but gap_trend as a "slope" over binary values is coarse. Child-resolution rate would give a continuous gap signal. This is a separate design question but affects how much weight trajectory classification can bear.
+2. **Does gap_magnitude need to become continuous for trajectory to be meaningful?** Still open as a separate design question, but no longer blocking. The engagement metrics are exposed regardless — gap_samples shows the binary sequence, consumers can interpret it. A continuous gap_magnitude would enrich the metrics.
 
-3. **How does this interact with the Mist bridge?** The hook payload spec proposed to Waterlight includes `trajectory` and risk flags. If we adopt Stance B, we should communicate that projections will not be in the payload and that Mist should compute its own forward-looking analysis from the metrics and classification we provide. This is actually a better architecture for them — it means their Prism verification layer operates on its own models rather than trusting ours.
+3. **How does this interact with the Mist bridge?** Resolved cleanly. Hook payloads carry engagement metrics (frequency, trend, gap data). Mist receives the raw material and applies its own analytical framework. This is the correct architecture — Mist's Prism verification layer should operate on its own models, not trust the instrument's interpretive readings.
+
+---
+
+## Resolution
+
+**Decided 2026-03-30.** The Standard of Measurement (Sacred Core #10) provided the deciding criterion. The key passage:
+
+> "the instrument will not label a pattern as 'compensating' or 'oscillating' or 'neglected' because these are interpretive acts that require standards the user has not given the instrument"
+
+The line falls between Level 2 (computed metrics) and Level 3 (pattern classification), not between Level 3 and Level 4 as the original Stance B recommendation proposed. This is a refinement of Stance B, not a rejection — the architectural shape is the same (standard surfaces vs analytical surfaces), but the cut is one layer deeper.
+
+**Three layers, two surfaces:**
+
+| Layer | Examples | Surface |
+|---|---|---|
+| **Metric** (Level 1-2) | frequency_per_day, gap_trend, gap_samples, mean_interval_seconds | Standard: `context`, `show`, hooks |
+| **Classification** (Level 3) | Resolving, Stalling, Drifting, Oscillating; neglect_risk, oscillation_risk | Analytical: `trajectory`, `ground` |
+| **Projection** (Level 4) | projected_gap, time_to_resolution, will_resolve | Analytical: `trajectory`, `ground` |
+
+**What changed in code:**
+- `context` (CLI and MCP): replaced `projection` object with `engagement` object containing raw `MutationPattern` metrics
+- `trajectory` tool (MCP): reframed as practice-layer analysis with explicit description
+- `ground` command: added trajectory section as part of the analytical bundle
+- `show` and hooks: unchanged (already carried no classification/projection)
+
+**The vocabulary question** (interpretive names vs neutral descriptors) is now moot for standard surfaces — they carry numbers, not names. The trajectory enum retains its current names (Resolving, Stalling, Drifting, Oscillating) on analytical surfaces where the practice-layer framing is explicit.
