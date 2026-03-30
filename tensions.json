@@ -1,14 +1,14 @@
 {
-  "flushed_at": "2026-03-30T14:53:09Z",
+  "flushed_at": "2026-03-30T14:55:48Z",
   "summary": {
-    "active": 66,
+    "active": 65,
     "released": 7,
-    "resolved": 55,
+    "resolved": 56,
     "total": 128
   },
   "tensions": [
     {
-      "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, pathway palettes operational, primary experience functional with known architectural debt being addressed), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
+      "actual": "v1.4.0: Conceptual foundation mature — standard of measurement principle, operative identity clarified. CLI reading surface consolidated to 4 primary commands (show/list/tree/stats) with rich filtering. MCP gains stats tool (8 sections). Output taxonomy settled. Three interface surfaces operational: TUI (survey V1.3), CLI (consolidated reading surface), MCP (31 tools). Cooperative dynamics remain unexplored (pending Foundations course April 2026).",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -1394,7 +1394,7 @@
       "status": "Active"
     },
     {
-      "actual": "No release cut since output taxonomy change. context CLI/MCP output renamed projection to engagement, carries raw metrics instead of trajectory classification. Breaking change for --json consumers.",
+      "actual": "v1.4.0 released. Conceptual foundation amended (standard of measurement, operative identity). CLI reading surface consolidated: 10 commands to 4 primary (show/list/tree/stats). Output taxonomy settled: engagement metrics on standard surfaces, classification on analytical. MCP stats tool added. Old commands hidden but functional.",
       "created_at": "2026-03-30T13:31:22.867939+00:00",
       "desired": "next release shipped — output taxonomy breaking change documented, engagement metrics replace projection on standard surfaces",
       "horizon": null,
@@ -1402,7 +1402,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 132,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "MCP surface updated. New stats tool with sections parameter (temporal, attention, changes, trajectory, engagement, drift, health, all). show tool gains full parameter (ancestors, siblings, engagement — absorbs context). list tool schema gains new filter params (overdue, approaching, stale, held, positioned, root, parent, has_deadline, changed_since). Old MCP tools (health, ground, diff, context, trajectory, insights, survey) still functional. README MCP section updated. Implementation complete across all three remaining steps: show --full, tree --stats, MCP update.",
