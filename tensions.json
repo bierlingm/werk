@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-30T18:14:01Z",
+  "flushed_at": "2026-03-30T18:22:49Z",
   "summary": {
-    "active": 66,
+    "active": 67,
     "released": 7,
     "resolved": 59,
-    "total": 132
+    "total": 133
   },
   "tensions": [
     {
@@ -1457,6 +1457,17 @@
       "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
       "position": null,
       "short_code": 137,
+      "status": "Active"
+    },
+    {
+      "actual": "Survey: zero-padded to fixed 2 digits, no # prefix (e.g. '02', '42'). Deck: zero-padded to variable width (2 or 3 based on max short_code), no # prefix (e.g. '042'). Both omit #. Inconsistency is fixed vs variable width. Zero-padding in deck could also be dropped for cleaner display.",
+      "created_at": "2026-03-30T18:19:10.640605+00:00",
+      "desired": "survey and deck views use consistent shorthand ID formatting — survey zero-pads to fixed 2 digits, deck pads to variable width based on max short_code",
+      "horizon": null,
+      "id": "01KMZZH6XGB1G65366RGAR9N4V",
+      "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
+      "position": null,
+      "short_code": 138,
       "status": "Active"
     }
   ]
