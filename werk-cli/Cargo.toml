@@ -1,6 +1,6 @@
 [package]
 name = "werk"
-version = "1.1.0"
+version = "1.4.0"
 edition = "2024"
 description = "Operative instrument for structural dynamics"
 
