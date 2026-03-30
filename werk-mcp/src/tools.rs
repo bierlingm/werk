@@ -11,7 +11,7 @@ use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
 use sd_core::{
     compute_frontier, compute_temporal_signals, compute_urgency, detect_horizon_drift,
-    extract_mutation_pattern, project_field, project_tension, Engine, Forest, Horizon,
+    extract_mutation_pattern, gap_magnitude, project_field, project_tension, Engine, Forest, Horizon,
     HorizonDriftType, Mutation, ProjectionHorizon, ProjectionThresholds, TensionStatus,
 };
 use serde::{Deserialize, Serialize};
@@ -1285,19 +1285,19 @@ impl WerkServer {
                 }))
                 .collect();
 
-            let projections = project_tension(t, &mutations, &thresholds, now);
-            // Stance B: signal-level only — trajectory classification and risk flags.
-            // Projections (will_resolve, time_to_resolution, gap extrapolations) quarantined to ground mode.
-            let projection = if let Some(proj) = projections.first() {
-                serde_json::json!({
-                    "trajectory": format!("{:?}", proj.trajectory),
-                    "current_gap": proj.current_gap,
-                    "oscillation_risk": proj.oscillation_risk,
-                    "neglect_risk": proj.neglect_risk,
-                })
-            } else {
-                serde_json::Value::Null
-            };
+            // Engagement metrics: raw facts anchored to user actions.
+            // Standard of Measurement: no classification, no instrument-originated thresholds.
+            // Classification lives in the trajectory tool (analytical/practice layer).
+            let pattern = extract_mutation_pattern(t, &mutations, thresholds.pattern_window_seconds, now);
+            let engagement = serde_json::json!({
+                "current_gap": gap_magnitude(&t.desired, &t.actual),
+                "mutation_count": pattern.mutation_count,
+                "frequency_per_day": pattern.frequency_per_day,
+                "frequency_trend": pattern.frequency_trend,
+                "gap_trend": pattern.gap_trend,
+                "gap_samples": pattern.gap_samples,
+                "mean_interval_seconds": pattern.mean_interval_seconds,
+            });
 
             let mutation_infos: Vec<serde_json::Value> = mutations.iter().map(|m| {
                 serde_json::json!({
@@ -1320,7 +1320,7 @@ impl WerkServer {
                 "siblings": siblings,
                 "children": children,
                 "mutations": mutation_infos,
-                "projection": projection,
+                "engagement": engagement,
             }))
         };
 
@@ -1352,7 +1352,7 @@ impl WerkServer {
         }
     }
 
-    #[tool(description = "Ground-mode observational analysis: structural trajectory projections and gap extrapolations. This is the analytical layer — forward-looking estimates that go beyond fact and signal. Use for debrief and study, not as action signals. Field-wide funnel or per-tension projection. Optionally show urgency collision windows.")]
+    #[tool(description = "Practice-layer analysis: trajectory classification, gap projections, and risk flags. These use instrument-originated thresholds — they are interpretive readings of the engagement metrics, not facts anchored to user-supplied standards. Use for study, debrief, or triage — not as authoritative signals. Field-wide funnel or per-tension. Optionally show urgency collision windows.")]
     async fn trajectory(
         &self,
         Parameters(p): Parameters<TrajectoryParam>,

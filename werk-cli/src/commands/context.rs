@@ -10,7 +10,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::{
-    compute_urgency, project_tension, ProjectionThresholds, TensionStatus,
+    compute_urgency, extract_mutation_pattern, ProjectionThresholds, TensionStatus,
 };
 use serde::Serialize;
 
@@ -22,7 +22,7 @@ pub struct ContextResult {
     pub siblings: Vec<TensionInfo>,
     pub children: Vec<TensionInfo>,
     pub mutations: Vec<MutationInfo>,
-    pub projection: serde_json::Value,
+    pub engagement: serde_json::Value,
 }
 
 pub fn cmd_context(
@@ -90,8 +90,7 @@ pub fn cmd_context(
         .collect();
 
     let thresholds = ProjectionThresholds::default();
-    let projections = project_tension(tension, &mutations, &thresholds, now);
-    let projection_json = build_projection_json(&projections);
+    let engagement_json = build_engagement_json(tension, &mutations, &thresholds, now);
 
     let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
@@ -101,7 +100,7 @@ pub fn cmd_context(
         siblings,
         children,
         mutations: mutation_infos,
-        projection: projection_json,
+        engagement: engagement_json,
     };
 
     output
@@ -168,8 +167,7 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
             .collect();
 
         let thresholds = ProjectionThresholds::default();
-        let projections = project_tension(tension, &mutations, &thresholds, now);
-        let projection_json = build_projection_json(&projections);
+        let engagement_json = build_engagement_json(tension, &mutations, &thresholds, now);
 
         let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
@@ -179,7 +177,7 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
             siblings,
             children,
             mutations: mutation_infos,
-            projection: projection_json,
+            engagement: engagement_json,
         });
     }
 
@@ -190,41 +188,28 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
     Ok(())
 }
 
-/// Signal-level projection: trajectory classification and risk flags only.
-/// Stance B: the instrument says "here is the pattern" but not "here is where the pattern leads."
-/// Projections (gap extrapolation, time-to-resolution, will-resolve) are quarantined to ground mode.
-pub fn build_projection_json(
-    projections: &[sd_core::TensionProjection],
+/// Engagement metrics: raw mutation pattern data anchored to user actions.
+/// Standard of Measurement: these are facts computed from what the user did —
+/// mutation frequency, gap direction, engagement trend. No classification,
+/// no thresholds, no instrument-originated standards.
+/// Classification (trajectory enum) and projection live in analytical surfaces
+/// (trajectory command, ground mode).
+fn build_engagement_json(
+    tension: &sd_core::Tension,
+    mutations: &[sd_core::Mutation],
+    thresholds: &ProjectionThresholds,
+    now: chrono::DateTime<Utc>,
 ) -> serde_json::Value {
-    if let Some(proj) = projections.first() {
-        serde_json::json!({
-            "trajectory": format!("{:?}", proj.trajectory),
-            "current_gap": proj.current_gap,
-            "oscillation_risk": proj.oscillation_risk,
-            "neglect_risk": proj.neglect_risk,
-        })
-    } else {
-        serde_json::Value::Null
-    }
-}
+    let pattern = extract_mutation_pattern(tension, mutations, thresholds.pattern_window_seconds, now);
+    let gap = sd_core::gap_magnitude(&tension.desired, &tension.actual);
 
-/// Full projection including extrapolations — ground-mode only.
-pub fn build_full_projection_json(
-    projections: &[sd_core::TensionProjection],
-) -> serde_json::Value {
-    if let Some(proj) = projections.first() {
-        serde_json::json!({
-            "trajectory": format!("{:?}", proj.trajectory),
-            "current_gap": proj.current_gap,
-            "projected_gap_1w": projections.get(0).map(|p| p.projected_gap),
-            "projected_gap_1m": projections.get(1).map(|p| p.projected_gap),
-            "projected_gap_3m": projections.get(2).map(|p| p.projected_gap),
-            "will_resolve": proj.will_resolve,
-            "time_to_resolution": proj.time_to_resolution,
-            "oscillation_risk": proj.oscillation_risk,
-            "neglect_risk": proj.neglect_risk,
-        })
-    } else {
-        serde_json::Value::Null
-    }
+    serde_json::json!({
+        "current_gap": gap,
+        "mutation_count": pattern.mutation_count,
+        "frequency_per_day": pattern.frequency_per_day,
+        "frequency_trend": pattern.frequency_trend,
+        "gap_trend": pattern.gap_trend,
+        "gap_samples": pattern.gap_samples,
+        "mean_interval_seconds": pattern.mean_interval_seconds,
+    })
 }
