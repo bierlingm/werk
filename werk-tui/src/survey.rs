@@ -46,6 +46,8 @@ pub struct FieldVitals {
     pub approaching: usize,
     pub held_unframed: usize,
     pub stale_realities: usize,
+    /// Count of tensions with any structural signal (excluding plain overdue, which is in overdue count).
+    pub signaled: usize,
 }
 
 /// Which temporal band a tension belongs to.
@@ -105,6 +107,8 @@ pub struct SurveyItem {
     pub is_held: bool,
     /// True if this is the next positioned step in its parent's sequence (lowest position).
     pub is_next: bool,
+    /// Signal glyphs (by exception — empty for most tensions).
+    pub signal_glyphs: Vec<&'static str>,
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +209,53 @@ impl InstrumentApp {
                     urgency,
                     is_held: t.position.is_none(),
                     is_next,
+                    signal_glyphs: vec![],
                 }
             })
             .collect();
+
+        // Compute structural signals for each item.
+        if let Ok(forest) = sd_core::Forest::from_tensions(all.clone()) {
+            for idx in 0..items.len() {
+                let tension_id = items[idx].tension_id.clone();
+                let temporal = sd_core::compute_temporal_signals(&forest, &tension_id, now);
+
+                // Overdue glyph (band already colors it, but glyph is explicit signal mark)
+                if items[idx].band == TimeBand::Overdue {
+                    items[idx].signal_glyphs.push("!");
+                }
+                if temporal.on_critical_path {
+                    items[idx].signal_glyphs.push("\u{2021}"); // ‡
+                }
+                if temporal.has_containment_violation {
+                    items[idx].signal_glyphs.push("\u{21a5}"); // ↥
+                }
+                if !temporal.sequencing_pressures.is_empty() {
+                    items[idx].signal_glyphs.push("\u{21c5}"); // ⇅
+                }
+                if !temporal.critical_path.is_empty() && !temporal.on_critical_path {
+                    items[idx].signal_glyphs.push("\u{2021}"); // ‡ (as parent)
+                }
+                if !temporal.containment_violations.is_empty() && !temporal.has_containment_violation {
+                    items[idx].signal_glyphs.push("\u{21a5}"); // ↥ (as parent)
+                }
+
+                // Horizon drift — only RepeatedPostponement/Oscillating (noise threshold)
+                let t = all.iter().find(|t| t.id == tension_id);
+                if t.is_some_and(|t| t.horizon.is_some()) {
+                    if let Ok(mutations) = self.engine.store().get_mutations(&tension_id) {
+                        let drift = sd_core::detect_horizon_drift(&tension_id, &mutations);
+                        match drift.drift_type {
+                            sd_core::HorizonDriftType::RepeatedPostponement
+                            | sd_core::HorizonDriftType::Oscillating => {
+                                items[idx].signal_glyphs.push("\u{219d}"); // ↝
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
 
         // Phase 1: Sort by band, then by effective deadline descending.
         items.sort_by(|a, b| {
@@ -238,6 +286,10 @@ impl InstrumentApp {
             }
             if item.is_held && item.band == TimeBand::NoDeadline {
                 vitals.held_unframed += 1;
+            }
+            // Count tensions with non-overdue signals (overdue already counted above)
+            if item.signal_glyphs.iter().any(|g| *g != "!") {
+                vitals.signaled += 1;
             }
         }
         // Stale realities: active tensions whose last 'actual' mutation is >7 days old.
@@ -841,6 +893,9 @@ impl InstrumentApp {
         if v.stale_realities > 0 {
             vitals_parts.push(format!("{} stale", v.stale_realities));
         }
+        if v.signaled > 0 {
+            vitals_parts.push(format!("{} signaled", v.signaled));
+        }
         let left = vitals_parts.join(" \u{00B7} ");
 
         let center = "Tab pivot \u{00B7} j/k navigate \u{00B7} Enter descend";
@@ -894,17 +949,20 @@ fn render_provider_line(
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
+    let signal_str = signal_display_str(item);
+    let signal_w = signal_str.chars().count();
     let left_used = SURVEY_INDENT.len() + HORIZON_COL_W + glyph_w;
-    let desire_w = w.saturating_sub(left_used + right_w + 2);
+    let desire_w = w.saturating_sub(left_used + right_w + signal_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
 
     // Gap between text and right column to push right flush-right.
     let text_w = desire_text.chars().count();
-    let gap = w.saturating_sub(left_used + text_w + right_w);
+    let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
     let style_text = if is_selected { STYLES.selected } else { STYLES.text };
     let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
     let style_glyph = if is_selected { STYLES.selected } else { glyph_style(item) };
+    let style_signal = if is_selected { STYLES.selected } else { STYLES.amber };
     let style_horizon = if item.urgency > 1.0 {
         if is_selected { STYLES.selected } else { STYLES.amber }
     } else {
@@ -917,6 +975,7 @@ fn render_provider_line(
         Span::styled(glyph_str, style_glyph),
         Span::styled(desire_text, style_text),
         Span::styled(" ".repeat(gap), style_dim),
+        Span::styled(signal_str, style_signal),
         Span::styled(right_text, style_dim),
     ];
 
@@ -941,16 +1000,19 @@ fn render_tree_child_line(
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
+    let signal_str = signal_display_str(item);
+    let signal_w = signal_str.chars().count();
     let left_used = base_indent + prefix_w + glyph_w;
-    let desire_w = w.saturating_sub(left_used + right_w + 2);
+    let desire_w = w.saturating_sub(left_used + right_w + signal_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
 
     let text_w = desire_text.chars().count();
-    let gap = w.saturating_sub(left_used + text_w + right_w);
+    let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
     let style_text = if is_selected { STYLES.selected } else { STYLES.text };
     let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
     let style_glyph = if is_selected { STYLES.selected } else { glyph_style(item) };
+    let style_signal = if is_selected { STYLES.selected } else { STYLES.amber };
 
     let mut spans = vec![
         Span::styled(" ".repeat(base_indent), style_dim),
@@ -958,6 +1020,7 @@ fn render_tree_child_line(
         Span::styled(glyph_str, style_glyph),
         Span::styled(desire_text, style_text),
         Span::styled(" ".repeat(gap), style_dim),
+        Span::styled(signal_str, style_signal),
         Span::styled(right_text, style_dim),
     ];
 
@@ -973,6 +1036,16 @@ fn position_glyph(item: &SurveyItem) -> &'static str {
 /// Glyph color matching the deck view: green for next step, cyan for route, subdued for held.
 fn glyph_style(item: &SurveyItem) -> ftui::style::Style {
     if item.is_held { STYLES.subdued } else if item.is_next { STYLES.green } else { STYLES.cyan }
+}
+
+/// Signal glyphs as a compact string for inline display. Empty if no signals.
+fn signal_display_str(item: &SurveyItem) -> String {
+    if item.signal_glyphs.is_empty() {
+        String::new()
+    } else {
+        // Space-separate glyphs, with trailing space before right column.
+        format!("{} ", item.signal_glyphs.join(""))
+    }
 }
 
 /// Build the right column: just the tension ID number, zero-padded to 2 digits.

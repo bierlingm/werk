@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-30T14:55:48Z",
+  "flushed_at": "2026-03-30T18:14:01Z",
   "summary": {
-    "active": 65,
+    "active": 66,
     "released": 7,
-    "resolved": 56,
-    "total": 128
+    "resolved": 59,
+    "total": 132
   },
   "tensions": [
     {
@@ -481,7 +481,7 @@
       "status": "Active"
     },
     {
-      "actual": "Watch daemon deleted. Pathway palettes detect containment violations and sequencing pressure independently of invocation. Temporal calculus computes urgency/critical-path/drift per-query. With #65 decided (Standard of Measurement): signals surfaced by the instrument must be anchored to user-supplied standards — deadline-based signals (overdue, containment, sequencing pressure, critical path) qualify. Horizon drift detection exists in temporal.rs but nothing surfaces it. No cross-temporal monitoring (detecting changes between queries). TUI shows no structural signals yet.",
+      "actual": "Three implementation children resolved. Signal glyphs (! ‡ ↥ ⇅ ↝) appear across all three surfaces: show (full detail with onset), list (--long/--signals/--json, with legend), TUI (inline before ID). Drift surfaced as structural signal. Signal computation on demand from mutation log (no persistence). Four design questions remain as held children (#134-#137).",
       "created_at": "2026-03-24T17:52:27.996872+00:00",
       "desired": "threshold detection as independent structural signal logic — urgency crossings, horizon drift, containment violations surfaceable without coupling to any invocation mechanism",
       "horizon": null,
@@ -1361,7 +1361,7 @@
       "status": "Active"
     },
     {
-      "actual": "No persistence of signal state between queries. Each invocation computes signals fresh with no awareness of prior state.",
+      "actual": "Option A implemented: no separate persistence table. The mutation log is the source of truth. detect_horizon_drift() now computes onset timestamp — the mutation that tipped the drift pattern. show displays 'since N days ago' on drift signals. list --signals filter shows only tensions with active signals. Signal computation gated behind --long/--signals/--json in list (no cost for default list). Onset for other signal types (critical path, containment, sequencing) deferred — would require historical forest reconstruction.",
       "created_at": "2026-03-30T13:23:17.429997+00:00",
       "desired": "signal state persistence and cross-query change detection",
       "horizon": null,
@@ -1369,10 +1369,10 @@
       "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
       "position": null,
       "short_code": 129,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "detect_horizon_drift() exists in temporal.rs, computes drift type and net shift. Nothing surfaces this to the user in any interface.",
+      "actual": "show displays drift in Signals section with ↝ glyph (type, count, net shift). list computes signals (behind --long/--signals/--json): ! overdue, ‡ critical path, ↥ containment, ⇅ sequencing, ↝ drift. list --signals filter shows only signaled tensions. Legend at bottom. JSON includes horizon_drift in show and signals array in list. Noise threshold: only RepeatedPostponement/Oscillating drift shown in list.",
       "created_at": "2026-03-30T13:23:26.411934+00:00",
       "desired": "horizon drift surfaced as structural signal — when a deadline moves, the fact of movement (direction, magnitude) appears at the tension",
       "horizon": null,
@@ -1380,10 +1380,10 @@
       "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
       "position": null,
       "short_code": 130,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "TUI shows no structural signals. Pathway palettes appear for containment decisions during horizon edits, but ambient signals (overdue, critical path, sequencing pressure) are not rendered.",
+      "actual": "TUI survey renders signal glyphs (\\! ‡ ↥ ⇅ ↝) inline between desire text and ID column. Signals computed during survey load via Forest + compute_temporal_signals. Drift noise threshold: only RepeatedPostponement/Oscillating. Glyphs styled amber. Field vitals bar shows 'N signaled' count. Both provider lines and tree-child lines render signals.",
       "created_at": "2026-03-30T13:23:28.530120+00:00",
       "desired": "TUI renders structural signals inline — overdue, containment, sequencing pressure, critical path, horizon drift appear by exception at the tension",
       "horizon": null,
@@ -1391,7 +1391,7 @@
       "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
       "position": null,
       "short_code": 131,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "v1.4.0 released. Conceptual foundation amended (standard of measurement, operative identity). CLI reading surface consolidated: 10 commands to 4 primary (show/list/tree/stats). Output taxonomy settled: engagement metrics on standard surfaces, classification on analytical. MCP stats tool added. Old commands hidden but functional.",
@@ -1414,6 +1414,50 @@
       "position": null,
       "short_code": 133,
       "status": "Resolved"
+    },
+    {
+      "actual": "question — current stance: mutation log is sufficient, compute on demand (Option A)",
+      "created_at": "2026-03-30T17:53:32.698049+00:00",
+      "desired": "should signal state be persisted separately or is the mutation log sufficient as the single source of truth for computing signals at any point in time",
+      "horizon": null,
+      "id": "01KMZY290TFRE7WYF3EGWKD0GS",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 134,
+      "status": "Active"
+    },
+    {
+      "actual": "question — --json exists but outputs raw data, no metadata envelope. btv/cass/dcg/sc use envelopes with ok/error/elapsed_ms.",
+      "created_at": "2026-03-30T17:53:39.797710+00:00",
+      "desired": "should the CLI adopt a --robot envelope pattern (ok/data/error/elapsed_ms) for agent consumption beyond the current --json raw data output",
+      "horizon": null,
+      "id": "01KMZY2FYN973SGPV49XCNDHJJ",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 135,
+      "status": "Active"
+    },
+    {
+      "actual": "question — list --changed handles mutation diffs. signal transitions between queries are a different kind of change detection. unclear if same mechanism or different.",
+      "created_at": "2026-03-30T17:53:42.153667+00:00",
+      "desired": "does temporal attention tracking (when did the user last look, what changed since) belong in the signal system or is it a separate concern",
+      "horizon": null,
+      "id": "01KMZY2J8996HSBF7H41S5FVXH",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 136,
+      "status": "Active"
+    },
+    {
+      "actual": "question — no signal transition events exist. hooks could fire when a signal appears or resolves, but this requires either persistence or compute-on-write. deferred.",
+      "created_at": "2026-03-30T17:53:44.388059+00:00",
+      "desired": "should signal-aware hooks fire on signal transitions and if so what is the trigger mechanism",
+      "horizon": null,
+      "id": "01KMZY2ME468ZG2RABNGKXNKMR",
+      "parent_id": "01KMGFKZTWZM69H3ZX7EYHA5ED",
+      "position": null,
+      "short_code": 137,
+      "status": "Active"
     }
   ]
 }

@@ -490,6 +490,10 @@ Examples:
         #[arg(long)]
         changed: Option<String>,
 
+        /// Only tensions with active structural signals (overdue, containment, critical path, sequencing pressure, drift).
+        #[arg(long)]
+        signals: bool,
+
         /// Sort field: urgency, name, deadline, created, updated, position.
         #[arg(long, default_value = "urgency")]
         sort: String,
