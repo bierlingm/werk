@@ -49,7 +49,6 @@ pub enum Msg {
     Undo,
     Redo,
     OpenPalette,
-    PaletteAction(String),
 
     // System
     Resize { width: u16, height: u16 },
