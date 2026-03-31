@@ -488,10 +488,9 @@ impl InstrumentApp {
         self.held_expanded = false;
         self.accumulated_expanded = false;
 
-        // Recompute cached frontier and clamp deck cursor
+        // Recompute cached frontier and rebuild focus graph
         self.recompute_frontier();
-        let count = self.cached_frontier.as_ref().map(|f| f.selectable_count()).unwrap_or(0);
-        self.deck_cursor.clamp(count);
+        // focus_state.clamp_active() is called within rebuild_for_frontier
 
         // Rebuild search index (fast: ~1.6ms for 150 docs)
         self.search_index = sd_core::SearchIndex::build(self.engine.store());
@@ -716,6 +715,10 @@ impl InstrumentApp {
         if self.accumulated_expanded {
             frontier.show_accumulated = frontier.accumulated.len();
         }
+        // Rebuild focus graph from the new frontier
+        let has_desire = frontier.has_desire_anchor;
+        let has_reality = frontier.has_reality_anchor;
+        self.focus_state.rebuild_for_frontier(&frontier, has_desire, has_reality);
         self.cached_frontier = Some(frontier);
     }
 

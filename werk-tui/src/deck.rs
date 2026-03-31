@@ -854,10 +854,11 @@ impl InstrumentApp {
         let deadline_str = self.parent_horizon_label.as_deref().unwrap_or("");
         let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
 
+        let active_target = self.focus_state.cursor_target();
         let desire_selected = frontier.has_desire_anchor
-            && frontier.cursor_target(self.deck_cursor.index) == CursorTarget::Desire;
+            && active_target == CursorTarget::Desire;
         let reality_selected = frontier.has_reality_anchor
-            && frontier.cursor_target(self.deck_cursor.index) == CursorTarget::Reality;
+            && active_target == CursorTarget::Reality;
 
         self.render_desire_zone(frame, desire_zone, w, cols, parent, desire_lines,
             has_breadcrumb, has_deadline, deadline_str, desire_selected);
@@ -998,15 +999,13 @@ impl InstrumentApp {
         // Focus detail may have been truncated by reconciliation
         let focus_detail_height = effective_focus_height;
 
-        // Cursor and focus setup
-        let cursor_idx = if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
-            frontier.cursor_for_sibling(
-                self.siblings.iter().position(|s| s.id == *tension_id).unwrap_or(0)
-            ).unwrap_or(0)
+        // Cursor and focus setup — get active target from FocusGraph
+        let active_target = if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
+            let sibling_idx = self.siblings.iter().position(|s| s.id == *tension_id).unwrap_or(0);
+            // During reorder, point at the grabbed item
+            CursorTarget::Route(sibling_idx)
         } else {
-            self.deck_cursor.index.min(
-                frontier.selectable_count().saturating_sub(1)
-            )
+            self.focus_state.cursor_target()
         };
         let focused_sibling = if self.deck_zoom.has_detail() {
             self.focused_detail.as_ref().map(|d| d.sibling_index)
@@ -1031,7 +1030,7 @@ impl InstrumentApp {
         if !frontier.accumulated.is_empty() && acc_item_count > 0 {
             let shown = frontier.show_accumulated;
             let (acc_list, mut acc_state) = crate::deck_zones::build_accumulated_list(
-                &frontier, &self.siblings, shown, cursor_idx, &cols, w, &self.styles,
+                &frontier, &self.siblings, shown, active_target, &cols, w, &self.styles,
             );
 
             // Anchor accumulated items to bottom of middle_zone
@@ -1084,9 +1083,9 @@ impl InstrumentApp {
             let total_route = frontier.route.len()
                 + frontier.overdue.len()
                 + if frontier.next.is_some() { 1 } else { 0 };
-            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary
-                || frontier.cursor_target(cursor_idx) == CursorTarget::Held
-                || frontier.cursor_target(cursor_idx) == CursorTarget::Next(frontier.next.unwrap_or(0));
+            let is_selected = active_target == CursorTarget::RouteSummary
+                || active_target == CursorTarget::Held
+                || active_target == CursorTarget::Next(frontier.next.unwrap_or(0));
             let text = format!(
                 "\u{25B8} {} route \u{00B7} {} held",
                 total_route,
@@ -1098,7 +1097,7 @@ impl InstrumentApp {
             // --- Route zone: List widget ---
             {
                 let (route_list, mut route_state) = crate::deck_zones::build_route_list(
-                    &frontier, &self.siblings, shown_route, cursor_idx, &cols, w, &self.styles,
+                    &frontier, &self.siblings, shown_route, active_target, &cols, w, &self.styles,
                 );
                 let route_item_count = shown_route
                     + if route_remaining > 0 { 1 } else { 0 }; // summary line
@@ -1128,7 +1127,7 @@ impl InstrumentApp {
             // --- Overdue zone: List widget ---
             {
                 let (overdue_list, mut overdue_state) = crate::deck_zones::build_overdue_list(
-                    &frontier, &self.siblings, cursor_idx, &cols, w, &self.styles,
+                    &frontier, &self.siblings, active_target, &cols, w, &self.styles,
                 );
                 let overdue_h = frontier.overdue.len().min((top_limit - my) as usize);
                 if overdue_h > 0 {
@@ -1155,7 +1154,7 @@ impl InstrumentApp {
             if let Some(next_idx) = frontier.next {
                 if my < top_limit {
                     let entry = &self.siblings[next_idx];
-                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
+                    let is_selected = active_target == CursorTarget::Next(next_idx);
                     self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, false, 0, Some(self.styles.green));
                     my += 1;
                     if focused_sibling == Some(next_idx) {
@@ -1269,7 +1268,7 @@ impl InstrumentApp {
             // --- Held zone: List widget ---
             if !frontier.held.is_empty() && my < top_limit {
                 let (held_list, mut held_state) = crate::deck_zones::build_held_list(
-                    &frontier, &self.siblings, shown_held, cursor_idx, &cols, w, &self.styles,
+                    &frontier, &self.siblings, shown_held, active_target, &cols, w, &self.styles,
                 );
                 let held_item_count = shown_held
                     + if held_remaining == 1 { 1 } else if held_remaining > 1 { 1 } else { 0 };
@@ -1323,7 +1322,7 @@ impl InstrumentApp {
 
         // --- Input line: the action surface at the console's heart ---
         if my < top_limit {
-            let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
+            let is_selected = active_target == CursorTarget::InputPoint;
             let line = crate::deck_zones::build_input_line(
                 is_selected, is_empty_console, &cols, w, &self.styles,
             );
@@ -1657,37 +1656,41 @@ impl InstrumentApp {
 
     /// Handle pitch up (k / Up) in deck mode.
     pub fn deck_pitch_up(&mut self) {
-        let count = self.ensure_frontier().selectable_count();
-        self.deck_cursor.pitch_up(count);
+        self.focus_state.navigate(ftui::widgets::NavDirection::Up);
+        self.sync_cursor_from_focus();
     }
 
     /// Handle pitch down (j / Down) in deck mode.
     pub fn deck_pitch_down(&mut self) {
-        let count = self.ensure_frontier().selectable_count();
-        self.deck_cursor.pitch_down(count);
+        self.focus_state.navigate(ftui::widgets::NavDirection::Down);
+        self.sync_cursor_from_focus();
     }
 
     /// Reset deck cursor to default position after data reload.
     pub fn deck_cursor_reset(&mut self) {
-        let default = self.ensure_frontier().default_cursor();
-        self.deck_cursor.index = default;
+        self.focus_state.active = self.focus_state.default_focus();
+        self.sync_cursor_from_focus();
     }
 
     /// Set deck cursor to point at a specific sibling index.
     /// Falls back to default cursor if the sibling isn't visible.
     pub fn deck_cursor_to_sibling(&mut self, sibling_idx: usize) {
-        let frontier = self.ensure_frontier();
-        if let Some(cursor_idx) = frontier.cursor_for_sibling(sibling_idx) {
-            self.deck_cursor.index = cursor_idx;
+        if let Some(id) = self.focus_state.focus_for_sibling(sibling_idx) {
+            self.focus_state.active = id;
         } else {
-            self.deck_cursor.index = frontier.default_cursor();
+            self.focus_state.active = self.focus_state.default_focus();
         }
+        self.sync_cursor_from_focus();
     }
 
     /// Get the sibling index the deck cursor currently points to (if any).
     pub fn deck_selected_sibling_index(&self) -> Option<usize> {
-        let frontier = self.cached_frontier.as_ref()?;
-        Some(frontier.cursor_target(self.deck_cursor.index).sibling_index()?)
+        self.focus_state.cursor_target().sibling_index()
+    }
+
+    /// Sync legacy deck_cursor from focus graph (bridge during migration).
+    fn sync_cursor_from_focus(&mut self) {
+        self.deck_cursor.index = self.focus_state.active_index();
     }
 
     /// Render the deck bottom bar using ftui StatusLine.
@@ -1698,11 +1701,7 @@ impl InstrumentApp {
 
         // S6: Context-sensitive hints — only in Normal input mode
         let hints_text = if matches!(self.input_mode, crate::state::InputMode::Normal) {
-            let frontier = match self.cached_frontier.as_ref() {
-                Some(f) => f,
-                None => { return; }
-            };
-            let target = frontier.cursor_target(self.deck_cursor.index);
+            let target = self.focus_state.cursor_target();
             match target {
                 CursorTarget::Desire =>
                     "e edit desire \u{00B7} Enter focus".to_string(),

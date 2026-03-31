@@ -13,7 +13,7 @@ use ftui::PackedRgba;
 
 use sd_core::TensionStatus;
 
-use crate::deck::{AccumulatedItem, ColumnLayout, Frontier};
+use crate::deck::{AccumulatedItem, ColumnLayout, CursorTarget, Frontier};
 use crate::state::FieldEntry;
 use crate::theme::InstrumentStyles;
 
@@ -263,7 +263,7 @@ pub fn build_route_list<'a>(
     frontier: &Frontier,
     siblings: &[FieldEntry],
     shown_route: usize,
-    cursor_idx: usize,
+    active_target: CursorTarget,
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
@@ -275,7 +275,7 @@ pub fn build_route_list<'a>(
         let sibling_idx = frontier.route[i];
         let entry = &siblings[sibling_idx];
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::Route(sibling_idx);
+            active_target == CursorTarget::Route(sibling_idx);
         if is_sel {
             selected = Some(items.len());
         }
@@ -300,7 +300,7 @@ pub fn build_route_list<'a>(
         let sibling_idx = frontier.route[shown_route];
         let entry = &siblings[sibling_idx];
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::RouteSummary;
+            active_target == CursorTarget::RouteSummary;
         if is_sel {
             selected = Some(items.len());
         }
@@ -319,7 +319,7 @@ pub fn build_route_list<'a>(
         items.push(ListItem::new(line));
     } else if route_remaining > 1 {
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::RouteSummary;
+            active_target == CursorTarget::RouteSummary;
         if is_sel {
             selected = Some(items.len());
         }
@@ -351,7 +351,7 @@ pub fn build_route_list<'a>(
 pub fn build_overdue_list<'a>(
     frontier: &Frontier,
     siblings: &[FieldEntry],
-    cursor_idx: usize,
+    active_target: CursorTarget,
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
@@ -362,7 +362,7 @@ pub fn build_overdue_list<'a>(
     for &sibling_idx in &frontier.overdue {
         let entry = &siblings[sibling_idx];
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::Overdue(sibling_idx);
+            active_target == CursorTarget::Overdue(sibling_idx);
         if is_sel {
             selected = Some(items.len());
         }
@@ -391,7 +391,7 @@ pub fn build_held_list<'a>(
     frontier: &Frontier,
     siblings: &[FieldEntry],
     shown_held: usize,
-    cursor_idx: usize,
+    active_target: CursorTarget,
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
@@ -403,8 +403,7 @@ pub fn build_held_list<'a>(
     for i in 0..shown_held {
         let sibling_idx = frontier.held[i];
         let entry = &siblings[sibling_idx];
-        let is_sel = frontier.cursor_target(cursor_idx)
-            == crate::deck::CursorTarget::HeldItem(sibling_idx);
+        let is_sel = active_target == CursorTarget::HeldItem(sibling_idx);
         if is_sel {
             selected = Some(items.len());
         }
@@ -428,7 +427,7 @@ pub fn build_held_list<'a>(
         let sibling_idx = frontier.held[shown_held];
         let entry = &siblings[sibling_idx];
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::Held;
+            active_target == CursorTarget::Held;
         if is_sel {
             selected = Some(items.len());
         }
@@ -446,7 +445,7 @@ pub fn build_held_list<'a>(
         items.push(ListItem::new(line));
     } else if held_remaining > 1 {
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::Held;
+            active_target == CursorTarget::Held;
         if is_sel {
             selected = Some(items.len());
         }
@@ -474,7 +473,7 @@ pub fn build_accumulated_list<'a>(
     frontier: &Frontier,
     siblings: &[FieldEntry],
     shown: usize,
-    cursor_idx: usize,
+    active_target: CursorTarget,
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
@@ -488,8 +487,7 @@ pub fn build_accumulated_list<'a>(
         match item {
             AccumulatedItem::Child(sibling_idx) => {
                 let entry = &siblings[*sibling_idx];
-                let is_sel = frontier.cursor_target(cursor_idx)
-                    == crate::deck::CursorTarget::AccumulatedItem(*sibling_idx);
+                let is_sel = active_target == CursorTarget::AccumulatedItem(*sibling_idx);
                 if is_sel {
                     selected = Some(items.len());
                 }
@@ -504,8 +502,7 @@ pub fn build_accumulated_list<'a>(
                 items.push(ListItem::new(line));
             }
             AccumulatedItem::Note { text, age, .. } => {
-                let is_sel = frontier.cursor_target(cursor_idx)
-                    == crate::deck::CursorTarget::NoteItem(i);
+                let is_sel = active_target == CursorTarget::NoteItem(i);
                 if is_sel {
                     selected = Some(items.len());
                 }
@@ -519,7 +516,7 @@ pub fn build_accumulated_list<'a>(
     let remaining = frontier.accumulated.len() - shown;
     if remaining == 1 {
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::Accumulated;
+            active_target == CursorTarget::Accumulated;
         if is_sel {
             selected = Some(items.len());
         }
@@ -539,7 +536,7 @@ pub fn build_accumulated_list<'a>(
         }
     } else if remaining > 1 {
         let is_sel =
-            frontier.cursor_target(cursor_idx) == crate::deck::CursorTarget::Accumulated;
+            active_target == CursorTarget::Accumulated;
         if is_sel {
             selected = Some(items.len());
         }
