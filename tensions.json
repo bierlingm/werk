@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-31T19:37:33Z",
+  "flushed_at": "2026-03-31T20:43:43Z",
   "summary": {
-    "active": 67,
+    "active": 66,
     "released": 19,
-    "resolved": 76,
+    "resolved": 77,
     "total": 162
   },
   "tensions": [
@@ -1765,7 +1765,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 4,
       "short_code": 165,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "no session persistence — every launch starts fresh. No TUI testing infrastructure. No inspector. Manual testing only",
