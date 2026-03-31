@@ -51,6 +51,8 @@ use crate::state::FieldEntry;
 pub struct ColumnLayout {
     /// Width of the left column (deadline display).
     pub left: usize,
+    /// Gutter width between columns (2 in standard, 1 in compact).
+    pub gutter: usize,
     /// Start position of the main (text) column, relative to content area.
     pub main_start: usize,
     /// Width of the main text column.
@@ -125,26 +127,53 @@ impl ColumnLayout {
     /// Compute column layout from the current data in view.
     /// `max_id` is the highest short_code visible (determines ID column width).
     /// `max_age_len` is the longest age string length visible.
-    pub fn compute(total_width: usize, deadline_label: Option<&str>, max_id: usize, max_age_len: usize) -> Self {
-        // Left column = max of all deadlines in view (min 6)
-        let left = deadline_label
-            .map(|d| d.chars().count().max(MIN_LEFT))
-            .unwrap_or(MIN_LEFT);
+    /// `regime` drives responsive adaptation: Compact hides gutter+ages, Expansive shows ages.
+    pub fn compute(
+        total_width: usize,
+        deadline_label: Option<&str>,
+        max_id: usize,
+        max_age_len: usize,
+        regime: crate::layout::SizeRegime,
+    ) -> Self {
+        use crate::layout::SizeRegime;
+
+        // Gutter: hidden in Compact to reclaim horizontal space.
+        let gutter = if regime.show_gutter() { GUTTER } else { 1 };
+
+        // Left column = max of all deadlines in view (min 6).
+        // In Compact: abbreviate to 3 chars (enough for "Jun") if no deadline.
+        let left = match regime {
+            SizeRegime::Compact => deadline_label
+                .map(|d| d.chars().count().min(6).max(3))
+                .unwrap_or(3),
+            _ => deadline_label
+                .map(|d| d.chars().count().max(MIN_LEFT))
+                .unwrap_or(MIN_LEFT),
+        };
 
         // Right sub-columns: [id][space][→][space][age]
-        // ID: zero-padded to consistent width based on max visible ID
         let id_width = if max_id >= 100 { 3 } else { 2 };
-        // Arrow: always 1 char (→ or space)
-        // Age: at least 2 chars, adapts to max
-        let age_width = max_age_len.max(2);
-        // Right total: id + space + arrow + space + age
-        let right = id_width + 1 + 1 + 1 + age_width;
 
-        let main_start = left + GUTTER;
-        let main = total_width.saturating_sub(main_start + GUTTER + right);
+        // Age: hidden in Compact, visible in Standard+.
+        let age_width = if regime.show_ages() {
+            max_age_len.max(2)
+        } else {
+            0
+        };
+
+        // Right total depends on whether age is shown.
+        let right = if age_width > 0 {
+            id_width + 1 + 1 + 1 + age_width // id + space + arrow + space + age
+        } else {
+            id_width // just the ID
+        };
+
+        let main_start = left + gutter;
+        let main = total_width.saturating_sub(main_start + gutter + right);
 
         Self {
             left,
+            gutter,
             main_start,
             main,
             right,
@@ -740,7 +769,7 @@ impl InstrumentApp {
             .map(|s| s.created_age.chars().count())
             .max()
             .unwrap_or(2);
-        ColumnLayout::compute(w, widest_deadline, max_id, max_age_len)
+        ColumnLayout::compute(w, widest_deadline, max_id, max_age_len, self.layout.regime)
     }
 
     /// Compute desire zone height and pre-wrapped lines.
@@ -754,8 +783,8 @@ impl InstrumentApp {
         let has_breadcrumb = self.grandparent_display.is_some();
         let has_deadline = self.parent_horizon_label.as_ref().map_or(false, |d| !d.is_empty());
 
-        let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
-        let right_col_reserve = GUTTER + cols.right;
+        let desire_indent = if has_deadline { cols.left + cols.gutter } else { 0 };
+        let right_col_reserve = cols.gutter + cols.right;
         let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
         let d_lines = word_wrap(&parent.desired, desire_wrap_width);
 
@@ -868,7 +897,7 @@ impl InstrumentApp {
         // V7: measure inline focus detail height (used for accumulated item spacing)
         let focus_detail_height: usize = if self.deck_zoom.has_detail() {
             if let Some(ref detail) = self.focused_detail {
-                let text_w = w.saturating_sub(cols.left + GUTTER + HELD_INDENT * 2);
+                let text_w = w.saturating_sub(cols.left + cols.gutter + HELD_INDENT * 2);
                 let reality_lines = if detail.actual.is_empty() { 0 } else {
                     word_wrap(&detail.actual, text_w).len()
                 };
@@ -1211,7 +1240,7 @@ impl InstrumentApp {
             if s4_held_only && my < top_limit {
                 if my > middle_start { my += 1; } // breathing
                 let msg = "no committed next step";
-                let prefix_len = cols.left + GUTTER;
+                let prefix_len = cols.left + cols.gutter;
                 let pad_right = w.saturating_sub(prefix_len + msg.len());
                 render_line(frame, area.x, my, area.width, &[
                     (" ".repeat(prefix_len), Style::new()),
@@ -1365,7 +1394,7 @@ impl InstrumentApp {
             } else {
                 "no active steps"
             };
-            let prefix_len = cols.left + GUTTER;
+            let prefix_len = cols.left + cols.gutter;
             let pad_right = w.saturating_sub(prefix_len + msg.len());
             render_line(frame, area.x, my, area.width, &[
                 (" ".repeat(prefix_len), Style::new()),
@@ -1398,7 +1427,7 @@ impl InstrumentApp {
                 self.styles.dim
             };
 
-            let prefix_len = cols.left + GUTTER;
+            let prefix_len = cols.left + cols.gutter;
             let pad_right = w.saturating_sub(prefix_len + content.chars().count());
             let line = Line::from_spans([
                 Span::styled(" ".repeat(prefix_len), style),
@@ -1459,16 +1488,18 @@ impl InstrumentApp {
         };
         let left_padded = format!("{:<width$}", left_str, width = cols.left);
 
-        // Right sub-columns: [id] [→] [age]
+        // Right sub-columns: [id] [→] [age]  (age hidden when cols.age_width == 0)
         let id_num = entry.short_code
             .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
             .unwrap_or_else(|| entry.id[..cols.id_width.min(entry.id.len())].to_string());
 
-        let arrow = if entry.child_count > 0 { "\u{2192}" } else { " " };
-
-        let age_str = format!("{:>width$}", entry.created_age, width = cols.age_width);
-
-        let right_str = format!("{} {} {}", id_num, arrow, age_str);
+        let right_str = if cols.age_width > 0 {
+            let arrow = if entry.child_count > 0 { "\u{2192}" } else { " " };
+            let age_str = format!("{:>width$}", entry.created_age, width = cols.age_width);
+            format!("{} {} {}", id_num, arrow, age_str)
+        } else {
+            id_num.clone()
+        };
 
         // S7: OVERDUE tag for overdue items
         let overdue_tag = if is_overdue && !is_selected { "OVERDUE  " } else { "" };
@@ -1478,7 +1509,7 @@ impl InstrumentApp {
         let glyph_w = 2; // glyph + space
         let right_w = right_str.chars().count();
         let text_budget = w
-            .saturating_sub(cols.left + GUTTER + extra_indent + glyph_w + overdue_tag_w + GUTTER + right_w);
+            .saturating_sub(cols.left + cols.gutter + extra_indent + glyph_w + overdue_tag_w + cols.gutter + right_w);
         let main_text = truncate_str(&entry.desired, text_budget);
 
         // Build the line
@@ -1488,12 +1519,12 @@ impl InstrumentApp {
         let right_style = if is_selected { base_style } else { self.styles.dim };
 
         spans.push(Span::styled(left_padded, left_style));
-        spans.push(Span::styled(" ".repeat(GUTTER + extra_indent), base_style));
+        spans.push(Span::styled(" ".repeat(cols.gutter + extra_indent), base_style));
         spans.push(Span::styled(format!("{} ", glyph), glyph_style));
         spans.push(Span::styled(&main_text, base_style));
 
         // Pad between text and OVERDUE tag / right sub-columns
-        let used: usize = cols.left + GUTTER + extra_indent + glyph_w + main_text.chars().count();
+        let used: usize = cols.left + cols.gutter + extra_indent + glyph_w + main_text.chars().count();
         let gap = w.saturating_sub(used + overdue_tag_w + right_w);
         spans.push(Span::styled(" ".repeat(gap), base_style));
         if !overdue_tag.is_empty() {
@@ -1528,7 +1559,7 @@ impl InstrumentApp {
         let glyph = "\u{203b}"; // ※
         let glyph_w = 2; // glyph + space
         let age_w = age.chars().count();
-        let text_budget = w.saturating_sub(cols.left + GUTTER + glyph_w + GUTTER + age_w);
+        let text_budget = w.saturating_sub(cols.left + cols.gutter + glyph_w + cols.gutter + age_w);
         let main_text = if text.chars().count() > text_budget {
             let t: String = text.chars().take(text_budget.saturating_sub(1)).collect();
             format!("{}\u{2026}", t)
@@ -1536,12 +1567,12 @@ impl InstrumentApp {
             text.to_string()
         };
 
-        let used = cols.left + GUTTER + glyph_w + main_text.chars().count();
+        let used = cols.left + cols.gutter + glyph_w + main_text.chars().count();
         let gap = w.saturating_sub(used + age_w);
 
         let mut spans = vec![
             Span::styled(format!("{:<width$}", "", width = cols.left), base_style),
-            Span::styled(" ".repeat(GUTTER), base_style),
+            Span::styled(" ".repeat(cols.gutter), base_style),
             Span::styled(format!("{} ", glyph), base_style),
             Span::styled(&main_text, base_style),
             Span::styled(" ".repeat(gap), base_style),
@@ -1578,7 +1609,7 @@ impl InstrumentApp {
             self.styles.dim
         };
 
-        let prefix_len = cols.left + GUTTER + extra_indent;
+        let prefix_len = cols.left + cols.gutter + extra_indent;
         let pad_right = w.saturating_sub(prefix_len + text.chars().count());
         let line = Line::from_spans([
             Span::styled(" ".repeat(prefix_len), style),
@@ -1644,7 +1675,7 @@ impl InstrumentApp {
                     " ".repeat(cols.left)
                 };
                 spans.push((left_content, self.styles.dim));
-                spans.push((" ".repeat(GUTTER), Style::new()));
+                spans.push((" ".repeat(cols.gutter), Style::new()));
             }
 
             let text_style = if selected { self.styles.selected } else { self.styles.text_bold };
@@ -1657,9 +1688,9 @@ impl InstrumentApp {
             spans.push((line_text.clone(), text_style));
 
             if i == 0 {
-                let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + 2 + line_text.chars().count();
+                let text_used = if has_deadline { cols.left + cols.gutter } else { 0 } + 2 + line_text.chars().count();
                 let gap = w.saturating_sub(text_used + desire_right_w);
-                if gap >= GUTTER {
+                if gap >= cols.gutter {
                     let right_style = if selected { self.styles.selected } else { self.styles.dim };
                     spans.push((" ".repeat(gap), right_style));
                     spans.push((desire_right.clone(), right_style));
@@ -1796,8 +1827,8 @@ impl InstrumentApp {
         if y >= limit_y { return 0; }
 
         let child_indent = parent_indent + HELD_INDENT;
-        let indent_str = " ".repeat(cols.left + GUTTER + child_indent);
-        let text_w = w.saturating_sub(cols.left + GUTTER + child_indent);
+        let indent_str = " ".repeat(cols.left + cols.gutter + child_indent);
+        let text_w = w.saturating_sub(cols.left + cols.gutter + child_indent);
         if text_w == 0 { return 0; }
 
         // 1. Reality (the thing you never see in the list — subdued weight)
@@ -2012,7 +2043,7 @@ fn render_line(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, parts: &[(Stri
 
 /// Left padding string (empty left column).
 fn pad_left(cols: &ColumnLayout) -> String {
-    format!("{}{}", " ".repeat(cols.left), " ".repeat(GUTTER))
+    format!("{}{}", " ".repeat(cols.left), " ".repeat(cols.gutter))
 }
 
 /// Word-wrap text to a given width.

@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-31T16:52:52Z",
+  "flushed_at": "2026-03-31T16:58:39Z",
   "summary": {
     "active": 69,
     "released": 19,
@@ -1735,7 +1735,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Checkpoint B done: view() rewritten with three-pane spatial model. LayoutState.split() produces PaneRects (desire/field/reality). render_anchors() renders desire+reality from view()-level pane rects. render_deck() only handles field zone. Content centering unified in LayoutState.content_area(). Dead constants removed from deck.rs.",
+      "actual": "Checkpoint C done: responsive breakpoints active. ColumnLayout::compute() accepts SizeRegime. Compact (<80 cols): gutter=1, left col abbreviated, ages hidden. Standard (80-120): gutter=2, ages hidden. Expansive (>120 or >40 rows): ages visible. cols.gutter replaces all 21 GUTTER constant refs. Regime detected at startup from terminal::size().",
       "created_at": "2026-03-31T13:54:08.320920+00:00",
       "desired": "spatial skeleton — PaneLayout three-pane (desire/field/reality) with drag-resize and snap points, Focus graph replaces cursor arithmetic, Responsive breakpoints for compact/standard/expansive regimes",
       "horizon": "2026-06",
