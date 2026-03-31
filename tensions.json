@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-31T19:17:54Z",
+  "flushed_at": "2026-03-31T19:37:33Z",
   "summary": {
     "active": 67,
     "released": 19,
@@ -1757,7 +1757,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Steps A-F complete. cached_frontier: Option<Frontier> replaced with frontier: Frontier (always valid). ensure_frontier() deleted. Manual invalidation (cached_frontier = None) replaced with recompute_frontier() calls. StateSnapshot updated: deck_cursor_index replaced with focus_active: FocusId. All 25 tests pass. DeckCursor still present as sync bridge — full removal deferred to cleanup pass",
+      "actual": "DeckCursor fully removed. DeckCursor struct deleted (50 lines), 4 Frontier flat-cursor methods deleted (selectable_count, default_cursor, cursor_for_sibling, cursor_target — 138 lines), sync bridge deleted. pre_survey_state now saves FocusId. JumpTop/JumpBottom use focus_state.targets_ref(). toggle_summary_expansion no longer needs manual clamp. Net -196 lines.",
       "created_at": "2026-03-31T13:54:16.048519+00:00",
       "desired": "widget migration — deck zones use List widget, survey uses Tree + VirtualizedList, reactive state (Observable/Computed/Binding) replaces manual cache invalidation. deck.rs and survey.rs rewritten on ftui widgets",
       "horizon": "2026-07",

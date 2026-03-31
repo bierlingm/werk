@@ -58,9 +58,6 @@ pub struct InstrumentApp {
     pub parent_mutation_count: usize,
     pub db_path_cache: Option<std::path::PathBuf>,
 
-    // Deck cursor — V2: tracks position in the frontier's flat selectable list
-    pub deck_cursor: crate::deck::DeckCursor,
-
     // Cached render expansion — updated after each render so navigation uses
     // the same frontier expansion as the visible display.
     pub last_render_lines: std::cell::Cell<usize>,
@@ -103,8 +100,8 @@ pub struct InstrumentApp {
     pub survey_items: Vec<crate::survey::SurveyItem>,
     /// Field-wide vitals for the NOW zone.
     pub field_vitals: crate::survey::FieldVitals,
-    /// Saved stream state for Shift+Tab return (parent_id, cursor index).
-    pub pre_survey_state: Option<(Option<String>, usize)>,
+    /// Saved stream state for Shift+Tab return (parent_id, focus node).
+    pub pre_survey_state: Option<(Option<String>, ftui::widgets::FocusId)>,
     /// Survey band collapse/expand state.
     pub survey_tree_state: crate::survey_tree::SurveyTreeState,
 
@@ -180,7 +177,7 @@ impl InstrumentApp {
             grandparent_display: None,
             parent_mutation_count: 0,
             db_path_cache: None,
-            deck_cursor: crate::deck::DeckCursor::default(),
+
             last_render_lines: std::cell::Cell::new(40),
             trajectory_mode: false,
             epoch_boundary: None,
@@ -270,7 +267,7 @@ impl InstrumentApp {
             grandparent_display: None,
             parent_mutation_count: 0,
             db_path_cache: None,
-            deck_cursor: crate::deck::DeckCursor::default(),
+
             last_render_lines: std::cell::Cell::new(40),
             trajectory_mode: false,
             epoch_boundary: None,
@@ -770,8 +767,8 @@ impl InstrumentApp {
                 s.position.map(|p| p.to_string()).unwrap_or_else(|| "held".into())))
             .collect();
         self.session_log.record(Category::Reorder,
-            format!("ENTER cursor={} id={} deck_cursor={} positions=[{}]",
-                cursor, &tension_id, self.deck_cursor.index, positions.join(", ")));
+            format!("ENTER cursor={} id={} focus={} positions=[{}]",
+                cursor, &tension_id, self.focus_state.active, positions.join(", ")));
 
         true
     }

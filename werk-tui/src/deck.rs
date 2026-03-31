@@ -453,143 +453,6 @@ impl Frontier {
         }
     }
 
-    /// Total number of selectable items in the deck.
-    pub fn selectable_count(&self) -> usize {
-        let mut count = 0;
-        if self.has_desire_anchor { count += 1; }
-        count += self.show_route;
-        if self.show_route < self.route.len() { count += 1; } // route summary
-        count += self.overdue.len();
-        if self.next.is_some() { count += 1; }
-        if !self.held.is_empty() {
-            count += self.show_held; // individual items
-            if self.show_held < self.held.len() { count += 1; } // summary for rest
-        }
-        count += 1; // input point (always present)
-        if !self.accumulated.is_empty() {
-            count += self.show_accumulated;
-            if self.show_accumulated < self.accumulated.len() { count += 1; } // summary
-        }
-        if self.has_reality_anchor { count += 1; }
-        count
-    }
-
-    /// Get the default cursor position — rests at the input point (NOW/frontier).
-    pub fn default_cursor(&self) -> usize {
-        let mut pos = 0;
-        if self.has_desire_anchor { pos += 1; }
-        pos += self.show_route;
-        if self.show_route < self.route.len() { pos += 1; } // route summary
-        pos += self.overdue.len();
-        if self.next.is_some() { pos += 1; }
-        if !self.held.is_empty() {
-            pos += self.show_held;
-            if self.show_held < self.held.len() { pos += 1; } // summary line
-        }
-        pos // input point is always right after held
-    }
-
-    /// Find the cursor index that points to a given sibling index.
-    /// Returns None if the sibling is not visible (compressed into a summary).
-    pub fn cursor_for_sibling(&self, sibling_idx: usize) -> Option<usize> {
-        let count = self.selectable_count();
-        for i in 0..count {
-            if let Some(idx) = self.cursor_target(i).sibling_index() {
-                if idx == sibling_idx {
-                    return Some(i);
-                }
-            }
-        }
-        None
-    }
-
-    /// Map a cursor index to what it points at.
-    pub fn cursor_target(&self, cursor: usize) -> CursorTarget {
-        let mut offset = 0;
-
-        // Desire anchor
-        if self.has_desire_anchor {
-            if cursor == 0 {
-                return CursorTarget::Desire;
-            }
-            offset += 1;
-        }
-
-        // Route — show_route individual items, then possibly summary
-        let shown_route = self.show_route.min(self.route.len());
-        if cursor < offset + shown_route {
-            return CursorTarget::Route(self.route[cursor - offset]);
-        }
-        offset += shown_route;
-        if shown_route < self.route.len() {
-            if cursor == offset {
-                return CursorTarget::RouteSummary;
-            }
-            offset += 1;
-        }
-
-        // Overdue
-        if cursor < offset + self.overdue.len() {
-            return CursorTarget::Overdue(self.overdue[cursor - offset]);
-        }
-        offset += self.overdue.len();
-
-        // Next
-        if let Some(next_idx) = self.next {
-            if cursor == offset {
-                return CursorTarget::Next(next_idx);
-            }
-            offset += 1;
-        }
-
-        // Held — show_held individual items, then possibly a summary
-        if !self.held.is_empty() {
-            // Individual held items
-            let shown = self.show_held.min(self.held.len());
-            if cursor < offset + shown {
-                return CursorTarget::HeldItem(self.held[cursor - offset]);
-            }
-            offset += shown;
-            // Summary line for remaining
-            if shown < self.held.len() {
-                if cursor == offset {
-                    return CursorTarget::Held;
-                }
-                offset += 1;
-            }
-        }
-
-        // Input point
-        if cursor == offset {
-            return CursorTarget::InputPoint;
-        }
-        offset += 1;
-
-        // Accumulated — show_accumulated individual items, then possibly a summary
-        if !self.accumulated.is_empty() {
-            let shown = self.show_accumulated.min(self.accumulated.len());
-            if cursor < offset + shown {
-                let acc_idx = cursor - offset;
-                return match &self.accumulated[acc_idx] {
-                    AccumulatedItem::Child(sibling_idx) => CursorTarget::AccumulatedItem(*sibling_idx),
-                    AccumulatedItem::Note { .. } => CursorTarget::NoteItem(acc_idx),
-                };
-            }
-            offset += shown;
-            if shown < self.accumulated.len() {
-                if cursor == offset {
-                    return CursorTarget::Accumulated;
-                }
-            }
-        }
-
-        // Reality anchor
-        if self.has_reality_anchor {
-            return CursorTarget::Reality;
-        }
-
-        CursorTarget::InputPoint // fallback
-    }
 }
 
 /// What the deck cursor is pointing at.
@@ -628,60 +491,6 @@ impl CursorTarget {
             CursorTarget::Route(i) | CursorTarget::Overdue(i) | CursorTarget::Next(i)
             | CursorTarget::HeldItem(i) | CursorTarget::AccumulatedItem(i) => Some(*i),
             _ => None,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Deck cursor — V2: index into flat selectable list
-// ---------------------------------------------------------------------------
-
-/// Which zone the cursor is in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeckZone {
-    Console,
-}
-
-/// Zone-aware cursor for the deck.
-#[derive(Debug, Clone)]
-pub struct DeckCursor {
-    pub zone: DeckZone,
-    /// Index into the flat selectable items list.
-    pub index: usize,
-}
-
-impl Default for DeckCursor {
-    fn default() -> Self {
-        Self {
-            zone: DeckZone::Console,
-            index: 0,
-        }
-    }
-}
-
-impl DeckCursor {
-    /// Move cursor up (toward desire / route).
-    pub fn pitch_up(&mut self, selectable_count: usize) {
-        if selectable_count == 0 { return; }
-        if self.index > 0 {
-            self.index -= 1;
-        }
-    }
-
-    /// Move cursor down (toward reality / accumulated).
-    pub fn pitch_down(&mut self, selectable_count: usize) {
-        if selectable_count == 0 { return; }
-        if self.index < selectable_count - 1 {
-            self.index += 1;
-        }
-    }
-
-    /// Clamp cursor to valid range.
-    pub fn clamp(&mut self, selectable_count: usize) {
-        if selectable_count == 0 {
-            self.index = 0;
-        } else {
-            self.index = self.index.min(selectable_count - 1);
         }
     }
 }
@@ -1650,40 +1459,31 @@ impl InstrumentApp {
     /// Handle pitch up (k / Up) in deck mode.
     pub fn deck_pitch_up(&mut self) {
         self.focus_state.navigate(ftui::widgets::NavDirection::Up);
-        self.sync_cursor_from_focus();
     }
 
     /// Handle pitch down (j / Down) in deck mode.
     pub fn deck_pitch_down(&mut self) {
         self.focus_state.navigate(ftui::widgets::NavDirection::Down);
-        self.sync_cursor_from_focus();
     }
 
-    /// Reset deck cursor to default position after data reload.
+    /// Reset focus to default position after data reload.
     pub fn deck_cursor_reset(&mut self) {
         self.focus_state.active = self.focus_state.default_focus();
-        self.sync_cursor_from_focus();
     }
 
-    /// Set deck cursor to point at a specific sibling index.
-    /// Falls back to default cursor if the sibling isn't visible.
+    /// Set focus to point at a specific sibling index.
+    /// Falls back to default if the sibling isn't visible.
     pub fn deck_cursor_to_sibling(&mut self, sibling_idx: usize) {
         if let Some(id) = self.focus_state.focus_for_sibling(sibling_idx) {
             self.focus_state.active = id;
         } else {
             self.focus_state.active = self.focus_state.default_focus();
         }
-        self.sync_cursor_from_focus();
     }
 
-    /// Get the sibling index the deck cursor currently points to (if any).
+    /// Get the sibling index the focus currently points to (if any).
     pub fn deck_selected_sibling_index(&self) -> Option<usize> {
         self.focus_state.cursor_target().sibling_index()
-    }
-
-    /// Sync legacy deck_cursor from focus graph (bridge during migration).
-    fn sync_cursor_from_focus(&mut self) {
-        self.deck_cursor.index = self.focus_state.active_index();
     }
 
     /// Render the deck bottom bar using ftui StatusLine.
