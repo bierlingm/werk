@@ -42,6 +42,8 @@ impl SizeRegime {
 }
 
 /// Computed pane rects for the three-zone spatial model.
+///
+/// Only the content panes — lever and hints are handled by the outer frame in view().
 #[derive(Debug, Clone)]
 pub struct PaneRects {
     /// Desire anchor — breadcrumb + desire text + rule. Top of the spatial axis.
@@ -50,16 +52,6 @@ pub struct PaneRects {
     pub field: Rect,
     /// Reality anchor — reality text + rule. Bottom of the spatial axis.
     pub reality: Rect,
-    /// Lever bar — 1 line status.
-    pub lever: Rect,
-    /// Key hints — 1 line, hidden when too short.
-    pub hints: Rect,
-}
-
-impl PaneRects {
-    pub fn has_hints(&self) -> bool {
-        self.hints.height > 0
-    }
 }
 
 /// Layout state tracked across frames.
@@ -81,6 +73,9 @@ impl Default for LayoutState {
     }
 }
 
+/// Minimum field height — below this the field is unusable.
+const MIN_FIELD_HEIGHT: u16 = 4;
+
 impl LayoutState {
     /// Recompute regime from terminal dimensions.
     pub fn update_regime(&mut self, width: u16, height: u16) {
@@ -88,6 +83,7 @@ impl LayoutState {
     }
 
     /// Constrain area to max content width, centered horizontally on wide terminals.
+    /// Adds edge margins and top padding on tall terminals.
     pub fn content_area(&self, area: Rect) -> Rect {
         let usable_width = area.width.saturating_sub(EDGE_MARGIN * 2);
         let width = usable_width.min(MAX_CONTENT_WIDTH);
@@ -105,37 +101,39 @@ impl LayoutState {
         )
     }
 
-    /// Split the full terminal area into pane rects.
+    /// Split a content area into the three spatial panes: desire / field / reality.
     ///
-    /// `desire_lines` and `reality_lines` are the content-fit line counts
-    /// for the parent's desired/actual text. When there is no parent (root level),
-    /// pass 0 for both — desire and reality panes collapse to zero height.
-    pub fn split(&self, area: Rect, desire_lines: u16, reality_lines: u16) -> PaneRects {
-        let show_hints = area.height >= 6;
+    /// `desire_h` and `reality_h` are the natural content-fit heights.
+    /// When there is no parent (root level), pass 0 for both — desire and reality
+    /// collapse to zero height and the field gets everything.
+    ///
+    /// Heights are capped to ensure the field gets at least MIN_FIELD_HEIGHT lines.
+    pub fn split(&self, area: Rect, desire_h: u16, reality_h: u16) -> PaneRects {
+        // Apply user overrides if set (future drag-resize).
+        let desire_natural = self.desire_height.unwrap_or(desire_h);
+        let reality_natural = self.reality_height.unwrap_or(reality_h);
 
-        // Desire height: user override, or content-fit (0 = no parent = collapsed)
-        let desire_h = self.desire_height.unwrap_or(desire_lines);
-        let reality_h = self.reality_height.unwrap_or(reality_lines);
+        // Cap desire/reality to ensure field gets minimum space.
+        let available = area.height;
+        let desire_capped = desire_natural.min(
+            available.saturating_sub(MIN_FIELD_HEIGHT + reality_natural)
+        );
+        let reality_capped = reality_natural.min(
+            available.saturating_sub(MIN_FIELD_HEIGHT + desire_capped)
+        );
 
-        let mut constraints = vec![
-            Constraint::Fixed(desire_h),    // desire anchor
-            Constraint::Fill,               // field (gets remaining)
-            Constraint::Fixed(reality_h),   // reality anchor
-            Constraint::Fixed(1),           // lever bar
-        ];
-        if show_hints {
-            constraints.push(Constraint::Fixed(1)); // hints
-        }
-
-        let layout = Flex::vertical().constraints(constraints);
-        let rects = layout.split(area);
+        let layout = Flex::vertical()
+            .constraints([
+                Constraint::Fixed(desire_capped),
+                Constraint::Fill,
+                Constraint::Fixed(reality_capped),
+            ])
+            .split(area);
 
         PaneRects {
-            desire: rects[0],
-            field: rects[1],
-            reality: rects[2],
-            lever: rects[3],
-            hints: if show_hints { rects[4] } else { Rect::default() },
+            desire: layout[0],
+            field: layout[1],
+            reality: layout[2],
         }
     }
 }

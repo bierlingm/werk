@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-31T16:31:30Z",
+  "flushed_at": "2026-03-31T16:52:52Z",
   "summary": {
     "active": 69,
     "released": 19,
@@ -1735,7 +1735,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Checkpoint A done: layout.rs (SizeRegime, LayoutState, PaneRects, split()) and focus.rs (FocusGraph skeleton, 7 nodes, vertical Up/Down connections) created and wired into InstrumentApp. Msg::Resize variant added. All compiles clean.",
+      "actual": "Checkpoint B done: view() rewritten with three-pane spatial model. LayoutState.split() produces PaneRects (desire/field/reality). render_anchors() renders desire+reality from view()-level pane rects. render_deck() only handles field zone. Content centering unified in LayoutState.content_area(). Dead constants removed from deck.rs.",
       "created_at": "2026-03-31T13:54:08.320920+00:00",
       "desired": "spatial skeleton — PaneLayout three-pane (desire/field/reality) with drag-resize and snap points, Focus graph replaces cursor arithmetic, Responsive breakpoints for compact/standard/expansive regimes",
       "horizon": "2026-06",
