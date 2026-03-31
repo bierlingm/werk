@@ -71,7 +71,7 @@ impl Model for InstrumentApp {
         // Clear the ENTIRE visible area to black/dim before rendering anything.
         // This prevents stale Cell::default() (WHITE fg) from bleeding through
         // on margins, blank lines, hints rows, or any cell the widgets skip.
-        crate::helpers::clear_area_styled(frame, area);
+        crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
         let show_hints = area.height >= 6;
 
         // Layout: content + lever + hints

@@ -15,7 +15,6 @@ use werk_shared::truncate;
 use crate::app::InstrumentApp;
 use crate::glyphs;
 use crate::state::*;
-use crate::theme::*;
 
 /// Maximum content width. Wide terminals get margin.
 const MAX_CONTENT_WIDTH: u16 = 104;
@@ -57,17 +56,17 @@ impl InstrumentApp {
             Line::from(""),
             Line::from(Span::styled(
                 format!("{:^width$}", "\u{25C7}", width = w), // ◇ centered
-                Style::new().fg(CLR_CYAN),
+                Style::new().fg(self.styles.clr_cyan),
             )),
             Line::from(""),
             Line::from(Span::styled(
                 format!("{:^width$}", "nothing here yet.", width = w),
-                STYLES.dim,
+                self.styles.dim,
             )),
             Line::from(""),
             Line::from(Span::styled(
                 format!("{:^width$}", "press  a  to name what matters.", width = w),
-                STYLES.dim,
+                self.styles.dim,
             )),
         ];
 
@@ -89,7 +88,7 @@ impl InstrumentApp {
 
     pub fn render_help(&self, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.content_area(*area);
-        crate::helpers::clear_area_styled(frame, area);
+        crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
 
         let w = area.width as usize;
         let content_w = w.min(72);
@@ -103,11 +102,11 @@ impl InstrumentApp {
         // --- Navigation section ---
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("NAVIGATION", STYLES.text_bold),
+            Span::styled("NAVIGATION", self.styles.text_bold),
         ]));
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled(&light_rule, STYLES.dim),
+            Span::styled(&light_rule, self.styles.dim),
         ]));
         let nav_keys: &[(&str, &str, &str, &str)] = &[
             ("j/k", "move up/down", "g/G", "jump to top/bottom"),
@@ -118,10 +117,10 @@ impl InstrumentApp {
         for (k1, d1, k2, d2) in nav_keys {
             lines.push(Line::from_spans([
                 Span::styled(&pad, Style::new()),
-                Span::styled(format!("{:<12}", k1), STYLES.cyan),
-                Span::styled(format!("{:<22}", d1), STYLES.text),
-                Span::styled(format!("{:<12}", k2), STYLES.cyan),
-                Span::styled(*d2, STYLES.text),
+                Span::styled(format!("{:<12}", k1), self.styles.cyan),
+                Span::styled(format!("{:<22}", d1), self.styles.text),
+                Span::styled(format!("{:<12}", k2), self.styles.cyan),
+                Span::styled(*d2, self.styles.text),
             ]));
         }
 
@@ -130,11 +129,11 @@ impl InstrumentApp {
         // --- Acts section ---
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("ACTS", STYLES.text_bold),
+            Span::styled("ACTS", self.styles.text_bold),
         ]));
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled(&light_rule, STYLES.dim),
+            Span::styled(&light_rule, self.styles.dim),
         ]));
         let act_keys: &[(&str, &str, &str, &str)] = &[
             ("a", "add tension", "e", "edit (desire/reality/horizon)"),
@@ -147,12 +146,12 @@ impl InstrumentApp {
         for (k1, d1, k2, d2) in act_keys {
             let mut spans = vec![
                 Span::styled(&pad, Style::new()),
-                Span::styled(format!("{:<4}", k1), STYLES.cyan),
-                Span::styled(format!("{:<30}", d1), STYLES.text),
+                Span::styled(format!("{:<4}", k1), self.styles.cyan),
+                Span::styled(format!("{:<30}", d1), self.styles.text),
             ];
             if !k2.is_empty() {
-                spans.push(Span::styled(format!("{:<4}", k2), STYLES.cyan));
-                spans.push(Span::styled(*d2, STYLES.text));
+                spans.push(Span::styled(format!("{:<4}", k2), self.styles.cyan));
+                spans.push(Span::styled(*d2, self.styles.text));
             }
             lines.push(Line::from_spans(spans));
         }
@@ -162,22 +161,22 @@ impl InstrumentApp {
         // --- Glyphs section ---
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("GLYPHS & COLORS", STYLES.text_bold),
+            Span::styled("GLYPHS & COLORS", self.styles.text_bold),
         ]));
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled(&light_rule, STYLES.dim),
+            Span::styled(&light_rule, self.styles.dim),
         ]));
 
         // Glyphs with their actual colors inline
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("\u{25C7} ", Style::new().fg(CLR_DEFAULT)),
-            Span::styled("active        ", STYLES.dim),
-            Span::styled("\u{2726} ", Style::new().fg(CLR_DIM)),
-            Span::styled("resolved      ", STYLES.dim),
-            Span::styled("\u{00B7} ", Style::new().fg(CLR_DIM)),
-            Span::styled("released", STYLES.dim),
+            Span::styled("\u{25C7} ", Style::new().fg(self.styles.clr_text)),
+            Span::styled("active        ", self.styles.dim),
+            Span::styled("\u{2726} ", Style::new().fg(self.styles.clr_dim)),
+            Span::styled("resolved      ", self.styles.dim),
+            Span::styled("\u{00B7} ", Style::new().fg(self.styles.clr_dim)),
+            Span::styled("released", self.styles.dim),
         ]));
 
         lines.push(Line::from(""));
@@ -185,32 +184,32 @@ impl InstrumentApp {
         // Temporal indicator legend
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25E6}\u{25CC}\u{25CF}\u{25CC}", Style::new().fg(CLR_CYAN)),
-            Span::styled("  temporal window: ", STYLES.dim),
-            Span::styled("\u{25E6}", STYLES.cyan),
-            Span::styled(" now  ", STYLES.dim),
-            Span::styled("\u{25CF}", STYLES.cyan),
-            Span::styled(" horizon end", STYLES.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25E6}\u{25CC}\u{25CF}\u{25CC}", Style::new().fg(self.styles.clr_cyan)),
+            Span::styled("  temporal window: ", self.styles.dim),
+            Span::styled("\u{25E6}", self.styles.cyan),
+            Span::styled(" now  ", self.styles.dim),
+            Span::styled("\u{25CF}", self.styles.cyan),
+            Span::styled(" horizon end", self.styles.dim),
         ]));
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CE}", STYLES.dim),
-            Span::styled("  staleness (no horizon set)", STYLES.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CE}", self.styles.dim),
+            Span::styled("  staleness (no horizon set)", self.styles.dim),
         ]));
         lines.push(Line::from_spans([
             Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(CLR_CYAN)),
-            Span::styled(" comfortable  ", STYLES.dim),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(CLR_AMBER)),
-            Span::styled(" approaching  ", STYLES.dim),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(CLR_RED)),
-            Span::styled(" overdue", STYLES.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(self.styles.clr_cyan)),
+            Span::styled(" comfortable  ", self.styles.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(self.styles.clr_amber)),
+            Span::styled(" approaching  ", self.styles.dim),
+            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(self.styles.clr_red)),
+            Span::styled(" overdue", self.styles.dim),
         ]));
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             format!("{}press any key to close", pad),
-            STYLES.dim,
+            self.styles.dim,
         )));
 
         // Center vertically
@@ -234,7 +233,7 @@ impl InstrumentApp {
         let sibling_lines = self.siblings.len() as u16;
         let prompt_y = area.y + header_lines + sibling_lines;
         let prompt_area = Rect::new(area.x, prompt_y, area.width, 4);
-        crate::helpers::clear_area_styled(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
 
         let (label, hint) = match step {
             AddStep::Desire => ("desire", "  (Enter to create, Tab for more)"),
@@ -245,10 +244,10 @@ impl InstrumentApp {
         let lines = vec![
             Line::from(""),
             Line::from_spans([
-                Span::styled(format!("{}{}: ", INDENT, label), STYLES.dim),
-                Span::styled(&self.input_buffer, STYLES.text_bold),
-                Span::styled("\u{2588}", STYLES.cyan), // cursor block
-                Span::styled(hint, STYLES.dim),
+                Span::styled(format!("{}{}: ", INDENT, label), self.styles.dim),
+                Span::styled(&self.input_buffer, self.styles.text_bold),
+                Span::styled("\u{2588}", self.styles.cyan), // cursor block
+                Span::styled(hint, self.styles.dim),
             ]),
         ];
 
@@ -264,7 +263,7 @@ impl InstrumentApp {
         let area = self.content_area(*area);
         let cy = area.height / 2;
         let prompt_area = Rect::new(area.x, area.y + cy.saturating_sub(3), area.width, 6);
-        crate::helpers::clear_area_styled(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
 
         let (action, desired) = match kind {
             ConfirmKind::Resolve { desired, .. } => ("resolve", desired.as_str()),
@@ -281,19 +280,19 @@ impl InstrumentApp {
             Line::from(""),
             Line::from(Span::styled(
                 format!("{}  {} \"{}\"?", INDENT, action, short),
-                STYLES.text_bold,
+                self.styles.text_bold,
             )),
             Line::from(Span::styled(
                 format!("{}  {}", INDENT, description),
-                STYLES.dim,
+                self.styles.dim,
             )),
             Line::from(""),
             Line::from_spans([
                 Span::styled(format!("{}  ", INDENT), Style::new()),
-                Span::styled("y", STYLES.cyan),
-                Span::styled(" confirm    ", STYLES.dim),
-                Span::styled("n", STYLES.cyan),
-                Span::styled(" cancel", STYLES.dim),
+                Span::styled("y", self.styles.cyan),
+                Span::styled(" confirm    ", self.styles.dim),
+                Span::styled("n", self.styles.cyan),
+                Span::styled(" cancel", self.styles.dim),
             ]),
         ];
 
@@ -318,7 +317,7 @@ impl InstrumentApp {
         let cy = area.height / 2;
         let top_y = area.y + cy.saturating_sub(total_h / 2);
         let prompt_area = Rect::new(area.x, top_y, area.width, total_h.min(area.height));
-        crate::helpers::clear_area_styled(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
 
         let mut lines: Vec<Line> = Vec::new();
 
@@ -326,25 +325,25 @@ impl InstrumentApp {
         lines.push(Line::from(""));
         lines.push(Line::from_spans([
             Span::styled(format!("{}  ", INDENT), Style::new()),
-            Span::styled("\u{26A1} ", STYLES.amber), // ⚡
-            Span::styled(&pw.palette.description, STYLES.amber),
+            Span::styled("\u{26A1} ", self.styles.amber), // ⚡
+            Span::styled(&pw.palette.description, self.styles.amber),
         ]));
         lines.push(Line::from(""));
 
         // Options
         for (i, opt) in pw.palette.options.iter().enumerate() {
             let is_cursor = i == pw.cursor;
-            let idx_style = if is_cursor { STYLES.selected } else { STYLES.cyan };
-            let label_style = if is_cursor { STYLES.selected } else { STYLES.text };
+            let idx_style = if is_cursor { self.styles.selected } else { self.styles.cyan };
+            let label_style = if is_cursor { self.styles.selected } else { self.styles.text };
             lines.push(Line::from_spans([
-                Span::styled(format!("{}  ", INDENT), if is_cursor { STYLES.selected } else { Style::new() }),
+                Span::styled(format!("{}  ", INDENT), if is_cursor { self.styles.selected } else { Style::new() }),
                 Span::styled(format!("[{}]", opt.index), idx_style),
                 Span::styled(format!(" {}", opt.label), label_style),
                 // Pad to full width for selection highlight
                 if is_cursor {
                     let used = INDENT.len() + 2 + 3 + 1 + opt.label.len();
                     let pad = (area.width as usize).saturating_sub(used);
-                    Span::styled(" ".repeat(pad), STYLES.selected)
+                    Span::styled(" ".repeat(pad), self.styles.selected)
                 } else {
                     Span::styled("", Style::new())
                 },
@@ -355,12 +354,12 @@ impl InstrumentApp {
         lines.push(Line::from(""));
         lines.push(Line::from_spans([
             Span::styled(format!("{}  ", INDENT), Style::new()),
-            Span::styled("j/k", STYLES.cyan),
-            Span::styled(" navigate  ", STYLES.dim),
-            Span::styled("Enter", STYLES.cyan),
-            Span::styled(" select  ", STYLES.dim),
-            Span::styled("Esc", STYLES.cyan),
-            Span::styled(" dismiss", STYLES.dim),
+            Span::styled("j/k", self.styles.cyan),
+            Span::styled(" navigate  ", self.styles.dim),
+            Span::styled("Enter", self.styles.cyan),
+            Span::styled(" select  ", self.styles.dim),
+            Span::styled("Esc", self.styles.cyan),
+            Span::styled(" dismiss", self.styles.dim),
         ]));
 
         let para = Paragraph::new(Text::from_lines(lines));
@@ -378,7 +377,7 @@ impl InstrumentApp {
         let panel_x = area.x + INDENT.len() as u16;
         let panel_w = area.width.saturating_sub(INDENT.len() as u16);
         let prompt_area = Rect::new(panel_x, area.y + bottom_y, panel_w, panel_h);
-        crate::helpers::clear_area_styled(frame, Rect::new(area.x, area.y + bottom_y, area.width, panel_h + 1));
+        crate::helpers::clear_area_styled(frame, Rect::new(area.x, area.y + bottom_y, area.width, panel_h + 1), self.styles.clr_dim);
 
         let label = match field {
             EditField::Desire => "desire",
@@ -397,9 +396,9 @@ impl InstrumentApp {
         for (name, f) in &field_labels {
             let is_active = std::mem::discriminant(field) == std::mem::discriminant(f);
             if is_active {
-                tab_spans.push(Span::styled(format!("[{}]", name), STYLES.cyan));
+                tab_spans.push(Span::styled(format!("[{}]", name), self.styles.cyan));
             } else {
-                tab_spans.push(Span::styled(format!(" {} ", name), STYLES.dim));
+                tab_spans.push(Span::styled(format!(" {} ", name), self.styles.dim));
             }
             tab_spans.push(Span::styled(" ", Style::new()));
         }
@@ -413,9 +412,9 @@ impl InstrumentApp {
         let para = Paragraph::new(Text::from_lines(content_lines));
         let panel = Panel::new(para)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(CLR_DIM))
+            .border_style(Style::new().fg(self.styles.clr_dim))
             .title(label)
-            .title_style(STYLES.cyan);
+            .title_style(self.styles.cyan);
         panel.render(prompt_area, frame);
 
         // Render the TextInput widget in the input area within the panel
@@ -444,14 +443,14 @@ impl InstrumentApp {
         let area = self.content_area(*area);
         let bottom_y = area.height.saturating_sub(4);
         let prompt_area = Rect::new(area.x, area.y + bottom_y, area.width, 3);
-        crate::helpers::clear_area_styled(frame, prompt_area);
+        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
 
         let label_text = format!("{}  note: ", INDENT);
         let label_w = label_text.len() as u16;
         let lines = vec![
             Line::from(""),
             Line::from_spans([
-                Span::styled(&label_text, STYLES.label),
+                Span::styled(&label_text, self.styles.label),
             ]),
         ];
 
@@ -480,7 +479,7 @@ impl InstrumentApp {
 
     pub fn render_search(&self, area: &Rect, frame: &mut Frame<'_>) {
         let area = self.content_area(*area);
-        crate::helpers::clear_area_styled(frame, area);
+        crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
 
         let mut lines: Vec<Line> = Vec::new();
 
@@ -489,9 +488,9 @@ impl InstrumentApp {
         let prefix = if is_moving { "move to" } else { "/" };
 
         lines.push(Line::from_spans([
-            Span::styled(format!("{}{}: ", INDENT, prefix), STYLES.label),
-            Span::styled(&self.input_buffer, STYLES.text_bold),
-            Span::styled("\u{2588}", STYLES.cyan),
+            Span::styled(format!("{}{}: ", INDENT, prefix), self.styles.label),
+            Span::styled(&self.input_buffer, self.styles.text_bold),
+            Span::styled("\u{2588}", self.styles.cyan),
         ]));
         lines.push(Line::from(""));
 
@@ -499,8 +498,8 @@ impl InstrumentApp {
         if let Some(ref search) = self.search_state {
             for (i, result) in search.results.iter().enumerate() {
                 let is_selected = i == search.cursor;
-                let style = if is_selected { STYLES.selected } else { STYLES.text };
-                let dim = if is_selected { STYLES.text_bold } else { STYLES.dim };
+                let style = if is_selected { self.styles.selected } else { self.styles.text };
+                let dim = if is_selected { self.styles.text_bold } else { self.styles.dim };
 
                 let selector = if is_selected { "\u{25B8}" } else { " " };
 
@@ -519,7 +518,7 @@ impl InstrumentApp {
                         ),
                         Span::styled(
                             format!("  {}", result.parent_path),
-                            STYLES.dim,
+                            self.styles.dim,
                         ),
                     ]));
                 }
@@ -528,7 +527,7 @@ impl InstrumentApp {
             if search.results.is_empty() && !self.input_buffer.is_empty() {
                 lines.push(Line::from(Span::styled(
                     format!("{}  no matches", INDENT),
-                    STYLES.dim,
+                    self.styles.dim,
                 )));
             }
         }
@@ -542,7 +541,7 @@ impl InstrumentApp {
         let display = format!(" {}", text);
         let hints = StatusLine::new()
             .left(StatusItem::text(&display))
-            .style(STYLES.dim);
+            .style(self.styles.dim);
         hints.render(*area, frame);
     }
 }

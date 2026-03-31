@@ -109,6 +109,9 @@ pub struct InstrumentApp {
 
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
+
+    // Theme — resolved at startup for the detected terminal mode.
+    pub styles: crate::theme::InstrumentStyles,
 }
 
 impl InstrumentApp {
@@ -124,6 +127,17 @@ impl InstrumentApp {
 
         let search_index = sd_core::SearchIndex::build(&engine.store());
 
+        // Resolve theme for detected terminal mode
+        let theme = crate::theme::instrument_theme();
+        let is_dark = ftui::Theme::detect_dark_mode();
+        let resolved = theme.resolve(is_dark);
+        let styles = crate::theme::InstrumentStyles::resolve(&resolved);
+
+        let text_input = TextInput::new()
+            .with_style(styles.text_bold)
+            .with_cursor_style(ftui::style::Style::new().fg(styles.clr_cyan))
+            .with_placeholder_style(styles.dim);
+
         let mut app = Self {
             engine,
             session_id,
@@ -135,10 +149,7 @@ impl InstrumentApp {
             siblings: Vec::new(),
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
-            text_input: TextInput::new()
-                .with_style(crate::theme::STYLES.text_bold)
-                .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
-                .with_placeholder_style(crate::theme::STYLES.dim),
+            text_input,
             search_state: None,
             search_index,
             transient: None,
@@ -181,6 +192,7 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
+            styles,
         };
         if let Some(ref sid) = app.session_id {
             app.session_log.set_store_session_id(sid.clone());
@@ -192,6 +204,18 @@ impl InstrumentApp {
     /// Create an app in empty/welcome state.
     pub fn new_empty() -> Self {
         let engine = Engine::new_in_memory().expect("failed to create in-memory engine"); // ubs:ignore in-memory SQLite cannot fail
+
+        // Resolve theme for detected terminal mode
+        let theme = crate::theme::instrument_theme();
+        let is_dark = ftui::Theme::detect_dark_mode();
+        let resolved = theme.resolve(is_dark);
+        let styles = crate::theme::InstrumentStyles::resolve(&resolved);
+
+        let text_input = TextInput::new()
+            .with_style(styles.text_bold)
+            .with_cursor_style(ftui::style::Style::new().fg(styles.clr_cyan))
+            .with_placeholder_style(styles.dim);
+
         Self {
             engine,
             session_id: None,
@@ -203,10 +227,7 @@ impl InstrumentApp {
             siblings: Vec::new(),
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
-            text_input: TextInput::new()
-                .with_style(crate::theme::STYLES.text_bold)
-                .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
-                .with_placeholder_style(crate::theme::STYLES.dim),
+            text_input,
             search_state: None,
             search_index: None,
             transient: None,
@@ -241,6 +262,7 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             session_log: crate::session_log::SessionLog::new(),
+            styles,
         }
     }
 
