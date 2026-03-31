@@ -1349,10 +1349,11 @@ impl InstrumentApp {
     }
 
     fn refresh_search_results(&mut self, include_root: bool) {
+        let idx = self.search_index.as_ref();
         let results = if include_root {
-            crate::search::search_all_with_root(&self.input_buffer, self.engine.store())
+            crate::search::search_all_with_root(&self.input_buffer, self.engine.store(), idx)
         } else {
-            crate::search::search_all(&self.input_buffer, self.engine.store())
+            crate::search::search_all(&self.input_buffer, self.engine.store(), idx)
         };
         if let Some(ref mut s) = self.search_state {
             s.query = self.input_buffer.clone();

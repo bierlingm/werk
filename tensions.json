@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-31T11:19:00Z",
+  "flushed_at": "2026-03-31T12:13:51Z",
   "summary": {
-    "active": 70,
+    "active": 76,
     "released": 7,
     "resolved": 73,
-    "total": 150
+    "total": 156
   },
   "tensions": [
     {
@@ -1515,7 +1515,7 @@
       "status": "Active"
     },
     {
-      "actual": "Plan approved. Git dep on frankensearch (not crates.io — const fn bug). Canonical API (IndexBuilder → TwoTierSearcher → search_collect) confirmed working. SearchIndex goes in sd-core for shared use. TUI wires through unchanged SearchResult contract with substring fallback. Migration path: hash→hybrid→semantic via feature flags, zero code changes per step. Implementation next.",
+      "actual": "Core delivered across all three surfaces. TUI: FrankenSearch-backed / search, active-only, ~62μs per keystroke, zero DB reads. CLI: --search flag on list, ranks by relevance. MCP: search tool for agents. In-memory index with cached metadata, rebuilt on mutation. Decomposed into 6 children: #156 search gestures, #157 inline filters, #158 hybrid BM25 upgrade, #159 logbase indexing, #160 relevance context, #161 quality embedder.",
       "created_at": "2026-03-30T21:29:45.127237+00:00",
       "desired": "FrankenSearch provides hybrid retrieval across all werk content — BM25 for TUI search, full two-tier (lexical + semantic + RRF fusion) for the logbase, semantic queries via MCP let agents search by meaning not just structure",
       "horizon": "2026-06",
@@ -1655,6 +1655,72 @@
       "parent_id": "01KMGFKY13827YVY23E14BX4X7",
       "position": null,
       "short_code": 155,
+      "status": "Active"
+    },
+    {
+      "actual": "Search navigates to the selected tension on submit. No in-overlay gestures yet.",
+      "created_at": "2026-03-31T12:10:31.211427+00:00",
+      "desired": "TUI search acts on results — gestures from the search overlay (resolve, annotate, move, yank) without navigating first",
+      "horizon": null,
+      "id": "01KN1WTWXBEM9JEHJ2912SEVTJ",
+      "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "position": null,
+      "short_code": 156,
+      "status": "Active"
+    },
+    {
+      "actual": "Search is content-only. Structural filtering requires the list command or separate navigation.",
+      "created_at": "2026-03-31T12:10:33.701463+00:00",
+      "desired": "TUI search filters inline — type status:resolved or parent:10 to narrow results by structural properties alongside content",
+      "horizon": null,
+      "id": "01KN1WTZB5F475AAHZ0VV09CRB",
+      "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "position": null,
+      "short_code": 157,
+      "status": "Active"
+    },
+    {
+      "actual": "Hash embedder only (features=[\"hash\"]). Upgrade path: change to features=[\"hybrid\"] in Cargo.toml. FrankenSearch's TwoTierSearcher activates BM25+RRF automatically. Disk index needed (persist_disk_index).",
+      "created_at": "2026-03-31T12:10:36.875138+00:00",
+      "desired": "search upgraded to hybrid retrieval — BM25 lexical via Tantivy alongside hash embedder, RRF fusion ranks results from both tiers",
+      "horizon": null,
+      "id": "01KN1WV2EBEDYSF240BQ9YV50D",
+      "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "position": null,
+      "short_code": 158,
+      "status": "Active"
+    },
+    {
+      "actual": "Only tension desired+actual text is indexed. Notes, mutations, epochs, design docs are not searchable. Depends on logbase (#89) existing as a content store.",
+      "created_at": "2026-03-31T12:10:39.383626+00:00",
+      "desired": "search indexes notes, mutations, epochs, and design docs — the logbase substrate makes all prior decisions retrievable by meaning",
+      "horizon": null,
+      "id": "01KN1WV4WQ5X3M7B89DH0XJ69K",
+      "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "position": null,
+      "short_code": 159,
+      "status": "Active"
+    },
+    {
+      "actual": "Results show desired text and parent breadcrumb only. No match explanation, no highlighting, no score display.",
+      "created_at": "2026-03-31T12:10:41.782569+00:00",
+      "desired": "search results show relevance context — which terms matched, why this result ranked here, snippet highlighting",
+      "horizon": null,
+      "id": "01KN1WV77PPMW1Z42CKFS35QHW",
+      "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "position": null,
+      "short_code": 160,
+      "status": "Active"
+    },
+    {
+      "actual": "Hash embedder captures lexical overlap (bag-of-words via FNV-1a). Upgrade: features=[\"semantic\"] adds model2vec/fastembed. PhaseGate learns per-corpus when quality tier helps. Zero code changes.",
+      "created_at": "2026-03-31T12:10:45.315222+00:00",
+      "desired": "quality embedder activated — semantic search finds tensions by meaning not just vocabulary overlap, Phase 2 refines results when it adds value",
+      "horizon": null,
+      "id": "01KN1WVAP3G32G1X1FEENJEBCK",
+      "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
+      "position": null,
+      "short_code": 161,
       "status": "Active"
     }
   ]

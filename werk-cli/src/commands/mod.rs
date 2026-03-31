@@ -444,7 +444,8 @@ Examples:
   werk list --changed \"3 days ago\"   Changes in last 3 days
   werk list --sort deadline          Sort by deadline
   werk list --tree                   Show results as hierarchy
-  werk list --long                   Expanded detail per tension")]
+  werk list --long                   Expanded detail per tension
+  werk list --search \"revenue\"       Search by content (ranked by relevance)")]
     List {
         /// Include resolved and released tensions.
         #[arg(long)]
@@ -509,6 +510,10 @@ Examples:
         /// Expanded detail per tension.
         #[arg(long)]
         long: bool,
+
+        /// Search by content (FrankenSearch hybrid retrieval). Ranks results by relevance.
+        #[arg(long)]
+        search: Option<String>,
     },
 
     /// Display the tension forest as a tree.

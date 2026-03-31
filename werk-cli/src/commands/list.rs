@@ -63,6 +63,7 @@ pub struct ListParams {
     pub reverse: bool,
     pub tree: bool,
     pub long: bool,
+    pub search: Option<String>,
 }
 
 /// Computed row data for filtering, sorting, and display.
@@ -378,9 +379,41 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
         rows.retain(|r| !r.signal_glyphs.is_empty());
     }
 
-    // ── Sort ───────────────────────────────────────────────────────
+    // ── Search (FrankenSearch content retrieval) ───────────────────
+    // When --search is active, filter to matching tensions and sort by
+    // relevance score (overrides the normal sort).
+    let search_active = params.search.is_some();
+    if let Some(ref query) = params.search {
+        let index = sd_core::SearchIndex::build(&store);
+        if let Some(ref idx) = index {
+            let hits = idx.search(query, 100);
+            let hit_order: std::collections::HashMap<String, (usize, f32)> = hits
+                .iter()
+                .enumerate()
+                .map(|(i, h)| (h.doc_id.clone(), (i, h.score)))
+                .collect();
+            rows.retain(|r| hit_order.contains_key(&r.id));
+            rows.sort_by(|a, b| {
+                let oa = hit_order.get(&a.id).map(|(i, _)| *i).unwrap_or(usize::MAX);
+                let ob = hit_order.get(&b.id).map(|(i, _)| *i).unwrap_or(usize::MAX);
+                oa.cmp(&ob)
+            });
+        } else {
+            // Fallback: substring filter when index unavailable
+            let q = query.to_lowercase();
+            rows.retain(|r| {
+                r.desired.to_lowercase().contains(&q)
+                    || r.actual.to_lowercase().contains(&q)
+            });
+        }
+    }
 
-    match params.sort.as_str() {
+    // ── Sort (skipped when --search provides relevance ranking) ────
+
+    if search_active {
+        // Search already sorted by relevance — don't re-sort unless
+        // the user explicitly asked for a different sort.
+    } else { match params.sort.as_str() {
         "urgency" => {
             rows.sort_by(|a, b| {
                 let ua = a.urgency.unwrap_or(-1.0);
@@ -428,7 +461,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
                 ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
-    }
+    } }
 
     if params.reverse {
         rows.reverse();

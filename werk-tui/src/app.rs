@@ -36,6 +36,7 @@ pub struct InstrumentApp {
 
     // Search
     pub search_state: Option<crate::search::SearchState>,
+    pub search_index: Option<sd_core::SearchIndex>,
 
     // Chrome
     pub transient: Option<TransientMessage>,
@@ -124,6 +125,8 @@ impl InstrumentApp {
             .filter(|e| e.status == TensionStatus::Active)
             .count();
 
+        let search_index = sd_core::SearchIndex::build(&engine.store());
+
         let mut app = Self {
             engine,
             session_id,
@@ -142,6 +145,7 @@ impl InstrumentApp {
                 .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
                 .with_placeholder_style(crate::theme::STYLES.dim),
             search_state: None,
+            search_index,
             transient: None,
             show_help: false,
             db_modified: None,
@@ -211,6 +215,7 @@ impl InstrumentApp {
                 .with_cursor_style(ftui::style::Style::new().fg(crate::theme::CLR_CYAN))
                 .with_placeholder_style(crate::theme::STYLES.dim),
             search_state: None,
+            search_index: None,
             transient: None,
             show_help: false,
             db_modified: None,
@@ -410,6 +415,9 @@ impl InstrumentApp {
         self.recompute_frontier();
         let count = self.cached_frontier.as_ref().map(|f| f.selectable_count()).unwrap_or(0);
         self.deck_cursor.clamp(count);
+
+        // Rebuild search index (fast: ~1.6ms for 150 docs)
+        self.search_index = sd_core::SearchIndex::build(self.engine.store());
 
         // Refresh db_modified so the next Tick doesn't treat our own writes as external changes
         self.refresh_db_modified();
