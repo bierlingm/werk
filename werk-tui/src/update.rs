@@ -1731,7 +1731,7 @@ impl InstrumentApp {
     /// Try to focus a note if the cursor is on a NoteItem. Returns the FocusedNote or None.
     fn try_focus_note(&self) -> Option<crate::deck::FocusedNote> {
         let frontier = self.cached_frontier.as_ref()?;
-        let target = frontier.cursor_target(self.deck_cursor.index);
+        let target = self.focus_state.cursor_target();
         if let crate::deck::CursorTarget::NoteItem(acc_idx) = target {
             if let Some(crate::deck::AccumulatedItem::Note { text, age, .. }) = frontier.accumulated.get(acc_idx) {
                 return Some(crate::deck::FocusedNote {
@@ -1747,11 +1747,11 @@ impl InstrumentApp {
     /// Enter edit mode for the desire/reality anchor under the cursor.
     /// Returns true if the cursor was on an anchor and edit was entered.
     fn enter_anchor_edit(&mut self) -> bool {
-        let frontier = match self.cached_frontier.as_ref() {
+        let _frontier = match self.cached_frontier.as_ref() {
             Some(f) => f,
             None => return false,
         };
-        let target = frontier.cursor_target(self.deck_cursor.index);
+        let target = self.focus_state.cursor_target();
         let pid = match self.parent_id.clone() {
             Some(pid) => pid,
             None => return false,
@@ -1790,11 +1790,11 @@ impl InstrumentApp {
     /// Toggle expansion of the summary zone under the cursor.
     /// Returns true if the cursor was on a summary and the toggle was applied.
     fn toggle_summary_expansion(&mut self) -> bool {
-        let frontier = match self.cached_frontier.as_ref() {
+        let _frontier = match self.cached_frontier.as_ref() {
             Some(f) => f,
             None => return false,
         };
-        let target = frontier.cursor_target(self.deck_cursor.index);
+        let target = self.focus_state.cursor_target();
         match target {
             crate::deck::CursorTarget::RouteSummary => {
                 self.route_expanded = !self.route_expanded;
