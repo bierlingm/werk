@@ -15,6 +15,7 @@ pub mod graph;
 pub mod horizon;
 pub mod mutation;
 pub mod projection;
+pub mod search;
 pub mod store;
 pub mod temporal;
 pub mod tension;
@@ -43,4 +44,5 @@ pub use tension::{SdError, Tension, TensionStatus};
 pub use graph::{
     ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
 };
+pub use search::{SearchHit, SearchIndex};
 pub use tree::{Forest, Node, TreeError};

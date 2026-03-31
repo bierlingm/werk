@@ -149,6 +149,7 @@ fn main() {
             reverse,
             tree,
             long,
+            search,
         } => {
             let params = werk::commands::list::ListParams {
                 all,
@@ -167,6 +168,7 @@ fn main() {
                 reverse,
                 tree,
                 long,
+                search,
             };
             werk::commands::list::cmd_list(&output, params)
         }

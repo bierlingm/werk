@@ -1,6 +1,9 @@
-//! Flat search across all tensions in the forest.
+//! Search across all tensions in the forest.
+//!
+//! Uses FrankenSearch (hash embedder) for relevance ranking when available,
+//! falls back to substring matching if the search index isn't built.
 
-use sd_core::Store;
+use sd_core::{SearchIndex, Store};
 use werk_shared::truncate;
 
 /// A search result with parent breadcrumb.
@@ -34,12 +37,51 @@ impl SearchState {
     }
 }
 
-/// Search all tensions for a query (case-insensitive substring match).
-pub fn search_all(query: &str, store: &Store) -> Vec<SearchResult> {
+/// Search all tensions using FrankenSearch index (preferred) or substring fallback.
+pub fn search_all(query: &str, store: &Store, index: Option<&SearchIndex>) -> Vec<SearchResult> {
     if query.is_empty() {
         return Vec::new();
     }
 
+    if let Some(idx) = index {
+        search_via_index(query, idx)
+    } else {
+        search_via_substring(query, store)
+    }
+}
+
+/// Search with a special "(root level)" entry prepended (for move-to-root).
+pub fn search_all_with_root(query: &str, store: &Store, index: Option<&SearchIndex>) -> Vec<SearchResult> {
+    let mut results = vec![SearchResult {
+        id: String::new(),
+        desired: "(root level)".to_string(),
+        parent_path: String::new(),
+        is_root_entry: true,
+    }];
+    results.extend(search_all(query, store, index));
+    results
+}
+
+/// FrankenSearch-backed search. Zero database reads — all data from cache.
+fn search_via_index(query: &str, index: &SearchIndex) -> Vec<SearchResult> {
+    let hits = index.search(query, 20);
+
+    hits.into_iter()
+        .filter(|hit| hit.status == sd_core::TensionStatus::Active)
+        .map(|hit| {
+            let parent_path = index.breadcrumb(hit.parent_id.as_deref());
+            SearchResult {
+                id: hit.doc_id,
+                desired: hit.desired,
+                parent_path,
+                is_root_entry: false,
+            }
+        })
+        .collect()
+}
+
+/// Substring fallback: case-insensitive match with simple scoring.
+fn search_via_substring(query: &str, store: &Store) -> Vec<SearchResult> {
     let q = query.to_lowercase();
     let tensions = store.list_tensions().unwrap_or_default();
 
@@ -49,7 +91,6 @@ pub fn search_all(query: &str, store: &Store) -> Vec<SearchResult> {
             t.desired.to_lowercase().contains(&q) || t.actual.to_lowercase().contains(&q)
         })
         .map(|t| {
-            // Build parent breadcrumb
             let parent_path = build_breadcrumb(t.parent_id.as_deref(), store);
             SearchResult {
                 id: t.id.clone(),
@@ -60,26 +101,13 @@ pub fn search_all(query: &str, store: &Store) -> Vec<SearchResult> {
         })
         .collect();
 
-    // Score: exact prefix match > word boundary > substring
     results.sort_by(|a, b| {
         let score_a = match_score(&a.desired, &q);
         let score_b = match_score(&b.desired, &q);
         score_b.cmp(&score_a)
     });
 
-    results.truncate(20); // max results
-    results
-}
-
-/// Search with a special "(root level)" entry prepended (for move-to-root).
-pub fn search_all_with_root(query: &str, store: &Store) -> Vec<SearchResult> {
-    let mut results = vec![SearchResult {
-        id: String::new(),
-        desired: "(root level)".to_string(),
-        parent_path: String::new(),
-        is_root_entry: true,
-    }];
-    results.extend(search_all(query, store));
+    results.truncate(20);
     results
 }
 
@@ -105,10 +133,10 @@ fn build_breadcrumb(parent_id: Option<&str>, store: &Store) -> String {
 fn match_score(text: &str, query: &str) -> u8 {
     let lower = text.to_lowercase();
     if lower.starts_with(query) {
-        3 // exact prefix
+        3
     } else if lower.contains(&format!(" {}", query)) {
-        2 // word boundary
+        2
     } else {
-        1 // substring
+        1
     }
 }

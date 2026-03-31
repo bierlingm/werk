@@ -98,6 +98,15 @@ fn default_urgency() -> String {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SearchParam {
+    /// Search query — natural language or keywords. Ranks tensions by relevance using FrankenSearch hybrid retrieval.
+    pub query: String,
+    /// Maximum results to return (default: 20).
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SurveyParam {
     /// Temporal frame in days (default: 14).
     #[serde(default = "default_14")]
@@ -1017,6 +1026,47 @@ impl WerkServer {
         }
 
         json_result(&serde_json::json!({ "tensions": items }))
+    }
+
+    #[tool(description = "Search tensions by content using FrankenSearch hybrid retrieval. Returns results ranked by relevance — finds tensions by meaning, not just exact keywords. Use for natural language queries like 'tensions about revenue' or 'anything related to temporal signals'.")]
+    async fn search(
+        &self,
+        Parameters(p): Parameters<SearchParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let (_ws, store) = open_store()?;
+        let limit = p.limit.unwrap_or(20);
+
+        let index = sd_core::SearchIndex::build(&store)
+            .ok_or_else(|| err("failed to build search index (empty store or no workspace path)"))?;
+
+        let hits = index.search(&p.query, limit);
+        let now = Utc::now();
+
+        let results: Vec<serde_json::Value> = hits.iter().filter_map(|hit| {
+            let t = store.get_tension(&hit.doc_id).ok()??;
+            let urgency = compute_urgency(&t, now).map(|u| u.value);
+            let display_id = t.short_code
+                .map(|c| format!("#{c}"))
+                .unwrap_or_else(|| t.id[..8].to_string());
+            Some(serde_json::json!({
+                "id": t.id,
+                "display_id": display_id,
+                "short_code": t.short_code,
+                "desired": t.desired,
+                "actual": t.actual,
+                "status": format!("{:?}", t.status),
+                "relevance_score": hit.score,
+                "urgency": urgency,
+                "horizon": t.horizon.as_ref().map(|h| h.to_string()),
+                "parent_id": t.parent_id,
+            }))
+        }).collect();
+
+        json_result(&serde_json::json!({
+            "query": p.query,
+            "results": results,
+            "count": results.len(),
+        }))
     }
 
     #[tool(description = "Show system health summary — structural statistics, temporal alerts, and field-wide signals.")]
