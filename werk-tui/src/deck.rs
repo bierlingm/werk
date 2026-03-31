@@ -40,7 +40,7 @@ impl AccumulatedItem {
 use crate::app::InstrumentApp;
 use crate::glyphs;
 use crate::state::FieldEntry;
-use crate::theme::*;
+
 
 // ---------------------------------------------------------------------------
 // Column layout
@@ -1050,7 +1050,7 @@ impl InstrumentApp {
                     parts.push(format!("{} more", remaining));
                 }
                 let acc_text = parts.join(" \u{00B7} ");
-                self.render_indicator_line(frame, area.x, acc_top, w, &cols, &acc_text, is_selected, STYLES.dim, 0);
+                self.render_indicator_line(frame, area.x, acc_top, w, &cols, &acc_text, is_selected, self.styles.dim, 0);
             }
 
             // Individual accumulated items (shown items above the summary, in order)
@@ -1135,7 +1135,7 @@ impl InstrumentApp {
                 total_route,
                 frontier.held.len()
             );
-            self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
+            self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, 0);
             my += 1;
         } else {
             // --- Route zone (gradual: show N individually, summary for rest) ---
@@ -1145,7 +1145,7 @@ impl InstrumentApp {
                 let entry = &self.siblings[sibling_idx];
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Route(sibling_idx);
                 let glyph = status_glyph(entry.status);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(STYLES.cyan));
+                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(self.styles.cyan));
                 my += 1;
                 // V7: inline focus expansion
                 if focused_sibling == Some(sibling_idx) {
@@ -1161,7 +1161,7 @@ impl InstrumentApp {
                 let entry = &self.siblings[sibling_idx];
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
                 let glyph = status_glyph(entry.status);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(STYLES.cyan));
+                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(self.styles.cyan));
                 my += 1;
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
@@ -1180,7 +1180,7 @@ impl InstrumentApp {
                     Some(dl) => format!("\u{25B8} {} {} \u{00B7} next {}", count, label, dl),
                     None => format!("\u{25B8} {} {}", count, label),
                 };
-                self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, 0);
+                self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, 0);
                 my += 1;
             }
 
@@ -1189,7 +1189,7 @@ impl InstrumentApp {
                 if my >= top_limit { break; }
                 let entry = &self.siblings[sibling_idx];
                 let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, true, 0, Some(STYLES.cyan));
+                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, true, 0, Some(self.styles.cyan));
                 my += 1;
                 if focused_sibling == Some(sibling_idx) {
                     if let Some(ref detail) = self.focused_detail {
@@ -1203,7 +1203,7 @@ impl InstrumentApp {
                 if my < top_limit {
                     let entry = &self.siblings[next_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Next(next_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, false, 0, Some(STYLES.green));
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, false, 0, Some(self.styles.green));
                     my += 1;
                     if focused_sibling == Some(next_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1225,7 +1225,7 @@ impl InstrumentApp {
                 let pad_right = w.saturating_sub(prefix_len + msg.len());
                 render_line(frame, area.x, my, area.width, &[
                     (" ".repeat(prefix_len), Style::new()),
-                    (msg.to_string(), STYLES.dim),
+                    (msg.to_string(), self.styles.dim),
                     (" ".repeat(pad_right), Style::new()),
                 ]);
                 my += 1;
@@ -1253,9 +1253,9 @@ impl InstrumentApp {
                     let text = if hours < 1 { "fresh".to_string() }
                         else if hours < 24 { format!("epoch {}h", hours) }
                         else { format!("epoch {}d", days) };
-                    let style = if hours < 1 { STYLES.green }
-                        else if days > 7 { STYLES.amber }
-                        else { STYLES.dim };
+                    let style = if hours < 1 { self.styles.green }
+                        else if days > 7 { self.styles.amber }
+                        else { self.styles.dim };
                     (text, style)
                 });
                 // Show the next step's deadline, or if none, the nearest route deadline.
@@ -1274,18 +1274,18 @@ impl InstrumentApp {
                 // Collect readout cells: (text, style)
                 let mut cells: Vec<(String, Style)> = Vec::new();
                 if total_children > 0 {
-                    cells.push((format!("{}/{}", done_count, total_children), STYLES.text));
+                    cells.push((format!("{}/{}", done_count, total_children), self.styles.text));
                 }
                 if let Some((ref text, style)) = epoch_display {
                     cells.push((text.clone(), style));
                 }
                 if let Some(dl) = next_dl {
-                    cells.push((format!("next {}", dl), STYLES.dim));
+                    cells.push((format!("next {}", dl), self.styles.dim));
                 }
                 if !frontier.overdue.is_empty() {
                     cells.push((
                         format!("\u{26A0} {} overdue", frontier.overdue.len()),
-                        STYLES.amber,
+                        self.styles.amber,
                     ));
                 }
 
@@ -1302,16 +1302,16 @@ impl InstrumentApp {
                 let right_rules = pad_total - left_rules;
 
                 let mut header_spans: Vec<Span> = Vec::new();
-                header_spans.push(Span::styled(rule_char.repeat(left_rules), STYLES.dim));
-                header_spans.push(Span::styled(" ", STYLES.dim));
+                header_spans.push(Span::styled(rule_char.repeat(left_rules), self.styles.dim));
+                header_spans.push(Span::styled(" ", self.styles.dim));
                 for (i, (text, style)) in cells.iter().enumerate() {
                     if i > 0 {
-                        header_spans.push(Span::styled(separator, STYLES.dim));
+                        header_spans.push(Span::styled(separator, self.styles.dim));
                     }
                     header_spans.push(Span::styled(text.clone(), *style));
                 }
-                header_spans.push(Span::styled(" ", STYLES.dim));
-                header_spans.push(Span::styled(rule_char.repeat(right_rules), STYLES.dim));
+                header_spans.push(Span::styled(" ", self.styles.dim));
+                header_spans.push(Span::styled(rule_char.repeat(right_rules), self.styles.dim));
 
                 Paragraph::new(Text::from(Line::from_spans(header_spans)))
                     .render(Rect::new(area.x, my, area.width, 1), frame);
@@ -1328,7 +1328,7 @@ impl InstrumentApp {
                     let sibling_idx = frontier.held[i];
                     let entry = &self.siblings[sibling_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(self.styles.subdued));
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1341,7 +1341,7 @@ impl InstrumentApp {
                     let sibling_idx = frontier.held[shown_held];
                     let entry = &self.siblings[sibling_idx];
                     let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(STYLES.subdued));
+                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(self.styles.subdued));
                     my += 1;
                     if focused_sibling == Some(sibling_idx) {
                         if let Some(ref detail) = self.focused_detail {
@@ -1355,7 +1355,7 @@ impl InstrumentApp {
                     } else {
                         format!("\u{2727} {} more held", held_remaining)
                     };
-                    self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, STYLES.dim, HELD_INDENT);
+                    self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, HELD_INDENT);
                     my += 1;
                 }
             }
@@ -1379,7 +1379,7 @@ impl InstrumentApp {
             let pad_right = w.saturating_sub(prefix_len + msg.len());
             render_line(frame, area.x, my, area.width, &[
                 (" ".repeat(prefix_len), Style::new()),
-                (msg.to_string(), STYLES.dim),
+                (msg.to_string(), self.styles.dim),
                 (" ".repeat(pad_right), Style::new()),
             ]);
             my += 1;
@@ -1403,9 +1403,9 @@ impl InstrumentApp {
             };
 
             let style = if is_selected {
-                STYLES.selected
+                self.styles.selected
             } else {
-                STYLES.dim
+                self.styles.dim
             };
 
             let prefix_len = cols.left + GUTTER;
@@ -1440,20 +1440,20 @@ impl InstrumentApp {
             || entry.status == TensionStatus::Released;
 
         let base_style = if is_selected {
-            STYLES.selected
+            self.styles.selected
         } else if is_overdue {
             // S2: Time-amplified overdue intensity (N7/C5)
             if entry.temporal_urgency > 2.0 {
                 Style::new().fg(PackedRgba::rgb(230, 190, 60)).bold()
             } else if entry.temporal_urgency > 1.3 {
-                Style::new().fg(CLR_AMBER).bold()
+                Style::new().fg(self.styles.clr_amber).bold()
             } else {
-                STYLES.amber
+                self.styles.amber
             }
         } else if is_done {
-            STYLES.dim
+            self.styles.dim
         } else {
-            STYLES.text
+            self.styles.text
         };
 
         let glyph_style = if is_selected || is_overdue {
@@ -1494,8 +1494,8 @@ impl InstrumentApp {
         // Build the line
         let mut spans: Vec<Span> = Vec::new();
 
-        let left_style = if is_selected { base_style } else if is_overdue { base_style } else { STYLES.dim };
-        let right_style = if is_selected { base_style } else { STYLES.dim };
+        let left_style = if is_selected { base_style } else if is_overdue { base_style } else { self.styles.dim };
+        let right_style = if is_selected { base_style } else { self.styles.dim };
 
         spans.push(Span::styled(left_padded, left_style));
         spans.push(Span::styled(" ".repeat(GUTTER + extra_indent), base_style));
@@ -1534,7 +1534,7 @@ impl InstrumentApp {
         age: &str,
         is_selected: bool,
     ) {
-        let base_style = if is_selected { STYLES.selected } else { STYLES.dim };
+        let base_style = if is_selected { self.styles.selected } else { self.styles.dim };
         let glyph = "\u{203b}"; // ※
         let glyph_w = 2; // glyph + space
         let age_w = age.chars().count();
@@ -1583,9 +1583,9 @@ impl InstrumentApp {
         extra_indent: usize,
     ) {
         let style = if is_selected {
-            STYLES.selected
+            self.styles.selected
         } else {
-            STYLES.dim
+            self.styles.dim
         };
 
         let prefix_len = cols.left + GUTTER + extra_indent;
@@ -1624,8 +1624,8 @@ impl InstrumentApp {
                     truncate_str(gp_desired, cols.main.min(60))
                 );
                 render_line(frame, zone.x, y, zone.width, &[
-                    (pad_left(cols), STYLES.dim),
-                    (breadcrumb, STYLES.dim),
+                    (pad_left(cols), self.styles.dim),
+                    (breadcrumb, self.styles.dim),
                 ]);
                 y += 1;
             }
@@ -1653,13 +1653,13 @@ impl InstrumentApp {
                 } else {
                     " ".repeat(cols.left)
                 };
-                spans.push((left_content, STYLES.dim));
+                spans.push((left_content, self.styles.dim));
                 spans.push((" ".repeat(GUTTER), Style::new()));
             }
 
-            let text_style = if selected { STYLES.selected } else { STYLES.text_bold };
+            let text_style = if selected { self.styles.selected } else { self.styles.text_bold };
             if i == 0 {
-                let glyph_style = if selected { STYLES.selected } else { STYLES.cyan };
+                let glyph_style = if selected { self.styles.selected } else { self.styles.cyan };
                 spans.push(("\u{25c6} ".to_string(), glyph_style));
             } else {
                 spans.push(("  ".to_string(), text_style)); // align continuation
@@ -1670,7 +1670,7 @@ impl InstrumentApp {
                 let text_used = if has_deadline { cols.left + GUTTER } else { 0 } + 2 + line_text.chars().count();
                 let gap = w.saturating_sub(text_used + desire_right_w);
                 if gap >= GUTTER {
-                    let right_style = if selected { STYLES.selected } else { STYLES.dim };
+                    let right_style = if selected { self.styles.selected } else { self.styles.dim };
                     spans.push((" ".repeat(gap), right_style));
                     spans.push((desire_right.clone(), right_style));
                 }
@@ -1683,7 +1683,7 @@ impl InstrumentApp {
         // Desire rule
         if y < zone.y + zone.height {
             let rule = glyphs::HEAVY_RULE.to_string().repeat(w);
-            render_line(frame, zone.x, y, zone.width, &[(rule, STYLES.dim)]);
+            render_line(frame, zone.x, y, zone.width, &[(rule, self.styles.dim)]);
         }
     }
 
@@ -1715,7 +1715,7 @@ impl InstrumentApp {
             None => return, // no space to render
         };
         let rule = glyphs::RULE.to_string().repeat(w);
-        render_line(frame, rule_zone.x, rule_zone.y, rule_zone.width, &[(rule, STYLES.dim)]);
+        render_line(frame, rule_zone.x, rule_zone.y, rule_zone.width, &[(rule, self.styles.dim)]);
 
         if !has_reality { return; }
 
@@ -1733,8 +1733,8 @@ impl InstrumentApp {
         let full_lines = word_wrap(&parent.actual, w.saturating_sub(2));
         let fits = full_lines.len() as u16 <= text_zone.height;
 
-        let text_style = if selected { STYLES.selected } else { STYLES.dim };
-        let glyph_style = if selected { STYLES.selected } else { STYLES.subdued };
+        let text_style = if selected { self.styles.selected } else { self.styles.dim };
+        let glyph_style = if selected { self.styles.selected } else { self.styles.subdued };
 
         if fits {
             // Full text fits — render all lines, age on last line
@@ -1816,8 +1816,8 @@ impl InstrumentApp {
             for line_text in &reality_lines {
                 if y >= limit_y { return y - start_y; }
                 render_line(frame, x, y, w as u16, &[
-                    (indent_str.clone(), STYLES.subdued),
-                    (line_text.clone(), STYLES.subdued),
+                    (indent_str.clone(), self.styles.subdued),
+                    (line_text.clone(), self.styles.subdued),
                 ]);
                 y += 1;
             }
@@ -1850,8 +1850,8 @@ impl InstrumentApp {
             }
             let meta_text = parts.join(" \u{00b7} ");
             render_line(frame, x, y, w as u16, &[
-                (indent_str.clone(), STYLES.dim),
-                (meta_text, STYLES.dim),
+                (indent_str.clone(), self.styles.dim),
+                (meta_text, self.styles.dim),
             ]);
             y += 1;
         }
@@ -1871,8 +1871,8 @@ impl InstrumentApp {
             let pad = text_w.saturating_sub(2 + display_w + age.len());
             let note_line = format!("\u{203b} {}{}{}", truncated, " ".repeat(pad), age);
             render_line(frame, x, y, w as u16, &[
-                (indent_str.clone(), STYLES.dim),
-                (note_line, STYLES.dim),
+                (indent_str.clone(), self.styles.dim),
+                (note_line, self.styles.dim),
             ]);
             y += 1;
         }
@@ -1975,23 +1975,23 @@ impl InstrumentApp {
 
         // Left: events text
         if !events_text.is_empty() {
-            spans.push(Span::styled(&events_text, STYLES.lever));
+            spans.push(Span::styled(&events_text, self.styles.lever));
         }
 
         // Gap between left and centered hints
         let after_left = left_w;
         if hints_w > 0 {
             let gap = hints_start.saturating_sub(after_left);
-            spans.push(Span::styled(" ".repeat(gap), STYLES.lever));
-            spans.push(Span::styled(&hints_text, STYLES.lever));
+            spans.push(Span::styled(" ".repeat(gap), self.styles.lever));
+            spans.push(Span::styled(&hints_text, self.styles.lever));
         }
 
         // Gap between hints and right
         let after_hints = if hints_w > 0 { hints_start + hints_w } else { after_left };
         let right_start = w.saturating_sub(right_w);
         let gap = right_start.saturating_sub(after_hints);
-        spans.push(Span::styled(" ".repeat(gap), STYLES.lever));
-        spans.push(Span::styled(right_text, STYLES.lever));
+        spans.push(Span::styled(" ".repeat(gap), self.styles.lever));
+        spans.push(Span::styled(right_text, self.styles.lever));
 
         Paragraph::new(Text::from(Line::from_spans(spans)))
             .render(bar_area, frame);

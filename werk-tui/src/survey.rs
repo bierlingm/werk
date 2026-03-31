@@ -31,7 +31,7 @@ use sd_core::TensionStatus;
 
 use crate::app::InstrumentApp;
 use crate::glyphs;
-use crate::theme::STYLES;
+use crate::theme::InstrumentStyles;
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -671,7 +671,7 @@ impl InstrumentApp {
 
         if items.is_empty() {
             let line = Line::from_spans([
-                Span::styled("  No active tensions.", STYLES.dim),
+                Span::styled("  No active tensions.", self.styles.dim),
             ]);
             Paragraph::new(Text::from_lines(vec![line])).render(area, frame);
             return;
@@ -700,14 +700,14 @@ impl InstrumentApp {
         for (band, exp) in &expansions {
             // Insert NOW zone between imminent (ThisWeek) and overdue.
             if *band == TimeBand::Overdue {
-                render_now_zone(w, &mut lines, prev_band.is_some());
+                render_now_zone(w, &mut lines, prev_band.is_some(), &self.styles);
             }
 
             // Blank line before band (except first and except after NOW zone).
             // Must be full-width styled span — empty Span::raw("") leaves all
             // cells at Cell::default() (WHITE fg), causing the all-white glitch.
             if !lines.is_empty() && *band != TimeBand::Overdue {
-                lines.push(Line::from_spans([Span::styled(" ".repeat(w), STYLES.dim)]));
+                lines.push(Line::from_spans([Span::styled(" ".repeat(w), self.styles.dim)]));
             }
 
             // Band header — padded to full width to prevent bleed-through when sticky.
@@ -720,7 +720,7 @@ impl InstrumentApp {
                 header_text.push('\u{2500}');
             }
             let header_line = Line::from_spans([
-                Span::styled(header_text, STYLES.dim),
+                Span::styled(header_text, self.styles.dim),
             ]);
             band_headers.push((lines.len(), header_line.clone()));
             // Track if cursor is in THIS band.
@@ -756,7 +756,7 @@ impl InstrumentApp {
 
             // "... N above" summary at top of visible window.
             if hidden_above > 0 {
-                let style = STYLES.dim;
+                let style = self.styles.dim;
                 let text = format!("{SURVEY_INDENT}{:>width$}\u{2191} {hidden_above} above", "", width = HORIZON_COL_W);
                 let mut spans = vec![Span::styled(text, style)];
                 pad_to_width(&mut spans, w, style);
@@ -773,7 +773,7 @@ impl InstrumentApp {
                         .any(|it| &it.tension_id == pid);
                     if provider_off {
                         if let Some(provider) = items.iter().find(|it| &it.tension_id == pid) {
-                            lines.push(render_provider_line(provider, false, w));
+                            lines.push(render_provider_line(provider, false, w, &self.styles));
                         }
                     }
                 }
@@ -824,7 +824,7 @@ impl InstrumentApp {
                             for ancestor in missing_chain.iter().rev() {
                                 if !breadcrumbs_inserted.contains(&ancestor.tension_id) {
                                     breadcrumbs_inserted.insert(ancestor.tension_id.clone());
-                                    lines.push(render_breadcrumb_line(ancestor, w));
+                                    lines.push(render_breadcrumb_line(ancestor, w, &self.styles));
                                 }
                             }
                         }
@@ -832,9 +832,9 @@ impl InstrumentApp {
                 }
 
                 if item.tree_prefix.is_empty() {
-                    lines.push(render_provider_line(item, is_selected, w));
+                    lines.push(render_provider_line(item, is_selected, w, &self.styles));
                 } else {
-                    lines.push(render_tree_child_line(item, is_selected, w));
+                    lines.push(render_tree_child_line(item, is_selected, w, &self.styles));
                 }
             }
 
@@ -845,7 +845,7 @@ impl InstrumentApp {
                 if summary_selected {
                     cursor_line = lines.len();
                 }
-                let style = if summary_selected { STYLES.selected } else { STYLES.dim };
+                let style = if summary_selected { self.styles.selected } else { self.styles.dim };
                 let text = format!("{SURVEY_INDENT}{:>width$}\u{2193} {hidden_below} below", "", width = HORIZON_COL_W);
                 let mut spans = vec![Span::styled(text, style)];
                 pad_to_width(&mut spans, w, style);
@@ -857,7 +857,7 @@ impl InstrumentApp {
 
         // NOW zone at the bottom if there's no overdue band.
         if !has_overdue_band && !expansions.is_empty() {
-            render_now_zone(w, &mut lines, true);
+            render_now_zone(w, &mut lines, true, &self.styles);
         }
 
         // Per-line rendering: render each line individually into its own 1-row
@@ -918,18 +918,18 @@ impl InstrumentApp {
         let center_start = w.saturating_sub(center_w) / 2;
 
         let mut spans: Vec<Span> = Vec::new();
-        spans.push(Span::styled(&left, if v.overdue > 0 { STYLES.amber } else { STYLES.dim }));
+        spans.push(Span::styled(&left, if v.overdue > 0 { self.styles.amber } else { self.styles.dim }));
 
         if center_start > left_w + 1 {
             let pad = " ".repeat(center_start - left_w);
-            spans.push(Span::styled(pad, STYLES.dim));
-            spans.push(Span::styled(center, STYLES.dim));
+            spans.push(Span::styled(pad, self.styles.dim));
+            spans.push(Span::styled(center, self.styles.dim));
         }
 
         // Pad to full width.
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
         if used < w {
-            spans.push(Span::styled(" ".repeat(w - used), STYLES.dim));
+            spans.push(Span::styled(" ".repeat(w - used), self.styles.dim));
         }
 
         Paragraph::new(Text::from_lines(vec![Line::from_spans(spans)]))
@@ -944,6 +944,7 @@ fn render_provider_line(
     item: &SurveyItem,
     is_selected: bool,
     w: usize,
+    styles: &InstrumentStyles,
 ) -> Line {
     // Plain text for the horizon column. Emoji-range glyphs (⏱) cause width
     // misalignment: unicode-width reports 1 cell but terminals render 2.
@@ -971,12 +972,12 @@ fn render_provider_line(
     let text_w = desire_text.chars().count();
     let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
-    let style_text = if is_selected { STYLES.selected } else { STYLES.text };
-    let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
-    let style_glyph = if is_selected { STYLES.selected } else { glyph_style(item) };
-    let style_signal = if is_selected { STYLES.selected } else { STYLES.amber };
+    let style_text = if is_selected { styles.selected } else { styles.text };
+    let style_dim = if is_selected { styles.selected } else { styles.dim };
+    let style_glyph = if is_selected { styles.selected } else { glyph_style(item, styles) };
+    let style_signal = if is_selected { styles.selected } else { styles.amber };
     let style_horizon = if item.urgency > 1.0 {
-        if is_selected { STYLES.selected } else { STYLES.amber }
+        if is_selected { styles.selected } else { styles.amber }
     } else {
         style_dim
     };
@@ -1003,6 +1004,7 @@ fn render_tree_child_line(
     item: &SurveyItem,
     is_selected: bool,
     w: usize,
+    styles: &InstrumentStyles,
 ) -> Line {
     let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
     let prefix_w = item.tree_prefix.chars().count();
@@ -1021,10 +1023,10 @@ fn render_tree_child_line(
     let text_w = desire_text.chars().count();
     let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
-    let style_text = if is_selected { STYLES.selected } else { STYLES.text };
-    let style_dim = if is_selected { STYLES.selected } else { STYLES.dim };
-    let style_glyph = if is_selected { STYLES.selected } else { glyph_style(item) };
-    let style_signal = if is_selected { STYLES.selected } else { STYLES.amber };
+    let style_text = if is_selected { styles.selected } else { styles.text };
+    let style_dim = if is_selected { styles.selected } else { styles.dim };
+    let style_glyph = if is_selected { styles.selected } else { glyph_style(item, styles) };
+    let style_signal = if is_selected { styles.selected } else { styles.amber };
 
     let mut spans = vec![
         Span::styled(" ".repeat(base_indent), style_dim),
@@ -1046,8 +1048,8 @@ fn position_glyph(item: &SurveyItem) -> &'static str {
 }
 
 /// Glyph color matching the deck view: green for next step, cyan for route, subdued for held.
-fn glyph_style(item: &SurveyItem) -> ftui::style::Style {
-    if item.is_held { STYLES.subdued } else if item.is_next { STYLES.green } else { STYLES.cyan }
+fn glyph_style(item: &SurveyItem, styles: &InstrumentStyles) -> ftui::style::Style {
+    if item.is_held { styles.subdued } else if item.is_next { styles.green } else { styles.cyan }
 }
 
 /// Signal glyphs as a compact string for inline display. Empty if no signals.
@@ -1066,9 +1068,9 @@ fn build_right_col(item: &SurveyItem) -> String {
 }
 
 /// Render the NOW zone separator — a clean dim rule marking the temporal present.
-fn render_now_zone(w: usize, lines: &mut Vec<Line>, add_blank_before: bool) {
+fn render_now_zone(w: usize, lines: &mut Vec<Line>, add_blank_before: bool, styles: &InstrumentStyles) {
     if add_blank_before {
-        lines.push(Line::from_spans([Span::styled(" ".repeat(w), STYLES.dim)]));
+        lines.push(Line::from_spans([Span::styled(" ".repeat(w), styles.dim)]));
     }
     let now_rule_w = w.saturating_sub(4 + 5 + 4); // "  ── NOW ──..."
     let half = now_rule_w / 2;
@@ -1080,13 +1082,13 @@ fn render_now_zone(w: usize, lines: &mut Vec<Line>, add_blank_before: bool) {
         text.push(' ');
     }
     lines.push(Line::from_spans([
-        Span::styled(text, STYLES.dim),
+        Span::styled(text, styles.dim),
     ]));
 }
 
 /// Render a dimmed breadcrumb line for an ancestor that scrolled off-screen.
 /// Same layout as a regular line but fully dim — provides structural context.
-fn render_breadcrumb_line(item: &SurveyItem, w: usize) -> Line {
+fn render_breadcrumb_line(item: &SurveyItem, w: usize, styles: &InstrumentStyles) -> Line {
     let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
     let glyph = position_glyph(item);
     let glyph_str = format!("{glyph} ");
@@ -1103,13 +1105,13 @@ fn render_breadcrumb_line(item: &SurveyItem, w: usize) -> Line {
         let gap = w.saturating_sub(left_used + text_w + right_w);
 
         let mut spans = vec![
-            Span::styled(" ".repeat(base_indent), STYLES.dim),
-            Span::styled(glyph_str, STYLES.dim),
-            Span::styled(desire_text, STYLES.dim),
-            Span::styled(" ".repeat(gap), STYLES.dim),
-            Span::styled(right_text, STYLES.dim),
+            Span::styled(" ".repeat(base_indent), styles.dim),
+            Span::styled(glyph_str, styles.dim),
+            Span::styled(desire_text, styles.dim),
+            Span::styled(" ".repeat(gap), styles.dim),
+            Span::styled(right_text, styles.dim),
         ];
-        pad_to_width(&mut spans, w, STYLES.dim);
+        pad_to_width(&mut spans, w, styles.dim);
         return Line::from_spans(spans);
     }
 
@@ -1121,14 +1123,14 @@ fn render_breadcrumb_line(item: &SurveyItem, w: usize) -> Line {
     let gap = w.saturating_sub(left_used + text_w + right_w);
 
     let mut spans = vec![
-        Span::styled(" ".repeat(base_indent), STYLES.dim),
-        Span::styled(item.tree_prefix.clone(), STYLES.dim),
-        Span::styled(glyph_str, STYLES.dim),
-        Span::styled(desire_text, STYLES.dim),
-        Span::styled(" ".repeat(gap), STYLES.dim),
-        Span::styled(right_text, STYLES.dim),
+        Span::styled(" ".repeat(base_indent), styles.dim),
+        Span::styled(item.tree_prefix.clone(), styles.dim),
+        Span::styled(glyph_str, styles.dim),
+        Span::styled(desire_text, styles.dim),
+        Span::styled(" ".repeat(gap), styles.dim),
+        Span::styled(right_text, styles.dim),
     ];
-    pad_to_width(&mut spans, w, STYLES.dim);
+    pad_to_width(&mut spans, w, styles.dim);
     Line::from_spans(spans)
 }
 

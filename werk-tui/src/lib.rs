@@ -88,21 +88,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("\nwerk TUI crashed. Your data is backed up in .werk/backups/");
     }));
 
-    // Disable Bayesian diff strategy to prevent the "all white" rendering glitch.
+    // Bayesian diff remains disabled (#162 investigation).
     //
-    // Root cause: reset_for_frame() marks ALL cells dirty every frame, which
-    // inflates the Bayesian change-rate estimate. This causes the strategy to
-    // oscillate between FullRedraw and diff modes. During diff-only frames,
-    // un-re-emitted cells rely on the terminal preserving its display state.
-    // Some terminals (especially under DEC 2026 sync output) can lose that
-    // state during focus changes, compositor redraws, or rapid keypresses,
-    // causing persistent "all white" or "all black" corruption that the diff
-    // engine never repairs because it thinks those cells are unchanged.
+    // Root cause: reset_for_frame() fills the buffer with Cell::default()
+    // (fg=WHITE) every frame, then clear_area_styled() overwrites to dim.
+    // Bayesian sees 100% dirty rate every frame, oscillates between FullRedraw
+    // and diff modes. During diff-only frames, terminals can lose display state
+    // (focus change, compositor, DEC 2026 sync), causing white flash.
     //
-    // Fix: disable Bayesian selection and dirty-row optimization so every frame
-    // uses a full cell-by-cell diff (DiffStrategy::Full). This still skips
-    // unchanged cells (not a FullRedraw) but compares every cell against
-    // prev_buffer, preventing strategy oscillation.
+    // The AdaptiveColor theme (#162) doesn't fix this because the buffer reset
+    // happens before our clear pass. Proper fix requires ftui to support a
+    // custom default Cell (fg=dim instead of fg=WHITE) or to not mark cells
+    // dirty when overwritten with the same value as prev_buffer.
     let diff_config = RuntimeDiffConfig::default()
         .with_bayesian_enabled(false)
         .with_dirty_rows_enabled(false);

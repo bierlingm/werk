@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-31T14:21:11Z",
+  "flushed_at": "2026-03-31T15:10:57Z",
   "summary": {
     "active": 70,
     "released": 19,
@@ -1724,7 +1724,7 @@
       "status": "Active"
     },
     {
-      "actual": "theme.rs has 8 hardcoded PackedRgba colors, 11 pre-computed styles, no dark/light detection. Bayesian diff disabled since TUI V4 to prevent white-glitch corruption. clear_area_styled() defense hack in helpers.rs",
+      "actual": "AdaptiveColor theme complete. 19 semantic slots with dark/light variants. All 188+ old refs replaced. Bold adapts (white-on-dark, black-on-light). 3 theme tests. Bayesian diff: root cause confirmed (ftui reset_for_frame fills WHITE cells + mark_all_dirty = oscillation), stays disabled pending ftui upstream fix. Noted on #127.",
       "created_at": "2026-03-31T13:54:04.121694+00:00",
       "desired": "rendering foundation — AdaptiveColor theme replaces hardcoded palette, Bayesian diff re-enabled with proper evidence tracking. Delivers dark/light adaptation. Resolves #101 and #127 as side effects",
       "horizon": "2026-05",
