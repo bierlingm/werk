@@ -15,79 +15,24 @@ pub fn status_glyph(status: TensionStatus) -> &'static str {
 /// Card border character — thin vertical line for card edges.
 pub const CARD_EDGE: char = '\u{2502}'; // │
 
-/// Activity trail: ○● dots showing weekly mutation activity.
-/// Each dot represents one time bucket: ● = active, ○ = quiet.
-pub fn trail(activity: &[f64], max_dots: usize) -> String {
-    if activity.is_empty() {
-        return String::new();
-    }
-    activity
-        .iter()
-        .rev()
-        .take(max_dots)
-        .map(|&v| if v > 0.0 { "\u{25CF}" } else { "\u{25CB}" }) // ● or ○
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect()
-}
-
-/// Temporal position indicator — shows where "now" falls in the action window.
+/// Temporal urgency — how far "now" has progressed through the action window.
 ///
-/// With horizon: six dots spanning from last reality update to horizon end.
-///   ● marks "now", ◦ marks horizon end position.
-///   Gap between ● and ◦ = remaining runway.
+/// With horizon: ratio of elapsed time to total window (last reality update → horizon end).
+///   0.0 = just started, 1.0 = at deadline, >1.0 = overdue.
 ///
-/// Without horizon: six dots showing staleness since last reality update.
-///   ◎ marks how many weeks ago reality was last checked, drifting left.
-///
-/// Returns (indicator_string, urgency_level 0.0-1.0) for color decisions.
-pub fn temporal_indicator(
+/// Without horizon: staleness as fraction of 6 weeks since last reality update.
+pub fn temporal_urgency(
     last_reality_update: chrono::DateTime<chrono::Utc>,
     horizon_end: Option<chrono::DateTime<chrono::Utc>>,
     now: chrono::DateTime<chrono::Utc>,
-) -> (String, f64) {
-    const DOTS: usize = 6;
-    let empty = "\u{25CC}"; // ◌
-    let now_marker = "\u{25E6}"; // ◦ (open — you are here, moving)
-    let horizon_marker = "\u{25CF}"; // ● (solid — the fixed target)
-    let stale_marker = "\u{25CE}"; // ◎
-
+) -> f64 {
     if let Some(end) = horizon_end {
-        // Window: last_reality_update → horizon_end
-        let window = end.signed_duration_since(last_reality_update);
-        let elapsed = now.signed_duration_since(last_reality_update);
-
-        let window_secs = window.num_seconds().max(1) as f64;
-        let elapsed_secs = elapsed.num_seconds().max(0) as f64;
-
-        // Position of "now" in the window (0.0 = start, 1.0 = end)
-        let now_ratio = (elapsed_secs / window_secs).clamp(0.0, 1.2); // allow slight overshoot
-        let now_pos = ((now_ratio * (DOTS - 1) as f64).round() as usize).min(DOTS - 1);
-
-        // Position of horizon end in the window (always at the ratio point)
-        let horizon_pos = DOTS - 2; // second-to-last position (leaves room for overshoot)
-
-        let urgency = now_ratio.min(1.0);
-
-        let mut dots: Vec<&str> = vec![empty; DOTS];
-        dots[horizon_pos] = horizon_marker;
-        dots[now_pos] = now_marker; // now overwrites horizon if they overlap
-
-        (dots.join(""), urgency)
+        let window_secs = end.signed_duration_since(last_reality_update).num_seconds().max(1) as f64;
+        let elapsed_secs = now.signed_duration_since(last_reality_update).num_seconds().max(0) as f64;
+        elapsed_secs / window_secs
     } else {
-        // No horizon: staleness indicator
         let weeks_since = now.signed_duration_since(last_reality_update).num_weeks();
-        let stale_pos = (weeks_since as usize).min(DOTS - 1);
-        // Position from right (0 = rightmost = fresh) to left (5 = leftmost = stale)
-        let display_pos = (DOTS - 1).saturating_sub(stale_pos);
-
-        let staleness = (weeks_since as f64 / DOTS as f64).min(1.0);
-
-        let mut dots: Vec<&str> = vec![empty; DOTS];
-        dots[display_pos] = stale_marker;
-
-        (dots.join(""), staleness)
+        (weeks_since as f64 / 6.0).min(1.0)
     }
 }
 
@@ -189,17 +134,6 @@ pub fn relative_time(
     } else {
         format!("{}mo ago", days / 30)
     }
-}
-
-/// Gap bar: ████░░░░
-pub fn gap_bar(magnitude: f64, width: usize) -> String {
-    let filled = ((magnitude * width as f64).round() as usize).min(width);
-    let empty = width - filled;
-    format!(
-        "{}{}",
-        "\u{2588}".repeat(filled),
-        "\u{2591}".repeat(empty),
-    )
 }
 
 /// Compact age string for the deck right column.

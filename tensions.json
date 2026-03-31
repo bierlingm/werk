@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-31T12:13:51Z",
+  "flushed_at": "2026-03-31T14:21:11Z",
   "summary": {
-    "active": 76,
-    "released": 7,
+    "active": 70,
+    "released": 19,
     "resolved": 73,
-    "total": 156
+    "total": 162
   },
   "tensions": [
     {
@@ -148,7 +148,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 15,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "State machine exists implicitly in TUI: InputMode enum has 8 states (Normal, Adding, Editing, Annotating, Confirming, Moving, Reordering, Searching, Help) plus focus zoom and peek as render-layer states. Transitions are implemented in update.rs key handlers. Not formally specified in XState/Stately — was built organically during V1-V8. The formal spec question is whether the current implicit machine needs to be extracted and validated, or whether the working implementation is sufficient.",
@@ -178,10 +178,10 @@
       "desired": "survey view designed and implemented — temporal framing, structural annotations, frame widening/narrowing, context-carrying yaw transition",
       "horizon": "2026-04-10",
       "id": "01KMGFKY978G7EE8XFH0XXMC6C",
-      "parent_id": "01KMGFKY6K86DEVGP7DAEZ5MZ0",
+      "parent_id": null,
       "position": 1,
       "short_code": 18,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "thresholds conceptually defined. No implementation. Hold-key detection feasibility untested across terminals",
@@ -189,7 +189,7 @@
       "desired": "threshold mechanics implemented — tap/hold navigation, lingering space visual treatment, screen boundary signals",
       "horizon": null,
       "id": "01KMGFKY9WR1AM9ZA1FTMSA1YP",
-      "parent_id": "01KMGFKY6K86DEVGP7DAEZ5MZ0",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": 2,
       "short_code": 19,
       "status": "Active"
@@ -596,10 +596,10 @@
       "desired": "pathway palettes in TUI — inline option sets presented via ftui when gestures create structural signals (containment violations, sequencing pressure). Uses shared palette types from werk-shared. The TUI analog of CLI pathway palettes.",
       "horizon": null,
       "id": "01KMGFM19RBECDW1QGBH2VM6NT",
-      "parent_id": "01KMGFKY6K86DEVGP7DAEZ5MZ0",
+      "parent_id": null,
       "position": 3,
       "short_code": 58,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Implemented. add command checks containment after child creation with horizon. move command checks both containment and sequencing after reparenting. Detection and presentation use existing shared infrastructure.",
@@ -797,7 +797,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 76,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "hogwash",
@@ -948,7 +948,7 @@
       "desired": "cursor can select desire and reality anchor zones — enables orient zoom (Shift+Enter) for full-text expand, and cursor-through to prior epochs below reality",
       "horizon": null,
       "id": "01KMMHBYC6P22P0PHB5TZ2Q69G",
-      "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
+      "parent_id": null,
       "position": null,
       "short_code": 91,
       "status": "Resolved"
@@ -981,7 +981,7 @@
       "desired": "focus zoom shows a detail card (full desire/reality text, temporal facts, recent notes, child count breakdown) — not a miniature descent",
       "horizon": null,
       "id": "01KMMVXSWVKTT6CVG5W0JDC1TX",
-      "parent_id": "01KMK71AT70GWEGJ8ZCQV0WDJP",
+      "parent_id": null,
       "position": null,
       "short_code": 94,
       "status": "Resolved"
@@ -1061,7 +1061,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 101,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "clear_area_styled uses TRANSPARENT bg (done). CLR_BG (black) still used in CLR_SELECTED_BG definition and potentially in deck rendering. Need to audit all .bg() calls in theme.rs, render.rs, deck.rs, survey.rs.",
@@ -1069,10 +1069,10 @@
       "desired": "all explicit background colors replaced with TRANSPARENT — terminal native background shows through everywhere except intentional highlights",
       "horizon": null,
       "id": "01KMR5BVVGHKXMQPXMBD5K9AP7",
-      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "parent_id": null,
       "position": 1,
       "short_code": 102,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "No detection exists. Options: COLORFGBG env var (many terminals set it), OSC 11 background query, --light/--dark CLI flag, or WERK_THEME env var. ftui has no built-in detection.",
@@ -1080,10 +1080,10 @@
       "desired": "terminal theme detected at startup — Dark or Light enum available to palette construction",
       "horizon": null,
       "id": "01KMR5C7A1FDZJVA9MQ9E3NDHJ",
-      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "parent_id": null,
       "position": 2,
       "short_code": 103,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Single hardcoded dark palette. CLR_DEFAULT (220,220,220) is invisible on white. Light mode needs dark text (30,30,30), medium dim (140,140,140), adjusted accents.",
@@ -1091,10 +1091,10 @@
       "desired": "dual palette in theme.rs — STYLES constructed conditionally based on detected theme, dark mode unchanged, light mode readable",
       "horizon": null,
       "id": "01KMR5C95WMQB0MCCD73Y84VFG",
-      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "parent_id": null,
       "position": 3,
       "short_code": 104,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "CLR_SELECTED_BG is rgb(35,35,42) — a dark blue-gray. On light terminals this creates an alien dark block. Needs a light variant (rgb 220,225,235 or similar) keyed to detected theme.",
@@ -1102,10 +1102,10 @@
       "desired": "selection highlight adapts to terminal background — visible and subtle on both dark and light",
       "horizon": null,
       "id": "01KMR5CB0GKZ46NC80FVYMBE4V",
-      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "parent_id": null,
       "position": 4,
       "short_code": 105,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "CLR_CYAN (80,190,210) and CLR_GREEN (80,190,120) likely work on both. CLR_AMBER (200,170,60) may need darkening for light. CLR_RED (220,90,90) is fine. Needs visual verification, possibly light-mode variants.",
@@ -1113,10 +1113,10 @@
       "desired": "accent colors verified readable on both dark and light backgrounds",
       "horizon": null,
       "id": "01KMR5CK2CW6AWF05YTGQJJK76",
-      "parent_id": "01KMR58ZAD61T7HQF7F9562TYD",
+      "parent_id": null,
       "position": 5,
       "short_code": 106,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Redesign complete and shipped: parent shows truncated desired, inherited horizon walks ancestor chain with clear attribution, Status/Created/Position/Last act compacted, mutations replaced by Activity section (most-recent-first, concise summaries like 'reality updated' and 'positioned at 3' instead of full text dumps), creation mutation just says 'created', signals section only appears by exception, null position displays fixed",
@@ -1347,7 +1347,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 127,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Three threads identified and held together in designs/addressing-sessions-gestures.md. Exploratory — no commitments. Key open questions: addressing syntax, gesture/telemetry boundary, session as knowledge substrate vs separate model. Converges with LogBase (#89), ground mode, authority, and multi-player provenance.",
@@ -1468,7 +1468,7 @@
       "parent_id": "01KMGFKXT2AC0EM3C3347TM2KS",
       "position": null,
       "short_code": 138,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "thresholds are currently hardcoded or caller-supplied (list --approaching takes a duration, list --stale takes days). No user-persisted configuration for signal surfacing breakpoints. Anchored to Standard of Measurement #10: the instrument should not originate thresholds — the user should supply them.",
@@ -1537,10 +1537,10 @@
       "status": "Resolved"
     },
     {
-      "actual": "ftui v0.2 used as rendering substrate only; custom rendering pipeline in render.rs; Bayesian diff disabled; hand-built theme.rs; 106 available widgets mostly unused",
+      "actual": "ftui v0.2.1 confirmed: 77 widgets, 19 layout modules, 48 runtime modules available. Full API audit complete. Imaginal sketch written (designs/tui-reimagined.md). Dead code cleaned (temporal_indicator string, trail, gap_bar removed). Current TUI: 7,884 lines hand-rolled rendering inside ftui Program shell. Theme is 8 hardcoded colors. Bayesian diff disabled. 10 input modes instead of modals. No undo, no persistence, no responsive layout.",
       "created_at": "2026-03-30T21:30:03.681819+00:00",
-      "desired": "ftui used at depth — built-in widgets replace custom tree/table/indicator rendering, ftui layout system replaces hand-rolled render pipeline, ftui theme infrastructure powers dark/light adaptation",
-      "horizon": "2026-06",
+      "desired": "the TUI is reimagined on ftui — PaneLayout spatial skeleton, focus graph navigation, modal interaction, widget-native rendering, adaptive theme, reactive state, undo, responsive breakpoints, session persistence. See designs/tui-reimagined.md",
+      "horizon": "2026-07",
       "id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 5,
@@ -1721,6 +1721,72 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 161,
+      "status": "Active"
+    },
+    {
+      "actual": "theme.rs has 8 hardcoded PackedRgba colors, 11 pre-computed styles, no dark/light detection. Bayesian diff disabled since TUI V4 to prevent white-glitch corruption. clear_area_styled() defense hack in helpers.rs",
+      "created_at": "2026-03-31T13:54:04.121694+00:00",
+      "desired": "rendering foundation — AdaptiveColor theme replaces hardcoded palette, Bayesian diff re-enabled with proper evidence tracking. Delivers dark/light adaptation. Resolves #101 and #127 as side effects",
+      "horizon": "2026-05",
+      "id": "01KN22RG6SS0930JWPCT1WPEGW",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 1,
+      "short_code": 162,
+      "status": "Active"
+    },
+    {
+      "actual": "layout is Flex-based zone allocation in update.rs view(). Navigation is index arithmetic (deck_cursor). No responsive adaptation — same layout at 80 and 200 columns. No pane resizing. Breadcrumbs maintained as separate state",
+      "created_at": "2026-03-31T13:54:08.320920+00:00",
+      "desired": "spatial skeleton — PaneLayout three-pane (desire/field/reality) with drag-resize and snap points, Focus graph replaces cursor arithmetic, Responsive breakpoints for compact/standard/expansive regimes",
+      "horizon": "2026-06",
+      "id": "01KN22RMA0QZ0JDC4D3TCWKVKF",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 2,
+      "short_code": 163,
+      "status": "Active"
+    },
+    {
+      "actual": "10 InputMode variants (Normal/Adding/Editing/Annotating/Confirming/Moving/Searching/Help/Pathway/Reordering) with global key binding changes per mode. Search is custom SearchState + overlay. TransientMessage in lever bar. No undo. No fuzzy command dispatch",
+      "created_at": "2026-03-31T13:54:11.921766+00:00",
+      "desired": "interaction model — Modal overlays replace 10 input modes, CommandPalette unifies search/command/navigation, Undo transactions make gestures explorative, Toast notifications replace TransientMessage",
+      "horizon": "2026-06",
+      "id": "01KN22RQTHPVWD88BD858GKG3G",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 3,
+      "short_code": 164,
+      "status": "Active"
+    },
+    {
+      "actual": "deck.rs is 2,066 lines of hand-built Line/Span/Text rendering. survey.rs is 1,155 lines with manual compression. FieldEntry/FocusedDetail built manually. State reloaded after every mutation. No derived/reactive computation",
+      "created_at": "2026-03-31T13:54:16.048519+00:00",
+      "desired": "widget migration — deck zones use List widget, survey uses Tree + VirtualizedList, reactive state (Observable/Computed/Binding) replaces manual cache invalidation. deck.rs and survey.rs rewritten on ftui widgets",
+      "horizon": "2026-07",
+      "id": "01KN22RVVGR08V2RZ2HWGE9DQV",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 4,
+      "short_code": 165,
+      "status": "Active"
+    },
+    {
+      "actual": "no session persistence — every launch starts fresh. No TUI testing infrastructure. No inspector. Manual testing only",
+      "created_at": "2026-03-31T13:54:19.458492+00:00",
+      "desired": "polish and infrastructure — Workspace persistence (pane proportions, cursor, expansion state across sessions), development tools (Inspector overlay, Program simulator for CI testing, Input macros for regression, Asciicast recording)",
+      "horizon": "2026-07",
+      "id": "01KN22RZ62K8C4ZCC1T4GY8G28",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 5,
+      "short_code": 166,
+      "status": "Active"
+    },
+    {
+      "actual": "Engine has gesture lifecycle (begin/end/active_gesture) and mutations store old_value, but no reversal method exists. All mutations are append-only. Phase 3 TUI undo (#164) works without this by snapshotting UI state, but full undo requires sd-core support.",
+      "created_at": "2026-03-31T14:15:09.414207+00:00",
+      "desired": "gesture undo at the database level — Engine.undo_gesture(gesture_id) reverses mutations using stored old_value, enabling Ctrl+Z in TUI to actually reverse structural changes not just restore UI state",
+      "horizon": "2026-06",
+      "id": "01KN23Z3V6DZ8Y7SY5F2JTVKAR",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 167,
       "status": "Active"
     }
   ]

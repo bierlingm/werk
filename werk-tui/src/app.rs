@@ -18,9 +18,6 @@ pub struct InstrumentApp {
     // Navigation
     pub parent_id: Option<String>,
     pub parent_tension: Option<Tension>,
-    /// Parent's temporal indicator (six dots), computed on load_siblings
-    pub parent_temporal_indicator: String,
-    pub parent_temporal_urgency: f64,
     pub parent_horizon_label: Option<String>,
     /// How long ago the parent's desire was last articulated
     pub parent_desire_age: Option<String>,
@@ -132,8 +129,6 @@ impl InstrumentApp {
             session_id,
             parent_id: None,
             parent_tension: None,
-            parent_temporal_indicator: String::new(),
-            parent_temporal_urgency: 0.0,
             parent_horizon_label: None,
             parent_desire_age: None,
             parent_reality_age: None,
@@ -202,8 +197,6 @@ impl InstrumentApp {
             session_id: None,
             parent_id: None,
             parent_tension: None,
-            parent_temporal_indicator: String::new(),
-            parent_temporal_urgency: 0.0,
             parent_horizon_label: None,
             parent_desire_age: None,
             parent_reality_age: None,
@@ -292,11 +285,6 @@ impl InstrumentApp {
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(parent.created_at);
 
-            let horizon_end = parent.horizon.as_ref().map(|h| h.range_end());
-            let (indicator, urgency) = crate::glyphs::temporal_indicator(last_reality, horizon_end, now);
-            self.parent_temporal_indicator = indicator;
-            self.parent_temporal_urgency = urgency;
-
             let now_year = chrono::Datelike::year(&now);
             self.parent_horizon_label = parent.horizon.as_ref()
                 .map(|h| crate::glyphs::compact_horizon(h, now_year));
@@ -331,8 +319,6 @@ impl InstrumentApp {
                 .ok()
                 .flatten();
         } else {
-            self.parent_temporal_indicator = String::new();
-            self.parent_temporal_urgency = 0.0;
             self.parent_horizon_label = None;
             self.parent_desire_age = None;
             self.parent_reality_age = None;

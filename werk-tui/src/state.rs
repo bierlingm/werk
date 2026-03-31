@@ -17,9 +17,7 @@ pub struct FieldEntry {
     pub position: Option<i32>,
     /// Compact horizon label (e.g. "Mar", "Mar 20", "2026"). None if no horizon.
     pub horizon_label: Option<String>,
-    /// Temporal indicator string (six dots showing window position or staleness).
-    pub temporal_indicator: String,
-    /// Urgency level 0.0-1.0 for coloring the temporal indicator.
+    /// Urgency level: 0.0 = fresh, 1.0 = at deadline, >1.0 = overdue.
     pub temporal_urgency: f64,
     /// Short numeric code for display (e.g. #3). None for ULIDs without a short code.
     pub short_code: Option<i32>,
@@ -39,8 +37,8 @@ impl FieldEntry {
     ) -> Self {
         let has_children = child_count > 0;
         let horizon_end = tension.horizon.as_ref().map(|h| h.range_end());
-        let (temporal_indicator, temporal_urgency) =
-            crate::glyphs::temporal_indicator(last_reality_update, horizon_end, now);
+        let temporal_urgency =
+            crate::glyphs::temporal_urgency(last_reality_update, horizon_end, now);
 
         let now_year = chrono::Datelike::year(&now);
         let horizon_label = tension
@@ -60,7 +58,6 @@ impl FieldEntry {
             parent_id: tension.parent_id.clone(),
             position: tension.position,
             horizon_label,
-            temporal_indicator,
             temporal_urgency,
             short_code: tension.short_code,
             created_age,
