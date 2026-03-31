@@ -49,6 +49,7 @@ pub enum Msg {
     Undo,
 
     // System
+    Resize { width: u16, height: u16 },
     DataChanged,
     Tick,
     Quit,
@@ -95,6 +96,7 @@ impl From<Event> for Msg {
                 }
             }
             Event::Paste(_) => Msg::RawEvent(event),
+            Event::Resize { width, height } => Msg::Resize { width, height },
             _ => Msg::Noop,
         }
     }

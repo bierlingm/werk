@@ -7,6 +7,8 @@ pub mod glyphs;
 pub mod theme;
 pub mod msg;
 pub mod app;
+pub mod layout;
+pub mod focus;
 pub mod render;
 pub mod deck;
 pub mod update;
