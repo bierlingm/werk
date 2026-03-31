@@ -581,6 +581,7 @@ fn compute_band_expansion(
     cursor: usize,
     available_rows: usize,
     now_zone_lines: usize,
+    collapsed_bands: &std::collections::HashSet<TimeBand>,
 ) -> Vec<(TimeBand, BandExpansion)> {
     // Identify non-empty bands and their ranges.
     let mut bands: Vec<(TimeBand, usize, usize)> = Vec::new(); // (band, start, count)
@@ -606,13 +607,16 @@ fn compute_band_expansion(
     let overhead = bands.len() * 2 + bands.len().saturating_sub(1) + now_zone_lines;
     let content_rows = available_rows.saturating_sub(overhead);
 
-    // First pass: give every band 1 line (summary).
-    let mut allocs: Vec<usize> = vec![1; bands.len()];
-    let mut used = bands.len(); // 1 per band
+    // First pass: give every band 1 line (summary). Collapsed bands get 0.
+    let mut allocs: Vec<usize> = bands.iter()
+        .map(|(band, _, _)| if collapsed_bands.contains(band) { 0 } else { 1 })
+        .collect();
+    let mut used: usize = allocs.iter().sum();
 
     // Second pass: temporal bands near NOW get a minimum floor.
     // Overdue, imminent, approaching should always expand (up to TEMPORAL_BAND_MIN).
     for (bi, (band, _, count)) in bands.iter().enumerate() {
+        if collapsed_bands.contains(band) { continue; }
         if matches!(band, TimeBand::Overdue | TimeBand::ThisWeek | TimeBand::ThisMonth) {
             let floor = TEMPORAL_BAND_MIN.min(*count);
             let extra = floor.saturating_sub(allocs[bi]);
@@ -684,7 +688,7 @@ impl InstrumentApp {
         let now_zone_lines = 2;
         let expansions = compute_band_expansion(
             items, self.survey_cursor, area.height as usize,
-            now_zone_lines,
+            now_zone_lines, &self.survey_tree_state.collapsed,
         );
 
         let mut lines: Vec<Line> = Vec::new();
@@ -712,10 +716,12 @@ impl InstrumentApp {
 
             // Band header — padded to full width to prevent bleed-through when sticky.
             let band_label = band.label();
+            let is_collapsed = self.survey_tree_state.collapsed.contains(band);
+            let fold_indicator = if is_collapsed { "\u{25B8}" } else { "\u{25BE}" }; // ▸ or ▾
             let count_label = format!(" ({})", exp.count);
-            let rule_w = w.saturating_sub(4 + band_label.len() + count_label.len() + 3);
+            let rule_w = w.saturating_sub(4 + 2 + band_label.len() + count_label.len() + 3);
             let rule = "\u{2500}".repeat(rule_w);
-            let mut header_text = format!("{SURVEY_INDENT}\u{2500}\u{2500} {band_label}{count_label} {rule}");
+            let mut header_text = format!("{SURVEY_INDENT}\u{2500}{fold_indicator} {band_label}{count_label} {rule}");
             while header_text.chars().count() < w {
                 header_text.push('\u{2500}');
             }

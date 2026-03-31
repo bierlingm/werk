@@ -105,6 +105,8 @@ pub struct InstrumentApp {
     pub field_vitals: crate::survey::FieldVitals,
     /// Saved stream state for Shift+Tab return (parent_id, cursor index).
     pub pre_survey_state: Option<(Option<String>, usize)>,
+    /// Survey band collapse/expand state.
+    pub survey_tree_state: crate::survey_tree::SurveyTreeState,
 
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
@@ -205,6 +207,7 @@ impl InstrumentApp {
             survey_items: Vec::new(),
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
+            survey_tree_state: crate::survey_tree::SurveyTreeState::new(),
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
                 if let Ok((w, h)) = crossterm::terminal::size() {
@@ -286,6 +289,7 @@ impl InstrumentApp {
             survey_items: Vec::new(),
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
+            survey_tree_state: crate::survey_tree::SurveyTreeState::new(),
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
