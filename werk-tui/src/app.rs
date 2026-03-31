@@ -196,7 +196,13 @@ impl InstrumentApp {
             survey_items: Vec::new(),
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
-            layout: crate::layout::LayoutState::default(),
+            layout: {
+                let mut ls = crate::layout::LayoutState::default();
+                if let Ok((w, h)) = crossterm::terminal::size() {
+                    ls.update_regime(w, h);
+                }
+                ls
+            },
             focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
             styles,
