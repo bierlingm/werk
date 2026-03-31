@@ -11,6 +11,7 @@ pub mod layout;
 pub mod focus;
 pub mod render;
 pub mod deck;
+pub mod deck_zones;
 pub mod update;
 pub mod helpers;
 pub mod horizon;

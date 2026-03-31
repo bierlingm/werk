@@ -5,7 +5,6 @@
 //!     rendered in the middle area. Pitch navigation through selectable items.
 
 use ftui::Frame;
-use ftui::PackedRgba;
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::style::Style;
 use ftui::text::{Line, Span, Text};
@@ -1021,106 +1020,45 @@ impl InstrumentApp {
         };
 
         // === Bottom-up pass: accumulated items (gravity toward reality) ===
-        let mut acc_top = middle_end;
-
-        if !frontier.accumulated.is_empty() {
+        // Build accumulated List widget and anchor it to the bottom of middle_zone.
+        let acc_item_count = {
             let shown = frontier.show_accumulated;
             let remaining = frontier.accumulated.len() - shown;
+            shown + if remaining > 0 { 1 } else { 0 } // shown items + summary
+        };
+        let mut acc_top = middle_end;
 
-            // Remaining: show individually if only 1, else summary
-            if remaining == 1 && acc_top > middle_start {
-                acc_top -= 1;
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
-                match &frontier.accumulated[shown] {
-                    AccumulatedItem::Child(sibling_idx) => {
-                        let entry = &self.siblings[*sibling_idx];
-                        let glyph = status_glyph(entry.status);
-                        self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
-                    }
-                    AccumulatedItem::Note { text, age, .. } => {
-                        self.render_note_line(frame, area.x, acc_top, w, &cols, text, age, is_selected);
-                    }
-                }
-            } else if remaining > 1 && acc_top > middle_start {
-                acc_top -= 1;
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Accumulated;
+        if !frontier.accumulated.is_empty() && acc_item_count > 0 {
+            let shown = frontier.show_accumulated;
+            let (acc_list, mut acc_state) = crate::deck_zones::build_accumulated_list(
+                &frontier, &self.siblings, shown, cursor_idx, &cols, w, &self.styles,
+            );
 
-                let remaining_resolved = frontier.accumulated[shown..].iter()
-                    .filter(|item| matches!(item, AccumulatedItem::Child(idx) if self.siblings[*idx].status == TensionStatus::Resolved))
-                    .count();
-                let remaining_released = frontier.accumulated[shown..].iter()
-                    .filter(|item| matches!(item, AccumulatedItem::Child(idx) if self.siblings[*idx].status == TensionStatus::Released))
-                    .count();
-                let remaining_notes = frontier.accumulated[shown..].iter()
-                    .filter(|item| matches!(item, AccumulatedItem::Note { .. }))
-                    .count();
+            // Anchor accumulated items to bottom of middle_zone
+            let acc_h = acc_item_count.min((middle_end - middle_start) as usize);
+            acc_top = middle_end.saturating_sub(acc_h as u16);
 
-                let mut parts = Vec::new();
-                if remaining_resolved > 0 {
-                    parts.push(format!("\u{2713} {} more resolved", remaining_resolved));
-                }
-                if remaining_released > 0 {
-                    parts.push(format!("~ {} more released", remaining_released));
-                }
-                if remaining_notes > 0 {
-                    parts.push(format!("\u{203b} {} more notes", remaining_notes));
-                }
-                if parts.is_empty() {
-                    parts.push(format!("{} more", remaining));
-                }
-                let acc_text = parts.join(" \u{00B7} ");
-                self.render_indicator_line(frame, area.x, acc_top, w, &cols, &acc_text, is_selected, self.styles.dim, 0);
+            if acc_h > 0 {
+                ftui::widgets::StatefulWidget::render(
+                    &acc_list,
+                    Rect::new(area.x, acc_top, area.width, acc_h as u16),
+                    frame,
+                    &mut acc_state,
+                );
             }
 
-            // Individual accumulated items (shown items above the summary, in order)
-            // V7: if an accumulated item is focused, reserve space for inline detail
-            let _acc_focus_reserve: u16 = if let Some(fi) = focused_sibling {
-                if frontier.accumulated[..shown].iter().any(|item| item.child_index() == Some(fi)) {
-                    focus_detail_height as u16
-                } else { 0 }
-            } else { 0 };
-
-            // Track which accumulated items need focus detail rendered after placement
-            let mut acc_focus_y: Option<(u16, u16)> = None; // (start_y, limit_y) for deferred focus render
-
-            for i in (0..shown).rev() {
-                if acc_top <= middle_start { break; }
-                let item = frontier.accumulated[i].clone();
-
-                // Reserve extra space for focus detail below child items
-                let is_focused_child = match &item {
-                    AccumulatedItem::Child(idx) => focused_sibling == Some(*idx),
-                    AccumulatedItem::Note { .. } => false,
-                };
-                if is_focused_child {
-                    let reserve = focus_detail_height as u16;
-                    acc_top = acc_top.saturating_sub(reserve);
-                    acc_focus_y = Some((acc_top, acc_top + reserve));
-                }
-                if acc_top <= middle_start { break; }
-                acc_top -= 1;
-
-                match &item {
-                    AccumulatedItem::Child(sibling_idx) => {
-                        let entry = &self.siblings[*sibling_idx];
-                        let glyph = match entry.status {
-                            TensionStatus::Resolved => "\u{2713}",  // ✓
-                            TensionStatus::Released => "~",
-                            _ => "\u{25c6}",                        // ◆ fallback
-                        };
-                        let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::AccumulatedItem(*sibling_idx);
-                        self.render_child_line(frame, area.x, acc_top, w, &cols, entry, glyph, is_selected, false, 0, None);
-
-                        // Render focus detail below this accumulated item
-                        if is_focused_child {
-                            if let (Some((_fy_start, fy_limit)), Some(detail)) = (acc_focus_y, &self.focused_detail) {
-                                self.render_inline_focus(frame, area.x, acc_top + 1, fy_limit, w, &cols, detail, 0);
+            // V7: inline focus detail for accumulated items (rendered after List)
+            if self.deck_zoom.has_detail() {
+                for i in 0..shown.min(frontier.accumulated.len()) {
+                    if let AccumulatedItem::Child(sibling_idx) = &frontier.accumulated[i] {
+                        if focused_sibling == Some(*sibling_idx) {
+                            if let Some(ref detail) = self.focused_detail {
+                                // Render below the accumulated list
+                                let focus_y = acc_top.saturating_sub(focus_detail_height as u16);
+                                self.render_inline_focus(frame, area.x, focus_y, acc_top, w, &cols, detail, 0);
+                                acc_top = focus_y;
                             }
                         }
-                    }
-                    AccumulatedItem::Note { text, age, .. } => {
-                        let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::NoteItem(i);
-                        self.render_note_line(frame, area.x, acc_top, w, &cols, text, age, is_selected);
                     }
                 }
             }
@@ -1157,67 +1095,63 @@ impl InstrumentApp {
             self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, 0);
             my += 1;
         } else {
-            // --- Route zone (gradual: show N individually, summary for rest) ---
-            for i in 0..shown_route {
-                if my >= top_limit { break; }
-                let sibling_idx = frontier.route[i];
-                let entry = &self.siblings[sibling_idx];
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Route(sibling_idx);
-                let glyph = status_glyph(entry.status);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(self.styles.cyan));
-                my += 1;
-                // V7: inline focus expansion
-                if focused_sibling == Some(sibling_idx) {
-                    if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
-                    }
+            // --- Route zone: List widget ---
+            {
+                let (route_list, mut route_state) = crate::deck_zones::build_route_list(
+                    &frontier, &self.siblings, shown_route, cursor_idx, &cols, w, &self.styles,
+                );
+                let route_item_count = shown_route
+                    + if route_remaining > 0 { 1 } else { 0 }; // summary line
+                let route_h = route_item_count.min((top_limit - my) as usize);
+                if route_h > 0 {
+                    ftui::widgets::StatefulWidget::render(
+                        &route_list,
+                        Rect::new(area.x, my, area.width, route_h as u16),
+                        frame,
+                        &mut route_state,
+                    );
+                    my += route_h as u16;
                 }
-            }
-            // Route: show remaining items individually if only 1, else summary
-            if route_remaining == 1 && my < top_limit {
-                // Just show the single remaining item — a summary for 1 is silly
-                let sibling_idx = frontier.route[shown_route];
-                let entry = &self.siblings[sibling_idx];
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
-                let glyph = status_glyph(entry.status);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, glyph, is_selected, false, 0, Some(self.styles.cyan));
-                my += 1;
-                if focused_sibling == Some(sibling_idx) {
-                    if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
-                    }
-                }
-            } else if route_remaining > 1 && my < top_limit {
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::RouteSummary;
-                let count = if shown_route == 0 { frontier.route.len() } else { route_remaining };
-                let next_deadline = frontier.route[shown_route..].iter()
-                    .filter_map(|&idx| self.siblings[idx].horizon_label.as_deref())
-                    .next();
-                // "N more" when some items visible above, "N route steps" when fully compressed
-                let label = if shown_route > 0 { "more" } else { "route steps" };
-                let text = match next_deadline {
-                    Some(dl) => format!("\u{25B8} {} {} \u{00B7} next {}", count, label, dl),
-                    None => format!("\u{25B8} {} {}", count, label),
-                };
-                self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, 0);
-                my += 1;
-            }
-
-            // --- Overdue steps (part of the action sequence, above the separator) ---
-            for &sibling_idx in &frontier.overdue {
-                if my >= top_limit { break; }
-                let entry = &self.siblings[sibling_idx];
-                let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Overdue(sibling_idx);
-                self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, true, 0, Some(self.styles.cyan));
-                my += 1;
-                if focused_sibling == Some(sibling_idx) {
-                    if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                // V7: inline focus detail for route items (rendered after List)
+                if self.deck_zoom.has_detail() {
+                    for i in 0..shown_route.min(frontier.route.len()) {
+                        let sibling_idx = frontier.route[i];
+                        if focused_sibling == Some(sibling_idx) {
+                            if let Some(ref detail) = self.focused_detail {
+                                my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                            }
+                        }
                     }
                 }
             }
 
-            // --- Next committed step (still part of the ordered sequence) ---
+            // --- Overdue zone: List widget ---
+            {
+                let (overdue_list, mut overdue_state) = crate::deck_zones::build_overdue_list(
+                    &frontier, &self.siblings, cursor_idx, &cols, w, &self.styles,
+                );
+                let overdue_h = frontier.overdue.len().min((top_limit - my) as usize);
+                if overdue_h > 0 {
+                    ftui::widgets::StatefulWidget::render(
+                        &overdue_list,
+                        Rect::new(area.x, my, area.width, overdue_h as u16),
+                        frame,
+                        &mut overdue_state,
+                    );
+                    my += overdue_h as u16;
+                }
+                if self.deck_zoom.has_detail() {
+                    for &sibling_idx in &frontier.overdue {
+                        if focused_sibling == Some(sibling_idx) {
+                            if let Some(ref detail) = self.focused_detail {
+                                my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- Next committed step ---
             if let Some(next_idx) = frontier.next {
                 if my < top_limit {
                     let entry = &self.siblings[next_idx];
@@ -1277,8 +1211,6 @@ impl InstrumentApp {
                         else { self.styles.dim };
                     (text, style)
                 });
-                // Show the next step's deadline, or if none, the nearest route deadline.
-                // Route items are sorted by position DESC (last = nearest to frontier).
                 let next_dl = frontier.next.iter()
                     .filter_map(|&idx| self.siblings.get(idx))
                     .filter_map(|s| s.horizon_label.as_deref())
@@ -1290,7 +1222,6 @@ impl InstrumentApp {
                             .next()
                     });
 
-                // Collect readout cells: (text, style)
                 let mut cells: Vec<(String, Style)> = Vec::new();
                 if total_children > 0 {
                     cells.push((format!("{}/{}", done_count, total_children), self.styles.text));
@@ -1308,13 +1239,11 @@ impl InstrumentApp {
                     ));
                 }
 
-                // Calculate total readout width for centering
                 let separator = " \u{00B7} ";
                 let sep_w = separator.chars().count();
                 let readout_w: usize = cells.iter().map(|(t, _)| t.chars().count()).sum::<usize>()
                     + if cells.len() > 1 { sep_w * (cells.len() - 1) } else { 0 };
 
-                // Render: rule background with colored readout overlay
                 let rule_char = glyphs::LIGHT_RULE.to_string();
                 let pad_total = w.saturating_sub(readout_w + 4);
                 let left_rules = pad_total / 2;
@@ -1335,47 +1264,34 @@ impl InstrumentApp {
                 Paragraph::new(Text::from(Line::from_spans(header_spans)))
                     .render(Rect::new(area.x, my, area.width, 1), frame);
                 my += 1;
-
-                // (S4 "no committed next step" moved above console header)
             }
 
-            // --- Held items (gradual: show N individually, summary for rest) ---
+            // --- Held zone: List widget ---
             if !frontier.held.is_empty() && my < top_limit {
-                // Individual items
-                for i in 0..shown_held {
-                    if my >= top_limit { break; }
-                    let sibling_idx = frontier.held[i];
-                    let entry = &self.siblings[sibling_idx];
-                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::HeldItem(sibling_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(self.styles.subdued));
-                    my += 1;
-                    if focused_sibling == Some(sibling_idx) {
-                        if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
-                        }
-                    }
+                let (held_list, mut held_state) = crate::deck_zones::build_held_list(
+                    &frontier, &self.siblings, shown_held, cursor_idx, &cols, w, &self.styles,
+                );
+                let held_item_count = shown_held
+                    + if held_remaining == 1 { 1 } else if held_remaining > 1 { 1 } else { 0 };
+                let held_h = held_item_count.min((top_limit - my) as usize);
+                if held_h > 0 {
+                    ftui::widgets::StatefulWidget::render(
+                        &held_list,
+                        Rect::new(area.x, my, area.width, held_h as u16),
+                        frame,
+                        &mut held_state,
+                    );
+                    my += held_h as u16;
                 }
-                // Remaining: show individually if only 1, else summary
-                if held_remaining == 1 && my < top_limit {
-                    let sibling_idx = frontier.held[shown_held];
-                    let entry = &self.siblings[sibling_idx];
-                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{2727}", is_selected, false, HELD_INDENT, Some(self.styles.subdued));
-                    my += 1;
-                    if focused_sibling == Some(sibling_idx) {
-                        if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
+                if self.deck_zoom.has_detail() {
+                    for i in 0..shown_held.min(frontier.held.len()) {
+                        let sibling_idx = frontier.held[i];
+                        if focused_sibling == Some(sibling_idx) {
+                            if let Some(ref detail) = self.focused_detail {
+                                my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
+                            }
                         }
                     }
-                } else if held_remaining > 1 && my < top_limit {
-                    let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::Held;
-                    let text = if shown_held == 0 {
-                        format!("\u{2727} {} held", frontier.held.len())
-                    } else {
-                        format!("\u{2727} {} more held", held_remaining)
-                    };
-                    self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, HELD_INDENT);
-                    my += 1;
                 }
             }
         }
@@ -1408,32 +1324,9 @@ impl InstrumentApp {
         // --- Input line: the action surface at the console's heart ---
         if my < top_limit {
             let is_selected = frontier.cursor_target(cursor_idx) == CursorTarget::InputPoint;
-
-            let content = if is_selected {
-                // Active: show available gestures
-                if is_empty_console {
-                    "\u{25B8} a add first step \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality"
-                } else {
-                    "\u{25B8} a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality"
-                }.to_string()
-            } else {
-                // Resting: minimal affordance
-                "\u{25B8} ___".to_string()
-            };
-
-            let style = if is_selected {
-                self.styles.selected
-            } else {
-                self.styles.dim
-            };
-
-            let prefix_len = cols.left + cols.gutter;
-            let pad_right = w.saturating_sub(prefix_len + content.chars().count());
-            let line = Line::from_spans([
-                Span::styled(" ".repeat(prefix_len), style),
-                Span::styled(content, style),
-                Span::styled(" ".repeat(pad_right), style),
-            ]);
+            let line = crate::deck_zones::build_input_line(
+                is_selected, is_empty_console, &cols, w, &self.styles,
+            );
             Paragraph::new(Text::from(line))
                 .render(Rect::new(area.x, my, area.width, 1), frame);
         }
@@ -1455,136 +1348,9 @@ impl InstrumentApp {
         extra_indent: usize,
         glyph_color: Option<Style>,
     ) {
-        let is_done = entry.status == TensionStatus::Resolved
-            || entry.status == TensionStatus::Released;
-
-        let base_style = if is_selected {
-            self.styles.selected
-        } else if is_overdue {
-            // S2: Time-amplified overdue intensity (N7/C5)
-            if entry.temporal_urgency > 2.0 {
-                Style::new().fg(PackedRgba::rgb(230, 190, 60)).bold()
-            } else if entry.temporal_urgency > 1.3 {
-                Style::new().fg(self.styles.clr_amber).bold()
-            } else {
-                self.styles.amber
-            }
-        } else if is_done {
-            self.styles.dim
-        } else {
-            self.styles.text
-        };
-
-        let glyph_style = if is_selected || is_overdue {
-            base_style
-        } else {
-            glyph_color.unwrap_or(base_style)
-        };
-
-        // Left column: deadline label
-        let left_str = match entry.horizon_label.as_deref() {
-            Some(dl) => dl.to_string(),
-            None => String::new(),
-        };
-        let left_padded = format!("{:<width$}", left_str, width = cols.left);
-
-        // Right sub-columns: [id] [→] [age]  (age hidden when cols.age_width == 0)
-        let id_num = entry.short_code
-            .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
-            .unwrap_or_else(|| entry.id[..cols.id_width.min(entry.id.len())].to_string());
-
-        let right_str = if cols.age_width > 0 {
-            let arrow = if entry.child_count > 0 { "\u{2192}" } else { " " };
-            let age_str = format!("{:>width$}", entry.created_age, width = cols.age_width);
-            format!("{} {} {}", id_num, arrow, age_str)
-        } else {
-            id_num.clone()
-        };
-
-        // S7: OVERDUE tag for overdue items
-        let overdue_tag = if is_overdue && !is_selected { "OVERDUE  " } else { "" };
-        let overdue_tag_w = overdue_tag.chars().count();
-
-        // Main column: glyph + text — maximum budget
-        let glyph_w = 2; // glyph + space
-        let right_w = right_str.chars().count();
-        let text_budget = w
-            .saturating_sub(cols.left + cols.gutter + extra_indent + glyph_w + overdue_tag_w + cols.gutter + right_w);
-        let main_text = truncate_str(&entry.desired, text_budget);
-
-        // Build the line
-        let mut spans: Vec<Span> = Vec::new();
-
-        let left_style = if is_selected { base_style } else if is_overdue { base_style } else { self.styles.dim };
-        let right_style = if is_selected { base_style } else { self.styles.dim };
-
-        spans.push(Span::styled(left_padded, left_style));
-        spans.push(Span::styled(" ".repeat(cols.gutter + extra_indent), base_style));
-        spans.push(Span::styled(format!("{} ", glyph), glyph_style));
-        spans.push(Span::styled(&main_text, base_style));
-
-        // Pad between text and OVERDUE tag / right sub-columns
-        let used: usize = cols.left + cols.gutter + extra_indent + glyph_w + main_text.chars().count();
-        let gap = w.saturating_sub(used + overdue_tag_w + right_w);
-        spans.push(Span::styled(" ".repeat(gap), base_style));
-        if !overdue_tag.is_empty() {
-            spans.push(Span::styled(overdue_tag, base_style));
-        }
-        spans.push(Span::styled(right_str, right_style));
-
-        // Pad to full width for selection highlight
-        let total_rendered: usize = spans.iter().map(|s| s.content.chars().count()).sum();
-        if total_rendered < w {
-            spans.push(Span::styled(" ".repeat(w - total_rendered), base_style));
-        }
-
-        let line = Line::from_spans(spans);
-        Paragraph::new(Text::from(line))
-            .render(Rect::new(x, y, w as u16, 1), frame);
-    }
-
-    /// Render a note line in the accumulated zone.
-    fn render_note_line(
-        &self,
-        frame: &mut Frame<'_>,
-        x: u16,
-        y: u16,
-        w: usize,
-        cols: &ColumnLayout,
-        text: &str,
-        age: &str,
-        is_selected: bool,
-    ) {
-        let base_style = if is_selected { self.styles.selected } else { self.styles.dim };
-        let glyph = "\u{203b}"; // ※
-        let glyph_w = 2; // glyph + space
-        let age_w = age.chars().count();
-        let text_budget = w.saturating_sub(cols.left + cols.gutter + glyph_w + cols.gutter + age_w);
-        let main_text = if text.chars().count() > text_budget {
-            let t: String = text.chars().take(text_budget.saturating_sub(1)).collect();
-            format!("{}\u{2026}", t)
-        } else {
-            text.to_string()
-        };
-
-        let used = cols.left + cols.gutter + glyph_w + main_text.chars().count();
-        let gap = w.saturating_sub(used + age_w);
-
-        let mut spans = vec![
-            Span::styled(format!("{:<width$}", "", width = cols.left), base_style),
-            Span::styled(" ".repeat(cols.gutter), base_style),
-            Span::styled(format!("{} ", glyph), base_style),
-            Span::styled(&main_text, base_style),
-            Span::styled(" ".repeat(gap), base_style),
-            Span::styled(age.to_string(), base_style),
-        ];
-
-        let total_rendered: usize = spans.iter().map(|s| s.content.chars().count()).sum();
-        if total_rendered < w {
-            spans.push(Span::styled(" ".repeat(w - total_rendered), base_style));
-        }
-
-        let line = Line::from_spans(spans);
+        let line = crate::deck_zones::build_child_line(
+            entry, glyph, is_selected, is_overdue, extra_indent, glyph_color, cols, w, &self.styles,
+        );
         Paragraph::new(Text::from(line))
             .render(Rect::new(x, y, w as u16, 1), frame);
     }
@@ -1603,19 +1369,7 @@ impl InstrumentApp {
         _base_style: Style,
         extra_indent: usize,
     ) {
-        let style = if is_selected {
-            self.styles.selected
-        } else {
-            self.styles.dim
-        };
-
-        let prefix_len = cols.left + cols.gutter + extra_indent;
-        let pad_right = w.saturating_sub(prefix_len + text.chars().count());
-        let line = Line::from_spans([
-            Span::styled(" ".repeat(prefix_len), style),
-            Span::styled(text.to_string(), style),
-            Span::styled(" ".repeat(pad_right), style),
-        ]);
+        let line = crate::deck_zones::build_indicator_line(text, is_selected, extra_indent, cols, w, &self.styles);
         Paragraph::new(Text::from(line))
             .render(Rect::new(x, y, w as u16, 1), frame);
     }
@@ -2022,17 +1776,6 @@ impl InstrumentApp {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Render a single line from styled string pairs.
-/// Return the appropriate glyph for a tension's status.
-/// All items get a glyph for visual rhythm — · for active, ✓ for resolved, ~ for released.
-fn status_glyph(status: TensionStatus) -> &'static str {
-    match status {
-        TensionStatus::Active => "\u{25c6}",     // ◆ committed, declared
-        TensionStatus::Resolved => "\u{2713}",   // ✓
-        TensionStatus::Released => "~",
-    }
-}
 
 /// Render a single styled line at (x, y) using Paragraph.
 fn render_line(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, parts: &[(String, Style)]) {
