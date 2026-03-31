@@ -15,6 +15,9 @@ serde_json = "1"
 thiserror = "2"
 dirs = "5"
 fs4 = "0.13"
+fnx-classes = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
+fnx-algorithms = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
+fnx-runtime = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
 
 [dev-dependencies]
 tempfile = "3"

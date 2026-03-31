@@ -4,6 +4,8 @@
 //! can have an optional parent, forming a hierarchical structure. Loose
 //! tensions (no parent, no children) appear as isolated roots.
 
+use fnx_classes::digraph::DiGraph;
+use fnx_runtime::CompatibilityMode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -52,21 +54,41 @@ impl Node {
 }
 
 /// A forest of tensions — multiple trees with potentially multiple roots.
-#[derive(Debug, Clone, PartialEq, Default)]
+///
+/// Internally holds both a HashMap (for the existing Forest API) and a
+/// FrankenNetworkX DiGraph (for graph algorithm access). Both are built
+/// from the same input in `from_tensions()` and stay in sync.
+#[derive(Debug, Clone)]
 pub struct Forest {
     /// All nodes indexed by tension ID for O(1) lookup.
     nodes: HashMap<String, Node>,
     /// Root node IDs (tensions with no parent or orphaned).
     roots: Vec<String>,
+    /// Graph substrate — parent→child directed edges. Exposes the tree
+    /// topology to FrankenNetworkX algorithms (centrality, waves, paths).
+    graph: DiGraph,
+}
+
+impl PartialEq for Forest {
+    fn eq(&self, other: &Self) -> bool {
+        self.nodes == other.nodes && self.roots == other.roots
+    }
+}
+
+impl Default for Forest {
+    fn default() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            roots: Vec::new(),
+            graph: DiGraph::new(CompatibilityMode::Strict),
+        }
+    }
 }
 
 impl Forest {
     /// Create an empty forest.
     pub fn new() -> Self {
-        Self {
-            nodes: HashMap::new(),
-            roots: Vec::new(),
-        }
+        Self::default()
     }
 
     /// Build a forest from a flat list of tensions.
@@ -126,6 +148,22 @@ impl Forest {
 
         // Roots and children are naturally ordered by creation time since we process
         // tensions in the order they were created. No explicit sorting needed.
+
+        // Build the DiGraph substrate: nodes = tension IDs, edges = parent→child.
+        let mut graph = DiGraph::new(CompatibilityMode::Strict);
+        for tension in tensions.iter() {
+            graph.add_node(&tension.id);
+        }
+        for tension in tensions.iter() {
+            if let Some(ref parent_id) = tension.parent_id {
+                if tension_ids.contains(parent_id.as_str()) {
+                    // Parent→child edge (containment flows outward).
+                    // Unwrap is safe: both nodes were just added above.
+                    let _ = graph.add_edge(parent_id.as_str(), &tension.id);
+                }
+            }
+        }
+        forest.graph = graph;
 
         Ok(forest)
     }
@@ -220,6 +258,11 @@ impl Forest {
     /// Get all root node IDs.
     pub fn root_ids(&self) -> &[String] {
         &self.roots
+    }
+
+    /// Access the underlying DiGraph for graph algorithm computations.
+    pub fn graph(&self) -> &DiGraph {
+        &self.graph
     }
 
     /// Find a node by tension ID.

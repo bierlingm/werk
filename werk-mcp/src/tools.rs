@@ -10,9 +10,10 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
 use sd_core::{
-    compute_frontier, compute_temporal_signals, compute_urgency, detect_horizon_drift,
-    extract_mutation_pattern, gap_magnitude, project_field, project_tension, Engine, Forest, Horizon,
-    HorizonDriftType, Mutation, ProjectionHorizon, ProjectionThresholds, TensionStatus,
+    compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency,
+    detect_horizon_drift, extract_mutation_pattern, gap_magnitude, project_field, project_tension,
+    Engine, Forest, Horizon, HorizonDriftType, Mutation, ProjectionHorizon, ProjectionThresholds,
+    TensionStatus,
 };
 use serde::{Deserialize, Serialize};
 use werk_shared::{Config, HookEvent, HookRunner, PrefixResolver, WerkError, Workspace};
@@ -743,6 +744,8 @@ impl WerkServer {
                 .map(|h| h.is_past(now))
                 .unwrap_or(false);
         let temporal = compute_temporal_signals(&forest, &tension.id, now);
+        let field_structural = compute_structural_signals(&forest);
+        let structural = field_structural.signals.get(&tension.id).cloned().unwrap_or_default();
 
         let mutation_infos: Vec<serde_json::Value> = mutations
             .iter()
@@ -799,6 +802,7 @@ impl WerkServer {
             "overdue": overdue,
             "frontier": frontier,
             "temporal": temporal,
+            "structural": structural,
             "mutations": mutation_infos,
             "children": children_info,
             "epochs": epoch_infos,

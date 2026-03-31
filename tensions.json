@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-31T08:13:00Z",
+  "flushed_at": "2026-03-31T09:24:46Z",
   "summary": {
-    "active": 70,
+    "active": 69,
     "released": 7,
-    "resolved": 66,
-    "total": 143
+    "resolved": 72,
+    "total": 148
   },
   "tensions": [
     {
@@ -1482,7 +1482,7 @@
       "status": "Active"
     },
     {
-      "actual": "two FrankenSuite dependencies in use (fsqlite, ftui), both at surface level; evaluation written, eight integrations identified and prioritized",
+      "actual": "First integration delivered: FrankenNetworkX (#141 resolved). DiGraph substrate in Forest, four structural signals (centrality, waves, longest path, descendants), surfaced across CLI/MCP/TUI. Phase 2 design doc written for typed edges. Remaining: #142 FrankenMermaid, #143 FrankenSearch, #144 fsqlite MVCC, #145 ftui, #146 FrankenPandas, #147 FrankenEngine, #148 FrankenWhisper.",
       "created_at": "2026-03-30T21:29:15.331282+00:00",
       "desired": "werk integrates the full FrankenSuite — graph intelligence, visual output, hybrid search, deeper storage and TUI, analytics, sandboxed extensions, voice input",
       "horizon": "2026-09",
@@ -1493,15 +1493,15 @@
       "status": "Active"
     },
     {
-      "actual": "tension tree is a Forest<Node> in sd-core/src/tree.rs; critical path, containment, sequencing computed by hand in temporal.rs; no graph library in dependencies",
+      "actual": "Phase 1 complete: Forest wraps DiGraph (option 3a), four structural signals computed (centrality, waves, longest path, descendants), surfaced in CLI show (◉ HUB / ┃ SPINE / ◎ REACH glyphs), MCP show (JSON), TUI survey (glyphs). 503 tests pass. Phase 2 design doc written (designs/structural-graph-overlay.md) covering typed edges, link/unlink gestures, combined graph signals.",
       "created_at": "2026-03-30T21:29:28.158569+00:00",
-      "desired": "FrankenNetworkX powers structural graph analysis — betweenness centrality reveals bottleneck tensions, topological generations drive a waves view, dag_longest_path replaces hand-rolled critical path, transitive closure shows blast radius of any gesture",
+      "desired": "FrankenNetworkX is the graph substrate inside Forest — DiGraph lives alongside the existing HashMap (option 3a), forest.graph() exposes it, betweenness centrality / topological waves / longest path / transitive descendants are computed as StructuralSignals, surfaced in show/MCP/TUI/web with ◉ HUB / ┃ SPINE / ◎ REACH glyphs by exception, ComplexityWitness preserved for ground mode",
       "horizon": "2026-05",
       "id": "01KN0ADMTY1F3DEB5GQYSWT2P3",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 1,
       "short_code": 141,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "tension tree is text-only on all surfaces; web frontend is vanilla JS with no diagramming; CLI tree is ASCII; no visual output anywhere",
@@ -1579,6 +1579,61 @@
       "position": 8,
       "short_code": 148,
       "status": "Active"
+    },
+    {
+      "actual": "fnx-classes, fnx-algorithms, fnx-runtime added as git deps from github.com/Dicklesworthstone/franken_networkx — compiles clean, pulls mwmatching transitively",
+      "created_at": "2026-03-31T08:48:05.296813+00:00",
+      "desired": "fnx-classes, fnx-algorithms, fnx-runtime added as git dependencies in sd-core/Cargo.toml — compiles clean on nightly with edition 2024",
+      "horizon": null,
+      "id": "01KN1H87NGN7MNFE0DQNF0REM7",
+      "parent_id": null,
+      "position": 1,
+      "short_code": 149,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Forest struct holds graph: DiGraph field, built in from_tensions() with parent→child edges, exposed via forest.graph(). All 24 existing tests pass. PartialEq and Default implemented manually (DiGraph doesn't derive them).",
+      "created_at": "2026-03-31T08:48:07.722909+00:00",
+      "desired": "Forest holds a DiGraph alongside its HashMap — from_tensions() builds both, forest.graph() exposes &DiGraph, all existing Forest methods and tests unchanged",
+      "horizon": null,
+      "id": "01KN1H8A1ACG7CP9NVET2GSQTM",
+      "parent_id": null,
+      "position": 2,
+      "short_code": 150,
+      "status": "Resolved"
+    },
+    {
+      "actual": "sd-core/src/graph.rs created with StructuralSignals, ComputationWitness, FieldStructuralSignals, compute_structural_signals(). Runs centrality, waves, longest path, descendant count. 5 new tests (empty, single, chain, fan, diamond). All 466 tests pass.",
+      "created_at": "2026-03-31T08:48:10.116121+00:00",
+      "desired": "sd-core/src/graph.rs exists with StructuralSignals, ComputationWitness, compute_structural_signals() — centrality, waves, longest path, descendant count computed from forest.graph()",
+      "horizon": null,
+      "id": "01KN1H8CC46CBX01QF3RB4J0X9",
+      "parent_id": null,
+      "position": 3,
+      "short_code": 151,
+      "status": "Resolved"
+    },
+    {
+      "actual": "show command displays ◉ HUB / ┃ SPINE / ◎ REACH by exception with threshold filtering (centrality > 0.0001, descendants > 5). Wave shown in identity block. structural field in JSON. MCP show includes structural signals. TUI survey shows ◉ and ┃ glyphs. Web deferred (no per-tension signal display yet). All 503 sd-core tests pass.",
+      "created_at": "2026-03-31T08:48:12.484527+00:00",
+      "desired": "show command displays ◉ HUB / ┃ SPINE / ◎ REACH structural signals by exception, wave in identity block, structural field in JSON output — MCP show includes structural signals — TUI survey shows structural glyphs — web API includes structural signals",
+      "horizon": null,
+      "id": "01KN1H8EP46FY6B3JAVQV132D3",
+      "parent_id": null,
+      "position": 4,
+      "short_code": 152,
+      "status": "Resolved"
+    },
+    {
+      "actual": "designs/structural-graph-overlay.md written. Covers: 3 edge types (enables/competes/informs), edges table schema, link/unlink gesture semantics, combined graph construction, new full-graph signals (community detection, centrality shift, competing pairs, enabling chains), conceptual foundation amendment, evidence ledger integration, open questions.",
+      "created_at": "2026-03-31T08:48:14.921165+00:00",
+      "desired": "Phase 2 design document in designs/ covers typed edge semantics, edges table schema, link/unlink gestures, combined graph construction, new full-graph signals, and conceptual foundation amendment for cross-cutting relationships",
+      "horizon": null,
+      "id": "01KN1H8H29PNA802RR1Z79WMDY",
+      "parent_id": null,
+      "position": 5,
+      "short_code": 153,
+      "status": "Resolved"
     }
   ]
 }

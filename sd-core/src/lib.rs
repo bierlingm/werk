@@ -11,6 +11,7 @@
 pub mod engine;
 pub mod events;
 pub mod frontier;
+pub mod graph;
 pub mod horizon;
 pub mod mutation;
 pub mod projection;
@@ -39,4 +40,7 @@ pub use temporal::{
     detect_horizon_drift, detect_sequencing_pressure, gap_magnitude,
 };
 pub use tension::{SdError, Tension, TensionStatus};
+pub use graph::{
+    ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
+};
 pub use tree::{Forest, Node, TreeError};

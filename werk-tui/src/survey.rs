@@ -216,6 +216,8 @@ impl InstrumentApp {
 
         // Compute structural signals for each item.
         if let Ok(forest) = sd_core::Forest::from_tensions(all.clone()) {
+            let field_structural = sd_core::compute_structural_signals(&forest);
+
             for idx in 0..items.len() {
                 let tension_id = items[idx].tension_id.clone();
                 let temporal = sd_core::compute_temporal_signals(&forest, &tension_id, now);
@@ -252,6 +254,16 @@ impl InstrumentApp {
                             }
                             _ => {}
                         }
+                    }
+                }
+
+                // Structural signals
+                if let Some(ss) = field_structural.signals.get(&tension_id) {
+                    if ss.centrality.map(|c| c > 0.0001).unwrap_or(false) {
+                        items[idx].signal_glyphs.push("\u{25c9}"); // ◉ HUB
+                    }
+                    if ss.on_longest_path {
+                        items[idx].signal_glyphs.push("\u{2503}"); // ┃ SPINE
                     }
                 }
             }

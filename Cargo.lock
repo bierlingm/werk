@@ -1340,6 +1340,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "fnx-algorithms"
+version = "0.1.0"
+source = "git+https://github.com/Dicklesworthstone/franken_networkx#4e86018ad0b05f47b5a4c1db47870204f094e136"
+dependencies = [
+ "fnx-classes",
+ "fnx-runtime",
+ "mwmatching",
+ "serde",
+]
+
+[[package]]
+name = "fnx-classes"
+version = "0.1.0"
+source = "git+https://github.com/Dicklesworthstone/franken_networkx#4e86018ad0b05f47b5a4c1db47870204f094e136"
+dependencies = [
+ "fnx-runtime",
+ "indexmap 2.13.0",
+ "serde",
+]
+
+[[package]]
+name = "fnx-runtime"
+version = "0.1.0"
+source = "git+https://github.com/Dicklesworthstone/franken_networkx#4e86018ad0b05f47b5a4c1db47870204f094e136"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3179,6 +3209,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mwmatching"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f13b50448d988736cc2c938a76ae336241fcb31a225017c0e3121bd349e7dc06"
+
+[[package]]
 name = "ndk"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4478,6 +4514,9 @@ version = "1.4.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
+ "fnx-algorithms",
+ "fnx-classes",
+ "fnx-runtime",
  "fs4",
  "fsqlite",
  "fsqlite-error",
