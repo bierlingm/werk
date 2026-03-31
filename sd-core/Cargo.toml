@@ -14,10 +14,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 dirs = "5"
-fs4 = "0.13"
 fnx-classes = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
 fnx-algorithms = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
 fnx-runtime = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
+frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch", default-features = false, features = ["hash"] }
+asupersync = "0.2.9"
 
 [dev-dependencies]
 tempfile = "3"

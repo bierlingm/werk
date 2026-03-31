@@ -59,4 +59,4 @@ Everything else (glyphs, colors, chrome, display breakpoints) is changeable.
 - **UBS (Ultimate Bug Scanner)** runs automatically on every file write/edit via Claude Code hook. Critical findings are surfaced inline.
 - Run `ubs --only=rust .` for a full project scan. Run `ubs --only=rust --diff .` for changed files only.
 - Fix all CRITICAL findings before committing. Warnings are advisory.
-- The database uses **fsqlite** (FrankenSQLite) which does not safely handle concurrent writes. An advisory file lock in `Store::init()` prevents this. Never run parallel `werk` CLI commands against the same store.
+- The database uses **fsqlite** (FrankenSQLite) with MVCC concurrent writers enabled (`PRAGMA fsqlite.concurrent_mode=ON`). Multiple processes can safely write to the same store simultaneously — conflicts are detected at the page level and retried with exponential backoff. The old advisory file lock has been removed.

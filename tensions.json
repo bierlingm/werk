@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-31T10:08:08Z",
+  "flushed_at": "2026-03-31T11:19:00Z",
   "summary": {
     "active": 70,
     "released": 7,
-    "resolved": 72,
-    "total": 149
+    "resolved": 73,
+    "total": 150
   },
   "tensions": [
     {
@@ -1504,18 +1504,18 @@
       "status": "Resolved"
     },
     {
-      "actual": "tension tree is text-only on all surfaces; web frontend is vanilla JS with no diagramming; CLI tree is ASCII; no visual output anywhere",
+      "actual": "blocked — FrankenMermaid exists (github.com/Dicklesworthstone/frankenmermaid) but depends on unpublished franken-kernel (local path only). Cannot integrate until franken-kernel is publicly available. No visual output on any surface.",
       "created_at": "2026-03-30T21:29:36.931342+00:00",
       "desired": "FrankenMermaid renders tension structures visually — flowchart/mindmap for web and desktop, SVG export from CLI, braille/block minimap in TUI, auto-generated diagrams for docs and public content, gantt/timeline for temporal views",
       "horizon": "2026-06",
       "id": "01KN0ADXD3NA3SJDXK65MC2QFK",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
-      "position": 2,
+      "position": null,
       "short_code": 142,
       "status": "Active"
     },
     {
-      "actual": "TUI search is case-insensitive substring matching with simple scoring; no full-text index; no semantic search; logbase (#89) has no search substrate",
+      "actual": "Plan approved. Git dep on frankensearch (not crates.io — const fn bug). Canonical API (IndexBuilder → TwoTierSearcher → search_collect) confirmed working. SearchIndex goes in sd-core for shared use. TUI wires through unchanged SearchResult contract with substring fallback. Migration path: hash→hybrid→semantic via feature flags, zero code changes per step. Implementation next.",
       "created_at": "2026-03-30T21:29:45.127237+00:00",
       "desired": "FrankenSearch provides hybrid retrieval across all werk content — BM25 for TUI search, full two-tier (lexical + semantic + RRF fusion) for the logbase, semantic queries via MCP let agents search by meaning not just structure",
       "horizon": "2026-06",
@@ -1526,15 +1526,15 @@
       "status": "Active"
     },
     {
-      "actual": "fsqlite v0.1.2 in use; advisory file lock in Store::init() prevents concurrent access; manual backup logic on init; single-writer constraint documented as invariant",
+      "actual": "MVCC concurrent writers implemented. PRAGMA fsqlite.concurrent_mode=ON set on all connections. BEGIN CONCURRENT replaces BEGIN at all 6 transaction sites. Commit-with-retry (exponential backoff, 10 attempts) replaces advisory file lock. WriteLockGuard, acquire_lock(), write_lock(), fs4 dependency all removed. 503 tests pass. CLAUDE.md updated. Backup logic retained (RaptorQ not in v0.1.2).",
       "created_at": "2026-03-30T21:29:54.236327+00:00",
-      "desired": "fsqlite upgraded to use MVCC concurrent writers and RaptorQ self-healing — the advisory file lock is removed, multiple processes safely write to the same store, torn writes are recoverable without manual backups",
+      "desired": "fsqlite upgraded to use MVCC concurrent writers — the advisory file lock is removed, multiple processes safely write to the same store via BEGIN CONCURRENT with retry-on-conflict. RaptorQ self-healing deferred (not in v0.1.2).",
       "horizon": "2026-06",
       "id": "01KN0AEE9W03FRAMCZDHJQBNH4",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 4,
       "short_code": 144,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "ftui v0.2 used as rendering substrate only; custom rendering pipeline in render.rs; Bayesian diff disabled; hand-built theme.rs; 106 available widgets mostly unused",
@@ -1644,6 +1644,17 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 7,
       "short_code": 154,
+      "status": "Active"
+    },
+    {
+      "actual": "tree renders: ID, status marker, horizon, OVERDUE/EXCEEDS_PARENT/PRESSURE, desired text, closure progress. No position/route. No structural signal glyphs. No staleness indicator. Sort is horizon-only, not canonical children_by_horizon() ordering. The show command displays all these but tree does not.",
+      "created_at": "2026-03-31T10:37:22.294342+00:00",
+      "desired": "tree command shows richer per-node signals — position/route indicator, structural signal glyphs (HUB/SPINE/REACH), staleness, and sorts by canonical ordering (position DESC then deadline) instead of horizon-only",
+      "horizon": "2026-05",
+      "id": "01KN1QGAZP3C4XFXFXA40ANTYV",
+      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "position": null,
+      "short_code": 155,
       "status": "Active"
     }
   ]
