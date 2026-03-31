@@ -18,7 +18,7 @@ const MAX_HISTORY: usize = 50;
 pub struct StateSnapshot {
     pub parent_id: Option<String>,
     pub siblings: Vec<FieldEntry>,
-    pub deck_cursor_index: usize,
+    pub focus_active: ftui::widgets::FocusId,
     pub deck_zoom: deck::ZoomLevel,
     pub route_expanded: bool,
     pub held_expanded: bool,
