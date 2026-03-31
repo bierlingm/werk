@@ -6,7 +6,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_frontier, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, ProjectionThresholds, TensionStatus};
+use sd_core::{compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, ProjectionThresholds, TensionStatus};
 use serde::Serialize;
 use werk_shared::{display_id, relative_time, truncate};
 
@@ -26,6 +26,7 @@ struct ShowResult {
     overdue: bool,
     frontier: sd_core::Frontier,
     temporal: sd_core::TemporalSignals,
+    structural: sd_core::StructuralSignals,
     #[serde(skip_serializing_if = "Option::is_none")]
     horizon_drift: Option<sd_core::HorizonDrift>,
     mutations: Vec<ShowMutationInfo>,
@@ -169,6 +170,14 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
     // Temporal signals (calculus of time)
     let temporal = compute_temporal_signals(&forest, &tension.id, now);
 
+    // Structural signals (graph intelligence)
+    let field_structural = compute_structural_signals(&forest);
+    let structural = field_structural
+        .signals
+        .get(&tension.id)
+        .cloned()
+        .unwrap_or_default();
+
     // Horizon drift (from mutation history)
     let horizon_drift = {
         let drift = detect_horizon_drift(&tension.id, &mutations);
@@ -245,6 +254,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         overdue,
         frontier: frontier.clone(),
         temporal: temporal.clone(),
+        structural: structural.clone(),
         horizon_drift: horizon_drift.clone(),
         mutations: mutation_infos,
         children,
@@ -352,6 +362,11 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             }
         }
 
+        // Wave (topological generation — always shown if computed)
+        if let Some(wave) = structural.wave {
+            println!("  Wave:     {} of {}", wave + 1, field_structural.wave_count);
+        }
+
         // Urgency (only if horizon exists)
         if let Some(urg) = &urgency {
             let pct = (urg.value * 100.0).min(999.0);
@@ -368,13 +383,17 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         }
 
         // === Signals (by exception — only shown when something needs attention) ===
+        let has_hub = structural.centrality.map(|c| c > 0.0001).unwrap_or(false);
+        let has_spine = structural.on_longest_path;
+        let has_reach = structural.descendant_count.map(|c| c > 5).unwrap_or(false);
         let has_signals = temporal.on_critical_path
             || temporal.has_containment_violation
             || !temporal.sequencing_pressures.is_empty()
             || !temporal.critical_path.is_empty()
             || !temporal.containment_violations.is_empty()
             || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false)
-            || horizon_drift.is_some();
+            || horizon_drift.is_some()
+            || has_hub || has_spine || has_reach;
 
         if has_signals {
             println!();
@@ -434,6 +453,16 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     HorizonDriftType::Stable => unreachable!(),
                 };
                 println!("  \u{219d} DRIFT      {}", desc);
+            }
+            if has_hub {
+                println!("  \u{25c9} HUB        centrality {:.4} (structural routing point)", structural.centrality.unwrap_or(0.0));
+            }
+            if has_spine {
+                let depth = field_structural.longest_path.len();
+                println!("  \u{2503} SPINE      on longest structural path (depth {})", depth);
+            }
+            if has_reach {
+                println!("  \u{25ce} REACH      {} transitive descendants", structural.descendant_count.unwrap_or(0));
             }
         }
 
