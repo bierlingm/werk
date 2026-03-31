@@ -16,11 +16,14 @@ impl Model for InstrumentApp {
     }
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
-        // Clear expired transient messages
-        if let Some(ref t) = self.transient {
-            if t.is_expired() {
-                self.transient = None;
-            }
+        // Tick toast queue on timer events — re-schedule if toasts still active
+        if matches!(msg, Msg::Tick) {
+            self.toasts.tick(std::time::Duration::from_millis(100));
+            return if self.toasts.is_active() {
+                Cmd::Tick(std::time::Duration::from_millis(100))
+            } else {
+                Cmd::none()
+            };
         }
 
         // Handle resize — update layout regime before anything else.
@@ -35,6 +38,20 @@ impl Model for InstrumentApp {
             && self.db_has_changed()
         {
             self.load_siblings();
+        }
+
+        // Open palette on Ctrl+K (works from any mode in Normal)
+        if matches!(msg, Msg::OpenPalette) {
+            self.command_palette.open();
+            return Cmd::none();
+        }
+
+        // Route events to palette when visible — it consumes them
+        if self.command_palette.is_visible() {
+            if let Some(action) = self.handle_palette_event(&msg) {
+                return action;
+            }
+            return Cmd::none(); // palette consumed the event
         }
 
         // Survey orientation intercepts Normal-mode input.
@@ -63,6 +80,14 @@ impl Model for InstrumentApp {
         // Reload survey when returning to Normal after a gesture completes.
         if in_survey && was_not_normal && matches!(self.input_mode, InputMode::Normal) {
             self.load_survey_items();
+        }
+
+        // Schedule toast tick if toasts are active (starts the dismiss timer chain)
+        if self.toasts.is_active() {
+            return match cmd {
+                Cmd::None => Cmd::Tick(std::time::Duration::from_millis(100)),
+                other => Cmd::Batch(vec![other, Cmd::Tick(std::time::Duration::from_millis(100))]),
+            };
         }
 
         cmd
@@ -158,17 +183,38 @@ impl Model for InstrumentApp {
             self.render_deck_bar(&lever_area, frame);
         }
 
+        // Command palette (above modals, below toasts)
+        if self.command_palette.is_visible() {
+            // Backdrop dims the field behind the palette
+            crate::modal::render_backdrop(frame, content_area, &self.styles);
+            // Render palette in upper-center of content area
+            let palette_area = crate::modal::center_modal(
+                content_area,
+                60.min(content_area.width),
+                14.min(content_area.height),
+            );
+            use ftui::widgets::Widget;
+            self.command_palette.render(palette_area, frame);
+        }
+
+        // Toast notifications (topmost layer)
+        self.toasts.render(&area, frame);
+
         // Hints
         if show_hints {
-            match &self.input_mode {
-                InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &hints_area, frame),
-                InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &hints_area, frame),
-                InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &hints_area, frame),
-                InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &hints_area, frame),
-                InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &hints_area, frame),
-                InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
-                InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
-                _ => if !in_survey { self.render_hints(&hints_area, frame) },
+            if self.command_palette.is_visible() {
+                self.render_input_hints("Enter select  \u{2191}/\u{2193} navigate  Esc dismiss", &hints_area, frame);
+            } else {
+                match &self.input_mode {
+                    InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &hints_area, frame),
+                    InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &hints_area, frame),
+                    InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &hints_area, frame),
+                    InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &hints_area, frame),
+                    InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &hints_area, frame),
+                    InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
+                    InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
+                    _ => if !in_survey { self.render_hints(&hints_area, frame) },
+                }
             }
         }
     }
@@ -181,6 +227,207 @@ impl Model for InstrumentApp {
 }
 
 impl InstrumentApp {
+    /// Route an event to the command palette. Returns Some(Cmd) if the palette
+    /// produced an action, None if it just consumed the event silently.
+    fn handle_palette_event(&mut self, msg: &Msg) -> Option<Cmd<Msg>> {
+        use ftui::widgets::command_palette::PaletteAction;
+
+        // Convert Msg to ftui Event for the palette's handle_event
+        let event = match msg {
+            Msg::Char(c) => ftui::Event::Key(ftui::KeyEvent {
+                code: ftui::KeyCode::Char(*c),
+                modifiers: ftui::Modifiers::NONE,
+                kind: ftui::KeyEventKind::Press,
+            }),
+            Msg::Up => ftui::Event::Key(ftui::KeyEvent {
+                code: ftui::KeyCode::Up,
+                modifiers: ftui::Modifiers::NONE,
+                kind: ftui::KeyEventKind::Press,
+            }),
+            Msg::Down => ftui::Event::Key(ftui::KeyEvent {
+                code: ftui::KeyCode::Down,
+                modifiers: ftui::Modifiers::NONE,
+                kind: ftui::KeyEventKind::Press,
+            }),
+            Msg::Submit => ftui::Event::Key(ftui::KeyEvent {
+                code: ftui::KeyCode::Enter,
+                modifiers: ftui::Modifiers::NONE,
+                kind: ftui::KeyEventKind::Press,
+            }),
+            Msg::Cancel => ftui::Event::Key(ftui::KeyEvent {
+                code: ftui::KeyCode::Escape,
+                modifiers: ftui::Modifiers::NONE,
+                kind: ftui::KeyEventKind::Press,
+            }),
+            Msg::Backspace => ftui::Event::Key(ftui::KeyEvent {
+                code: ftui::KeyCode::Backspace,
+                modifiers: ftui::Modifiers::NONE,
+                kind: ftui::KeyEventKind::Press,
+            }),
+            Msg::RawEvent(e) => e.clone(),
+            _ => return None, // Don't consume system messages
+        };
+
+        match self.command_palette.handle_event(&event) {
+            Some(PaletteAction::Execute(id)) => {
+                Some(self.dispatch_palette_action(&id))
+            }
+            Some(PaletteAction::Dismiss) => Some(Cmd::none()),
+            None => None, // Event consumed, no action yet
+        }
+    }
+
+    /// Dispatch a palette action to the same code path as direct keybindings.
+    fn dispatch_palette_action(&mut self, action_id: &str) -> Cmd<Msg> {
+        match action_id {
+            "add" => {
+                self.input_buffer.clear();
+                self.input_mode = InputMode::Adding(AddStep::Desire);
+            }
+            "resolve" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.status == sd_core::TensionStatus::Active {
+                        self.input_mode = InputMode::Confirming(ConfirmKind::Resolve {
+                            tension_id: entry.id.clone(),
+                            desired: entry.desired.clone(),
+                        });
+                    }
+                }
+            }
+            "release" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.status == sd_core::TensionStatus::Active {
+                        self.input_mode = InputMode::Confirming(ConfirmKind::Release {
+                            tension_id: entry.id.clone(),
+                            desired: entry.desired.clone(),
+                        });
+                    }
+                }
+            }
+            "edit_desire" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.status == sd_core::TensionStatus::Active {
+                        self.input_buffer = entry.desired.clone();
+                        self.text_input.set_value(&entry.desired);
+                        self.text_input.set_focused(true);
+                        self.text_input.select_all();
+                        self.input_mode = InputMode::Editing {
+                            tension_id: entry.id,
+                            field: EditField::Desire,
+                        };
+                    }
+                }
+            }
+            "edit_reality" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.status == sd_core::TensionStatus::Active {
+                        self.input_buffer = entry.actual.clone();
+                        self.text_input.set_value(&entry.actual);
+                        self.text_input.set_focused(true);
+                        self.text_input.select_all();
+                        self.input_mode = InputMode::Editing {
+                            tension_id: entry.id,
+                            field: EditField::Reality,
+                        };
+                    }
+                }
+            }
+            "edit_horizon" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.status == sd_core::TensionStatus::Active {
+                        let horizon_text = entry.horizon_label.as_deref().unwrap_or("");
+                        self.input_buffer = horizon_text.to_string();
+                        self.text_input.set_value(horizon_text);
+                        self.text_input.set_focused(true);
+                        self.text_input.select_all();
+                        self.input_mode = InputMode::Editing {
+                            tension_id: entry.id,
+                            field: EditField::Horizon,
+                        };
+                    }
+                }
+            }
+            "note" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    self.input_buffer.clear();
+                    self.text_input.set_value("");
+                    self.text_input.set_focused(true);
+                    self.input_mode = InputMode::Annotating {
+                        tension_id: entry.id,
+                    };
+                }
+            }
+            "move" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    self.input_mode = InputMode::Moving { tension_id: entry.id.clone() };
+                    self.input_buffer.clear();
+                    self.search_state = Some(crate::search::SearchState::new());
+                }
+            }
+            "ascend" => {
+                self.ascend();
+            }
+            "descend" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.has_children {
+                        self.descend(&entry.id);
+                    }
+                }
+            }
+            "undo" => {
+                let current = self.capture_snapshot();
+                if let Some((desc, snapshot)) = self.gesture_history.undo(current) {
+                    self.restore_snapshot(snapshot);
+                    self.toasts.push_undo(&format!("undone: {}", desc));
+                } else {
+                    self.global_undo_redo(false);
+                }
+            }
+            "redo" => {
+                let current = self.capture_snapshot();
+                if let Some((desc, snapshot)) = self.gesture_history.redo(current) {
+                    self.restore_snapshot(snapshot);
+                    self.toasts.push_success(&format!("redone: {}", desc));
+                } else {
+                    self.global_undo_redo(true);
+                }
+            }
+            "search" => {
+                self.input_mode = InputMode::Searching;
+                self.input_buffer.clear();
+                self.search_state = Some(crate::search::SearchState::new());
+            }
+            "help" => {
+                self.input_mode = InputMode::Help;
+            }
+            "survey" => {
+                // Save stream position and switch to survey
+                self.pre_survey_state = Some((
+                    self.parent_id.clone(),
+                    self.deck_cursor.index,
+                ));
+                self.load_survey_items();
+                self.view_orientation = crate::state::ViewOrientation::Survey;
+            }
+            "hold" => {
+                if let Some(entry) = self.action_target().cloned() {
+                    if entry.status == sd_core::TensionStatus::Active && entry.position.is_some() {
+                        self.begin_gesture(&format!("hold {}", &entry.id[..8.min(entry.id.len())]));
+                        let _ = self.engine.store().update_position(&entry.id, None);
+                        self.end_gesture();
+                        self.load_siblings();
+                        self.set_transient("held");
+                    }
+                }
+            }
+            "quit" => {
+                return Cmd::Quit;
+            }
+            _ => {}
+        }
+        Cmd::none()
+    }
+
     fn update_normal(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
             // Navigation
@@ -403,11 +650,28 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Undo (u) / Redo (U) — global: finds the most recent undoable mutation
-            // across all visible tensions + parent. Toggle semantics (u twice = redo).
-            Msg::Char('u') | Msg::Char('U') | Msg::Undo => {
-                let is_redo = matches!(msg, Msg::Char('U'));
-                self.global_undo_redo(is_redo);
+            // Undo (u / Ctrl+Z) — gesture history first, falls back to DB mutation reversal
+            Msg::Char('u') | Msg::Undo => {
+                let current = self.capture_snapshot();
+                if let Some((desc, snapshot)) = self.gesture_history.undo(current) {
+                    self.restore_snapshot(snapshot);
+                    self.toasts.push_undo(&format!("undone: {}", desc));
+                } else {
+                    // Fall back to legacy single-mutation undo
+                    self.global_undo_redo(false);
+                }
+                Cmd::none()
+            }
+
+            // Redo (U / Ctrl+Shift+Z) — gesture history first, falls back to DB mutation reversal
+            Msg::Char('U') | Msg::Redo => {
+                let current = self.capture_snapshot();
+                if let Some((desc, snapshot)) = self.gesture_history.redo(current) {
+                    self.restore_snapshot(snapshot);
+                    self.toasts.push_success(&format!("redone: {}", desc));
+                } else {
+                    self.global_undo_redo(true);
+                }
                 Cmd::none()
             }
 
@@ -429,7 +693,7 @@ impl InstrumentApp {
                             &entry.id,
                             sd_core::TensionStatus::Active,
                         );
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient("reopened");
                         self.load_siblings();
                     }
@@ -447,7 +711,7 @@ impl InstrumentApp {
                         // Positioned → hold
                         self.begin_gesture(&format!("hold {}", &entry_id[..8.min(entry_id.len())]));
                         let _ = self.engine.update_position(&entry_id, None);
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient("held");
                         self.load_siblings();
                         if let Some(idx) = self.siblings.iter().position(|s| s.id == entry_id) {
@@ -457,7 +721,7 @@ impl InstrumentApp {
                         // Held → position at 1 (bottom of sequence = next to act on)
                         self.begin_gesture(&format!("position {}", &entry_id[..8.min(entry_id.len())]));
                         let _ = self.engine.update_position(&entry_id, Some(1));
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient("positioned");
                         self.load_siblings();
                         if let Some(idx) = self.siblings.iter().position(|s| s.id == entry_id) {
@@ -1098,7 +1362,7 @@ impl InstrumentApp {
                 }
             }
 
-            self.engine.end_gesture();
+            self.end_gesture();
         }
     }
 
@@ -1155,7 +1419,7 @@ impl InstrumentApp {
                                 buf,
                             ),
                         );
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient("note added");
                         self.load_siblings();
                         // Reload detail and enter Focus so the note is immediately visible
@@ -1211,14 +1475,14 @@ impl InstrumentApp {
                     InputMode::Confirming(ConfirmKind::Resolve { tension_id, desired }) => {
                         self.begin_gesture(&format!("resolve '{}'", truncate_str(&desired, 30)));
                         let _ = self.engine.resolve(&tension_id);
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient(format!("resolved: {}", truncate_str(&desired, 30)));
                         self.load_siblings();
                     }
                     InputMode::Confirming(ConfirmKind::Release { tension_id, desired }) => {
                         self.begin_gesture(&format!("release '{}'", truncate_str(&desired, 30)));
                         let _ = self.engine.release(&tension_id);
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient(format!("released: {}", truncate_str(&desired, 30)));
                         self.load_siblings();
                     }
@@ -1340,7 +1604,7 @@ impl InstrumentApp {
                         let dest = if result.is_root_entry { "root" } else { &result.desired };
                         self.begin_gesture(&format!("move {} to {}", &tension_id[..8.min(tension_id.len())], truncate_str(dest, 20)));
                         let _ = self.engine.update_parent(&tension_id, new_parent);
-                        self.engine.end_gesture();
+                        self.end_gesture();
                         self.set_transient(format!("moved to {}", if result.is_root_entry { "root" } else { &result.desired }));
                         self.load_siblings();
                         // Check for containment and sequencing after reparent
@@ -1393,7 +1657,7 @@ impl InstrumentApp {
         let result = self
             .engine
             .create_tension_with_parent(desired, actual, parent);
-        self.engine.end_gesture();
+        self.end_gesture();
 
         if let Ok(tension) = result {
             self.set_transient(format!("created: {}", truncate_str(&tension.desired, 30)));

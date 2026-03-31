@@ -153,22 +153,3 @@ pub enum AlertKind {
     MultipleRoots { count: usize },
 }
 
-/// Transient message shown in the Lever, auto-expires.
-#[derive(Debug, Clone)]
-pub struct TransientMessage {
-    pub text: String,
-    pub expires: std::time::Instant,
-}
-
-impl TransientMessage {
-    pub fn new(text: impl Into<String>) -> Self {
-        Self {
-            text: text.into(),
-            expires: std::time::Instant::now() + std::time::Duration::from_secs(3),
-        }
-    }
-
-    pub fn is_expired(&self) -> bool {
-        std::time::Instant::now() >= self.expires
-    }
-}
