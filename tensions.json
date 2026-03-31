@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-03-31T09:24:46Z",
+  "flushed_at": "2026-03-31T09:39:09Z",
   "summary": {
-    "active": 69,
+    "active": 70,
     "released": 7,
     "resolved": 72,
-    "total": 148
+    "total": 149
   },
   "tensions": [
     {
@@ -1634,6 +1634,17 @@
       "position": 5,
       "short_code": 153,
       "status": "Resolved"
+    },
+    {
+      "actual": "Phase 2 design doc exists (designs/structural-graph-overlay.md) covering edge types, schema, gestures, signals. No implementation yet.",
+      "created_at": "2026-03-31T09:27:51.656375+00:00",
+      "desired": "Typed cross-cutting edges implemented — edges table in store, link/unlink gestures in CLI/MCP/TUI, combined graph (containment + typed edges) fed to FNX algorithms, new signals from full graph (community detection, competing pair collision, enabling chains)",
+      "horizon": "2026-07",
+      "id": "01KN1KH238279JN5STC577157H",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 2,
+      "short_code": 154,
+      "status": "Active"
     }
   ]
 }

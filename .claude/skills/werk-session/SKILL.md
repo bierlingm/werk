@@ -3,7 +3,7 @@ name: werk-session
 description: "Generate a comprehensive session prompt for working on specific werk tensions. Reads the tension tree, maps code locations, grounds in the conceptual foundation, and produces a clipboard-ready prompt with theory of closure. Use when you've decided what to work on and need a thorough brief."
 disable-model-invocation: true
 allowed-tools: Bash, Read, Grep, Glob, Agent
-argument-hint: "<tension-id> [additional tension IDs...]"
+argument-hint: "<tension-id> [additional tension IDs...] [\"custom instructions\"]"
 ---
 
 # werk-session — Session Prompt Generator
@@ -14,11 +14,21 @@ The prompt follows structural dynamics practice: it has a desired outcome (tensi
 
 ## Step 0: Parse Arguments
 
-`$ARGUMENTS` contains one or more tension IDs (e.g., `141` or `46 129 130 131`).
+`$ARGUMENTS` contains tension IDs and optionally custom instructions in quotes.
 
+Examples:
+- `154` — single tension
+- `46 129 130 131` — multiple tensions
+- `154 "Focus on the schema migration and link gesture only"` — tension + custom instructions
+- `140 154 "Skip community detection signals, just get edges working"` — multiple tensions + custom instructions
+
+Parse rules:
+- Bare numbers are tension IDs
+- Quoted strings (single or double quotes) are **custom instructions** — the user's additional context, constraints, or focus directives for this session
 - If no arguments: ask which tension(s) to target. Optionally show the tree (`werk tree`) to help them decide.
 - If one ID: that's the target tension.
 - If multiple IDs: determine relationship. If one is parent of the others, treat it as the umbrella. If they're siblings, find their common parent. The prompt addresses all of them.
+- If custom instructions are present: they **shape the entire prompt**, not just a section. The instructions reframe what "resolved" means, which code to emphasize, which principles to foreground, and what the session task prioritizes. They may also appear verbatim in the prompt if relevant context for the receiving session.
 
 ## Step 1: Read the Tension Structure
 
@@ -158,6 +168,9 @@ Relevant design documents:
 ```
 
 ### Section 6: Session Task with Theory of Closure
+
+If custom instructions were provided in Step 0, they have already shaped all prior sections — the code locations emphasize what the instructions asked about, the conceptual grounding foregrounds the relevant principles, the current reality section addresses the questions raised. Now anchor the session task to those instructions as the primary framing:
+
 ```
 ## Session Task
 
