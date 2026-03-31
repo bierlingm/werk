@@ -76,8 +76,12 @@ impl FocusState {
         }).map(|(id, _)| *id)
     }
 
+    /// Read-only access to the targets list.
+    pub fn targets_ref(&self) -> &[(FocusId, CursorTarget)] {
+        &self.targets
+    }
+
     /// Get the flat index of the active focus node (position in targets list).
-    /// Used for compatibility during migration.
     pub fn active_index(&self) -> usize {
         self.targets
             .iter()

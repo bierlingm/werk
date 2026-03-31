@@ -404,7 +404,7 @@ impl InstrumentApp {
                 // Save stream position and switch to survey
                 self.pre_survey_state = Some((
                     self.parent_id.clone(),
-                    self.deck_cursor.index,
+                    self.focus_state.active,
                 ));
                 self.load_survey_items();
                 self.view_orientation = crate::state::ViewOrientation::Survey;
@@ -520,15 +520,20 @@ impl InstrumentApp {
                 self.deck_zoom = crate::deck::ZoomLevel::Normal;
                 self.focused_detail = None;
                 self.focused_note = None;
-                self.deck_cursor.index = 0;
+                // Navigate to first focus node
+                if let Some(&(id, _)) = self.focus_state.targets_ref().first() {
+                    self.focus_state.active = id;
+                }
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
                 self.deck_zoom = crate::deck::ZoomLevel::Normal;
                 self.focused_detail = None;
                 self.focused_note = None;
-                let count = self.frontier.selectable_count();
-                self.deck_cursor.index = count.saturating_sub(1);
+                // Navigate to last focus node
+                if let Some(&(id, _)) = self.focus_state.targets_ref().last() {
+                    self.focus_state.active = id;
+                }
                 Cmd::none()
             }
 
@@ -561,7 +566,7 @@ impl InstrumentApp {
                 // Save stream position for Shift+Tab return.
                 self.pre_survey_state = Some((
                     self.parent_id.clone(),
-                    self.deck_cursor.index,
+                    self.focus_state.active,
                 ));
                 let focused_id = self.action_target().map(|e| e.id.clone());
                 self.load_survey_items();
@@ -583,7 +588,7 @@ impl InstrumentApp {
                     // Save current stream position so Tab from survey can return here.
                     self.pre_survey_state = Some((
                         self.parent_id.clone(),
-                        self.deck_cursor.index,
+                        self.focus_state.active,
                     ));
                     self.view_orientation = crate::state::ViewOrientation::Survey;
                 } else {
@@ -1048,13 +1053,17 @@ impl InstrumentApp {
             // before Tab, without changing structural position.
             Msg::BackTab | Msg::Cancel => {
                 self.view_orientation = ViewOrientation::Stream;
-                if let Some((saved_parent, saved_cursor)) = self.pre_survey_state.take() {
+                if let Some((saved_parent, saved_focus)) = self.pre_survey_state.take() {
                     if saved_parent != self.parent_id {
                         self.parent_id = saved_parent;
                         self.load_siblings();
                     }
                     self.recompute_frontier();
-                    self.deck_cursor.index = saved_cursor;
+                    // Restore focus — clamp_active already ran, but try to
+                    // restore the exact node if it still exists.
+                    if self.focus_state.targets_ref().iter().any(|(id, _)| *id == saved_focus) {
+                        self.focus_state.active = saved_focus;
+                    }
                 }
                 Cmd::none()
             }
@@ -1804,22 +1813,16 @@ impl InstrumentApp {
             crate::deck::CursorTarget::RouteSummary => {
                 self.route_expanded = !self.route_expanded;
                 self.recompute_frontier();
-                let count = self.frontier.selectable_count();
-                self.deck_cursor.clamp(count);
                 true
             }
             crate::deck::CursorTarget::Held => {
                 self.held_expanded = !self.held_expanded;
                 self.recompute_frontier();
-                let count = self.frontier.selectable_count();
-                self.deck_cursor.clamp(count);
                 true
             }
             crate::deck::CursorTarget::Accumulated => {
                 self.accumulated_expanded = !self.accumulated_expanded;
                 self.recompute_frontier();
-                let count = self.frontier.selectable_count();
-                self.deck_cursor.clamp(count);
                 true
             }
             _ => false,
