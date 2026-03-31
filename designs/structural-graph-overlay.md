@@ -165,3 +165,40 @@ When edges are added to the DiGraph via `link`/`unlink`, the DiGraph's `Evidence
 3. **Multi-workspace edges.** If the practitioner has multiple workspaces, can edges cross workspace boundaries? Not in Phase 3. This connects to #96 (global workspace) and #100 (cross-workspace addressing).
 
 4. **Community detection threshold.** At what point does a community signal fire? How many typed edges are needed before Louvain produces meaningful communities? Needs empirical testing with real practice data. Connects to #139 (user-defined thresholds).
+
+## Evaluation findings (2026-03-31)
+
+This design was evaluated against the conceptual foundation before implementation. Findings:
+
+### The reframing is partially honest
+
+The distinction between "operative observations" (no enforcement) and "management dependencies" (gating, blocking) is real. `enables` without enforcement IS structurally different from `blocks`. But the *topology and computation* are management regardless of vocabulary. Community detection, enabling chains, and centrality shifts on a cross-tension relationship graph answer coordinator questions ("what clusters with what?", "what's the critical chain?"), not practitioner questions ("what's my reality and where can I move?").
+
+The foundation's "Operative Not Managerial" section (line 173) doesn't say "the instrument does not *enforce* dependencies." It says "the instrument does not *track* dependencies between tensions." This design tracks cross-tension relationships and computes from them. Softer vocabulary doesn't change the topology.
+
+### Locality violation
+
+Section 7: "Meaningful signal propagates one level, not globally." Typed edges explicitly create non-local relationships. Community detection is explicitly global. This design expands the definition of "neighborhood" without acknowledging the cost to the locality guarantee.
+
+### Standard of measurement is satisfied
+
+Section 10 is clean — the user supplies the edge, the instrument computes from it. No instrument-originated standards. But satisfying one principle while straining two others (operative identity, locality) isn't sufficient justification.
+
+### Marginal value at current scale
+
+The owner's GitHub issue #2 response: "you don't need a formal link to see it — you need honest reality updates." At 70 active tensions, this remains true. The practitioner knows their field well enough to update reality directly. The marginal value appears at 200+ active tensions with long time horizons where the practitioner forgets prior articulations — but designing for that hypothetical violates the project's build-for-now principle.
+
+The one genuinely valuable signal is **competing pair collision** (both urgent, practitioner said they compete). But one signal doesn't justify the full schema, gesture set, and computation pipeline.
+
+### Correctly deprioritized
+
+#142 (visualization), #143 (search), #144 (MVCC), #145 (ftui depth) all address current friction. #154 addresses a theoretical analytical gap. Repositioned from position 2 to position 7 under #140.
+
+### Prerequisites identified
+
+- #139 (user-defined thresholds) should be implemented first — typed-edge signals need configurable thresholds
+- The current Phase 1 signals (HUB/SPINE/REACH) should be made configurable before expanding the signal taxonomy
+
+### Disposition
+
+Design preserved. Not rejected — deferred until practice reveals the need. Revisit when: (a) workspace exceeds ~150 active tensions, (b) multi-player sessions exist and coordination structures emerge organically, or (c) a practitioner reports that reality updates alone don't capture cross-tension patterns they need to see.
