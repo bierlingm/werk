@@ -104,7 +104,7 @@ pub fn build_survey_tree(items: &[SurveyItem], state: &SurveyTreeState) -> Tree 
 /// Determine if a survey cursor position points at a band header.
 /// Returns Some(band) if so.
 pub fn cursor_on_band_header(
-    items: &[SurveyItem],
+    _items: &[SurveyItem],
     cursor: usize,
     band_header_positions: &[(TimeBand, usize)],
 ) -> Option<TimeBand> {

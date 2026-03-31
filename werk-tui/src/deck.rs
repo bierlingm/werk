@@ -815,14 +815,7 @@ impl InstrumentApp {
 
     /// Get the current frontier (cached or fresh).
     pub(crate) fn current_frontier(&self) -> Frontier {
-        self.cached_frontier.clone()
-            .unwrap_or_else(|| {
-                if matches!(self.input_mode, crate::state::InputMode::Reordering { .. }) {
-                    Frontier::from_raw_order(&self.siblings, self.epoch_boundary)
-                } else {
-                    Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary)
-                }
-            })
+        self.frontier.clone()
     }
 }
 

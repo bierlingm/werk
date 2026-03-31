@@ -86,8 +86,8 @@ pub struct InstrumentApp {
     // Pathway palette state — active when InputMode::Pathway.
     pub pathway_state: Option<crate::state::PathwayState>,
 
-    // Cached frontier — computed once per frame, shared between render and navigation.
-    pub cached_frontier: Option<crate::deck::Frontier>,
+    // Frontier — always valid, recomputed after every data change.
+    pub frontier: crate::deck::Frontier,
 
     // Summary expansion overrides — toggled by Enter on summary lines.
     // When true, compute_expansion's compression is overridden to show all items.
@@ -198,7 +198,7 @@ impl InstrumentApp {
             focused_note: None,
             parent_notes: Vec::new(),
             pathway_state: None,
-            cached_frontier: None,
+            frontier: crate::deck::Frontier::default(),
             route_expanded: false,
             held_expanded: false,
             accumulated_expanded: false,
@@ -280,7 +280,7 @@ impl InstrumentApp {
             focused_note: None,
             parent_notes: Vec::new(),
             pathway_state: None,
-            cached_frontier: None,
+            frontier: crate::deck::Frontier::default(),
             route_expanded: false,
             held_expanded: false,
             accumulated_expanded: false,
@@ -329,7 +329,7 @@ impl InstrumentApp {
         crate::undo::StateSnapshot {
             parent_id: self.parent_id.clone(),
             siblings: self.siblings.clone(),
-            deck_cursor_index: self.deck_cursor.index,
+            focus_active: self.focus_state.active,
             deck_zoom: self.deck_zoom.clone(),
             route_expanded: self.route_expanded,
             held_expanded: self.held_expanded,
@@ -341,7 +341,7 @@ impl InstrumentApp {
     pub fn restore_snapshot(&mut self, snap: crate::undo::StateSnapshot) {
         self.parent_id = snap.parent_id;
         self.siblings = snap.siblings;
-        self.deck_cursor.index = snap.deck_cursor_index;
+        self.focus_state.active = snap.focus_active;
         self.deck_zoom = snap.deck_zoom;
         self.route_expanded = snap.route_expanded;
         self.held_expanded = snap.held_expanded;
@@ -723,15 +723,7 @@ impl InstrumentApp {
         let has_desire = frontier.has_desire_anchor;
         let has_reality = frontier.has_reality_anchor;
         self.focus_state.rebuild_for_frontier(&frontier, has_desire, has_reality);
-        self.cached_frontier = Some(frontier);
-    }
-
-    /// Get the cached frontier, recomputing if invalidated.
-    pub fn ensure_frontier(&mut self) -> &crate::deck::Frontier {
-        if self.cached_frontier.is_none() {
-            self.recompute_frontier();
-        }
-        self.cached_frontier.as_ref().unwrap()
+        self.frontier = frontier;
     }
 
     // -----------------------------------------------------------------------
@@ -815,7 +807,7 @@ impl InstrumentApp {
         }
 
         self.siblings.swap(cursor, target);
-        self.cached_frontier = None; // invalidate — siblings mutated
+        self.recompute_frontier();
     }
 
     /// Move the grabbed tension down one position (toward reality).
@@ -838,7 +830,7 @@ impl InstrumentApp {
         }
 
         self.siblings.swap(cursor, target);
-        self.cached_frontier = None; // invalidate — siblings mutated
+        self.recompute_frontier();
     }
 
     /// Commit the reorder: write final positions to engine as a single logical action.

@@ -527,7 +527,7 @@ impl InstrumentApp {
                 self.deck_zoom = crate::deck::ZoomLevel::Normal;
                 self.focused_detail = None;
                 self.focused_note = None;
-                let count = self.ensure_frontier().selectable_count();
+                let count = self.frontier.selectable_count();
                 self.deck_cursor.index = count.saturating_sub(1);
                 Cmd::none()
             }
@@ -1035,7 +1035,7 @@ impl InstrumentApp {
                             }
                         }
                     }
-                    self.cached_frontier = None;
+                    self.recompute_frontier();
                     // Position cursor on the tension.
                     if let Some(sib_idx) = self.siblings.iter().position(|s| s.id == item.tension_id) {
                         self.deck_cursor_to_sibling(sib_idx);
@@ -1053,7 +1053,7 @@ impl InstrumentApp {
                         self.parent_id = saved_parent;
                         self.load_siblings();
                     }
-                    self.cached_frontier = None;
+                    self.recompute_frontier();
                     self.deck_cursor.index = saved_cursor;
                 }
                 Cmd::none()
@@ -1741,7 +1741,7 @@ impl InstrumentApp {
 
     /// Try to focus a note if the cursor is on a NoteItem. Returns the FocusedNote or None.
     fn try_focus_note(&self) -> Option<crate::deck::FocusedNote> {
-        let frontier = self.cached_frontier.as_ref()?;
+        let frontier = &self.frontier;
         let target = self.focus_state.cursor_target();
         if let crate::deck::CursorTarget::NoteItem(acc_idx) = target {
             if let Some(crate::deck::AccumulatedItem::Note { text, age, .. }) = frontier.accumulated.get(acc_idx) {
@@ -1758,10 +1758,7 @@ impl InstrumentApp {
     /// Enter edit mode for the desire/reality anchor under the cursor.
     /// Returns true if the cursor was on an anchor and edit was entered.
     fn enter_anchor_edit(&mut self) -> bool {
-        let _frontier = match self.cached_frontier.as_ref() {
-            Some(f) => f,
-            None => return false,
-        };
+        let _frontier = &self.frontier;
         let target = self.focus_state.cursor_target();
         let pid = match self.parent_id.clone() {
             Some(pid) => pid,
@@ -1801,33 +1798,27 @@ impl InstrumentApp {
     /// Toggle expansion of the summary zone under the cursor.
     /// Returns true if the cursor was on a summary and the toggle was applied.
     fn toggle_summary_expansion(&mut self) -> bool {
-        let _frontier = match self.cached_frontier.as_ref() {
-            Some(f) => f,
-            None => return false,
-        };
+        let _frontier = &self.frontier;
         let target = self.focus_state.cursor_target();
         match target {
             crate::deck::CursorTarget::RouteSummary => {
                 self.route_expanded = !self.route_expanded;
                 self.recompute_frontier();
-                let count = self.cached_frontier.as_ref()
-                    .map(|f| f.selectable_count()).unwrap_or(0);
+                let count = self.frontier.selectable_count();
                 self.deck_cursor.clamp(count);
                 true
             }
             crate::deck::CursorTarget::Held => {
                 self.held_expanded = !self.held_expanded;
                 self.recompute_frontier();
-                let count = self.cached_frontier.as_ref()
-                    .map(|f| f.selectable_count()).unwrap_or(0);
+                let count = self.frontier.selectable_count();
                 self.deck_cursor.clamp(count);
                 true
             }
             crate::deck::CursorTarget::Accumulated => {
                 self.accumulated_expanded = !self.accumulated_expanded;
                 self.recompute_frontier();
-                let count = self.cached_frontier.as_ref()
-                    .map(|f| f.selectable_count()).unwrap_or(0);
+                let count = self.frontier.selectable_count();
                 self.deck_cursor.clamp(count);
                 true
             }
