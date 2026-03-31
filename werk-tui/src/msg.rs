@@ -47,6 +47,9 @@ pub enum Msg {
     Search,
     CycleFilter,
     Undo,
+    Redo,
+    OpenPalette,
+    PaletteAction(String),
 
     // System
     Resize { width: u16, height: u16 },
@@ -69,7 +72,15 @@ impl From<Event> for Msg {
                     Modifiers::CTRL | Modifiers::ALT | Modifiers::SUPER
                 );
                 if has_modifier {
-                    // Still intercept a few specific combos at the message level
+                    // Intercept specific Ctrl combos before generic RawEvent passthrough
+                    if key.ctrl() {
+                        match key.code {
+                            KeyCode::Char('z') if key.shift() => return Msg::Redo,
+                            KeyCode::Char('z') => return Msg::Undo,
+                            KeyCode::Char('k') => return Msg::OpenPalette,
+                            _ => {}
+                        }
+                    }
                     return Msg::RawEvent(Event::Key(key));
                 }
 

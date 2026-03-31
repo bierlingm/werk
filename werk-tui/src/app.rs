@@ -36,7 +36,6 @@ pub struct InstrumentApp {
     pub search_index: Option<sd_core::SearchIndex>,
 
     // Chrome
-    pub transient: Option<TransientMessage>,
     pub show_help: bool,
 
     // Change detection — only reload when db file changes
@@ -117,6 +116,17 @@ pub struct InstrumentApp {
 
     // Theme — resolved at startup for the detected terminal mode.
     pub styles: crate::theme::InstrumentStyles,
+
+    // Toast notifications — replaces TransientMessage.
+    pub toasts: crate::toast::ToastQueue,
+
+    // Gesture undo/redo history.
+    pub gesture_history: crate::undo::GestureHistory,
+    /// Pending gesture snapshot — captured by begin_gesture(), committed by end_gesture_tracked().
+    pending_gesture: Option<(String, crate::undo::StateSnapshot)>,
+
+    // Command palette — unified search/command/navigation surface.
+    pub command_palette: ftui::widgets::command_palette::CommandPalette,
 }
 
 impl InstrumentApp {
@@ -157,7 +167,6 @@ impl InstrumentApp {
             text_input,
             search_state: None,
             search_index,
-            transient: None,
             show_help: false,
             db_modified: None,
             breadcrumb_cache: Vec::new(),
@@ -206,6 +215,10 @@ impl InstrumentApp {
             focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
             styles,
+            toasts: crate::toast::ToastQueue::new(),
+            gesture_history: crate::undo::GestureHistory::new(),
+            pending_gesture: None,
+            command_palette: crate::palette::build_palette(),
         };
         if let Some(ref sid) = app.session_id {
             app.session_log.set_store_session_id(sid.clone());
@@ -243,7 +256,6 @@ impl InstrumentApp {
             text_input,
             search_state: None,
             search_index: None,
-            transient: None,
             show_help: false,
             db_modified: None,
             breadcrumb_cache: Vec::new(),
@@ -278,18 +290,60 @@ impl InstrumentApp {
             focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
             styles,
+            toasts: crate::toast::ToastQueue::new(),
+            gesture_history: crate::undo::GestureHistory::new(),
+            pending_gesture: None,
+            command_palette: crate::palette::build_palette(),
         }
     }
 
     /// Begin a gesture linked to this TUI's session.
-    /// Call `engine.end_gesture()` when the mutation is complete.
+    /// Captures a state snapshot for undo. Call `end_gesture()` when done.
     pub fn begin_gesture(&mut self, description: &str) {
+        // Capture snapshot before the gesture mutates anything
+        let snapshot = self.capture_snapshot();
+        self.pending_gesture = Some((description.to_string(), snapshot));
+
         let sid = self.session_id.clone();
         if let Some(ref sid) = sid {
             let _ = self.engine.begin_gesture_in_session(sid, Some(description));
         } else {
             let _ = self.engine.begin_gesture(Some(description));
         }
+    }
+
+    /// End the current gesture and commit its snapshot to undo history.
+    pub fn end_gesture(&mut self) {
+        self.end_gesture();
+        if let Some((desc, snapshot)) = self.pending_gesture.take() {
+            self.gesture_history.push(desc, snapshot);
+        }
+    }
+
+    /// Capture the current TUI state as a snapshot (for undo).
+    pub fn capture_snapshot(&self) -> crate::undo::StateSnapshot {
+        crate::undo::StateSnapshot {
+            parent_id: self.parent_id.clone(),
+            siblings: self.siblings.clone(),
+            deck_cursor_index: self.deck_cursor.index,
+            deck_zoom: self.deck_zoom.clone(),
+            route_expanded: self.route_expanded,
+            held_expanded: self.held_expanded,
+            accumulated_expanded: self.accumulated_expanded,
+        }
+    }
+
+    /// Restore TUI state from a snapshot (for undo/redo).
+    pub fn restore_snapshot(&mut self, snap: crate::undo::StateSnapshot) {
+        self.parent_id = snap.parent_id;
+        self.siblings = snap.siblings;
+        self.deck_cursor.index = snap.deck_cursor_index;
+        self.deck_zoom = snap.deck_zoom;
+        self.route_expanded = snap.route_expanded;
+        self.held_expanded = snap.held_expanded;
+        self.accumulated_expanded = snap.accumulated_expanded;
+        // Reload from DB to ensure consistency
+        self.load_siblings();
     }
 
     /// Load siblings for the current parent_id. If None, load roots.
@@ -566,7 +620,7 @@ impl InstrumentApp {
         let desc = format!("create tension '{}'", truncate(desired, 40));
         self.begin_gesture(&desc);
         let result = self.engine.create_tension_full(desired, actual, parent, horizon);
-        self.engine.end_gesture();
+        self.end_gesture();
 
         if let Ok(tension) = result {
             self.set_transient(format!("created: {}", truncate(&tension.desired, 30)));
@@ -844,7 +898,7 @@ impl InstrumentApp {
             }
             active_idx += 1;
         }
-        self.engine.end_gesture();
+        self.end_gesture();
 
         self.reorder_original.clear();
         self.input_mode = InputMode::Normal;
@@ -877,7 +931,7 @@ impl InstrumentApp {
         for (id, pos) in &self.reorder_original {
             let _ = self.engine.update_position(id, *pos);
         }
-        self.engine.end_gesture();
+        self.end_gesture();
         self.reorder_original.clear();
         self.input_mode = InputMode::Normal;
         self.load_siblings();
@@ -1082,17 +1136,16 @@ impl InstrumentApp {
                 }
                 _ => {}
             }
-            self.engine.end_gesture();
+            self.end_gesture();
             self.load_siblings();
         } else {
             self.set_transient(if is_redo { "nothing to redo" } else { "nothing to undo" });
         }
     }
 
-    /// Set a transient message on the lever.
-    #[allow(dead_code)]
+    /// Push a toast notification (replaces old TransientMessage).
     pub fn set_transient(&mut self, text: impl Into<String>) {
-        self.transient = Some(TransientMessage::new(text));
+        self.toasts.push_info(&text.into());
     }
 
     /// Dump the session log to .werk/session.log.

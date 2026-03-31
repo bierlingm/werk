@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-31T17:01:17Z",
+  "flushed_at": "2026-03-31T17:41:07Z",
   "summary": {
     "active": 68,
     "released": 19,
@@ -1746,7 +1746,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "10 InputMode variants (Normal/Adding/Editing/Annotating/Confirming/Moving/Searching/Help/Pathway/Reordering) with global key binding changes per mode. Search is custom SearchState + overlay. TransientMessage in lever bar. No undo. No fuzzy command dispatch",
+      "actual": "Steps 1-5 complete. Toast system (NotificationQueue, BottomRight, 3 max, auto-dismiss via Cmd::Tick chain) replaces TransientMessage. Modal overlays with backdrop dimming + center_modal() on all 5 overlay types. GestureHistory with StateSnapshot capture on begin_gesture/end_gesture. Ctrl+Z/Ctrl+Shift+Z wired for undo/redo with toast feedback. CommandPalette on Ctrl+K with 15 registered actions, fuzzy search, dispatch to same code paths as keybindings. Msg::Redo, Msg::OpenPalette, Msg::PaletteAction added.",
       "created_at": "2026-03-31T13:54:11.921766+00:00",
       "desired": "interaction model — Modal overlays replace 10 input modes, CommandPalette unifies search/command/navigation, Undo transactions make gestures explorative, Toast notifications replace TransientMessage",
       "horizon": "2026-06",

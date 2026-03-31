@@ -17,6 +17,10 @@ pub mod horizon;
 pub mod search;
 pub mod session_log;
 pub mod survey;
+pub mod toast;
+pub mod modal;
+pub mod undo;
+pub mod palette;
 
 pub use app::InstrumentApp;
 

@@ -208,15 +208,13 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_add_prompt(&self, step: &AddStep, area: &Rect, frame: &mut Frame<'_>) {
+        // Backdrop dims the field — preserving spatial context
+        crate::modal::render_backdrop(frame, *area, &self.styles);
+
         let area = self.layout.content_area(*area);
 
-        // Position the prompt inline — after the parent header and siblings,
-        // right where the new tension will appear in the list.
-        let header_lines: u16 = if self.parent_tension.is_some() { 3 } else { 0 };
-        let sibling_lines = self.siblings.len() as u16;
-        let prompt_y = area.y + header_lines + sibling_lines;
-        let prompt_area = Rect::new(area.x, prompt_y, area.width, 4);
-        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
+        // Centered modal for the add prompt
+        let modal_area = crate::modal::center_modal(area, 60.min(area.width), 4);
 
         let (label, hint) = match step {
             AddStep::Desire => ("desire", "  (Enter to create, Tab for more)"),
@@ -227,7 +225,7 @@ impl InstrumentApp {
         let lines = vec![
             Line::from(""),
             Line::from_spans([
-                Span::styled(format!("{}{}: ", INDENT, label), self.styles.dim),
+                Span::styled(format!(" {}: ", label), self.styles.dim),
                 Span::styled(&self.input_buffer, self.styles.text_bold),
                 Span::styled("\u{2588}", self.styles.cyan), // cursor block
                 Span::styled(hint, self.styles.dim),
@@ -235,7 +233,7 @@ impl InstrumentApp {
         ];
 
         let para = Paragraph::new(Text::from_lines(lines));
-        para.render(prompt_area, frame);
+        para.render(modal_area, frame);
     }
 
     // -----------------------------------------------------------------------
@@ -243,10 +241,11 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_confirm(&self, kind: &ConfirmKind, area: &Rect, frame: &mut Frame<'_>) {
+        // Backdrop dims the field
+        crate::modal::render_backdrop(frame, *area, &self.styles);
+
         let area = self.layout.content_area(*area);
-        let cy = area.height / 2;
-        let prompt_area = Rect::new(area.x, area.y + cy.saturating_sub(3), area.width, 6);
-        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
+        let prompt_area = crate::modal::center_modal(area, 60.min(area.width), 6);
 
         let (action, desired) = match kind {
             ConfirmKind::Resolve { desired, .. } => ("resolve", desired.as_str()),
@@ -292,15 +291,15 @@ impl InstrumentApp {
             Some(pw) => pw,
             None => return,
         };
+        // Backdrop dims the field
+        crate::modal::render_backdrop(frame, *area, &self.styles);
+
         let area = self.layout.content_area(*area);
 
         // Compute height: 1 signal + 1 blank + options + 1 blank + 1 hint
         let option_count = pw.palette.options.len();
         let total_h = (3 + option_count + 2) as u16;
-        let cy = area.height / 2;
-        let top_y = area.y + cy.saturating_sub(total_h / 2);
-        let prompt_area = Rect::new(area.x, top_y, area.width, total_h.min(area.height));
-        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
+        let prompt_area = crate::modal::center_modal(area, 60.min(area.width), total_h);
 
         let mut lines: Vec<Line> = Vec::new();
 
@@ -354,13 +353,13 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_edit_prompt(&self, field: &EditField, area: &Rect, frame: &mut Frame<'_>) {
+        // Backdrop dims the field
+        crate::modal::render_backdrop(frame, *area, &self.styles);
+
         let area = self.layout.content_area(*area);
         let panel_h: u16 = 5;
-        let bottom_y = area.height.saturating_sub(panel_h + 1);
-        let panel_x = area.x + INDENT.len() as u16;
-        let panel_w = area.width.saturating_sub(INDENT.len() as u16);
-        let prompt_area = Rect::new(panel_x, area.y + bottom_y, panel_w, panel_h);
-        crate::helpers::clear_area_styled(frame, Rect::new(area.x, area.y + bottom_y, area.width, panel_h + 1), self.styles.clr_dim);
+        let panel_w = area.width.saturating_sub(INDENT.len() as u16 * 2);
+        let prompt_area = crate::modal::center_modal(area, panel_w, panel_h);
 
         let label = match field {
             EditField::Desire => "desire",
@@ -403,9 +402,9 @@ impl InstrumentApp {
         // Render the TextInput widget in the input area within the panel
         // Panel border = 1 on each side, so inner area starts at +1,+1 and shrinks by 2
         let input_rect = Rect::new(
-            panel_x + 1,
+            prompt_area.x + 1,
             prompt_area.y + 3, // border(1) + tab_line(1) + blank(1)
-            panel_w.saturating_sub(2),
+            prompt_area.width.saturating_sub(2),
             1,
         );
         self.text_input.render(input_rect, frame);
@@ -423,10 +422,11 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_note_prompt(&self, area: &Rect, frame: &mut Frame<'_>) {
+        // Backdrop dims the field
+        crate::modal::render_backdrop(frame, *area, &self.styles);
+
         let area = self.layout.content_area(*area);
-        let bottom_y = area.height.saturating_sub(4);
-        let prompt_area = Rect::new(area.x, area.y + bottom_y, area.width, 3);
-        crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
+        let prompt_area = crate::modal::center_modal(area, 60.min(area.width), 3);
 
         let label_text = format!("{}  note: ", INDENT);
         let label_w = label_text.len() as u16;
