@@ -68,9 +68,13 @@ use chrono::{DateTime, Utc};
 use fsqlite::Connection;
 use fsqlite_types::value::SqliteValue;
 use std::cell::RefCell;
-use std::fs::File;
 use std::path::PathBuf;
 use std::rc::Rc;
+
+/// Maximum retries for transient MVCC conflicts (e.g., SQLITE_BUSY_SNAPSHOT).
+const CONCURRENT_COMMIT_MAX_RETRIES: u32 = 10;
+/// Base backoff delay between retries (doubles each attempt).
+const CONCURRENT_COMMIT_BASE_DELAY_MS: u64 = 5;
 
 use crate::events::{Event, EventBuilder, EventBus};
 use crate::horizon::Horizon;
@@ -103,10 +107,6 @@ pub enum StoreError {
     /// Transaction failed and was rolled back.
     #[error("transaction rolled back: {0}")]
     TransactionRolledBack(String),
-
-    /// Another process holds the store lock.
-    #[error("store is locked by another process — only one werk process can write at a time")]
-    StoreLocked,
 }
 
 /// Convert StoreError to SdError for use in operations that return SdError.
@@ -116,33 +116,16 @@ impl From<StoreError> for SdError {
     }
 }
 
-/// RAII guard for write-scoped file locking.
-///
-/// Holds an exclusive file lock while alive. Releases on drop.
-/// Re-entrant guards (owns_lock = false) are no-ops on drop.
-struct WriteLockGuard<'a> {
-    #[allow(dead_code)]
-    store: &'a Store,
-    _lock_file: Option<File>,
-    owns_lock: bool,
-}
-
-impl Drop for WriteLockGuard<'_> {
-    fn drop(&mut self) {
-        if self.owns_lock {
-            self.store.write_locked.set(false);
-        }
-    }
-}
-
 /// The persistent store for tensions and mutations.
 ///
-/// Uses fsqlite for storage. Note: fsqlite's Connection uses Rc internally,
-/// so Store cannot be sent between threads.
+/// Uses fsqlite for storage with MVCC concurrent writers enabled.
+/// Multiple processes can safely read and write to the same database
+/// simultaneously — conflicts are detected at the page level and
+/// retried automatically with exponential backoff.
 ///
-/// File-based stores use write-scoped locking (`sd.db.lock`): each write
-/// operation acquires an exclusive lock for its duration, then releases.
-/// This allows multiple processes (e.g., TUI + CLI) to coexist.
+/// Note: fsqlite's Connection uses Rc internally, so Store cannot be
+/// sent between threads. Multi-surface access (CLI + TUI + MCP) works
+/// because each surface is a separate OS process with its own Connection.
 ///
 /// # Events
 ///
@@ -157,10 +140,6 @@ pub struct Store {
     active_gesture_id: Option<String>,
     /// Pending actual_at timestamp for the next mutation(s). Supports "I did this yesterday."
     pending_actual_at: Option<DateTime<Utc>>,
-    /// Directory containing the lock file (.werk/). None for in-memory stores.
-    lock_dir: Option<PathBuf>,
-    /// Re-entrancy guard for write lock (prevents double-locking in nested calls).
-    write_locked: std::cell::Cell<bool>,
 }
 
 impl Store {
@@ -169,9 +148,8 @@ impl Store {
     /// Creates `.werk/sd.db` with the correct schema. Idempotent —
     /// opening an existing database preserves data.
     ///
-    /// Uses write-scoped locking: each write operation acquires an exclusive
-    /// file lock for its duration, then releases. Multiple processes can
-    /// coexist (e.g., CLI commands while TUI is open).
+    /// Enables MVCC concurrent writers so multiple processes (CLI, TUI,
+    /// MCP agents) can safely write to the same database simultaneously.
     pub fn init(path: &std::path::Path) -> Result<Self, StoreError> {
         let werk_dir = path.join(".werk");
         std::fs::create_dir_all(&werk_dir).map_err(|e| {
@@ -192,6 +170,7 @@ impl Store {
         let db_path_str = db_path.to_string_lossy().into_owned();
         let conn = Connection::open(db_path_str)
             .map_err(|e| StoreError::DatabaseError(format!("failed to open database: {:?}", e)))?;
+        Self::enable_concurrent_mode(&conn)?;
 
         let store = Self {
             conn: Rc::new(RefCell::new(conn)),
@@ -199,17 +178,15 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
-            lock_dir: Some(werk_dir),
-            write_locked: std::cell::Cell::new(false),
         };
         store.create_schema()?;
         Ok(store)
     }
 
-    /// Initialize a store without write locking.
+    /// Initialize a store without backup-on-open.
     ///
-    /// Intended for tests and read-only tooling where concurrent write
-    /// protection is not needed.
+    /// Intended for tests and tooling where backup rotation is unnecessary.
+    /// MVCC concurrent mode is still enabled.
     pub fn init_unlocked(path: &std::path::Path) -> Result<Self, StoreError> {
         let werk_dir = path.join(".werk");
         std::fs::create_dir_all(&werk_dir).map_err(|e| {
@@ -224,6 +201,7 @@ impl Store {
         let db_path_str = db_path.to_string_lossy().into_owned();
         let conn = Connection::open(db_path_str)
             .map_err(|e| StoreError::DatabaseError(format!("failed to open database: {:?}", e)))?;
+        Self::enable_concurrent_mode(&conn)?;
 
         let store = Self {
             conn: Rc::new(RefCell::new(conn)),
@@ -231,8 +209,6 @@ impl Store {
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
-            lock_dir: None,
-            write_locked: std::cell::Cell::new(false),
         };
         store.create_schema()?;
         Ok(store)
@@ -253,14 +229,13 @@ impl Store {
         let conn = Connection::open(":memory:").map_err(|e| {
             StoreError::DatabaseError(format!("failed to create in-memory db: {:?}", e))
         })?;
+        Self::enable_concurrent_mode(&conn)?;
         let store = Self {
             conn: Rc::new(RefCell::new(conn)),
             path: None,
             event_bus: None,
             active_gesture_id: None,
             pending_actual_at: None,
-            lock_dir: None,
-            write_locked: std::cell::Cell::new(false),
         };
         store.create_schema()?;
         Ok(store)
@@ -287,35 +262,40 @@ impl Store {
         Ok(home.join(".werk"))
     }
 
-    fn acquire_lock(werk_dir: &std::path::Path) -> Result<File, StoreError> {
-        use fs4::fs_std::FileExt;
-        let lock_path = werk_dir.join("sd.db.lock");
-        let lock_file = File::create(&lock_path).map_err(|e| {
-            StoreError::IoError(format!("failed to create lock file: {}", e))
-        })?;
-        match lock_file.try_lock_exclusive() {
-            Ok(true) => Ok(lock_file),
-            Ok(false) => Err(StoreError::StoreLocked),
-            Err(e) => Err(StoreError::IoError(format!("failed to acquire lock: {}", e))),
-        }
+    /// Enable MVCC concurrent writer mode on a connection.
+    ///
+    /// Must be called immediately after `Connection::open()`. With this enabled,
+    /// `BEGIN CONCURRENT` allows page-level MVCC with Serializable Snapshot
+    /// Isolation — multiple processes can write simultaneously.
+    fn enable_concurrent_mode(conn: &Connection) -> Result<(), StoreError> {
+        conn.execute("PRAGMA fsqlite.concurrent_mode=ON;").map(|_| ()).map_err(|e| {
+            StoreError::DatabaseError(format!("failed to enable concurrent mode: {:?}", e))
+        })
     }
 
-    /// Acquire an exclusive file lock for the duration of a write operation.
+    /// Commit with retry for transient MVCC conflicts.
     ///
-    /// Returns a guard that releases the lock on drop. Re-entrant: if the
-    /// current call stack already holds the lock (nested write calls), the
-    /// guard is a no-op. No-op for in-memory/unlocked stores (lock_dir is None).
-    fn write_lock(&self) -> Result<WriteLockGuard<'_>, StoreError> {
-        if self.write_locked.get() {
-            // Re-entrant: outer caller owns the lock
-            return Ok(WriteLockGuard { store: self, _lock_file: None, owns_lock: false });
+    /// When concurrent writers contend for the WAL write lock, the loser gets
+    /// a transient Busy error. The transaction's writes are still valid — we
+    /// just need to wait for the lock and retry COMMIT.
+    fn commit_with_retry(conn: &Connection) -> Result<(), SdError> {
+        for attempt in 0..CONCURRENT_COMMIT_MAX_RETRIES {
+            match conn.execute("COMMIT;") {
+                Ok(_) => return Ok(()),
+                Err(e) if e.is_transient() && attempt + 1 < CONCURRENT_COMMIT_MAX_RETRIES => {
+                    let delay = CONCURRENT_COMMIT_BASE_DELAY_MS * (1 << attempt.min(6));
+                    std::thread::sleep(std::time::Duration::from_millis(delay));
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(SdError::ValidationError(format!("commit failed: {:?}", e)));
+                }
+            }
         }
-        let lock_file = match &self.lock_dir {
-            Some(d) => Some(Self::acquire_lock(d)?),
-            None => None,
-        };
-        self.write_locked.set(true);
-        Ok(WriteLockGuard { store: self, _lock_file: lock_file, owns_lock: true })
+        let _ = conn.execute("ROLLBACK;");
+        Err(SdError::ValidationError(
+            "commit failed after max retries — concurrent write contention".to_owned(),
+        ))
     }
 
     fn backup_db(werk_dir: &std::path::Path, db_path: &std::path::Path) {
@@ -610,7 +590,7 @@ impl Store {
         parent_id: Option<String>,
         horizon: Option<Horizon>,
     ) -> Result<Tension, SdError> {
-        let _lock = self.write_lock()?;
+
         let mut tension = Tension::new_full(desired, actual, parent_id, horizon)?;
 
         // Auto-assign short_code
@@ -690,7 +670,7 @@ impl Store {
         parent_actual_snapshot: Option<String>,
         parent_snapshot_json: Option<String>,
     ) -> Result<Tension, SdError> {
-        let _lock = self.write_lock()?;
+
         let mut tension = Tension::new_full_with_snapshots(
             desired,
             actual,
@@ -782,7 +762,7 @@ impl Store {
     /// This is a low-level method for recording arbitrary mutations.
     /// Most operations automatically record appropriate mutations.
     pub fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         // Use the mutation's gesture_id if set, otherwise fall back to store's active gesture
         let effective_gesture_id = mutation.gesture_id()
             .map(|g| g.to_owned())
@@ -1294,7 +1274,7 @@ impl Store {
     /// For use within an already-active transaction. Call `begin_transaction()`
     /// before using this method, and `commit_transaction()` after all updates.
     pub fn update_actual_no_tx(&self, id: &str, new_actual: &str) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         if new_actual.is_empty() {
             return Err(SdError::ValidationError(
                 "actual cannot be empty".to_owned(),
@@ -1332,7 +1312,7 @@ impl Store {
     ///
     /// Persists the change and records a mutation.
     pub fn update_parent(&self, id: &str, new_parent_id: Option<&str>) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         let mut tension = self
             .get_tension(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?
@@ -1345,7 +1325,7 @@ impl Store {
         // Persist in transaction
         {
             let conn = self.conn.borrow();
-            conn.execute("BEGIN;").map_err(|e| {
+            conn.execute("BEGIN CONCURRENT;").map_err(|e| {
                 SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
@@ -1366,9 +1346,7 @@ impl Store {
 
             match result {
                 Ok(_) => {
-                    conn.execute("COMMIT;").map_err(|e| {
-                        SdError::ValidationError(format!("failed to commit: {:?}", e))
-                    })?;
+                    Self::commit_with_retry(&conn)?;
                 }
                 Err(e) => {
                     let _ = conn.execute("ROLLBACK;");
@@ -1396,7 +1374,7 @@ impl Store {
     ///
     /// The new_horizon can be None to clear the horizon.
     pub fn update_horizon(&self, id: &str, new_horizon: Option<Horizon>) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         let mut tension = self
             .get_tension(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?
@@ -1413,7 +1391,7 @@ impl Store {
         // Persist in transaction
         {
             let conn = self.conn.borrow();
-            conn.execute("BEGIN;").map_err(|e| {
+            conn.execute("BEGIN CONCURRENT;").map_err(|e| {
                 SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
@@ -1437,9 +1415,7 @@ impl Store {
 
             match result {
                 Ok(_) => {
-                    conn.execute("COMMIT;").map_err(|e| {
-                        SdError::ValidationError(format!("failed to commit: {:?}", e))
-                    })?;
+                    Self::commit_with_retry(&conn)?;
                 }
                 Err(e) => {
                     let _ = conn.execute("ROLLBACK;");
@@ -1466,7 +1442,7 @@ impl Store {
     /// are atomically reparented to null (becoming roots) and a parent_id
     /// mutation is recorded for each child.
     pub fn update_status(&self, id: &str, new_status: TensionStatus) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         let mut tension = self
             .get_tension(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?
@@ -1503,7 +1479,7 @@ impl Store {
         // Persist in transaction
         {
             let conn = self.conn.borrow();
-            conn.execute("BEGIN;").map_err(|e| {
+            conn.execute("BEGIN CONCURRENT;").map_err(|e| {
                 SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
@@ -1557,9 +1533,7 @@ impl Store {
 
             match result {
                 Ok(_) => {
-                    conn.execute("COMMIT;").map_err(|e| {
-                        SdError::ValidationError(format!("failed to commit: {:?}", e))
-                    })?;
+                    Self::commit_with_retry(&conn)?;
                 }
                 Err(e) => {
                     let _ = conn.execute("ROLLBACK;");
@@ -1591,7 +1565,7 @@ impl Store {
     }
 
     fn update_field(&self, id: &str, field: &str, new_value: &str) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         if new_value.is_empty() {
             return Err(SdError::ValidationError(format!(
                 "{} cannot be empty",
@@ -1623,7 +1597,7 @@ impl Store {
         // Persist in transaction
         {
             let conn = self.conn.borrow();
-            conn.execute("BEGIN;").map_err(|e| {
+            conn.execute("BEGIN CONCURRENT;").map_err(|e| {
                 SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
@@ -1644,9 +1618,7 @@ impl Store {
 
             match result {
                 Ok(_) => {
-                    conn.execute("COMMIT;").map_err(|e| {
-                        SdError::ValidationError(format!("failed to commit: {:?}", e))
-                    })?;
+                    Self::commit_with_retry(&conn)?;
                 }
                 Err(e) => {
                     let _ = conn.execute("ROLLBACK;");
@@ -1949,18 +1921,16 @@ impl Store {
     /// Must be paired with a call to `commit_transaction()` or `rollback_transaction()`.
     pub fn begin_transaction(&self) -> Result<(), StoreError> {
         let conn = self.conn.borrow();
-        conn.execute("BEGIN;")
+        conn.execute("BEGIN CONCURRENT;")
             .map(|_| ())
             .map_err(|e| StoreError::DatabaseError(format!("failed to begin transaction: {:?}", e)))
     }
 
-    /// Commit the current transaction.
-    ///
-    /// Panics if no transaction is active.
+    /// Commit the current transaction with retry for MVCC conflicts.
     pub fn commit_transaction(&self) -> Result<(), StoreError> {
         let conn = self.conn.borrow();
-        conn.execute("COMMIT;").map(|_| ()).map_err(|e| {
-            StoreError::DatabaseError(format!("failed to commit transaction: {:?}", e))
+        Self::commit_with_retry(&conn).map_err(|e| {
+            StoreError::DatabaseError(format!("failed to commit transaction: {}", e))
         })
     }
 
@@ -1985,7 +1955,7 @@ impl Store {
     ///
     /// Returns an error if the tension doesn't exist.
     pub fn delete_tension(&self, id: &str) -> Result<(), SdError> {
-        let _lock = self.write_lock()?;
+
         // Get the tension to delete
         let tension = self
             .get_tension(id)
@@ -2003,7 +1973,7 @@ impl Store {
         // Persist in transaction
         {
             let conn = self.conn.borrow();
-            conn.execute("BEGIN;").map_err(|e| {
+            conn.execute("BEGIN CONCURRENT;").map_err(|e| {
                 SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
@@ -2070,9 +2040,7 @@ impl Store {
 
             match result {
                 Ok(_) => {
-                    conn.execute("COMMIT;").map_err(|e| {
-                        SdError::ValidationError(format!("failed to commit: {:?}", e))
-                    })?;
+                    Self::commit_with_retry(&conn)?;
                 }
                 Err(e) => {
                     let _ = conn.execute("ROLLBACK;");
@@ -2096,7 +2064,7 @@ impl Store {
     /// Records a mutation and persists the change.
     /// Returns true if the position was actually changed, false if it was already the target value.
     pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<bool, SdError> {
-        let _lock = self.write_lock()?;
+
         let conn = self.conn.borrow();
 
         // Get existing tension
@@ -2218,7 +2186,7 @@ impl Store {
         session_id: Option<&str>,
         description: Option<&str>,
     ) -> Result<String, StoreError> {
-        let _lock = self.write_lock()?;
+
         let id = ulid::Ulid::new().to_string();
         let now = Utc::now();
         let conn = self.conn.borrow();
@@ -2264,7 +2232,7 @@ impl Store {
         children_snapshot_json: Option<&str>,
         trigger_gesture_id: Option<&str>,
     ) -> Result<String, StoreError> {
-        let _lock = self.write_lock()?;
+
         let id = ulid::Ulid::new().to_string();
         let now = Utc::now();
         let conn = self.conn.borrow();
@@ -3015,17 +2983,17 @@ mod tests {
 
     #[test]
     fn test_concurrent_stores_coexist() {
-        // With write-scoped locking, multiple stores can open the same database.
-        // The lock is only held during individual write operations.
+        // MVCC concurrent mode: multiple stores on the same database can
+        // read and write simultaneously. Conflicts retry automatically.
         let temp_dir = tempfile::tempdir().unwrap();
         let store1 = Store::init(temp_dir.path()).unwrap();
-        let store2 = Store::init(temp_dir.path()).unwrap();
+        let store2 = Store::init_unlocked(temp_dir.path()).unwrap();
 
         // Both can read
         assert!(store1.get_roots().unwrap().is_empty());
         assert!(store2.get_roots().unwrap().is_empty());
 
-        // Both can write (sequentially — each acquires/releases the lock)
+        // Both can write (MVCC handles concurrent access at page level)
         let t1 = store1.create_tension("goal 1", "reality 1").unwrap();
         let t2 = store2.create_tension("goal 2", "reality 2").unwrap();
 
@@ -3071,7 +3039,7 @@ mod tests {
             let store1 = Store::init(temp_dir.path()).unwrap();
             let t = store1.create_tension("goal", "reality").unwrap();
             t.id.clone()
-        }; // store1 dropped here, releasing the lock
+        }; // store1 dropped
 
         // Re-open the same database
         let store2 = Store::init(temp_dir.path()).unwrap();
