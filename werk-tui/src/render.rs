@@ -16,35 +16,18 @@ use crate::app::InstrumentApp;
 use crate::glyphs;
 use crate::state::*;
 
-/// Maximum content width. Wide terminals get margin.
-const MAX_CONTENT_WIDTH: u16 = 104;
+// Content centering moved to layout.rs — LayoutState.content_area().
+
 /// Left indent for all content.
 const INDENT: &str = "  ";
 impl InstrumentApp {
-    /// Constrain area to max content width, centered horizontally on wide terminals.
-    pub(crate) fn content_area(&self, area: Rect) -> Rect {
-        let width = area.width.min(MAX_CONTENT_WIDTH);
-        let x_offset = if area.width > MAX_CONTENT_WIDTH {
-            (area.width - MAX_CONTENT_WIDTH) / 2
-        } else {
-            0
-        };
-        // Small top padding on tall terminals
-        let top_pad = if area.height > 30 { 1 } else { 0 };
-        Rect::new(
-            area.x + x_offset,
-            area.y + top_pad,
-            width,
-            area.height.saturating_sub(top_pad),
-        )
-    }
 
     // -----------------------------------------------------------------------
     // Empty state
     // -----------------------------------------------------------------------
 
     pub fn render_empty(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
         let cy = area.height / 2;
 
         if area.height < 6 {
@@ -87,7 +70,7 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_help(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
         crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
 
         let w = area.width as usize;
@@ -225,7 +208,7 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_add_prompt(&self, step: &AddStep, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
 
         // Position the prompt inline — after the parent header and siblings,
         // right where the new tension will appear in the list.
@@ -260,7 +243,7 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_confirm(&self, kind: &ConfirmKind, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
         let cy = area.height / 2;
         let prompt_area = Rect::new(area.x, area.y + cy.saturating_sub(3), area.width, 6);
         crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
@@ -309,7 +292,7 @@ impl InstrumentApp {
             Some(pw) => pw,
             None => return,
         };
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
 
         // Compute height: 1 signal + 1 blank + options + 1 blank + 1 hint
         let option_count = pw.palette.options.len();
@@ -371,7 +354,7 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_edit_prompt(&self, field: &EditField, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
         let panel_h: u16 = 5;
         let bottom_y = area.height.saturating_sub(panel_h + 1);
         let panel_x = area.x + INDENT.len() as u16;
@@ -440,7 +423,7 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_note_prompt(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
         let bottom_y = area.height.saturating_sub(4);
         let prompt_area = Rect::new(area.x, area.y + bottom_y, area.width, 3);
         crate::helpers::clear_area_styled(frame, prompt_area, self.styles.clr_dim);
@@ -478,7 +461,7 @@ impl InstrumentApp {
     // -----------------------------------------------------------------------
 
     pub fn render_search(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
         crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
 
         let mut lines: Vec<Line> = Vec::new();

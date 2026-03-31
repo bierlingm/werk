@@ -664,7 +664,7 @@ const SURVEY_INDENT: &str = "  ";
 
 impl InstrumentApp {
     pub fn render_survey(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.content_area(*area);
+        let area = self.layout.content_area(*area);
 
         let w = area.width as usize;
         let items = &self.survey_items;
@@ -885,7 +885,7 @@ impl InstrumentApp {
 
     /// Render the survey bottom bar with field vitals.
     pub fn render_survey_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let content = self.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
+        let content = self.layout.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
         let v = &self.field_vitals;

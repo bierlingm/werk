@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-31T16:58:39Z",
+  "flushed_at": "2026-03-31T17:01:17Z",
   "summary": {
-    "active": 69,
+    "active": 68,
     "released": 19,
-    "resolved": 74,
+    "resolved": 75,
     "total": 162
   },
   "tensions": [
@@ -1735,7 +1735,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Checkpoint C done: responsive breakpoints active. ColumnLayout::compute() accepts SizeRegime. Compact (<80 cols): gutter=1, left col abbreviated, ages hidden. Standard (80-120): gutter=2, ages hidden. Expansive (>120 or >40 rows): ages visible. cols.gutter replaces all 21 GUTTER constant refs. Regime detected at startup from terminal::size().",
+      "actual": "All checkpoints met. Three-pane spatial model (desire/field/reality) via LayoutState.split(). FocusGraph skeleton with 7 nodes. Responsive breakpoints: Compact (<80) hides gutter+ages, Standard (80-120) hides ages, Expansive (>120) shows all. Content centering unified in layout.rs. 0 errors, 0 warnings, 487 tests pass.",
       "created_at": "2026-03-31T13:54:08.320920+00:00",
       "desired": "spatial skeleton — PaneLayout three-pane (desire/field/reality) with drag-resize and snap points, Focus graph replaces cursor arithmetic, Responsive breakpoints for compact/standard/expansive regimes",
       "horizon": "2026-06",
@@ -1743,7 +1743,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 2,
       "short_code": 163,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "10 InputMode variants (Normal/Adding/Editing/Annotating/Confirming/Moving/Searching/Help/Pathway/Reordering) with global key binding changes per mode. Search is custom SearchState + overlay. TransientMessage in lever bar. No undo. No fuzzy command dispatch",
