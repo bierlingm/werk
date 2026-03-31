@@ -110,6 +110,11 @@ pub struct InstrumentApp {
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
 
+    // Spatial layout — three-pane model with responsive breakpoints.
+    pub layout: crate::layout::LayoutState,
+    // Focus graph — skeleton for Phase 2, wired to navigation in Phase 4.
+    pub focus_state: crate::focus::FocusState,
+
     // Theme — resolved at startup for the detected terminal mode.
     pub styles: crate::theme::InstrumentStyles,
 }
@@ -191,6 +196,8 @@ impl InstrumentApp {
             survey_items: Vec::new(),
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
+            layout: crate::layout::LayoutState::default(),
+            focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
             styles,
         };
@@ -261,6 +268,8 @@ impl InstrumentApp {
             survey_items: Vec::new(),
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
+            layout: crate::layout::LayoutState::default(),
+            focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
             styles,
         }

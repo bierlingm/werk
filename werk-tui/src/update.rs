@@ -23,6 +23,12 @@ impl Model for InstrumentApp {
             }
         }
 
+        // Handle resize — update layout regime before anything else.
+        if let Msg::Resize { width, height } = msg {
+            self.layout.update_regime(width, height);
+            return Cmd::none();
+        }
+
         // Check for external DB changes on user input (not reorder — preserves drag state)
         if !matches!(msg, Msg::Tick | Msg::Noop)
             && !matches!(self.input_mode, InputMode::Reordering { .. })

@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-31T15:10:57Z",
+  "flushed_at": "2026-03-31T16:31:30Z",
   "summary": {
-    "active": 70,
+    "active": 69,
     "released": 19,
-    "resolved": 73,
+    "resolved": 74,
     "total": 162
   },
   "tensions": [
@@ -1732,10 +1732,10 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 1,
       "short_code": 162,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "layout is Flex-based zone allocation in update.rs view(). Navigation is index arithmetic (deck_cursor). No responsive adaptation — same layout at 80 and 200 columns. No pane resizing. Breadcrumbs maintained as separate state",
+      "actual": "Checkpoint A done: layout.rs (SizeRegime, LayoutState, PaneRects, split()) and focus.rs (FocusGraph skeleton, 7 nodes, vertical Up/Down connections) created and wired into InstrumentApp. Msg::Resize variant added. All compiles clean.",
       "created_at": "2026-03-31T13:54:08.320920+00:00",
       "desired": "spatial skeleton — PaneLayout three-pane (desire/field/reality) with drag-resize and snap points, Focus graph replaces cursor arithmetic, Responsive breakpoints for compact/standard/expansive regimes",
       "horizon": "2026-06",
