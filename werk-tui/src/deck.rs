@@ -67,9 +67,8 @@ pub struct ColumnLayout {
 const GUTTER: usize = 2;
 /// Minimum left column width (enough for "Mar 30").
 const MIN_LEFT: usize = 6;
-/// Maximum content width (matches existing render.rs).
-const MAX_CONTENT_WIDTH: u16 = 104;
-/// Left/right margin from screen edges.
+// MAX_CONTENT_WIDTH and EDGE_MARGIN moved to layout.rs — content centering
+// is now handled by LayoutState.content_area().
 
 // ---------------------------------------------------------------------------
 // Deck configuration (V6)
@@ -119,7 +118,6 @@ impl DeckConfig {
         Self { chrome }
     }
 }
-const EDGE_MARGIN: u16 = 2;
 /// Extra indent for held (unpositioned) items (Q22).
 const HELD_INDENT: usize = 2;
 
@@ -718,47 +716,12 @@ pub struct FocusedDetail {
 }
 
 // ---------------------------------------------------------------------------
-// Rendering — render_deck
+// Zone height computation (used by layout system in view())
 // ---------------------------------------------------------------------------
 
 impl InstrumentApp {
-    /// Constrain area to max content width for the deck, centered horizontally,
-    /// with edge margins so text doesn't press against terminal edges.
-    fn deck_content_area(&self, area: Rect) -> Rect {
-        // Apply edge margins first
-        let usable_width = area.width.saturating_sub(EDGE_MARGIN * 2);
-        let width = usable_width.min(MAX_CONTENT_WIDTH);
-        let x_offset = if usable_width > MAX_CONTENT_WIDTH {
-            EDGE_MARGIN + (usable_width - MAX_CONTENT_WIDTH) / 2
-        } else {
-            EDGE_MARGIN
-        };
-        let top_pad = if area.height > 30 { 1 } else { 0 };
-        Rect::new(
-            area.x + x_offset,
-            area.y + top_pad,
-            width,
-            area.height.saturating_sub(top_pad),
-        )
-    }
-
-    /// Main deck render entry point.
-    ///
-    /// Uses Flex layout to split into three vertical zones:
-    /// - Top: breadcrumb + desire + rule (Fixed height)
-    /// - Middle: route + console + accumulated (Fill)
-    /// - Bottom: reality + rule (Fixed height)
-    pub fn render_deck(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.deck_content_area(*area);
-        let w = area.width as usize;
-
-        if w < 20 || area.height < 8 {
-            return;
-        }
-
-        let parent = self.parent_tension.as_ref();
-
-        // --- Column layout for child lines ---
+    /// Compute column layout from current siblings state.
+    pub(crate) fn compute_cols(&self, w: usize) -> ColumnLayout {
         let deadline_label = self.parent_horizon_label.as_deref();
         let max_child_deadline = self.siblings.iter()
             .filter_map(|s| s.horizon_label.as_deref())
@@ -777,93 +740,120 @@ impl InstrumentApp {
             .map(|s| s.created_age.chars().count())
             .max()
             .unwrap_or(2);
-        let cols = ColumnLayout::compute(w, widest_deadline, max_id, max_age_len);
+        ColumnLayout::compute(w, widest_deadline, max_id, max_age_len)
+    }
 
-        // --- Frontier classification (use cached, or compute fresh) ---
-        let mut frontier = self.cached_frontier.clone()
+    /// Compute desire zone height and pre-wrapped lines.
+    /// Returns (height_in_lines, wrapped_lines). Height is 0 when at root (no parent).
+    pub(crate) fn desire_zone_height(&self, w: usize, cols: &ColumnLayout) -> (u16, Vec<String>) {
+        let parent = match self.parent_tension.as_ref() {
+            Some(p) => p,
+            None => return (0, Vec::new()),
+        };
+
+        let has_breadcrumb = self.grandparent_display.is_some();
+        let has_deadline = self.parent_horizon_label.as_ref().map_or(false, |d| !d.is_empty());
+
+        let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
+        let right_col_reserve = GUTTER + cols.right;
+        let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
+        let d_lines = word_wrap(&parent.desired, desire_wrap_width);
+
+        let mut h: u16 = 0;
+        if has_breadcrumb { h += 1; }
+        h += 1; // blank line before desire
+        h += d_lines.len() as u16;
+        h += 1; // desire rule
+
+        (h, d_lines)
+    }
+
+    /// Compute reality zone height.
+    /// Returns height in lines. 0 when at root (no parent), 1 (just rule) when actual is empty.
+    pub(crate) fn reality_zone_height(&self, w: usize) -> u16 {
+        let parent = match self.parent_tension.as_ref() {
+            Some(p) => p,
+            None => return 0,
+        };
+
+        if parent.actual.is_empty() {
+            return 1; // just the rule
+        }
+
+        let reality_lines = word_wrap(&parent.actual, w.saturating_sub(2)).len() as u16;
+        // blank + reality text + rule
+        1 + reality_lines + 1
+    }
+
+    /// Get the current frontier (cached or fresh).
+    pub(crate) fn current_frontier(&self) -> Frontier {
+        self.cached_frontier.clone()
             .unwrap_or_else(|| {
                 if matches!(self.input_mode, crate::state::InputMode::Reordering { .. }) {
                     Frontier::from_raw_order(&self.siblings, self.epoch_boundary)
                 } else {
                     Frontier::compute(&self.siblings, self.trajectory_mode, self.epoch_boundary)
                 }
-            });
+            })
+    }
+}
 
-        // --- Measure zones for Flex layout ---
-        let has_breadcrumb = self.grandparent_display.is_some();
-        let has_deadline = deadline_label.is_some() && !deadline_label.unwrap_or("").is_empty();
+// ---------------------------------------------------------------------------
+// Rendering — render_deck
+// ---------------------------------------------------------------------------
 
-        // At root level (no parent), skip desire/reality zones entirely
-        let (top_height, bottom_height, desire_lines): (u16, u16, Vec<String>) = if let Some(p) = parent {
-            let desire_indent = if has_deadline { cols.left + GUTTER } else { 0 };
-            let right_col_reserve = GUTTER + cols.right;
-            let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
-            let d_lines = word_wrap(&p.desired, desire_wrap_width);
-
-            let th: u16 = {
-                let mut h: u16 = 0;
-                if has_breadcrumb { h += 1; }
-                h += 1; // blank line before desire
-                h += d_lines.len() as u16;
-                h += 1; // desire rule
-                h
-            };
-
-            // Reality height: adaptive. Compute what the middle zone needs,
-            // then reality gets the remaining space (minimum 1 content line).
-            let reality_full_lines = if p.actual.is_empty() {
-                0u16
-            } else {
-                word_wrap(&p.actual, w.saturating_sub(2)).len() as u16
-            };
-            // Estimate middle zone need from frontier content
-            let middle_need = (frontier.selectable_count() as u16) + 4; // selectables + chrome
-            let space_for_reality = area.height
-                .saturating_sub(th)
-                .saturating_sub(middle_need)
-                .saturating_sub(2); // rule + blank
-            let reality_lines = if p.actual.is_empty() { 0 } else {
-                reality_full_lines.min(space_for_reality.max(1))
-            };
-            let bh: u16 = {
-                let mut h: u16 = 0;
-                if reality_lines > 0 {
-                    h += 1; // blank line before reality
-                    h += reality_lines;
-                }
-                h += 1; // reality rule
-                h
-            };
-
-            (th, bh, d_lines)
-        } else {
-            (0, 0, Vec::new())
+impl InstrumentApp {
+    /// Render desire and reality anchor zones.
+    ///
+    /// Called from view() with pre-computed pane rects from the layout system.
+    pub(crate) fn render_anchors(
+        &self,
+        frame: &mut Frame<'_>,
+        desire_zone: Rect,
+        reality_zone: Rect,
+        w: usize,
+        cols: &ColumnLayout,
+        desire_lines: &[String],
+        frontier: &Frontier,
+    ) {
+        let parent = match self.parent_tension.as_ref() {
+            Some(p) => p,
+            None => return,
         };
 
-        // === Flex vertical split: top (Fixed) | middle (Fill) | bottom (Fixed) ===
-        let zones = Flex::vertical()
-            .constraints([
-                Constraint::Fixed(top_height),
-                Constraint::Fill,
-                Constraint::Fixed(bottom_height),
-            ])
-            .split(area);
-        let top_zone = zones[0];
-        let middle_zone = zones[1];
-        let bottom_zone = zones[2];
+        let has_breadcrumb = self.grandparent_display.is_some();
+        let has_deadline = self.parent_horizon_label.as_ref().map_or(false, |d| !d.is_empty());
+        let deadline_str = self.parent_horizon_label.as_deref().unwrap_or("");
+        let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
 
-        // === Render top zone (desire anchor) — only when descended ===
-        if let Some(p) = parent {
-            let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
-            // Check anchor selection using the frontier's cursor_target
-            let desire_selected = frontier.has_desire_anchor
-                && frontier.cursor_target(self.deck_cursor.index) == CursorTarget::Desire;
-            let reality_selected = frontier.has_reality_anchor
-                && frontier.cursor_target(self.deck_cursor.index) == CursorTarget::Reality;
-            self.render_desire_zone(frame, top_zone, w, &cols, p, &desire_lines,
-                has_breadcrumb, has_deadline, deadline_label.unwrap_or(""), desire_selected);
-            self.render_reality_zone(frame, bottom_zone, w, p, reality_age_str, reality_selected);
+        let desire_selected = frontier.has_desire_anchor
+            && frontier.cursor_target(self.deck_cursor.index) == CursorTarget::Desire;
+        let reality_selected = frontier.has_reality_anchor
+            && frontier.cursor_target(self.deck_cursor.index) == CursorTarget::Reality;
+
+        self.render_desire_zone(frame, desire_zone, w, cols, parent, desire_lines,
+            has_breadcrumb, has_deadline, deadline_str, desire_selected);
+        self.render_reality_zone(frame, reality_zone, w, parent, reality_age_str, reality_selected);
+    }
+
+    /// Main deck render entry point — renders the field zone (middle pane).
+    ///
+    /// Receives a pre-computed field rect from the layout system.
+    /// Desire and reality anchors are rendered separately by render_anchors().
+    pub fn render_deck(&self, field_area: &Rect, cols: &ColumnLayout, frame: &mut Frame<'_>) {
+        // `area` aliases field_area for x/width in render calls. The field zone
+        // shares the same x-offset and width as the full content-centered rect.
+        let area = *field_area;
+        let w = area.width as usize;
+
+        if w < 20 || area.height < 4 {
+            return;
         }
+
+        // --- Frontier classification (use cached, or compute fresh) ---
+        let mut frontier = self.current_frontier();
+
+        let middle_zone = area;
 
         // === Render middle zone ===
         if middle_zone.height == 0 {
@@ -1918,7 +1908,7 @@ impl InstrumentApp {
     /// Render the deck bottom bar using ftui StatusLine.
     /// S6: Context-sensitive gesture hints based on cursor target (Normal mode only).
     pub fn render_deck_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let content = self.deck_content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
+        let content = self.layout.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
         // S6: Context-sensitive hints — only in Normal input mode

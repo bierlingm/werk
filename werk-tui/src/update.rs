@@ -80,81 +80,95 @@ impl Model for InstrumentApp {
         crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
         let show_hints = area.height >= 6;
 
-        // Layout: content + lever + hints
+        // Outer frame: content + lever + hints
         let mut constraints = vec![Constraint::Fill, Constraint::Fixed(1)];
         if show_hints {
             constraints.push(Constraint::Fixed(1));
         }
-
-        let layout = Flex::vertical().constraints(constraints);
-        let rects = layout.split(area);
+        let outer = Flex::vertical().constraints(constraints).split(area);
+        let content_area = outer[0];
+        let lever_area = outer[1];
+        let hints_area = if show_hints { outer[2] } else { Rect::default() };
 
         // Survey orientation — render survey as background, then fall through
         // to overlay rendering so gestures (confirm, edit, note) work in survey.
         let in_survey = self.view_orientation == crate::state::ViewOrientation::Survey;
         if in_survey {
-            self.render_survey(&rects[0], frame);
-            self.render_survey_bar(&rects[1], frame);
-            if show_hints {
-                // Hints area is empty in survey mode — buffer starts clear.
-            }
+            self.render_survey(&content_area, frame);
+            self.render_survey_bar(&lever_area, frame);
             // Don't return — fall through so overlays render on top.
         }
 
-        // Full-screen modes: render ONLY the overlay, skip the deck entirely
-        // Render the background (deck or survey) unless already done above.
+        // Full-screen modes bypass the three-pane layout.
         if !in_survey {
             if matches!(self.input_mode, InputMode::Help) {
-                self.render_help(&rects[0], frame);
+                self.render_help(&content_area, frame);
             } else if matches!(self.input_mode, InputMode::Searching) {
-                self.render_search(&rects[0], frame);
+                self.render_search(&content_area, frame);
             } else if matches!(self.input_mode, InputMode::Moving { .. }) {
-                self.render_search(&rects[0], frame);
+                self.render_search(&content_area, frame);
             } else if self.siblings.is_empty() && self.parent_id.is_none()
                 && !matches!(self.input_mode, InputMode::Adding(_))
             {
-                self.render_empty(&rects[0], frame);
+                self.render_empty(&content_area, frame);
             } else {
-                self.render_deck(&rects[0], frame);
+                // === Three-pane spatial model: desire / field / reality ===
+                let content = self.layout.content_area(content_area);
+                let w = content.width as usize;
+
+                if w >= 20 && content.height >= 8 {
+                    let cols = self.compute_cols(w);
+                    let (desire_h, desire_lines) = self.desire_zone_height(w, &cols);
+                    let reality_h = self.reality_zone_height(w);
+                    let panes = self.layout.split(content, desire_h, reality_h);
+
+                    // Desire and reality anchors
+                    let frontier = self.current_frontier();
+                    self.render_anchors(frame, panes.desire, panes.reality,
+                        w, &cols, &desire_lines, &frontier);
+
+                    // Field of action
+                    self.render_deck(&panes.field, &cols, frame);
+                }
             }
         }
 
         // Render inline overlays on top of the background (works for both deck and survey)
         match &self.input_mode {
             InputMode::Adding(step) => {
-                self.render_add_prompt(step, &rects[0], frame);
+                self.render_add_prompt(step, &content_area, frame);
             }
             InputMode::Confirming(kind) => {
-                self.render_confirm(kind, &rects[0], frame);
+                self.render_confirm(kind, &content_area, frame);
             }
             InputMode::Editing { field, .. } => {
-                self.render_edit_prompt(field, &rects[0], frame);
+                self.render_edit_prompt(field, &content_area, frame);
             }
             InputMode::Annotating { .. } => {
-                self.render_note_prompt(&rects[0], frame);
+                self.render_note_prompt(&content_area, frame);
             }
             InputMode::Pathway => {
-                self.render_pathway(&rects[0], frame);
+                self.render_pathway(&content_area, frame);
             }
             _ => {}
         }
 
         // Bottom bar (survey bar already rendered above if in_survey)
         if !in_survey {
-            self.render_deck_bar(&rects[1], frame);
+            self.render_deck_bar(&lever_area, frame);
         }
 
         // Hints
         if show_hints {
             match &self.input_mode {
-                InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &rects[2], frame),
-                InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &rects[2], frame),
-                InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &rects[2], frame),
-                InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &rects[2], frame),
-                InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &rects[2], frame),
-                InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &rects[2], frame),
-                InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &rects[2], frame),
-                _ => if !in_survey { self.render_hints(&rects[2], frame) },
+                InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &hints_area, frame),
+                InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &hints_area, frame),
+                InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &hints_area, frame),
+                InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &hints_area, frame),
+                InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &hints_area, frame),
+                InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
+                InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
+                _ => if !in_survey { self.render_hints(&hints_area, frame) },
             }
         }
     }
