@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-30T22:12:36Z",
+  "flushed_at": "2026-03-31T05:02:10Z",
   "summary": {
-    "active": 72,
+    "active": 70,
     "released": 7,
-    "resolved": 64,
+    "resolved": 66,
     "total": 143
   },
   "tensions": [
@@ -118,7 +118,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. Epoch boundaries auto-created on CLI and TUI desire/reality updates. Output taxonomy decided and codified: metrics on standard surfaces, classification/projection on analytical surfaces (trajectory, ground). Remaining gaps: formal state machine extraction (#16), data model completion (#20/#35), threshold signal surfacing (#46), structural transformations (#49).",
+      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. TUI fully wired into gesture/session model — every mutation is a session-bound gesture, epoch boundaries carry trigger gesture IDs. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. Epoch display in show output across all surfaces (CLI, MCP, TUI frontier). Output taxonomy decided and codified. Remaining gaps: formal state machine extraction (#16), structural transformations (#49), deep addressability (#128), user-defined thresholds (#139).",
       "created_at": "2026-03-24T17:52:26.260351+00:00",
       "desired": "the conceptual foundation is implemented — data model supports delta versioning, gesture grouping, order of operations distinct from horizon, held steps, and the five temporal concepts",
       "horizon": "2026-06",
@@ -195,7 +195,7 @@
       "status": "Active"
     },
     {
-      "actual": "Schema fully extended: 3 new tables (gestures, sessions, epochs), 3 new columns (gesture_id + actual_at on mutations, parent_snapshot_json on tensions). Gesture context wired into Store with process-scoped session model. All 11 CLI mutation commands + batch create gestures. Mutation replay tolerates note/position/deleted. CLI: werk hold, werk position, werk resolve --actual-at. Parent snapshots auto-populated as JSON on child creation. Foundation doc updated (sessions, gesture data model, actual_at). Remaining: epoch trigger path, session TUI lifecycle.",
+      "actual": "Schema fully extended: 3 new tables (gestures, sessions, epochs), 3 new columns (gesture_id + actual_at on mutations, parent_snapshot_json on tensions). Gesture context wired into Store with process-scoped session model. All CLI mutation commands create gestures. TUI fully wired — every mutation is a session-bound gesture, epoch boundaries carry trigger gesture IDs. Mutation replay tolerates note/position/deleted. CLI: werk hold, werk position, werk resolve --actual-at. Parent snapshots auto-populated as JSON on child creation. Epoch display in show output (CLI + MCP). All three surfaces consistent.",
       "created_at": "2026-03-24T17:52:26.450418+00:00",
       "desired": "data model extended — gesture grouping (gesture table), run/session tracking (run table), epoch markers, notes as first-class mutations, held vs positioned as explicit state",
       "horizon": null,
@@ -203,7 +203,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 20,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "CLI has 30+ commands. hold, position, compose-up, epoch, survey, and ground commands added. Old terminology cleaned: 'phase distribution' removed from health description, --phase filter removed from list, 'phase transition' → 'epoch boundary' in reality/desire output, 'actual state' → 'current reality' in help text, agent prompts updated. 'run' command still refers to agent invocation, not sessions (by design — sessions are TUI-scoped). Sort options updated to urgency/name/deadline.",
@@ -266,7 +266,7 @@
       "desired": "parent snapshot captures full descended view state — not just desire/reality text but order of operations, held steps, resolved steps, children metadata",
       "horizon": null,
       "id": "01KMGFKYHKA86TFQ6HMXK3WP6X",
-      "parent_id": "01KMGFKYAJYH8QFVVZGMKFDQGW",
+      "parent_id": null,
       "position": null,
       "short_code": 26,
       "status": "Resolved"
@@ -299,7 +299,7 @@
       "desired": "actual_at wired into resolve flow — werk resolve accepts --actual-at flag for 'I did this yesterday' cases, configurable prompt option per foundation calculus of time",
       "horizon": null,
       "id": "01KMGFKYQR0VK4FCAKGN7AP308",
-      "parent_id": "01KMGFKYAJYH8QFVVZGMKFDQGW",
+      "parent_id": null,
       "position": null,
       "short_code": 29,
       "status": "Resolved"
@@ -365,10 +365,10 @@
       "desired": "epoch and session lifecycle are fully operational",
       "horizon": null,
       "id": "01KMGFKZ0T0RTV9XQBJNVV2QJR",
-      "parent_id": "01KMGFKYAJYH8QFVVZGMKFDQGW",
+      "parent_id": null,
       "position": null,
       "short_code": 35,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
