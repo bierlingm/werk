@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-03-31T17:41:07Z",
+  "flushed_at": "2026-03-31T17:42:30Z",
   "summary": {
-    "active": 68,
+    "active": 67,
     "released": 19,
-    "resolved": 75,
+    "resolved": 76,
     "total": 162
   },
   "tensions": [
@@ -1754,7 +1754,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 3,
       "short_code": 164,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "deck.rs is 2,066 lines of hand-built Line/Span/Text rendering. survey.rs is 1,155 lines with manual compression. FieldEntry/FocusedDetail built manually. State reloaded after every mutation. No derived/reactive computation",
