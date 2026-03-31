@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-03-31T18:46:15Z",
+  "flushed_at": "2026-03-31T19:04:17Z",
   "summary": {
     "active": 67,
     "released": 19,
@@ -1757,7 +1757,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Steps A-C complete. FocusGraph drives j/k navigation: rebuild_for_frontier() creates per-item nodes with Up/Down edges. DeckCursor kept as sync bridge (deck_cursor.index synced from focus_state.active_index). CursorTarget passed directly to List widget builders instead of flat cursor index. All deck_pitch_up/down, deck_cursor_reset, deck_cursor_to_sibling, deck_selected_sibling_index, render_deck_bar use focus_state. Next: survey_tree.rs (Step D)",
+      "actual": "Steps A-D complete. Survey bands now collapsible: SurveyTreeState tracks collapsed bands, compute_band_expansion respects collapse (show=0), Space toggles band fold in survey view, band headers show ▸/▾ indicator. survey_tree.rs created with build_survey_tree() for structural Tree display. Next: reactive state (Step E)",
       "created_at": "2026-03-31T13:54:16.048519+00:00",
       "desired": "widget migration — deck zones use List widget, survey uses Tree + VirtualizedList, reactive state (Observable/Computed/Binding) replaces manual cache invalidation. deck.rs and survey.rs rewritten on ftui widgets",
       "horizon": "2026-07",

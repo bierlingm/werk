@@ -1059,6 +1059,17 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Space — toggle band collapse/expand for the current item's band.
+            Msg::Char(' ') => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor) {
+                    let band = item.band;
+                    let expanded = self.survey_tree_state.toggle_band(band);
+                    let label = if expanded { "expanded" } else { "collapsed" };
+                    self.set_transient(&format!("{} {}", band.label(), label));
+                }
+                Cmd::none()
+            }
+
             // h/l — reserved for temporal navigation (pan along time axis).
             // No-op until temporal depth is implemented.
             Msg::Char('h') | Msg::Ascend | Msg::Char('l') | Msg::Descend => Cmd::none(),
