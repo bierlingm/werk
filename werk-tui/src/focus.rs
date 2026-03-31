@@ -310,3 +310,161 @@ impl FocusState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::deck::{AccumulatedItem, CursorTarget, Frontier};
+
+    fn make_frontier(route: Vec<usize>, overdue: Vec<usize>, next: Option<usize>,
+                     held: Vec<usize>, accumulated: Vec<AccumulatedItem>) -> Frontier {
+        let show_route = route.len();
+        let show_held = held.len();
+        let show_accumulated = accumulated.len();
+        Frontier {
+            route, overdue, next, held, accumulated,
+            show_route, show_held, show_accumulated,
+            has_desire_anchor: false,
+            has_reality_anchor: false,
+        }
+    }
+
+    #[test]
+    fn rebuild_creates_nodes_for_all_items() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(
+            vec![0, 1],       // 2 route items
+            vec![],           // no overdue
+            Some(2),          // next step
+            vec![3],          // 1 held item
+            vec![],           // no accumulated
+        );
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        // route(0), route(1), next(2), held(3), input_point = 5 items
+        assert_eq!(fs.selectable_count(), 5);
+        assert_eq!(fs.targets[0].1, CursorTarget::Route(0));
+        assert_eq!(fs.targets[1].1, CursorTarget::Route(1));
+        assert_eq!(fs.targets[2].1, CursorTarget::Next(2));
+        assert_eq!(fs.targets[3].1, CursorTarget::HeldItem(3));
+        assert_eq!(fs.targets[4].1, CursorTarget::InputPoint);
+    }
+
+    #[test]
+    fn navigate_down_traverses_items_in_order() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(vec![0, 1], vec![], Some(2), vec![], vec![]);
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        // Start at default (InputPoint)
+        assert_eq!(fs.cursor_target(), CursorTarget::InputPoint);
+
+        // Set to first item and navigate down
+        fs.active = fs.targets[0].0;
+        assert_eq!(fs.cursor_target(), CursorTarget::Route(0));
+
+        fs.navigate(NavDirection::Down);
+        assert_eq!(fs.cursor_target(), CursorTarget::Route(1));
+
+        fs.navigate(NavDirection::Down);
+        assert_eq!(fs.cursor_target(), CursorTarget::Next(2));
+
+        fs.navigate(NavDirection::Down);
+        assert_eq!(fs.cursor_target(), CursorTarget::InputPoint);
+
+        // At bottom — stays
+        fs.navigate(NavDirection::Down);
+        assert_eq!(fs.cursor_target(), CursorTarget::InputPoint);
+    }
+
+    #[test]
+    fn navigate_up_from_input_reaches_route() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(vec![5], vec![], None, vec![], vec![]);
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        // Default is InputPoint
+        assert_eq!(fs.cursor_target(), CursorTarget::InputPoint);
+
+        fs.navigate(NavDirection::Up);
+        assert_eq!(fs.cursor_target(), CursorTarget::Route(5));
+
+        // At top — stays
+        fs.navigate(NavDirection::Up);
+        assert_eq!(fs.cursor_target(), CursorTarget::Route(5));
+    }
+
+    #[test]
+    fn desire_and_reality_anchors_included_when_present() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(vec![], vec![], None, vec![], vec![]);
+        fs.rebuild_for_frontier(&frontier, true, true);
+
+        // desire, input_point, reality = 3 items
+        assert_eq!(fs.selectable_count(), 3);
+        assert_eq!(fs.targets[0].1, CursorTarget::Desire);
+        assert_eq!(fs.targets[1].1, CursorTarget::InputPoint);
+        assert_eq!(fs.targets[2].1, CursorTarget::Reality);
+    }
+
+    #[test]
+    fn focus_for_sibling_finds_correct_node() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(vec![10, 20], vec![], None, vec![30], vec![]);
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        assert!(fs.focus_for_sibling(10).is_some());
+        assert!(fs.focus_for_sibling(20).is_some());
+        assert!(fs.focus_for_sibling(30).is_some());
+        assert!(fs.focus_for_sibling(99).is_none());
+    }
+
+    #[test]
+    fn restore_target_preserves_position_across_rebuild() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(vec![0, 1, 2], vec![], None, vec![], vec![]);
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        // Navigate to Route(1)
+        fs.active = fs.focus_for(&CursorTarget::Route(1)).unwrap();
+        assert_eq!(fs.cursor_target(), CursorTarget::Route(1));
+
+        // Capture and rebuild
+        let target = fs.capture_target();
+        fs.rebuild_for_frontier(&frontier, false, false);
+        fs.restore_target(&target);
+
+        assert_eq!(fs.cursor_target(), CursorTarget::Route(1));
+    }
+
+    #[test]
+    fn unified_summary_collapses_route_and_held() {
+        let mut fs = FocusState::new();
+        // Unified: show_route=0 with route items, show_held=0 with held items
+        let mut frontier = make_frontier(vec![0, 1], vec![], None, vec![2, 3], vec![]);
+        frontier.show_route = 0;
+        frontier.show_held = 0;
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        // unified summary + input_point = 2 items
+        assert_eq!(fs.selectable_count(), 2);
+        assert_eq!(fs.targets[0].1, CursorTarget::RouteSummary);
+        assert_eq!(fs.targets[1].1, CursorTarget::InputPoint);
+    }
+
+    #[test]
+    fn accumulated_items_appear_after_input_point() {
+        let mut fs = FocusState::new();
+        let frontier = make_frontier(
+            vec![], vec![], None, vec![],
+            vec![AccumulatedItem::Child(5), AccumulatedItem::Child(6)],
+        );
+        fs.rebuild_for_frontier(&frontier, false, false);
+
+        // input_point, acc(5), acc(6) = 3
+        assert_eq!(fs.selectable_count(), 3);
+        assert_eq!(fs.targets[0].1, CursorTarget::InputPoint);
+        assert_eq!(fs.targets[1].1, CursorTarget::AccumulatedItem(5));
+        assert_eq!(fs.targets[2].1, CursorTarget::AccumulatedItem(6));
+    }
+}
