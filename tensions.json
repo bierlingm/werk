@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-01T15:31:08Z",
+  "flushed_at": "2026-04-01T15:32:09Z",
   "summary": {
-    "active": 68,
+    "active": 65,
     "released": 20,
-    "resolved": 81,
+    "resolved": 84,
     "total": 169
   },
   "tensions": [
@@ -522,7 +522,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 49,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Complete. Design rationale documented in designs/hook-infrastructure-design.md covering: five events, why these and not others (pre_create rejected, temporal events rejected per gesture principle, post_reopen deferred), payload semantics, firing rules per interface (CLI/MCP symmetric, TUI deferred), configuration model (workspace-scoped config.toml), execution model (pre blocks, post fire-and-forget), and explicit boundaries (hooks are notification surface, not extension mechanism).",
@@ -929,7 +929,7 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 89,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Design inquiry complete. Three design docs produced: command-center-and-time-axis.md, visualization-research.md, three-orientations.md. Key decisions: (1) 2D lattice (structure x time) with stream/survey/frontier as zoom presets. (2) Three temporal axes: taxis, chronos, kairos. (3) NOW zone = command center embedded in survey. (4) Tab is binary stream<->field-wide, with survey/frontier as sub-choice. Survey V1 is implemented and functional. Frontier/kairos view designed but not built.",
@@ -1358,7 +1358,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 128,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Option A implemented: no separate persistence table. The mutation log is the source of truth. detect_horizon_drift() now computes onset timestamp — the mutation that tipped the drift pattern. show displays 'since N days ago' on drift signals. list --signals filter shows only tensions with active signals. Signal computation gated behind --long/--signals/--json in list (no cost for default list). Onset for other signal types (critical path, containment, sequencing) deferred — would require historical forest reconstruction.",
