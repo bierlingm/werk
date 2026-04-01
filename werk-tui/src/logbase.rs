@@ -104,6 +104,20 @@ pub struct ProvenanceRef {
     pub desired: String,
 }
 
+/// A pre-built display item for the List widget.
+/// Each logbase event becomes one or more LogbaseItems.
+#[derive(Debug, Clone)]
+pub struct LogbaseItem {
+    /// Display text for the list row.
+    pub text: String,
+    /// Style for this row.
+    pub style: Style,
+    /// Index into logbase_events that this item maps to (for cursor → event mapping).
+    pub event_index: usize,
+    /// Whether this is an epoch boundary line (for J/K epoch-level navigation).
+    pub is_boundary: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Event stream construction
 // ---------------------------------------------------------------------------
@@ -304,82 +318,227 @@ impl LogbaseProvenance {
 impl InstrumentApp {
     /// Load logbase data for a tension and switch to logbase view.
     pub fn enter_logbase(&mut self, tension_id: &str) {
-        // Save originating state for return
         self.pre_logbase_state = Some((
             self.view_orientation,
             self.parent_id.clone(),
             self.focus_state.active,
         ));
 
-        // Load tension
         let tension = match self.engine.store().get_tension(tension_id) {
             Ok(Some(t)) => t,
             _ => return,
         };
 
-        // Load epochs
         let epochs = self.engine.store()
             .get_epochs(tension_id)
             .unwrap_or_default();
 
-        // Build event stream
         let events = build_event_stream(&tension, &epochs, self.engine.store());
-
-        // Build provenance
         let provenance = build_provenance(self.engine.store(), tension_id);
 
-        // Find the first epoch boundary (most recent epoch) for cursor start
-        let initial_cursor = 0; // First event = most recent epoch boundary
+        // Build list items from events
+        let focused_epoch = if !epochs.is_empty() { epochs.len() - 1 } else { 0 };
+        let items = build_list_items(&events, &epochs, focused_epoch);
 
         self.logbase_tension_id = Some(tension_id.to_owned());
         self.logbase_tension = Some(tension);
         self.logbase_epochs = epochs;
         self.logbase_events = events;
         self.logbase_provenance = provenance;
-        self.logbase_cursor = initial_cursor;
-        self.logbase_focused_epoch = if !self.logbase_epochs.is_empty() {
-            self.logbase_epochs.len() - 1 // Most recent epoch index
-        } else {
-            0
-        };
+        self.logbase_focused_epoch = focused_epoch;
+        self.logbase_items = items;
+
+        // Initialize list state with cursor on first item (most recent epoch)
+        self.logbase_list_state = ftui::widgets::list::ListState::default();
+        self.logbase_list_state.select(Some(0));
 
         self.view_orientation = crate::state::ViewOrientation::Logbase;
+    }
+
+    /// Rebuild the list items (call when focused epoch changes).
+    pub fn rebuild_logbase_items(&mut self) {
+        self.logbase_items = build_list_items(
+            &self.logbase_events,
+            &self.logbase_epochs,
+            self.logbase_focused_epoch,
+        );
     }
 
     /// Return from logbase to the originating view.
     pub fn exit_logbase(&mut self) {
         if let Some((orientation, parent_id, focus_id)) = self.pre_logbase_state.take() {
             self.view_orientation = orientation;
-            // Restore deck state if returning to Stream
             if orientation == crate::state::ViewOrientation::Stream {
                 self.parent_id = parent_id;
                 self.load_siblings();
                 self.focus_state.active = focus_id;
             }
-            // Survey state is still intact — just switch orientation back
         } else {
             self.view_orientation = crate::state::ViewOrientation::Stream;
         }
 
-        // Clear logbase state
         self.logbase_tension_id = None;
         self.logbase_tension = None;
         self.logbase_epochs.clear();
         self.logbase_events.clear();
+        self.logbase_items.clear();
         self.logbase_provenance = LogbaseProvenance::default();
+    }
+
+    /// Get the event index for the currently selected list item.
+    pub fn logbase_selected_event(&self) -> Option<usize> {
+        self.logbase_list_state.selected()
+            .and_then(|i| self.logbase_items.get(i))
+            .map(|item| item.event_index)
     }
 }
 
 // ---------------------------------------------------------------------------
-// Rendering
+// List item construction
+// ---------------------------------------------------------------------------
+
+/// Build display items from the event stream.
+/// Each event becomes one ListItem. Epoch boundaries get additional
+/// desire/reality lines as separate items.
+fn build_list_items(
+    events: &[LogbaseEvent],
+    epochs: &[EpochRecord],
+    focused_epoch: usize,
+) -> Vec<LogbaseItem> {
+    let mut items = Vec::new();
+
+    for (i, event) in events.iter().enumerate() {
+        let is_focused = event.epoch_index() == focused_epoch;
+
+        match event {
+            LogbaseEvent::EpochBoundary { epoch_index, boundary_trigger } => {
+                // Blank separator between epochs (not before first)
+                if !items.is_empty() {
+                    items.push(LogbaseItem {
+                        text: String::new(),
+                        style: Style::default(),
+                        event_index: i,
+                        is_boundary: false,
+                    });
+                }
+
+                let epoch = &epochs[*epoch_index];
+                let epoch_num = epoch_index + 1;
+                let age_text = format_age(epoch.timestamp);
+
+                let mutation_count = events.iter()
+                    .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, .. } if *ei == *epoch_index))
+                    .count();
+
+                let trigger_label = match boundary_trigger {
+                    BoundaryTrigger::DesireChanged => " [\u{25C6}]",
+                    BoundaryTrigger::RealityChanged => " [\u{25C7}]",
+                    BoundaryTrigger::BothChanged if *epoch_index > 0 => " [\u{25C6}\u{25C7}]",
+                    BoundaryTrigger::BothChanged => "",
+                    BoundaryTrigger::Structural(s) => s.as_str(),
+                    BoundaryTrigger::Unknown => "",
+                };
+
+                let mut right_parts = Vec::new();
+                if mutation_count > 0 {
+                    right_parts.push(format!("{} mut", mutation_count));
+                }
+                right_parts.push(age_text);
+                if !trigger_label.is_empty() {
+                    right_parts.push(trigger_label.to_owned());
+                }
+
+                items.push(LogbaseItem {
+                    text: format!("\u{2500}\u{2500} epoch {} \u{2500}\u{2500} {}", epoch_num, right_parts.join(" ")),
+                    style: Style::default(),
+                    event_index: i,
+                    is_boundary: true,
+                });
+
+                // Desire/reality snapshots
+                if is_focused {
+                    items.push(LogbaseItem {
+                        text: format!("  \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, 200)),
+                        style: Style::default(),
+                        event_index: i,
+                        is_boundary: false,
+                    });
+                    items.push(LogbaseItem {
+                        text: format!("  \u{25C7} {}", werk_shared::truncate(&epoch.reality_snapshot, 200)),
+                        style: Style::default(),
+                        event_index: i,
+                        is_boundary: false,
+                    });
+                    if mutation_count > 0 {
+                        items.push(LogbaseItem {
+                            text: format!("  {}", "\u{2508}".repeat(60)),
+                            style: Style::default(),
+                            event_index: i,
+                            is_boundary: false,
+                        });
+                    }
+                } else {
+                    // Compressed summary
+                    let summary = match boundary_trigger {
+                        BoundaryTrigger::RealityChanged => {
+                            format!("  \u{25C7} {}", werk_shared::truncate(&epoch.reality_snapshot, 200))
+                        }
+                        _ => {
+                            format!("  \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, 200))
+                        }
+                    };
+                    items.push(LogbaseItem {
+                        text: summary,
+                        style: Style::default(),
+                        event_index: i,
+                        is_boundary: false,
+                    });
+                }
+            }
+
+            LogbaseEvent::Mutation { epoch_index, field, new_value, timestamp, child_short_code, .. } => {
+                if *epoch_index != focused_epoch {
+                    continue;
+                }
+
+                let ts = format_date_short(*timestamp);
+                let child = child_short_code.map(|sc| format!("#{}", sc)).unwrap_or_default();
+
+                let display = match field.as_str() {
+                    "note" => format!("  \u{203B} {}  {}", werk_shared::truncate(new_value, 200), ts),
+                    "status" if new_value.contains("esolved") => format!("  \u{2713} {} resolved  {}", child, ts),
+                    "status" if new_value.contains("eleased") => format!("  \u{2717} {} released  {}", child, ts),
+                    "desired" => format!("  \u{25C6} {}: {}  {}", child, werk_shared::truncate(new_value, 200), ts),
+                    "actual" => format!("  \u{25C7} {}: {}  {}", child, werk_shared::truncate(new_value, 200), ts),
+                    "position" => {
+                        let val = if new_value.is_empty() || new_value == "null" { "held" } else { new_value };
+                        format!("  \u{2022} {} position {}  {}", child, val, ts)
+                    }
+                    _ => format!("  \u{2022} {} [{}] {}  {}", child, field, werk_shared::truncate(new_value, 200), ts),
+                };
+
+                items.push(LogbaseItem {
+                    text: display,
+                    style: Style::default(),
+                    event_index: i,
+                    is_boundary: false,
+                });
+            }
+        }
+    }
+
+    items
+}
+
+// ---------------------------------------------------------------------------
+// Rendering (using ftui List widget)
 // ---------------------------------------------------------------------------
 
 impl InstrumentApp {
     /// Render the logbase view.
     pub fn render_logbase(&self, area: &Rect, frame: &mut Frame<'_>) {
-        // Clear the full content area to prevent stale cell bleed-through.
-        // Same pattern as the deck view — Cell::default() has WHITE fg.
-        crate::helpers::clear_area_styled(frame, *area, self.styles.clr_dim);
+        use ftui::widgets::list::{List, ListItem};
+        use ftui::widgets::StatefulWidget;
 
         let area = self.layout.content_area(*area);
         let w = area.width as usize;
@@ -387,401 +546,106 @@ impl InstrumentApp {
         let tension = match &self.logbase_tension {
             Some(t) => t,
             None => {
-                let line = Line::from_spans([
+                Paragraph::new(Text::from_lines(vec![Line::from_spans([
                     Span::styled("  No tension loaded.", self.styles.dim),
-                ]);
-                Paragraph::new(Text::from_lines(vec![line])).render(area, frame);
+                ])])).render(area, frame);
                 return;
             }
         };
 
-        // === Header ===
+        // === Header (rendered manually — fixed content above the scrollable list) ===
         let mut header_lines: Vec<Line> = Vec::new();
 
-        // Parent ref
         if let Some(ref pid) = tension.parent_id {
             if let Ok(Some(parent)) = self.engine.store().get_tension(pid) {
                 let display = werk_shared::display_id(parent.short_code, &parent.id);
-                let desired_trunc = werk_shared::truncate(&parent.desired, w.saturating_sub(6));
                 header_lines.push(Line::from_spans([
-                    Span::styled(format!("  \u{2190} {} {}", display, desired_trunc), self.styles.dim),
+                    Span::styled(format!("  \u{2190} {} {}", display, werk_shared::truncate(&parent.desired, w.saturating_sub(6))), self.styles.dim),
                 ]));
             }
         }
 
-        // Identity: desire (capped to 2 lines to preserve space for the stream)
         let display = werk_shared::display_id(tension.short_code, &tension.id);
-        let desire_text = format!("  \u{25C6} {} {}", display, tension.desired);
-        let desire_wrapped = word_wrap(&desire_text, w);
+        let desire_wrapped = word_wrap(&format!("  \u{25C6} {} {}", display, tension.desired), w);
         for line_text in desire_wrapped.iter().take(2) {
-            header_lines.push(Line::from_spans([
-                Span::styled(line_text.clone(), self.styles.text),
-            ]));
+            header_lines.push(Line::from_spans([Span::styled(line_text.clone(), self.styles.text)]));
         }
 
-        // Frontier summary between desire and reality (if tension has children)
         if let Ok(children) = self.engine.store().get_children(&tension.id) {
             if !children.is_empty() {
-                let resolved = children.iter().filter(|c| c.status == sd_core::TensionStatus::Resolved).count();
-                let released = children.iter().filter(|c| c.status == sd_core::TensionStatus::Released).count();
+                let done = children.iter().filter(|c| c.status == sd_core::TensionStatus::Resolved || c.status == sd_core::TensionStatus::Released).count();
                 let held = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_none()).count();
-                let done = resolved + released;
-                let total = children.len();
-                let mut parts = vec![format!("[{}/{}]", done, total)];
-                if held > 0 {
-                    parts.push(format!("{} held", held));
-                }
-                let summary = parts.join(" \u{00b7} ");
-                header_lines.push(Line::from_spans([
-                    Span::styled(format!("    {}", summary), self.styles.dim),
-                ]));
+                let mut parts = vec![format!("[{}/{}]", done, children.len())];
+                if held > 0 { parts.push(format!("{} held", held)); }
+                header_lines.push(Line::from_spans([Span::styled(format!("    {}", parts.join(" \u{00b7} ")), self.styles.dim)]));
             }
         }
 
-        // Reality (capped to 2 lines)
         if !tension.actual.is_empty() {
-            let reality_text = format!("  \u{25C7} {}", tension.actual);
-            let reality_wrapped = word_wrap(&reality_text, w);
+            let reality_wrapped = word_wrap(&format!("  \u{25C7} {}", tension.actual), w);
             for line_text in reality_wrapped.iter().take(2) {
-                header_lines.push(Line::from_spans([
-                    Span::styled(line_text.clone(), self.styles.subdued),
-                ]));
+                header_lines.push(Line::from_spans([Span::styled(line_text.clone(), self.styles.subdued)]));
             }
         }
 
         // Provenance
-        if self.logbase_provenance.has_any() {
-            for r in &self.logbase_provenance.split_from {
-                let display = werk_shared::display_id(r.short_code, &r.id);
-                let text = format!("  \u{2919} split from {} {}", display, werk_shared::truncate(&r.desired, w.saturating_sub(20)));
-                header_lines.push(Line::from_spans([
-                    Span::styled(text, self.styles.dim),
-                ]));
-            }
-            for r in &self.logbase_provenance.split_into {
-                let display = werk_shared::display_id(r.short_code, &r.id);
-                let text = format!("  \u{291A} split into {} {}", display, werk_shared::truncate(&r.desired, w.saturating_sub(20)));
-                header_lines.push(Line::from_spans([
-                    Span::styled(text, self.styles.dim),
-                ]));
-            }
-            for r in &self.logbase_provenance.merged_from {
-                let display = werk_shared::display_id(r.short_code, &r.id);
-                let text = format!("  \u{291B} merged from {} {}", display, werk_shared::truncate(&r.desired, w.saturating_sub(20)));
-                header_lines.push(Line::from_spans([
-                    Span::styled(text, self.styles.dim),
-                ]));
-            }
-            for r in &self.logbase_provenance.merged_into {
-                let display = werk_shared::display_id(r.short_code, &r.id);
-                let text = format!("  \u{291B} merged into {} {}", display, werk_shared::truncate(&r.desired, w.saturating_sub(20)));
-                header_lines.push(Line::from_spans([
-                    Span::styled(text, self.styles.dim),
-                ]));
-            }
+        for r in &self.logbase_provenance.split_from {
+            let d = werk_shared::display_id(r.short_code, &r.id);
+            header_lines.push(Line::from_spans([Span::styled(format!("  \u{2919} split from {} {}", d, werk_shared::truncate(&r.desired, w.saturating_sub(20))), self.styles.dim)]));
+        }
+        for r in &self.logbase_provenance.split_into {
+            let d = werk_shared::display_id(r.short_code, &r.id);
+            header_lines.push(Line::from_spans([Span::styled(format!("  \u{291A} split into {} {}", d, werk_shared::truncate(&r.desired, w.saturating_sub(20))), self.styles.dim)]));
+        }
+        for r in &self.logbase_provenance.merged_from {
+            let d = werk_shared::display_id(r.short_code, &r.id);
+            header_lines.push(Line::from_spans([Span::styled(format!("  \u{291B} merged from {} {}", d, werk_shared::truncate(&r.desired, w.saturating_sub(20))), self.styles.dim)]));
         }
 
         let header_height = header_lines.len() as u16;
-
         let epoch_count = self.logbase_epochs.len();
         let mutation_count: usize = self.logbase_events.iter()
             .filter(|e| matches!(e, LogbaseEvent::Mutation { .. }))
             .count();
 
-        // === Layout: header + separator + stream ===
-        let stream_height = area.height.saturating_sub(header_height + 1); // +1 for separator
+        // Separator
+        let sep_height: u16 = 1;
+        let stream_height = area.height.saturating_sub(header_height + sep_height);
 
         // Render header
         let header_area = Rect::new(area.x, area.y, area.width, header_height);
         Paragraph::new(Text::from_lines(header_lines)).render(header_area, frame);
 
-        // Separator with epoch/mutation counts
+        // Render separator
         let sep_y = area.y + header_height;
-        if sep_y < area.y + area.height {
-            let _age = if let Some(first) = self.logbase_epochs.first() {
-                format!(" \u{00b7} {}", format_age(first.timestamp))
-            } else {
-                String::new()
-            };
-            let label = format!(" {} epoch{} \u{00b7} {} mut{} ",
-                epoch_count, if epoch_count == 1 { "" } else { "s" },
-                mutation_count, if mutation_count == 1 { "" } else { "s" },
-            );
-            let rule_w = w.saturating_sub(label.len());
-            let left = rule_w / 2;
-            let right = rule_w - left;
-            let sep_text = format!("{}{}{}", "\u{2500}".repeat(left), label, "\u{2500}".repeat(right));
-            render_styled_line(frame, area.x, sep_y, area.width, &sep_text, self.styles.dim);
-        }
+        let label = format!(" {} epoch{} \u{00b7} {} mut{} ",
+            epoch_count, if epoch_count == 1 { "" } else { "s" },
+            mutation_count, if mutation_count == 1 { "" } else { "s" },
+        );
+        let rule_w = w.saturating_sub(label.len());
+        let sep_line = format!("{}{}{}", "\u{2500}".repeat(rule_w / 2), label, "\u{2500}".repeat(rule_w - rule_w / 2));
+        Paragraph::new(Text::from(Line::from_spans([Span::styled(sep_line, self.styles.dim)])))
+            .render(Rect::new(area.x, sep_y, area.width, 1), frame);
 
-        // === Event stream ===
-        let stream_y = sep_y + 1;
-        if stream_height < 2 || self.logbase_events.is_empty() {
+        // === Event stream via ftui List widget ===
+        let stream_y = sep_y + sep_height;
+        if stream_height < 2 || self.logbase_items.is_empty() {
             return;
         }
-
         let stream_area = Rect::new(area.x, stream_y, area.width, stream_height);
-        self.render_event_stream(&stream_area, w, frame);
-    }
 
-    /// Render the event stream with fisheye expansion.
-    fn render_event_stream(&self, area: &Rect, w: usize, frame: &mut Frame<'_>) {
-        let available = area.height as usize;
-        if available == 0 || self.logbase_events.is_empty() {
-            return;
-        }
+        let list_items: Vec<ListItem> = self.logbase_items.iter()
+            .map(|item| ListItem::new(item.text.as_str()).style(self.styles.dim))
+            .collect();
 
-        // Determine visible window centered on cursor
-        // For now: simple scroll — cursor is always visible, events above/below
-        // are rendered until we run out of space.
-        let total = self.logbase_events.len();
-        let cursor = self.logbase_cursor.min(total.saturating_sub(1));
+        let list = List::new(list_items)
+            .style(self.styles.dim)
+            .highlight_style(Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold())
+            .highlight_symbol("\u{25B8} ");
 
-        // Render events around the cursor
-        let mut lines: Vec<(Line, bool)> = Vec::new(); // (line, is_cursor)
-
-        for (i, event) in self.logbase_events.iter().enumerate() {
-            let is_cursor = i == cursor;
-            let is_focused_epoch = event.epoch_index() == self.logbase_focused_epoch;
-
-            match event {
-                LogbaseEvent::EpochBoundary { epoch_index, boundary_trigger } => {
-                    // Blank line between epochs (not before the first)
-                    if !lines.is_empty() {
-                        lines.push((Line::from_spans([
-                            Span::styled(pad_to_width("", w), self.styles.dim),
-                        ]), false));
-                    }
-
-                    let epoch = &self.logbase_epochs[*epoch_index];
-                    let epoch_num = epoch_index + 1;
-                    let age_text = format_age(epoch.timestamp);
-
-                    // Count mutations for this epoch
-                    let mutation_count = self.logbase_events.iter()
-                        .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, .. } if *ei == *epoch_index))
-                        .count();
-
-                    // Boundary trigger label
-                    let trigger_label = match boundary_trigger {
-                        BoundaryTrigger::DesireChanged => "[\u{25C6}]",
-                        BoundaryTrigger::RealityChanged => "[\u{25C7}]",
-                        BoundaryTrigger::BothChanged if *epoch_index > 0 => "[\u{25C6}\u{25C7}]",
-                        BoundaryTrigger::BothChanged => "",
-                        BoundaryTrigger::Structural(s) => s.as_str(),
-                        BoundaryTrigger::Unknown => "",
-                    };
-
-                    // Epoch boundary line: includes trigger + mutation count + age
-                    let cursor_mark = if is_cursor { "\u{25B8}" } else { "\u{2500}" };
-                    let label = format!("epoch {}", epoch_num);
-                    let mut right_parts = Vec::new();
-                    if mutation_count > 0 {
-                        right_parts.push(format!("{} mut", mutation_count));
-                    }
-                    right_parts.push(age_text);
-                    if !trigger_label.is_empty() {
-                        right_parts.push(trigger_label.to_owned());
-                    }
-                    let right = right_parts.join(" ");
-                    let rule_w = w.saturating_sub(5 + label.len() + right.len() + 2);
-                    let rule = "\u{2500}".repeat(rule_w);
-                    let boundary_text = pad_to_width(
-                        &format!(" {} \u{2500} {} {} {} ", cursor_mark, label, rule, right), w);
-
-                    let style = if is_cursor {
-                        Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold()
-                    } else {
-                        self.styles.dim
-                    };
-                    lines.push((Line::from_spans([Span::styled(boundary_text, style)]), is_cursor));
-
-                    // Desire/reality snapshots
-                    if is_focused_epoch || is_cursor {
-                        // Full desire/reality
-                        let desire_trunc = werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6));
-                        lines.push((Line::from_spans([
-                            Span::styled(pad_to_width(&format!("    \u{25C6} {}", desire_trunc), w), self.styles.text),
-                        ]), false));
-
-                        let reality_trunc = werk_shared::truncate(&epoch.reality_snapshot, w.saturating_sub(6));
-                        lines.push((Line::from_spans([
-                            Span::styled(pad_to_width(&format!("    \u{25C7} {}", reality_trunc), w), self.styles.subdued),
-                        ]), false));
-
-                        // Dotted rule before mutations
-                        if mutation_count > 0 {
-                            let dots = "\u{2508}".repeat(w.saturating_sub(4));
-                            lines.push((Line::from_spans([
-                                Span::styled(pad_to_width(&format!("    {}", dots), w), self.styles.dim),
-                            ]), false));
-                        }
-                    } else {
-                        // Compressed: show what CHANGED at this boundary
-                        let delta_text = match boundary_trigger {
-                            BoundaryTrigger::DesireChanged | BoundaryTrigger::BothChanged => {
-                                // Show the desire that changed (this epoch's snapshot = state before change)
-                                let desire = &epoch.desire_snapshot;
-                                format!("    \u{25C6} {}", werk_shared::truncate(desire, w.saturating_sub(6)))
-                            }
-                            BoundaryTrigger::RealityChanged => {
-                                // Show the reality that changed
-                                let reality = &epoch.reality_snapshot;
-                                format!("    \u{25C7} {}", werk_shared::truncate(reality, w.saturating_sub(6)))
-                            }
-                            BoundaryTrigger::Structural(_) => {
-                                format!("    \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6)))
-                            }
-                            BoundaryTrigger::Unknown => {
-                                format!("    \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6)))
-                            }
-                        };
-                        lines.push((Line::from_spans([
-                            Span::styled(pad_to_width(&delta_text, w), self.styles.dim),
-                        ]), false));
-                    }
-                }
-
-                LogbaseEvent::Mutation { epoch_index, field, new_value, timestamp, child_short_code, .. } => {
-                    // Only show mutation details for the focused epoch
-                    if !(*epoch_index == self.logbase_focused_epoch) {
-                        continue;
-                    }
-
-                    let ts_display = format_date_short(*timestamp);
-                    let child_label = child_short_code
-                        .map(|sc| format!("#{}", sc))
-                        .unwrap_or_default();
-
-                    // Fixed overhead: "  ▸ GLYPH " (7) + " " + date (6) + margin (2) = ~15
-                    let overhead = 15 + child_label.len();
-                    let text_budget = w.saturating_sub(overhead);
-
-                    let (glyph, text) = match field.as_str() {
-                        "note" => {
-                            ("\u{203B}", werk_shared::truncate(new_value, text_budget).to_string()) // ※
-                        }
-                        "status" if new_value == "Resolved" || new_value == "resolved" => {
-                            // Show what was resolved — desire text is more useful than "Resolved"
-                            let label = if child_label.is_empty() {
-                                "resolved".to_owned()
-                            } else {
-                                format!("{} resolved", child_label)
-                            };
-                            ("\u{2713}", label) // ✓
-                        }
-                        "status" if new_value == "Released" || new_value == "released" => {
-                            let label = if child_label.is_empty() {
-                                "released".to_owned()
-                            } else {
-                                format!("{} released", child_label)
-                            };
-                            ("\u{2717}", label) // ✗
-                        }
-                        "desired" => {
-                            let prefix = if child_label.is_empty() { "desire" } else { &child_label };
-                            let trunc = werk_shared::truncate(new_value, text_budget.saturating_sub(prefix.len() + 2));
-                            ("\u{25C6}", format!("{}: {}", prefix, trunc)) // ◆
-                        }
-                        "actual" => {
-                            let prefix = if child_label.is_empty() { "reality" } else { &child_label };
-                            let trunc = werk_shared::truncate(new_value, text_budget.saturating_sub(prefix.len() + 2));
-                            ("\u{25C7}", format!("{}: {}", prefix, trunc)) // ◇
-                        }
-                        "position" => {
-                            let pos_text = if new_value.is_empty() || new_value == "null" {
-                                "unpositioned (held)".to_owned()
-                            } else {
-                                format!("position {}", new_value)
-                            };
-                            let label = if child_label.is_empty() {
-                                pos_text
-                            } else {
-                                format!("{} {}", child_label, pos_text)
-                            };
-                            ("\u{2022}", label) // •
-                        }
-                        "horizon" => {
-                            let label = if child_label.is_empty() {
-                                format!("horizon: {}", werk_shared::truncate(new_value, text_budget.saturating_sub(10)))
-                            } else {
-                                format!("{} horizon: {}", child_label, werk_shared::truncate(new_value, text_budget.saturating_sub(10 + child_label.len())))
-                            };
-                            ("\u{2022}", label) // •
-                        }
-                        _ => {
-                            let trunc = werk_shared::truncate(new_value, text_budget.saturating_sub(field.len() + 3 + child_label.len()));
-                            let label = if child_label.is_empty() {
-                                format!("[{}] {}", field, trunc)
-                            } else {
-                                format!("{} [{}] {}", child_label, field, trunc)
-                            };
-                            ("\u{2022}", label) // •
-                        }
-                    };
-
-                    // Pad to right-align timestamp, then pad to full width for bg color
-                    let cursor_mark = if is_cursor { " \u{25B8}" } else { "  " }; // ▸ or space
-                    let content = format!("  {} {} {}", cursor_mark, glyph, text);
-                    let content_w = content.chars().count();
-                    let pad = w.saturating_sub(content_w + ts_display.len() + 1);
-                    let mut line_text = format!("{}{}{}", content, " ".repeat(pad), ts_display);
-                    // Pad to full width so selected bg covers entire row
-                    while line_text.chars().count() < w {
-                        line_text.push(' ');
-                    }
-
-                    let style = if is_cursor {
-                        Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold()
-                    } else {
-                        self.styles.dim
-                    };
-                    lines.push((Line::from_spans([Span::styled(line_text, style)]), is_cursor));
-                }
-            }
-        }
-
-        // Viewport: find the cursor line and center around it
-        let cursor_line_idx = lines.iter().position(|(_, is_c)| *is_c).unwrap_or(0);
-
-        let half = available / 2;
-        let start = if cursor_line_idx > half {
-            cursor_line_idx - half
-        } else {
-            0
-        };
-        let end = (start + available).min(lines.len());
-        let start = if end < available { 0 } else { end - available };
-
-        // Render visible lines
-        for (i, (line, _)) in lines[start..end].iter().enumerate() {
-            let y = area.y + i as u16;
-            if y >= area.y + area.height {
-                break;
-            }
-            // Render using Paragraph for correct span styling
-            let line_area = Rect::new(area.x, y, area.width, 1);
-            Paragraph::new(Text::from_lines(vec![line.clone()])).render(line_area, frame);
-        }
-
-        // Top compression line
-        if start > 0 {
-            let above_events: usize = lines[..start].iter()
-                .filter(|(_, is_c)| !is_c)
-                .count();
-            if above_events > 0 {
-                let comp_text = format!(" \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500} \u{25B4} {} earlier events ", above_events);
-                render_styled_line(frame, area.x, area.y, area.width, &comp_text, self.styles.dim);
-            }
-        }
-
-        // Bottom compression line
-        if end < lines.len() {
-            let below_events = lines[end..].len();
-            let comp_y = area.y + area.height - 1;
-            let comp_text = format!(" \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500} \u{25BE} {} older events ", below_events);
-            render_styled_line(frame, area.x, comp_y, area.width, &comp_text, self.styles.dim);
-        }
+        // StatefulWidget::render takes &mut state — use a clone
+        let mut state = self.logbase_list_state.clone();
+        StatefulWidget::render(&list, stream_area, frame, &mut state);
     }
 
     /// Render the logbase bottom bar.
@@ -790,22 +654,21 @@ impl InstrumentApp {
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
         let tension_label = self.logbase_tension.as_ref()
-            .map(|t| {
-                let display = werk_shared::display_id(t.short_code, &t.id);
-                format!("Log {} ", display)
-            })
+            .map(|t| format!("Log {} ", werk_shared::display_id(t.short_code, &t.id)))
             .unwrap_or_default();
 
-        let epoch_label = if !self.logbase_events.is_empty() {
-            let event = &self.logbase_events[self.logbase_cursor.min(self.logbase_events.len().saturating_sub(1))];
-            format!("epoch {}", event.epoch_index() + 1)
-        } else {
-            String::new()
-        };
+        let cursor_info = self.logbase_list_state.selected()
+            .map(|i| format!("{}/{}", i + 1, self.logbase_items.len()))
+            .unwrap_or_default();
 
-        let cursor_info = format!("{}/{}", self.logbase_cursor + 1, self.logbase_events.len());
+        let epoch_label = self.logbase_list_state.selected()
+            .and_then(|i| self.logbase_items.get(i))
+            .map(|item| format!("epoch {}", self.logbase_events.get(item.event_index).map(|e| e.epoch_index() + 1).unwrap_or(0)))
+            .unwrap_or_default();
+
         let bar_text = format!(" {} \u{00b7} {} \u{00b7} {} ", tension_label, epoch_label, cursor_info);
-        render_styled_line(frame, bar_area.x, bar_area.y, bar_area.width, &bar_text, self.styles.dim);
+        Paragraph::new(Text::from(Line::from_spans([Span::styled(bar_text, self.styles.dim)])))
+            .render(bar_area, frame);
     }
 }
 
@@ -827,22 +690,6 @@ fn format_date_short(timestamp: DateTime<Utc>) -> String {
     timestamp.format("%b %d").to_string()
 }
 
-/// Pad a string to exactly `width` characters (for full-width bg coverage).
-fn pad_to_width(s: &str, width: usize) -> String {
-    let len = s.chars().count();
-    if len >= width {
-        s.to_owned()
-    } else {
-        format!("{}{}", s, " ".repeat(width - len))
-    }
-}
-
-/// Render a single styled line at a position.
-fn render_styled_line(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, text: &str, style: Style) {
-    Paragraph::new(Text::from(Line::from_spans([Span::styled(text.to_owned(), style)])))
-        .render(Rect::new(x, y, width, 1), frame);
-}
-
 fn word_wrap(text: &str, max_width: usize) -> Vec<String> {
     if max_width == 0 { return vec![text.to_owned()]; }
     let mut lines = Vec::new();
@@ -855,7 +702,7 @@ fn word_wrap(text: &str, max_width: usize) -> Vec<String> {
             current.push_str(word);
         } else {
             lines.push(current);
-            current = format!("    {}", word); // continuation indent
+            current = format!("    {}", word);
         }
     }
     if !current.is_empty() {
