@@ -25,6 +25,8 @@ pub struct SearchHit {
     pub parent_id: Option<String>,
     /// Tension status (active, resolved, released).
     pub status: crate::TensionStatus,
+    /// Short code for display (e.g. 42 for #42).
+    pub short_code: Option<i32>,
 }
 
 /// Cached metadata for a tension, populated at index build time.
@@ -32,6 +34,7 @@ struct DocMeta {
     desired: String,
     parent_id: Option<String>,
     status: crate::TensionStatus,
+    short_code: Option<i32>,
 }
 
 /// FrankenSearch index over the tension corpus.
@@ -82,6 +85,7 @@ impl SearchIndex {
                 desired: t.desired.clone(),
                 parent_id: t.parent_id.clone(),
                 status: t.status,
+                short_code: t.short_code,
             });
         }
 
@@ -118,6 +122,7 @@ impl SearchIndex {
                     desired: m.desired.clone(),
                     parent_id: m.parent_id.clone(),
                     status: m.status,
+                    short_code: m.short_code,
                 })
             })
             .collect();
@@ -136,6 +141,16 @@ impl SearchIndex {
     /// Look up cached parent_id for a tension by ID.
     pub fn get_parent_id(&self, id: &str) -> Option<&str> {
         self.meta.get(id).and_then(|m| m.parent_id.as_deref())
+    }
+
+    /// Build a compact parent reference like "← #15 Product" from cached metadata.
+    /// Returns None if the tension has no parent.
+    pub fn compact_parent_ref(&self, parent_id: Option<&str>) -> Option<String> {
+        let pid = parent_id?;
+        let m = self.meta.get(pid)?;
+        let code = m.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+        let first_word = m.desired.split_whitespace().next().unwrap_or("");
+        Some(format!("\u{2190} {} {}", code, first_word))
     }
 
     /// Build a breadcrumb path from cached metadata. Zero DB reads.

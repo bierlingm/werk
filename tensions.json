@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-01T10:40:00Z",
+  "flushed_at": "2026-04-01T12:04:50Z",
   "summary": {
-    "active": 72,
+    "active": 71,
     "released": 19,
-    "resolved": 78,
+    "resolved": 79,
     "total": 169
   },
   "tensions": [
@@ -1790,7 +1790,7 @@
       "status": "Active"
     },
     {
-      "actual": "Search exists as separate InputMode::Searching. CommandPalette has fuzzy action matching only. Two disconnected surfaces.",
+      "actual": "Delivered: unified palette surface. Ctrl+K and / both open CommandPalette widget. Actions (16, feedback-ordered) + FrankenSearch + substring tension results in single widget. Status glyphs in category badge, #N in title, parent ref in description. Short code filter via # prefix or bare digits. Resolved/released show with status distinction. InputMode::Searching deleted (10→9 modes). Highlight drift worked around via ASCII titles (frankentui#57 filed). 60% width is widget-internal (frankentui#58 filed for layout+structure configurability). All 7 TUI + 10 sd-core tests pass.",
       "created_at": "2026-04-01T07:19:07.253807+00:00",
       "desired": "Unified search surface — FrankenSearch feeds results into CommandPalette, search and command become one gesture, result selection navigates to tension",
       "horizon": null,
@@ -1798,7 +1798,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 1,
       "short_code": 168,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Basic help overlay toggled by ? — flat keybinding list, no context awareness, no learning, no ftui HelpSystem integration",

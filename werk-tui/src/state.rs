@@ -94,7 +94,6 @@ pub enum InputMode {
     Reordering {
         tension_id: String,
     },
-    Searching,
     Help,
     Pathway,
 }

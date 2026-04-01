@@ -1,11 +1,12 @@
 //! CommandPalette integration — unified search/command/navigation surface.
 //!
-//! Opens on Ctrl+K. Fuzzy-searches registered actions with Bayesian scoring.
-//! Actions dispatch to the same code paths as direct keybindings.
+//! Opens on Ctrl+K (or `/`). Shows both command actions and FrankenSearch
+//! tension results in a single surface. Typing filters both — the palette's
+//! Bayesian scorer handles fuzzy matching across all items.
 //!
-//! **Learning**: A FeedbackCollector (from frankensearch-fusion) tracks which
-//! actions the practitioner selects. Boosts decay exponentially so recent
-//! usage matters more. The boost map persists across sessions via StateRegistry.
+//! **Learning**: A FeedbackCollector tracks which actions the practitioner
+//! selects. Boosts decay exponentially so recent usage matters more.
+//! The boost map persists across sessions via StateRegistry.
 
 use ftui::widgets::command_palette::{ActionItem, CommandPalette};
 
@@ -16,7 +17,7 @@ use crate::feedback::{FeedbackCollector, FeedbackConfig};
 const ACTION_IDS: &[&str] = &[
     "add", "resolve", "release", "descend", "ascend",
     "edit_desire", "edit_reality", "edit_horizon", "note", "move",
-    "undo", "redo", "search", "help", "survey", "hold", "quit",
+    "undo", "redo", "help", "survey", "hold", "quit",
 ];
 
 /// Build a CommandPalette with actions ordered by feedback boosts.
@@ -64,6 +65,167 @@ pub fn record_action_selected(feedback: &mut FeedbackCollector, action_id: &str)
     feedback.record_select(action_id);
 }
 
+/// Prefix for tension IDs in the palette — distinguishes them from action IDs.
+pub const TENSION_ID_PREFIX: &str = "t:";
+
+/// Build a combined list of action + tension ActionItems for the palette.
+///
+/// Actions come first (feedback-ordered), then tension results from FrankenSearch.
+/// Called on every query change to keep results current.
+pub fn build_combined_items(
+    query: &str,
+    feedback: Option<&FeedbackCollector>,
+    search_index: Option<&sd_core::SearchIndex>,
+    store: &sd_core::Store,
+) -> Vec<ActionItem> {
+    let mut items = Vec::new();
+
+    // Actions — always included (palette's Bayesian scorer filters by query)
+    let ordered_ids = match feedback {
+        Some(fc) => {
+            let mut ids_with_boost: Vec<(&str, f64)> = ACTION_IDS
+                .iter()
+                .map(|id| (*id, fc.get_boost(id)))
+                .collect();
+            ids_with_boost.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            ids_with_boost.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+        }
+        None => ACTION_IDS.to_vec(),
+    };
+    for id in ordered_ids {
+        if let Some(action) = make_action(id) {
+            items.push(action);
+        }
+    }
+
+    // Tensions — only when there's a query to search for
+    if !query.is_empty() {
+        let tension_items = if query.starts_with('#') {
+            search_by_short_code(&query[1..], store, search_index)
+        } else if query.chars().all(|c| c.is_ascii_digit()) {
+            search_by_short_code(query, store, search_index)
+        } else {
+            // Combine FrankenSearch (semantic) with substring (prefix) matches.
+            // Substring catches "busi"→"business" that FrankenSearch may miss.
+            let mut seen = std::collections::HashSet::new();
+            let mut combined = Vec::new();
+
+            // Substring matches first — direct text matches are most expected
+            for item in search_via_substring(query, store, search_index) {
+                if let Some(id) = item.id.strip_prefix(TENSION_ID_PREFIX) {
+                    seen.insert(id.to_string());
+                }
+                combined.push(item);
+            }
+
+            // FrankenSearch adds semantic/fuzzy hits not already found
+            if let Some(idx) = search_index {
+                for item in search_via_frankensearch(query, idx) {
+                    if let Some(id) = item.id.strip_prefix(TENSION_ID_PREFIX) {
+                        if seen.contains(id) {
+                            continue;
+                        }
+                    }
+                    combined.push(item);
+                }
+            }
+
+            combined.truncate(15);
+            combined
+        };
+        items.extend(tension_items);
+    }
+
+    items
+}
+
+/// Build a tension ActionItem with consistent layout:
+/// title: "◇ #30 desire text"  (status glyph left, code, desire)
+/// description: "← #15 Parent"  (parent ref on right)
+fn tension_action_item(
+    id: &str,
+    desired: &str,
+    short_code: Option<i32>,
+    status: sd_core::TensionStatus,
+    parent_ref: &str,
+) -> ActionItem {
+    // Status glyph goes in the category badge — rendered separately by the
+    // widget, outside the title's match-highlight logic. This avoids the
+    // widget's byte-vs-char position bug with non-ASCII title characters.
+    let badge = match status {
+        sd_core::TensionStatus::Active => "\u{25C7}",    // ◇
+        sd_core::TensionStatus::Resolved => "\u{2713}",  // ✓
+        sd_core::TensionStatus::Released => "\u{223C}",   // ∼
+    };
+    let title = match short_code {
+        Some(c) => format!("#{} {}", c, desired),
+        None => desired.to_string(),
+    };
+    ActionItem::new(format!("{}{}", TENSION_ID_PREFIX, id), title)
+        .with_description(parent_ref)
+        .with_category(badge)
+        .with_tags(&["tension"])
+}
+
+/// Convert FrankenSearch hits to ActionItems.
+fn search_via_frankensearch(query: &str, index: &sd_core::SearchIndex) -> Vec<ActionItem> {
+    let hits = index.search(query, 15);
+    hits.into_iter()
+        .filter(|hit| hit.status == sd_core::TensionStatus::Active)
+        .map(|hit| {
+            let parent_ref = index.compact_parent_ref(hit.parent_id.as_deref())
+                .unwrap_or_else(|| "root".to_string());
+            tension_action_item(&hit.doc_id, &hit.desired, hit.short_code, hit.status, &parent_ref)
+        })
+        .collect()
+}
+
+/// Substring search — case-insensitive match against desire and reality text.
+fn search_via_substring(query: &str, store: &sd_core::Store, search_index: Option<&sd_core::SearchIndex>) -> Vec<ActionItem> {
+    let q = query.to_lowercase();
+    let tensions = store.list_tensions().unwrap_or_default();
+    let mut results: Vec<_> = tensions.iter()
+        .filter(|t| t.status == sd_core::TensionStatus::Active)
+        .filter(|t| t.desired.to_lowercase().contains(&q) || t.actual.to_lowercase().contains(&q))
+        .take(15)
+        .map(|t| {
+            let parent_ref = search_index
+                .and_then(|idx| idx.compact_parent_ref(t.parent_id.as_deref()))
+                .unwrap_or_else(|| "root".to_string());
+            tension_action_item(&t.id, &t.desired, t.short_code, t.status, &parent_ref)
+        })
+        .collect();
+    results.truncate(15);
+    results
+}
+
+/// Search by short code prefix (e.g. "4" matches #4, #40, #42...).
+fn search_by_short_code(
+    code_prefix: &str,
+    store: &sd_core::Store,
+    search_index: Option<&sd_core::SearchIndex>,
+) -> Vec<ActionItem> {
+    let prefix_num: i32 = match code_prefix.parse() {
+        Ok(n) => n,
+        Err(_) => return Vec::new(), // non-numeric after #
+    };
+    let tensions = store.list_tensions().unwrap_or_default();
+    tensions.iter()
+        .filter(|t| {
+            t.short_code.map_or(false, |sc| {
+                sc.to_string().starts_with(&prefix_num.to_string())
+            })
+        })
+        .take(15)
+        .map(|t| {
+            let parent_ref = search_index
+                .and_then(|idx| idx.compact_parent_ref(t.parent_id.as_deref()))
+                .unwrap_or_else(|| "root".to_string());
+            tension_action_item(&t.id, &t.desired, t.short_code, t.status, &parent_ref)
+        })
+        .collect()
+}
+
 fn make_action(id: &str) -> Option<ActionItem> {
     let action = match id {
         "add" => ActionItem::new("add", "Add child tension")
@@ -102,9 +264,6 @@ fn make_action(id: &str) -> Option<ActionItem> {
         "redo" => ActionItem::new("redo", "Redo last undo")
             .with_description("Re-apply the most recently undone action")
             .with_tags(&["redo", "forward"]),
-        "search" => ActionItem::new("search", "Search tensions")
-            .with_description("Full-text search across all tensions")
-            .with_tags(&["find", "search", "lookup"]),
         "help" => ActionItem::new("help", "Toggle help")
             .with_description("Show keyboard shortcuts and commands")
             .with_tags(&["help", "keys", "shortcuts"]),
