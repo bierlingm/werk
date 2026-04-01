@@ -19,6 +19,7 @@ pub mod horizon;
 pub mod init;
 pub mod insights;
 pub mod list;
+pub mod log;
 pub mod move_cmd;
 pub mod note;
 pub mod position;
@@ -126,6 +127,41 @@ Examples:
         /// Show what happened during epoch N (mutations on tension + descendants).
         #[arg(short, long)]
         show: Option<usize>,
+    },
+
+    /// Query the logbase — the searchable substrate of all prior epochs.
+    ///
+    /// Shows epoch history, provenance, and structural timeline.
+    /// Accepts addresses: #42, #42~e3, #42@2026-03, g:ULID.
+    #[command(after_help = "\
+Examples:
+  werk log 42                        Epoch history for tension #42
+  werk log                           Cross-tension timeline (last 7 days)
+  werk log 42 --search \"API\"         Search epoch snapshots
+  werk log 42 --since 2026-03        Epochs since March 2026
+  werk log 42 --since 7d             Epochs in the last 7 days
+  werk log 42 --compare              Ghost geometry (desire-reality evolution)
+  werk log \"#42~e3\"                  Show epoch 3 detail
+  werk log \"g:01JQXYZ\"               Show gesture mutations")]
+    Log {
+        /// Tension ID, short code, or address (omit for cross-tension timeline).
+        id: Option<String>,
+
+        /// Text search across epoch snapshots.
+        #[arg(short, long)]
+        search: Option<String>,
+
+        /// Show epochs since (YYYY-MM-DD, YYYY-MM, today, yesterday, Nd, Nw).
+        #[arg(long)]
+        since: Option<String>,
+
+        /// Show desire-reality evolution (ghost geometry).
+        #[arg(long)]
+        compare: bool,
+
+        /// Group by session.
+        #[arg(long)]
+        session: bool,
     },
 
     /// Set or display the deadline of a tension.

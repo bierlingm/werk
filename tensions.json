@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-01T15:14:30Z",
+  "flushed_at": "2026-04-01T15:19:17Z",
   "summary": {
     "active": 68,
     "released": 20,
@@ -921,7 +921,7 @@
       "status": "Released"
     },
     {
-      "actual": "Phase 1 complete: edges table created as universal relationship substrate. 104 contains edges migrated from parent_id. FNX DiGraph built with typed edge attributes. Store CRUD: create_edge, remove_edge, get_edges_for/by_type, get_all_edges. Epoch_type column added. Agent session columns added. All structural mutations (create, update_parent, delete) now maintain edges alongside parent_id.",
+      "actual": "werk log command complete. Modes: tension history (werk log 42), cross-tension timeline (werk log), text search (--search), temporal filter (--since), ghost geometry (--compare), epoch detail (#42~e3), gesture query (g:ULID). All modes support --json. Provenance section shows split/merge lineage when edges exist.",
       "created_at": "2026-03-25T20:50:06.125363+00:00",
       "desired": "logbase — a searchable, queryable substrate of all prior desire/reality/epoch layers across the entire field, accessible from root view and all surfaces (CLI, MCP, TUI, web, desktop, mobile)",
       "horizon": null,
