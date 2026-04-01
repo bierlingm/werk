@@ -557,38 +557,46 @@ impl InstrumentApp {
                     let epoch_num = epoch_index + 1;
                     let age_text = format_age(epoch.timestamp);
 
+                    // Count mutations for this epoch
+                    let mutation_count = self.logbase_events.iter()
+                        .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, .. } if *ei == *epoch_index))
+                        .count();
+
                     // Boundary trigger label
                     let trigger_label = match boundary_trigger {
-                        BoundaryTrigger::DesireChanged => " [\u{25C6} changed]",
-                        BoundaryTrigger::RealityChanged => " [\u{25C7} changed]",
-                        BoundaryTrigger::BothChanged if *epoch_index > 0 => " [\u{25C6}\u{25C7} both]",
-                        BoundaryTrigger::BothChanged => "", // first epoch, don't label
-                        BoundaryTrigger::Structural(_) => "",
+                        BoundaryTrigger::DesireChanged => "[\u{25C6}]",
+                        BoundaryTrigger::RealityChanged => "[\u{25C7}]",
+                        BoundaryTrigger::BothChanged if *epoch_index > 0 => "[\u{25C6}\u{25C7}]",
+                        BoundaryTrigger::BothChanged => "",
+                        BoundaryTrigger::Structural(s) => s.as_str(),
                         BoundaryTrigger::Unknown => "",
                     };
 
-                    // For structural events, format the label differently
-                    let structural_label = if let BoundaryTrigger::Structural(s) = boundary_trigger {
-                        format!(" [{}]", s)
-                    } else {
-                        trigger_label.to_owned()
-                    };
-
-                    // Epoch boundary line
-                    let cursor_mark = if is_cursor { "\u{25B8}" } else { "\u{2500}" }; // ▸ or ─
+                    // Epoch boundary line: includes trigger + mutation count + age
+                    let cursor_mark = if is_cursor { "\u{25B8}" } else { "\u{2500}" };
                     let label = format!("epoch {}", epoch_num);
-                    let right = format!("{}{} ", age_text, structural_label);
-                    let rule_w = w.saturating_sub(4 + label.len() + right.len() + 2);
-                    let rule = "\u{2500}".repeat(rule_w);
-                    let mut boundary_text = format!(" {} \u{2500} {} {} {} ", cursor_mark, label, rule, right);
-                    while boundary_text.chars().count() < w {
-                        boundary_text.push(' ');
+                    let mut right_parts = Vec::new();
+                    if mutation_count > 0 {
+                        right_parts.push(format!("{} mut", mutation_count));
                     }
+                    right_parts.push(age_text);
+                    if !trigger_label.is_empty() {
+                        right_parts.push(trigger_label.to_owned());
+                    }
+                    let right = right_parts.join(" ");
+                    let rule_w = w.saturating_sub(5 + label.len() + right.len() + 2);
+                    let rule = "\u{2500}".repeat(rule_w);
+                    let boundary_text = pad_to_width(
+                        &format!(" {} \u{2500} {} {} {} ", cursor_mark, label, rule, right), w);
 
-                    let style = if is_cursor { self.styles.selected } else { self.styles.dim };
+                    let style = if is_cursor {
+                        Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold()
+                    } else {
+                        self.styles.dim
+                    };
                     lines.push((Line::from_spans([Span::styled(boundary_text, style)]), is_cursor));
 
-                    // Desire/reality snapshots (always shown for focused epoch, summary for others)
+                    // Desire/reality snapshots
                     if is_focused_epoch || is_cursor {
                         // Full desire/reality
                         let desire_trunc = werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6));
@@ -602,9 +610,6 @@ impl InstrumentApp {
                         ]), false));
 
                         // Dotted rule before mutations
-                        let mutation_count = self.logbase_events.iter()
-                            .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, .. } if *ei == *epoch_index))
-                            .count();
                         if mutation_count > 0 {
                             let dots = "\u{2508}".repeat(w.saturating_sub(4));
                             lines.push((Line::from_spans([
@@ -612,18 +617,27 @@ impl InstrumentApp {
                             ]), false));
                         }
                     } else {
-                        // Compressed: one-line summary
-                        let desire_short = werk_shared::truncate(&epoch.desire_snapshot, 40);
-                        let mutation_count = self.logbase_events.iter()
-                            .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, .. } if *ei == *epoch_index))
-                            .count();
-                        let summary = if mutation_count > 0 {
-                            format!("    \u{25C6} {} \u{00b7} {} mut", desire_short, mutation_count)
-                        } else {
-                            format!("    \u{25C6} {}", desire_short)
+                        // Compressed: show what CHANGED at this boundary
+                        let delta_text = match boundary_trigger {
+                            BoundaryTrigger::DesireChanged | BoundaryTrigger::BothChanged => {
+                                // Show the desire that changed (this epoch's snapshot = state before change)
+                                let desire = &epoch.desire_snapshot;
+                                format!("    \u{25C6} {}", werk_shared::truncate(desire, w.saturating_sub(6)))
+                            }
+                            BoundaryTrigger::RealityChanged => {
+                                // Show the reality that changed
+                                let reality = &epoch.reality_snapshot;
+                                format!("    \u{25C7} {}", werk_shared::truncate(reality, w.saturating_sub(6)))
+                            }
+                            BoundaryTrigger::Structural(_) => {
+                                format!("    \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6)))
+                            }
+                            BoundaryTrigger::Unknown => {
+                                format!("    \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6)))
+                            }
                         };
                         lines.push((Line::from_spans([
-                            Span::styled(pad_to_width(&summary, w), self.styles.dim),
+                            Span::styled(pad_to_width(&delta_text, w), self.styles.dim),
                         ]), false));
                     }
                 }
@@ -717,7 +731,11 @@ impl InstrumentApp {
                         line_text.push(' ');
                     }
 
-                    let style = if is_cursor { self.styles.selected } else { self.styles.dim };
+                    let style = if is_cursor {
+                        Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold()
+                    } else {
+                        self.styles.dim
+                    };
                     lines.push((Line::from_spans([Span::styled(line_text, style)]), is_cursor));
                 }
             }
