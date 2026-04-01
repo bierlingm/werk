@@ -8,3 +8,6 @@
 
 # Local operational/distribution assets (not source)
 local/
+
+# MCP server state
+codedb.snapshot
