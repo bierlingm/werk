@@ -71,6 +71,8 @@ pub enum ViewOrientation {
     Stream,
     /// Time-first: all active tensions organized by temporal urgency.
     Survey,
+    /// History-first: epoch stream for a single tension — the logbase.
+    Logbase,
 }
 
 /// Input mode — what the user is currently doing.

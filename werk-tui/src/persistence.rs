@@ -98,6 +98,7 @@ impl From<ViewOrientation> for PersistedOrientation {
         match vo {
             ViewOrientation::Stream => Self::Stream,
             ViewOrientation::Survey => Self::Survey,
+            ViewOrientation::Logbase => Self::Stream, // logbase is transient, persist as stream
         }
     }
 }

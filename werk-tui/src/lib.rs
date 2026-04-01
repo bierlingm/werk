@@ -19,6 +19,7 @@ pub mod search;
 pub mod session_log;
 pub mod survey;
 pub mod survey_tree;
+pub mod logbase;
 pub mod toast;
 pub mod modal;
 pub mod undo;

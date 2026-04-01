@@ -17,7 +17,7 @@ use crate::feedback::{FeedbackCollector, FeedbackConfig};
 const ACTION_IDS: &[&str] = &[
     "add", "resolve", "release", "descend", "ascend",
     "edit_desire", "edit_reality", "edit_horizon", "note", "move",
-    "undo", "redo", "help", "survey", "hold", "quit",
+    "undo", "redo", "help", "survey", "logbase", "hold", "quit",
 ];
 
 /// Build a CommandPalette with actions ordered by feedback boosts.
@@ -270,6 +270,9 @@ fn make_action(id: &str) -> Option<ActionItem> {
         "survey" => ActionItem::new("survey", "Switch to survey view")
             .with_description("Time-first overview of all tensions")
             .with_tags(&["survey", "overview", "time"]),
+        "logbase" => ActionItem::new("logbase", "Open logbase")
+            .with_description("Epoch history for the focused tension")
+            .with_tags(&["logbase", "log", "history", "epochs"]),
         "hold" => ActionItem::new("hold", "Hold tension")
             .with_description("Remove positioning — place in held zone")
             .with_tags(&["hold", "park", "pause"]),

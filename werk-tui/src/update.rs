@@ -72,9 +72,12 @@ impl Model for InstrumentApp {
         // Non-Normal modes (confirming, editing, annotating) use their own
         // handlers so gestures work from the survey.
         let in_survey = self.view_orientation == crate::state::ViewOrientation::Survey;
+        let in_logbase = self.view_orientation == crate::state::ViewOrientation::Logbase;
         let was_not_normal = !matches!(self.input_mode, InputMode::Normal);
 
-        let cmd = if in_survey && matches!(self.input_mode, InputMode::Normal) {
+        let cmd = if in_logbase && matches!(self.input_mode, InputMode::Normal) {
+            self.update_logbase(msg)
+        } else if in_survey && matches!(self.input_mode, InputMode::Normal) {
             self.update_survey(msg)
         } else {
             match &self.input_mode {
@@ -131,14 +134,20 @@ impl Model for InstrumentApp {
         // Survey orientation — render survey as background, then fall through
         // to overlay rendering so gestures (confirm, edit, note) work in survey.
         let in_survey = self.view_orientation == crate::state::ViewOrientation::Survey;
-        if in_survey {
+        let in_logbase = self.view_orientation == crate::state::ViewOrientation::Logbase;
+
+        if in_logbase {
+            self.render_logbase(&content_area, frame);
+            self.render_logbase_bar(&lever_area, frame);
+            // Don't return — fall through so overlays (palette, toasts) render on top.
+        } else if in_survey {
             self.render_survey(&content_area, frame);
             self.render_survey_bar(&lever_area, frame);
             // Don't return — fall through so overlays render on top.
         }
 
         // Full-screen modes bypass the three-pane layout.
-        if !in_survey {
+        if !in_survey && !in_logbase {
             if matches!(self.input_mode, InputMode::Help) {
                 self.render_help(&content_area, frame);
             } else if matches!(self.input_mode, InputMode::Moving { .. }) {
@@ -189,8 +198,8 @@ impl Model for InstrumentApp {
             _ => {}
         }
 
-        // Bottom bar (survey bar already rendered above if in_survey, hidden when palette is open)
-        if !in_survey && !self.command_palette.is_visible() {
+        // Bottom bar (survey/logbase bars already rendered above, hidden when palette is open)
+        if !in_survey && !in_logbase && !self.command_palette.is_visible() {
             self.render_deck_bar(&lever_area, frame);
         }
 
@@ -230,7 +239,11 @@ impl Model for InstrumentApp {
                     InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &hints_area, frame),
                     InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
                     InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
-                    _ => if !in_survey { self.render_hints(&hints_area, frame) },
+                    _ => if in_logbase {
+                        self.render_input_hints("j/k events  J/K epochs  Enter expand  L return  Esc return", &hints_area, frame);
+                    } else if !in_survey {
+                        self.render_hints(&hints_area, frame);
+                    },
                 }
             }
         }
@@ -457,6 +470,21 @@ impl InstrumentApp {
                 self.load_survey_items();
                 self.view_orientation = crate::state::ViewOrientation::Survey;
             }
+            "logbase" => {
+                let target = self.focus_state.cursor_target();
+                let tension_id = match target {
+                    crate::deck::CursorTarget::Desire | crate::deck::CursorTarget::Reality => {
+                        self.parent_id.clone()
+                    }
+                    _ => {
+                        self.action_target().map(|e| e.id.clone())
+                            .or_else(|| self.parent_id.clone())
+                    }
+                };
+                if let Some(tid) = tension_id {
+                    self.enter_logbase(&tid);
+                }
+            }
             "hold" => {
                 if let Some(entry) = self.action_target().cloned() {
                     if entry.status == sd_core::TensionStatus::Active && entry.position.is_some() {
@@ -494,7 +522,20 @@ impl InstrumentApp {
                     self.focused_detail = None;
                     self.focused_note = None;
                 }
-                self.deck_pitch_down();
+                // j below Reality → enter logbase for the parent
+                let before = self.focus_state.active;
+                let target = self.focus_state.cursor_target();
+                if matches!(target, crate::deck::CursorTarget::Reality) {
+                    self.deck_pitch_down();
+                    if self.focus_state.active == before {
+                        // Nowhere to go — we're at the bottom. Enter logbase.
+                        if let Some(pid) = self.parent_id.clone() {
+                            self.enter_logbase(&pid);
+                        }
+                    }
+                } else {
+                    self.deck_pitch_down();
+                }
                 Cmd::none()
             }
 
@@ -642,6 +683,26 @@ impl InstrumentApp {
                 } else {
                     // No survey data yet — do a full Tab instead.
                     return self.update_normal(Msg::Tab);
+                }
+                Cmd::none()
+            }
+
+            // L — open logbase for focused tension (or parent if on anchor/summary)
+            Msg::Char('L') => {
+                let target = self.focus_state.cursor_target();
+                let tension_id = match target {
+                    crate::deck::CursorTarget::Desire | crate::deck::CursorTarget::Reality => {
+                        // On desire/reality anchor → logbase for the parent
+                        self.parent_id.clone()
+                    }
+                    _ => {
+                        // On a child → logbase for that child
+                        self.action_target().map(|e| e.id.clone())
+                            .or_else(|| self.parent_id.clone())
+                    }
+                };
+                if let Some(tid) = tension_id {
+                    self.enter_logbase(&tid);
                 }
                 Cmd::none()
             }
@@ -1208,11 +1269,100 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // L — open logbase for the focused tension
+            Msg::Char('L') => {
+                if let Some(item) = self.survey_items.get(self.survey_cursor) {
+                    let tid = item.tension_id.clone();
+                    self.enter_logbase(&tid);
+                }
+                Cmd::none()
+            }
+
             Msg::Char('?') | Msg::ToggleHelp => {
                 self.view_orientation = ViewOrientation::Stream;
                 self.input_mode = InputMode::Help;
                 Cmd::none()
             }
+            Msg::Char('q') | Msg::Quit => self.save_and_quit(),
+            _ => Cmd::none(),
+        }
+    }
+
+    /// Update handler for logbase view — epoch stream navigation.
+    pub fn update_logbase(&mut self, msg: Msg) -> Cmd<Msg> {
+        let total = self.logbase_events.len();
+        if total == 0 {
+            // Empty logbase — any key returns
+            match msg {
+                Msg::Char('L') | Msg::Cancel | Msg::BackTab => {
+                    self.exit_logbase();
+                }
+                Msg::Char('q') | Msg::Quit => return self.save_and_quit(),
+                _ => {}
+            }
+            return Cmd::none();
+        }
+
+        match msg {
+            // Event-level navigation
+            Msg::Char('j') | Msg::Down => {
+                if self.logbase_cursor + 1 < total {
+                    self.logbase_cursor += 1;
+                    // Update focused epoch to match cursor
+                    self.logbase_focused_epoch = self.logbase_events[self.logbase_cursor].epoch_index();
+                }
+                Cmd::none()
+            }
+            Msg::Char('k') | Msg::Up => {
+                self.logbase_cursor = self.logbase_cursor.saturating_sub(1);
+                self.logbase_focused_epoch = self.logbase_events[self.logbase_cursor].epoch_index();
+                Cmd::none()
+            }
+
+            // Epoch-level navigation (Shift+J/K)
+            Msg::Char('J') | Msg::MoveDown => {
+                // Jump to next epoch boundary below current position
+                let current = self.logbase_cursor;
+                for i in (current + 1)..total {
+                    if self.logbase_events[i].is_boundary() {
+                        self.logbase_cursor = i;
+                        self.logbase_focused_epoch = self.logbase_events[i].epoch_index();
+                        break;
+                    }
+                }
+                Cmd::none()
+            }
+            Msg::Char('K') | Msg::MoveUp => {
+                // Jump to previous epoch boundary above current position
+                let current = self.logbase_cursor;
+                for i in (0..current).rev() {
+                    if self.logbase_events[i].is_boundary() {
+                        self.logbase_cursor = i;
+                        self.logbase_focused_epoch = self.logbase_events[i].epoch_index();
+                        break;
+                    }
+                }
+                Cmd::none()
+            }
+
+            // Jump to top/bottom
+            Msg::Char('g') | Msg::JumpTop => {
+                self.logbase_cursor = 0;
+                self.logbase_focused_epoch = self.logbase_events[0].epoch_index();
+                Cmd::none()
+            }
+            Msg::Char('G') | Msg::JumpBottom => {
+                self.logbase_cursor = total - 1;
+                self.logbase_focused_epoch = self.logbase_events[total - 1].epoch_index();
+                Cmd::none()
+            }
+
+            // L / Esc / BackTab — return to originating view
+            Msg::Char('L') | Msg::Cancel | Msg::BackTab => {
+                self.exit_logbase();
+                Cmd::none()
+            }
+
             Msg::Char('q') | Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
