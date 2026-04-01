@@ -110,6 +110,24 @@ pub struct InstrumentApp {
     /// Survey band collapse/expand state.
     pub survey_tree_state: crate::survey_tree::SurveyTreeState,
 
+    // Logbase view — epoch stream for a single tension.
+    /// Which tension's logbase we're viewing.
+    pub logbase_tension_id: Option<String>,
+    /// Cached tension data for the logbase subject.
+    pub logbase_tension: Option<sd_core::Tension>,
+    /// All epochs for the logbase tension (chronological, oldest first).
+    pub logbase_epochs: Vec<sd_core::store::EpochRecord>,
+    /// Flat event stream: epochs + their mutations, ordered most-recent-first.
+    pub logbase_events: Vec<crate::logbase::LogbaseEvent>,
+    /// Provenance edges for the logbase tension.
+    pub logbase_provenance: crate::logbase::LogbaseProvenance,
+    /// Cursor position in the event stream (index into logbase_events).
+    pub logbase_cursor: usize,
+    /// Which epoch index is "focused" (gets fisheye expansion).
+    pub logbase_focused_epoch: usize,
+    /// Saved originating view state for L-return (orientation, parent_id, focus node).
+    pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
+
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
 
@@ -218,6 +236,14 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             survey_tree_state: crate::survey_tree::SurveyTreeState::new(),
+            logbase_tension_id: None,
+            logbase_tension: None,
+            logbase_epochs: Vec::new(),
+            logbase_events: Vec::new(),
+            logbase_provenance: crate::logbase::LogbaseProvenance::default(),
+            logbase_cursor: 0,
+            logbase_focused_epoch: 0,
+            pre_logbase_state: None,
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
                 if let Ok((w, h)) = crossterm::terminal::size() {
@@ -314,6 +340,14 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             survey_tree_state: crate::survey_tree::SurveyTreeState::new(),
+            logbase_tension_id: None,
+            logbase_tension: None,
+            logbase_epochs: Vec::new(),
+            logbase_events: Vec::new(),
+            logbase_provenance: crate::logbase::LogbaseProvenance::default(),
+            logbase_cursor: 0,
+            logbase_focused_epoch: 0,
+            pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),
             session_log: crate::session_log::SessionLog::new(),
