@@ -121,10 +121,12 @@ pub struct InstrumentApp {
     pub logbase_events: Vec<crate::logbase::LogbaseEvent>,
     /// Provenance edges for the logbase tension.
     pub logbase_provenance: crate::logbase::LogbaseProvenance,
-    /// Cursor position in the event stream (index into logbase_events).
-    pub logbase_cursor: usize,
+    /// List widget state for the event stream (selection + scroll offset).
+    pub logbase_list_state: ftui::widgets::list::ListState,
     /// Which epoch index is "focused" (gets fisheye expansion).
     pub logbase_focused_epoch: usize,
+    /// Pre-built list items for the event stream (rebuilt on enter/epoch change).
+    pub logbase_items: Vec<crate::logbase::LogbaseItem>,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
     pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
 
@@ -241,8 +243,9 @@ impl InstrumentApp {
             logbase_epochs: Vec::new(),
             logbase_events: Vec::new(),
             logbase_provenance: crate::logbase::LogbaseProvenance::default(),
-            logbase_cursor: 0,
+            logbase_list_state: ftui::widgets::list::ListState::default(),
             logbase_focused_epoch: 0,
+            logbase_items: Vec::new(),
             pre_logbase_state: None,
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
@@ -345,8 +348,9 @@ impl InstrumentApp {
             logbase_epochs: Vec::new(),
             logbase_events: Vec::new(),
             logbase_provenance: crate::logbase::LogbaseProvenance::default(),
-            logbase_cursor: 0,
+            logbase_list_state: ftui::widgets::list::ListState::default(),
             logbase_focused_epoch: 0,
+            logbase_items: Vec::new(),
             pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),
