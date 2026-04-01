@@ -1962,6 +1962,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "441fd2910cef058c40241e4a6ec48a0165cf2cfb787c493f13063ca311a462c8"
 dependencies = [
+ "base64 0.22.1",
  "ftui-backend",
  "ftui-core",
  "ftui-i18n",
@@ -1969,6 +1970,8 @@ dependencies = [
  "ftui-render",
  "ftui-style",
  "ftui-text",
+ "serde",
+ "serde_json",
  "tracing",
  "unicode-segmentation",
  "unicode-width",
@@ -6567,6 +6570,7 @@ dependencies = [
  "chrono",
  "crossterm 0.28.1",
  "ftui",
+ "ftui-runtime",
  "notify",
  "sd-core",
  "serde",

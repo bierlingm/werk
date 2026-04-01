@@ -44,6 +44,16 @@ impl SurveyTreeState {
     pub fn is_expanded(&self, band: TimeBand) -> bool {
         !self.collapsed.contains(&band)
     }
+
+    /// Collapse a specific band.
+    pub fn collapse(&mut self, band: TimeBand) {
+        self.collapsed.insert(band);
+    }
+
+    /// Get all currently collapsed bands.
+    pub fn collapsed_bands(&self) -> Vec<TimeBand> {
+        self.collapsed.iter().copied().collect()
+    }
 }
 
 /// Build a Tree widget from survey items for structural display.

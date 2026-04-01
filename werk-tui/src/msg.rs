@@ -49,6 +49,7 @@ pub enum Msg {
     Undo,
     Redo,
     OpenPalette,
+    InspectorToggle,
 
     // System
     Resize { width: u16, height: u16 },
@@ -77,6 +78,7 @@ impl From<Event> for Msg {
                             KeyCode::Char('z') if key.shift() => return Msg::Redo,
                             KeyCode::Char('z') => return Msg::Undo,
                             KeyCode::Char('k') => return Msg::OpenPalette,
+                            KeyCode::Char('i') | KeyCode::Char('I') if key.shift() => return Msg::InspectorToggle,
                             _ => {}
                         }
                     }

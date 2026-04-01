@@ -1,6 +1,9 @@
 //! The Operative Instrument application state.
 
+use std::sync::Arc;
+
 use ftui::widgets::input::TextInput;
+use ftui_runtime::state_persistence::StateRegistry;
 use sd_core::{Engine, Store, Tension, TensionStatus};
 use werk_shared::truncate;
 
@@ -37,6 +40,8 @@ pub struct InstrumentApp {
 
     // Chrome
     pub show_help: bool,
+    /// Inspector overlay — dev tool toggled by Ctrl+Shift+I.
+    pub show_inspector: bool,
 
     // Change detection — only reload when db file changes
     pub db_modified: Option<std::time::SystemTime>,
@@ -126,11 +131,18 @@ pub struct InstrumentApp {
 
     // Command palette — unified search/command/navigation surface.
     pub command_palette: ftui::widgets::command_palette::CommandPalette,
+    /// Feedback collector for palette action learning.
+    pub palette_feedback: crate::feedback::FeedbackCollector,
+
+    // State persistence — file-backed registry for workspace save/restore.
+    pub state_registry: Option<Arc<StateRegistry>>,
+    /// Deferred cursor target from workspace restore — applied after focus graph rebuild.
+    pub(crate) restore_cursor_target: Option<crate::deck::CursorTarget>,
 }
 
 impl InstrumentApp {
     /// Create a new app. Starts at the Field (root level).
-    pub fn new(store: Store, all_entries: Vec<FieldEntry>) -> Self {
+    pub fn new(store: Store, all_entries: Vec<FieldEntry>, registry: Option<Arc<StateRegistry>>) -> Self {
         let engine = Engine::with_store(store);
         let session_id = engine.store().start_session().ok();
         let total_count = all_entries.len();
@@ -167,6 +179,7 @@ impl InstrumentApp {
             search_state: None,
             search_index,
             show_help: false,
+            show_inspector: false,
             db_modified: None,
             breadcrumb_cache: Vec::new(),
             total_active,
@@ -218,11 +231,24 @@ impl InstrumentApp {
             toasts: crate::toast::ToastQueue::new(),
             gesture_history: crate::undo::GestureHistory::new(),
             pending_gesture: None,
-            command_palette: crate::palette::build_palette(),
+            command_palette: crate::palette::build_palette(None), // rebuilt after feedback load
+            palette_feedback: crate::palette::create_feedback_collector(),
+            state_registry: registry,
+            restore_cursor_target: None,
         };
+        // Load feedback from persistence and rebuild palette with boosts
+        if let Some(ref reg) = app.state_registry {
+            let _ = reg.load();
+            crate::persistence::load_feedback(reg, &mut app.palette_feedback);
+            app.command_palette = crate::palette::build_palette(Some(&app.palette_feedback));
+        }
         if let Some(ref sid) = app.session_id {
             app.session_log.set_store_session_id(sid.clone());
         }
+
+        // Restore workspace state from persistence
+        app.restore_workspace();
+
         app.load_siblings();
         app
     }
@@ -257,6 +283,7 @@ impl InstrumentApp {
             search_state: None,
             search_index: None,
             show_help: false,
+            show_inspector: false,
             db_modified: None,
             breadcrumb_cache: Vec::new(),
             total_active: 0,
@@ -294,7 +321,10 @@ impl InstrumentApp {
             toasts: crate::toast::ToastQueue::new(),
             gesture_history: crate::undo::GestureHistory::new(),
             pending_gesture: None,
-            command_palette: crate::palette::build_palette(),
+            command_palette: crate::palette::build_palette(None),
+            palette_feedback: crate::palette::create_feedback_collector(),
+            state_registry: None,
+            restore_cursor_target: None,
         }
     }
 
@@ -720,6 +750,12 @@ impl InstrumentApp {
         let has_desire = frontier.has_desire_anchor;
         let has_reality = frontier.has_reality_anchor;
         self.focus_state.rebuild_for_frontier(&frontier, has_desire, has_reality);
+        // Apply deferred cursor target from workspace restore
+        if let Some(target) = self.restore_cursor_target.take() {
+            if let Some(fid) = self.focus_state.focus_for(&target) {
+                self.focus_state.active = fid;
+            }
+        }
         self.frontier = frontier;
     }
 
@@ -1151,6 +1187,61 @@ impl InstrumentApp {
             Ok(path) => self.set_transient(format!("log \u{2192} {}", path.display())),
             Err(e) => self.set_transient(format!("log dump failed: {}", e)),
         }
+    }
+
+    /// Save workspace state and palette feedback to the persistence registry.
+    /// Called on every quit path so the practitioner returns to their reasoning surface.
+    pub fn save_workspace(&self) {
+        let Some(ref registry) = self.state_registry else { return };
+        // Save palette feedback boosts
+        crate::persistence::save_feedback(registry, &self.palette_feedback);
+        let collapsed: Vec<crate::persistence::PersistedTimeBand> = self
+            .survey_tree_state
+            .collapsed_bands()
+            .iter()
+            .map(|b| crate::persistence::PersistedTimeBand::from(*b))
+            .collect();
+        let state = crate::persistence::WorkspaceState {
+            parent_id: self.parent_id.clone(),
+            cursor_target: self.focus_state.cursor_target().into(),
+            view_orientation: self.view_orientation.into(),
+            deck_zoom: self.deck_zoom.into(),
+            route_expanded: self.route_expanded,
+            held_expanded: self.held_expanded,
+            accumulated_expanded: self.accumulated_expanded,
+            collapsed_bands: collapsed,
+        };
+        crate::persistence::save_workspace(registry, &state);
+    }
+
+    /// Restore workspace state from the persistence registry.
+    /// Called during construction, before load_siblings().
+    fn restore_workspace(&mut self) {
+        let Some(ref registry) = self.state_registry else { return };
+        // Registry already loaded in constructor (for feedback). Just read.
+        let Some(state) = crate::persistence::load_workspace(registry) else { return };
+
+        self.parent_id = state.parent_id;
+        self.view_orientation = state.view_orientation.into();
+        self.deck_zoom = state.deck_zoom.into();
+        self.route_expanded = state.route_expanded;
+        self.held_expanded = state.held_expanded;
+        self.accumulated_expanded = state.accumulated_expanded;
+
+        // Restore collapsed bands
+        for band in state.collapsed_bands {
+            self.survey_tree_state.collapse(band.into());
+        }
+
+        // Focus target is restored after load_siblings() rebuilds the focus graph.
+        // Store it temporarily so load_siblings can apply it.
+        self.restore_cursor_target = Some(state.cursor_target.into());
+    }
+
+    /// Save workspace and quit — centralized quit path.
+    pub fn save_and_quit(&self) -> ftui::Cmd<crate::msg::Msg> {
+        self.save_workspace();
+        ftui::Cmd::quit()
     }
 }
 

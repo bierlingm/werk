@@ -23,6 +23,9 @@ pub mod toast;
 pub mod modal;
 pub mod undo;
 pub mod palette;
+pub mod feedback;
+pub mod inspector;
+pub mod persistence;
 
 pub use app::InstrumentApp;
 
@@ -111,12 +114,19 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let diff_config = RuntimeDiffConfig::default()
         .with_bayesian_enabled(false)
         .with_dirty_rows_enabled(false);
-    let config = ProgramConfig::fullscreen()
+
+    // Create file-backed state registry for workspace persistence.
+    let registry = crate::persistence::create_registry();
+
+    let mut config = ProgramConfig::fullscreen()
         .with_diff_config(diff_config);
+    if let Some(ref reg) = registry {
+        config = config.with_registry(reg.clone());
+    }
 
     let result = match load_field() {
         Ok((store, entries)) => {
-            let app = InstrumentApp::new(store, entries);
+            let app = InstrumentApp::new(store, entries, registry.clone());
             let mut program = Program::with_config(app, config)?;
             program.run()
         }

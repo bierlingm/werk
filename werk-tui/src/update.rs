@@ -40,6 +40,12 @@ impl Model for InstrumentApp {
             self.load_siblings();
         }
 
+        // Toggle inspector overlay on Ctrl+Shift+I
+        if matches!(msg, Msg::InspectorToggle) {
+            self.show_inspector = !self.show_inspector;
+            return Cmd::none();
+        }
+
         // Open palette on Ctrl+K (works from any mode in Normal)
         if matches!(msg, Msg::OpenPalette) {
             self.command_palette.open();
@@ -197,6 +203,9 @@ impl Model for InstrumentApp {
             self.command_palette.render(palette_area, frame);
         }
 
+        // Inspector overlay (above content, below toasts)
+        crate::inspector::render_inspector(self, frame, content_area);
+
         // Toast notifications (topmost layer)
         self.toasts.render(&area, frame);
 
@@ -279,6 +288,8 @@ impl InstrumentApp {
 
     /// Dispatch a palette action to the same code path as direct keybindings.
     fn dispatch_palette_action(&mut self, action_id: &str) -> Cmd<Msg> {
+        // Record selection for cross-session learning
+        crate::palette::record_action_selected(&mut self.palette_feedback, action_id);
         match action_id {
             "add" => {
                 self.input_buffer.clear();
@@ -421,7 +432,7 @@ impl InstrumentApp {
                 }
             }
             "quit" => {
-                return Cmd::Quit;
+                return self.save_and_quit();
             }
             _ => {}
         }
@@ -851,7 +862,7 @@ impl InstrumentApp {
             }
 
             // Quit
-            Msg::Char('q') | Msg::Quit => Cmd::quit(),
+            Msg::Char('q') | Msg::Quit => self.save_and_quit(),
             Msg::Cancel => {
                 if self.deck_zoom.has_detail() {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
@@ -915,7 +926,7 @@ impl InstrumentApp {
                 Cmd::none()
             }
             // Quit always works (Ctrl+C or q)
-            Msg::Char('q') | Msg::Quit => Cmd::quit(),
+            Msg::Char('q') | Msg::Quit => self.save_and_quit(),
             // Everything else: ignore (stay in reorder mode)
             _ => Cmd::none(),
         }
@@ -962,7 +973,7 @@ impl InstrumentApp {
                 self.apply_pathway_choice(0);
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
     }
@@ -1146,7 +1157,7 @@ impl InstrumentApp {
                 self.input_mode = InputMode::Help;
                 Cmd::none()
             }
-            Msg::Char('q') | Msg::Quit => Cmd::quit(),
+            Msg::Char('q') | Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
     }
@@ -1259,7 +1270,7 @@ impl InstrumentApp {
                 }
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
     }
@@ -1316,7 +1327,7 @@ impl InstrumentApp {
                 self.text_input.set_focused(false);
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
 
             // Forward everything else to TextInput via raw event
             Msg::RawEvent(ref event) => {
@@ -1461,7 +1472,7 @@ impl InstrumentApp {
                 self.text_input.set_focused(false);
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
 
             // Forward everything else to TextInput via raw event
             Msg::RawEvent(ref event) => {
@@ -1515,7 +1526,7 @@ impl InstrumentApp {
                 self.input_mode = InputMode::Normal;
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
     }
@@ -1580,7 +1591,7 @@ impl InstrumentApp {
                 self.input_buffer.clear();
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
     }
@@ -1647,7 +1658,7 @@ impl InstrumentApp {
                 self.input_buffer.clear();
                 Cmd::none()
             }
-            Msg::Quit => Cmd::quit(),
+            Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
     }
