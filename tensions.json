@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-01T15:32:09Z",
+  "flushed_at": "2026-04-01T16:05:37Z",
   "summary": {
-    "active": 65,
+    "active": 66,
     "released": 20,
     "resolved": 84,
-    "total": 169
+    "total": 170
   },
   "tensions": [
     {
@@ -1864,6 +1864,17 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 1,
       "short_code": 174,
+      "status": "Active"
+    },
+    {
+      "actual": "No TUI logbase surface exists. Epochs are computed for boundary filtering but not browsable. werk log CLI command and MCP query_logbase tool exist — the data layer is complete. The TUI needs a view.",
+      "created_at": "2026-04-01T16:02:57.300614+00:00",
+      "desired": "TUI logbase view — browse epoch history, ghost geometry, provenance lineage from within the TUI. Entry points: palette address resolution (#42~e3), keybinding from deck view, pan-below-current-epoch navigation. May include FrankenMermaid visualization of split/merge topology.",
+      "horizon": null,
+      "id": "01KN4WH74MES7HZQG04A51ER0D",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 175,
       "status": "Active"
     }
   ]

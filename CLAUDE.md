@@ -14,7 +14,7 @@ Run `cargo run --bin werk -- show <id>` for details on any tension.
 
 - **TUI** — `cargo run --bin werk` (or `werk` if installed). The primary experience. A session.
 - **CLI** — `cargo run --bin werk -- <command>`. Every gesture as a command. Sessionless.
-- **MCP** — `cargo run --bin werk -- mcp`. Protocol surface for AI agents. Stdio transport, 30 tools, direct library calls.
+- **MCP** — `cargo run --bin werk -- mcp`. Protocol surface for AI agents. Stdio transport, 35 tools, direct library calls.
 - **Web** — `cargo run --bin werk -- serve`. Axum server at http://localhost:3749. Serves HTML frontend + REST API. Not a WASM app — do not use `trunk`.
 - **Desktop** — `cd werk-app && cargo tauri dev`. Tauri app. Requires `cargo install tauri-cli`.
 
@@ -31,8 +31,11 @@ Run `cargo run --bin werk -- show <id>` for details on any tension.
 - **`--help` with examples.** Every command has 2-3 usage examples in `--help`. Agents pattern-match off these.
 - **`--help` grouped by framework.** Run `werk --help` to see commands organized by Structure, Action, Time, Framing, System.
 - **Non-interactive.** No command blocks on stdin or opens `$EDITOR` without a TTY. `stats --health --repair` accepts `--yes`. `reality`/`desire` require explicit value when no TTY detected.
-- **Reading surface: 4 commands.** `show <id>` (one tension), `list` (query engine with rich filters), `tree` (hierarchy), `stats` (field aggregates). Old commands (`survey`, `diff`, `ground`, `insights`, `trajectory`, `health`, `context`) still exist but are being consolidated into these four.
-- **`--dry-run` on destructive commands.** `resolve`, `rm`, `move` all support `--dry-run` for preview without mutation.
+- **Reading surface: 5 commands.** `show <id>` (one tension), `list` (query engine with rich filters), `tree` (hierarchy), `stats` (field aggregates), `log` (logbase — epoch history, cross-tension timeline, ghost geometry, provenance). Old commands (`survey`, `diff`, `ground`, `insights`, `trajectory`, `health`, `context`) still exist but are being consolidated.
+- **`--dry-run` on destructive commands.** `resolve`, `rm`, `move`, `split`, `merge` all support `--dry-run` for preview without mutation.
+- **Structural gestures.** `split <id> "desire 1" "desire 2"` divides a tension with provenance tracking. `merge <id1> <id2> --into <id>` (asymmetric) or `--as "new desire"` (symmetric) combines tensions. Both create typed edges and cross-tension epochs.
+- **Deep addressing.** `#42~e3` (epoch 3), `#42.n3` (note 3), `#42@2026-03` (temporal lookup), `g:ULID` (gesture). Used by `werk log` and the command palette.
+- **Edges as substrate.** All structural relationships (parent-child, split provenance, merge provenance) are typed directed edges in the `edges` table, loaded into the FNX DiGraph with edge attributes. The `parent_id` column is maintained for backward compat but edges are the source of truth for new relationships.
 - **Note defaults to add.** `werk note 42 "text"` works without the explicit `add` subcommand.
 - **Short codes everywhere.** Use `#42` not ULIDs. Short codes are the user-facing addressing scheme.
 
