@@ -8,6 +8,8 @@
 // This crate has zero instrument dependencies. Instruments subscribe
 // and react to events.
 
+pub mod address;
+pub mod edge;
 pub mod engine;
 pub mod events;
 pub mod frontier;
@@ -32,6 +34,8 @@ pub use projection::{
     Trajectory, TrajectoryBuckets, UrgencyCollision, estimate_time_to_resolution,
     extract_mutation_pattern, project_field, project_frequency_at, project_gap_at, project_tension,
 };
+pub use address::{Address, AddressParseError, parse_address};
+pub use edge::{Edge, EDGE_CONTAINS, EDGE_SPLIT_FROM, EDGE_MERGED_INTO};
 pub use store::{EpochRecord, Store, StoreError};
 pub use temporal::{
     ContainmentViolation, CriticalPath, HorizonDrift, HorizonDriftType, ImpliedWindow,

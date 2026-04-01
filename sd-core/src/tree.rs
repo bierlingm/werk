@@ -5,10 +5,11 @@
 //! tensions (no parent, no children) appear as isolated roots.
 
 use fnx_classes::digraph::DiGraph;
-use fnx_runtime::CompatibilityMode;
+use fnx_runtime::{CompatibilityMode, CgseValue};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::edge::Edge;
 use crate::tension::Tension;
 
 /// Errors that can occur during forest construction or tree operations.
@@ -166,6 +167,150 @@ impl Forest {
         forest.graph = graph;
 
         Ok(forest)
+    }
+
+    /// Build a forest from tensions and typed edges.
+    ///
+    /// This is the edges-first constructor. Containment structure comes from
+    /// edges with type "contains", not from tension.parent_id. The DiGraph
+    /// carries edge attributes so relationship types are queryable.
+    ///
+    /// Also populates each tension's parent_id field from contains edges
+    /// for backward compatibility with code that reads tension.parent_id.
+    pub fn from_tensions_and_edges(
+        mut tensions: Vec<Tension>,
+        edges: &[Edge],
+    ) -> Result<Self, TreeError> {
+        let mut forest = Forest::new();
+
+        if tensions.is_empty() {
+            return Ok(forest);
+        }
+
+        // Build a parent lookup from contains edges
+        let mut parent_map: HashMap<&str, &str> = HashMap::new();
+        for edge in edges {
+            if edge.edge_type == crate::edge::EDGE_CONTAINS {
+                // contains edge: from=parent, to=child
+                parent_map.insert(&edge.to_id, &edge.from_id);
+            }
+        }
+
+        // Populate parent_id on tensions from edges (backward compat)
+        for tension in tensions.iter_mut() {
+            if let Some(&parent_id) = parent_map.get(tension.id.as_str()) {
+                tension.parent_id = Some(parent_id.to_owned());
+            } else {
+                tension.parent_id = None;
+            }
+        }
+
+        // First pass: create all nodes and check for self-references
+        for tension in tensions.iter() {
+            if let Some(ref parent_id) = tension.parent_id {
+                if parent_id == &tension.id {
+                    return Err(TreeError::SelfReference(tension.id.clone()));
+                }
+            }
+            let node = Node::new(tension.clone());
+            forest.nodes.insert(tension.id.clone(), node);
+        }
+
+        // Second pass: establish parent-child relationships from edges
+        let tension_ids: HashSet<&str> = tensions.iter().map(|t| t.id.as_str()).collect();
+
+        for tension in tensions.iter() {
+            if let Some(ref parent_id) = tension.parent_id {
+                if tension_ids.contains(parent_id.as_str()) {
+                    if let Some(parent_node) = forest.nodes.get_mut(parent_id) {
+                        parent_node.children.push(tension.id.clone());
+                    }
+                } else {
+                    forest.roots.push(tension.id.clone());
+                }
+            } else {
+                forest.roots.push(tension.id.clone());
+            }
+        }
+
+        // Third pass: detect cycles
+        if let Some(cycle_node) = forest.detect_cycle() {
+            return Err(TreeError::CircularReference(cycle_node));
+        }
+
+        // Build the DiGraph with edge attributes for type
+        let mut graph = DiGraph::new(CompatibilityMode::Strict);
+        for tension in tensions.iter() {
+            graph.add_node(&tension.id);
+        }
+
+        // Add all edges with type attributes
+        for edge in edges {
+            // Only add edges where both nodes exist in our tension set
+            if tension_ids.contains(edge.from_id.as_str())
+                && tension_ids.contains(edge.to_id.as_str())
+            {
+                let mut attrs: BTreeMap<String, CgseValue> = BTreeMap::new();
+                attrs.insert("type".to_owned(), CgseValue::String(edge.edge_type.clone()));
+                attrs.insert("edge_id".to_owned(), CgseValue::String(edge.id.clone()));
+                let _ = graph.add_edge_with_attrs(&edge.from_id, &edge.to_id, attrs);
+            }
+        }
+
+        forest.graph = graph;
+        Ok(forest)
+    }
+
+    /// Get provenance sources for a tension (what it was split from).
+    pub fn split_sources(&self, id: &str) -> Vec<String> {
+        self.edges_of_type_from(id, crate::edge::EDGE_SPLIT_FROM)
+    }
+
+    /// Get provenance targets for a tension (what it was merged into).
+    pub fn merge_targets(&self, id: &str) -> Vec<String> {
+        self.edges_of_type_from(id, crate::edge::EDGE_MERGED_INTO)
+    }
+
+    /// Get all tensions that were split from a given source.
+    pub fn split_children(&self, id: &str) -> Vec<String> {
+        self.edges_of_type_to(id, crate::edge::EDGE_SPLIT_FROM)
+    }
+
+    /// Get all tensions that were merged into a given target.
+    pub fn merge_sources(&self, id: &str) -> Vec<String> {
+        self.edges_of_type_to(id, crate::edge::EDGE_MERGED_INTO)
+    }
+
+    /// Helper: get target IDs of outgoing edges of a specific type.
+    fn edges_of_type_from(&self, id: &str, edge_type: &str) -> Vec<String> {
+        let edges = self.graph.out_edges(id);
+        let target = CgseValue::String(edge_type.to_owned());
+        edges
+            .into_iter()
+            .filter(|(from, to)| {
+                self.graph
+                    .edge_attrs(from, to)
+                    .and_then(|a| a.get("type"))
+                    == Some(&target)
+            })
+            .map(|(_, to)| to.to_owned())
+            .collect()
+    }
+
+    /// Helper: get source IDs of incoming edges of a specific type.
+    fn edges_of_type_to(&self, id: &str, edge_type: &str) -> Vec<String> {
+        let edges = self.graph.in_edges(id);
+        let target = CgseValue::String(edge_type.to_owned());
+        edges
+            .into_iter()
+            .filter(|(from, to)| {
+                self.graph
+                    .edge_attrs(from, to)
+                    .and_then(|a| a.get("type"))
+                    == Some(&target)
+            })
+            .map(|(from, _)| from.to_owned())
+            .collect()
     }
 
     /// Detect cycles using DFS. Returns the cycle description if found.

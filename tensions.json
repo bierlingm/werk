@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-01T13:09:03Z",
+  "flushed_at": "2026-04-01T15:14:30Z",
   "summary": {
     "active": 68,
     "released": 20,
@@ -514,7 +514,7 @@
       "status": "Active"
     },
     {
-      "actual": "Foundation lists 12 operative gestures, all treating tensions as stable identity containers. Split/merge/restructure are performed ad-hoc through desire rewrites and fresh creates, damaging ghost geometry. No provenance field exists. Epochs are per-tension only — cannot represent phase transitions that span tension boundaries. The #25 split into #25+#49 demonstrated the cost: 6 incoherent epochs on #25, amnesiac #49.",
+      "actual": "Edge types split_from and merged_into defined. Forest.split_sources(), split_children(), merge_targets(), merge_sources() methods implemented. Engine.create_edge/remove_edge wired. Data model ready for split/merge gestures.",
       "created_at": "2026-03-24T17:52:28.264233+00:00",
       "desired": "structural transformation gestures (split, merge, restructure) and cross-tension provenance — the foundation and data model support identity-topology-changing operations with lineage tracking",
       "horizon": null,
@@ -921,7 +921,7 @@
       "status": "Released"
     },
     {
-      "actual": "not started — root level currently shows no accumulated zone and no epoch boundary",
+      "actual": "Phase 1 complete: edges table created as universal relationship substrate. 104 contains edges migrated from parent_id. FNX DiGraph built with typed edge attributes. Store CRUD: create_edge, remove_edge, get_edges_for/by_type, get_all_edges. Epoch_type column added. Agent session columns added. All structural mutations (create, update_parent, delete) now maintain edges alongside parent_id.",
       "created_at": "2026-03-25T20:50:06.125363+00:00",
       "desired": "logbase — a searchable, queryable substrate of all prior desire/reality/epoch layers across the entire field, accessible from root view and all surfaces (CLI, MCP, TUI, web, desktop, mobile)",
       "horizon": null,
@@ -1350,7 +1350,7 @@
       "status": "Released"
     },
     {
-      "actual": "Three threads identified and held together in designs/addressing-sessions-gestures.md. Exploratory — no commitments. Key open questions: addressing syntax, gesture/telemetry boundary, session as knowledge substrate vs separate model. Converges with LogBase (#89), ground mode, authority, and multi-player provenance.",
+      "actual": "Address parser complete: sd-core/src/address.rs parses #42, #42~e3, #42.n3, #42@2026-03, g:ULID, s:DATE-N. Display roundtrip tested. Ready to wire into werk log and command palette.",
       "created_at": "2026-03-30T13:00:57.443792+00:00",
       "desired": "deep addressability, expanded gesture vocabulary, and session semantics form a coherent design",
       "horizon": null,

@@ -459,6 +459,7 @@ mod tests {
             reality_snapshot: String::new(),
             children_snapshot_json: None,
             trigger_gesture_id: None,
+            epoch_type: None,
         };
 
         // c1 resolved before epoch, c2 resolved after
