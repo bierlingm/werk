@@ -120,6 +120,12 @@ fn main() {
         } => werk::commands::recur::cmd_recur(&output, id, interval, clear),
         Commands::Rm { id, dry_run } => werk::commands::rm::cmd_rm(&output, id, dry_run),
         Commands::Move { id, parent, dry_run } => werk::commands::move_cmd::cmd_move(&output, id, parent, dry_run),
+        Commands::Split { id, desires, assign, children_to_parent, children_to, keep, release, hold, dry_run } => {
+            werk::commands::split::cmd_split(&output, id, desires, assign, children_to_parent, children_to, keep, release, hold, dry_run)
+        }
+        Commands::Merge { id1, id2, into, as_desire, desire, assign, children_to_parent, dry_run } => {
+            werk::commands::merge::cmd_merge(&output, id1, id2, into, as_desire, desire, assign, children_to_parent, dry_run)
+        }
         Commands::Hold { id } => werk::commands::hold::cmd_hold(&output, id),
         Commands::Position { id, n } => werk::commands::position::cmd_position(&output, id, n),
         Commands::Note { command } => match command {
