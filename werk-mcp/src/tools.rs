@@ -365,6 +365,78 @@ pub struct BatchParam {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LogParam {
+    /// Tension ID, short code, or address. Omit for cross-tension timeline.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Text search across epoch snapshots.
+    #[serde(default)]
+    pub search: Option<String>,
+    /// Show epochs since (YYYY-MM-DD, YYYY-MM, Nd, Nw).
+    #[serde(default)]
+    pub since: Option<String>,
+    /// Show desire-reality evolution (ghost geometry).
+    #[serde(default)]
+    pub compare: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SplitParam {
+    /// Source tension ID or short code.
+    pub id: String,
+    /// Desired states for new tensions (at least 2).
+    pub desires: Vec<String>,
+    /// Child assignments: ["30=1", "31=2"] — child short code = target number.
+    #[serde(default)]
+    pub assign: Vec<String>,
+    /// Float all children to source's parent.
+    #[serde(default)]
+    pub children_to_parent: bool,
+    /// Move all children to successor N (1-based).
+    #[serde(default)]
+    pub children_to: Option<usize>,
+    /// Keep source active (default: resolve).
+    #[serde(default)]
+    pub keep: bool,
+    /// Preview without making changes.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MergeParam {
+    /// First tension ID.
+    pub id1: String,
+    /// Second tension ID.
+    pub id2: String,
+    /// Asymmetric: surviving tension ID (must be id1 or id2).
+    #[serde(default)]
+    pub into: Option<String>,
+    /// Symmetric: desire for the new merged tension.
+    #[serde(default)]
+    pub as_desire: Option<String>,
+    /// Update survivor's desire (asymmetric mode).
+    #[serde(default)]
+    pub desire: Option<String>,
+    /// Float absorbed tension's children to its parent.
+    #[serde(default)]
+    pub children_to_parent: bool,
+    /// Preview without making changes.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EdgesParam {
+    /// Tension ID to get edges for. Omit for all edges.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Filter by edge type (contains, split_from, merged_into).
+    #[serde(default)]
+    pub edge_type: Option<String>,
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
@@ -490,6 +562,74 @@ fn autoflush(workspace: &Workspace) {
         let path = workspace.root().join("tensions.json");
         let _ = std::fs::write(&path, format!("{}\n", json));
     }
+}
+
+fn parse_mcp_timespec(s: &str) -> Result<DateTime<Utc>, String> {
+    use chrono::NaiveDate;
+    if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
+    }
+    if s.len() == 7 && s.chars().nth(4) == Some('-') {
+        let with_day = format!("{}-01", s);
+        if let Ok(date) = NaiveDate::parse_from_str(&with_day, "%Y-%m-%d") {
+            return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
+        }
+    }
+    let now = Utc::now();
+    match s {
+        "today" => Ok(now),
+        "yesterday" => Ok(now - chrono::Duration::days(1)),
+        _ => {
+            if let Some(n_str) = s.strip_suffix('d') {
+                let n: i64 = n_str.parse().map_err(|_| format!("invalid timespec: '{}'", s))?;
+                Ok(now - chrono::Duration::days(n))
+            } else if let Some(n_str) = s.strip_suffix('w') {
+                let n: i64 = n_str.parse().map_err(|_| format!("invalid timespec: '{}'", s))?;
+                Ok(now - chrono::Duration::weeks(n))
+            } else {
+                Err(format!("invalid timespec: '{}'. Use YYYY-MM-DD, YYYY-MM, Nd, Nw", s))
+            }
+        }
+    }
+}
+
+fn build_mcp_provenance(
+    edges: &[sd_core::Edge],
+    tension_id: &str,
+    tensions: &[sd_core::Tension],
+) -> serde_json::Value {
+    let find_ref = |id: &str| -> serde_json::Value {
+        let t = tensions.iter().find(|t| t.id == id);
+        serde_json::json!({
+            "id": id,
+            "short_code": t.and_then(|t| t.short_code),
+            "desired": t.map(|t| t.desired.as_str()).unwrap_or(""),
+        })
+    };
+
+    let split_from: Vec<_> = edges.iter()
+        .filter(|e| e.from_id == tension_id && e.edge_type == sd_core::EDGE_SPLIT_FROM)
+        .map(|e| find_ref(&e.to_id)).collect();
+    let merged_into: Vec<_> = edges.iter()
+        .filter(|e| e.from_id == tension_id && e.edge_type == sd_core::EDGE_MERGED_INTO)
+        .map(|e| find_ref(&e.to_id)).collect();
+    let split_children: Vec<_> = edges.iter()
+        .filter(|e| e.to_id == tension_id && e.edge_type == sd_core::EDGE_SPLIT_FROM)
+        .map(|e| find_ref(&e.from_id)).collect();
+    let merge_sources: Vec<_> = edges.iter()
+        .filter(|e| e.to_id == tension_id && e.edge_type == sd_core::EDGE_MERGED_INTO)
+        .map(|e| find_ref(&e.from_id)).collect();
+
+    if split_from.is_empty() && merged_into.is_empty() && split_children.is_empty() && merge_sources.is_empty() {
+        return serde_json::Value::Null;
+    }
+
+    serde_json::json!({
+        "split_from": split_from,
+        "merged_into": merged_into,
+        "split_children": split_children,
+        "merge_sources": merge_sources,
+    })
 }
 
 fn load_hooks(workspace: &Workspace) -> HookRunner {
@@ -2996,6 +3136,335 @@ impl WerkServer {
             "span_end": span_end.to_rfc3339(),
             "mutations": mutation_entries,
         }))
+    }
+
+    // ── Logbase query ──────────────────────────────────────────
+
+    #[tool(description = "Query the logbase — the searchable substrate of all prior epochs. Returns epoch history for a tension (with provenance), cross-tension timeline, or filtered results. Accepts addresses (#42~e3, #42@2026-03). Use compare=true for ghost geometry (desire-reality evolution).")]
+    async fn query_logbase(
+        &self,
+        Parameters(p): Parameters<LogParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let (_workspace, store) = open_store()?;
+        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
+
+        if p.id.is_none() {
+            // Cross-tension timeline
+            let cutoff = match &p.since {
+                Some(s) => parse_mcp_timespec(s).map_err(|e| err(e))?,
+                None => Utc::now() - chrono::Duration::days(7),
+            };
+            let mut entries: Vec<serde_json::Value> = Vec::new();
+            for tension in &tensions {
+                let epochs = store.get_epochs(&tension.id).map_err(|e| err(e.to_string()))?;
+                for (i, epoch) in epochs.iter().enumerate() {
+                    if epoch.timestamp >= cutoff {
+                        entries.push(serde_json::json!({
+                            "timestamp": epoch.timestamp.to_rfc3339(),
+                            "tension_id": tension.id,
+                            "short_code": tension.short_code,
+                            "desired": tension.desired,
+                            "epoch_number": i + 1,
+                            "epoch_type": epoch.epoch_type,
+                        }));
+                    }
+                }
+            }
+            entries.sort_by(|a, b| b["timestamp"].as_str().cmp(&a["timestamp"].as_str()));
+            return json_result(&serde_json::json!({ "timeline": entries }));
+        }
+
+        let id_str = p.id.unwrap();
+        let resolver = PrefixResolver::new(tensions.clone());
+        let tension = resolver.resolve(&id_str).map_err(|e| err(e.to_string()))?;
+
+        let mut epochs = store.get_epochs(&tension.id).map_err(|e| err(e.to_string()))?;
+
+        if let Some(ref since) = p.since {
+            let cutoff = parse_mcp_timespec(since).map_err(|e| err(e))?;
+            epochs.retain(|e| e.timestamp >= cutoff);
+        }
+        if let Some(ref search) = p.search {
+            let term = search.to_lowercase();
+            epochs.retain(|e| {
+                e.desire_snapshot.to_lowercase().contains(&term)
+                    || e.reality_snapshot.to_lowercase().contains(&term)
+            });
+        }
+
+        // Provenance
+        let edges = store.get_edges_for_tension(&tension.id).map_err(|e| err(e.to_string()))?;
+        let provenance = build_mcp_provenance(&edges, &tension.id, &tensions);
+
+        if p.compare {
+            let entries: Vec<serde_json::Value> = epochs.iter().enumerate().map(|(i, e)| {
+                serde_json::json!({
+                    "number": i + 1,
+                    "timestamp": e.timestamp.to_rfc3339(),
+                    "desire_snapshot": e.desire_snapshot,
+                    "reality_snapshot": e.reality_snapshot,
+                })
+            }).collect();
+            return json_result(&serde_json::json!({
+                "tension_id": tension.id,
+                "short_code": tension.short_code,
+                "compare": entries,
+                "current_desire": tension.desired,
+                "current_reality": tension.actual,
+            }));
+        }
+
+        let epoch_entries: Vec<serde_json::Value> = epochs.iter().enumerate().map(|(i, e)| {
+            serde_json::json!({
+                "number": i + 1,
+                "id": e.id,
+                "timestamp": e.timestamp.to_rfc3339(),
+                "desire_snapshot": e.desire_snapshot,
+                "reality_snapshot": e.reality_snapshot,
+                "epoch_type": e.epoch_type,
+            })
+        }).collect();
+
+        json_result(&serde_json::json!({
+            "tension_id": tension.id,
+            "short_code": tension.short_code,
+            "desired": tension.desired,
+            "epochs": epoch_entries,
+            "provenance": provenance,
+        }))
+    }
+
+    // ── Split ─────────────────────────────────────────────────────
+
+    #[tool(description = "Split a tension into N new tensions with provenance. Creates split_from edges and cross-tension epochs. Source is resolved by default (set keep=true to keep active). If source has children, provide child assignment via assign array, children_to_parent, or children_to.")]
+    async fn split(
+        &self,
+        Parameters(p): Parameters<SplitParam>,
+    ) -> Result<CallToolResult, McpError> {
+        if p.desires.len() < 2 {
+            return Err(err("split requires at least 2 desires"));
+        }
+
+        let (workspace, mut store) = open_store()?;
+        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
+        let resolver = PrefixResolver::new(tensions.clone());
+        let source = resolver.resolve(&p.id).map_err(|e| err(e.to_string()))?;
+
+        if source.status != TensionStatus::Active {
+            return Err(err(format!("cannot split {} tension", source.status)));
+        }
+
+        let children = store.get_children(&source.id).map_err(|e| err(e.to_string()))?;
+
+        // Parse assignments
+        let mut assignments: std::collections::HashMap<i32, usize> = std::collections::HashMap::new();
+        for a in &p.assign {
+            let parts: Vec<&str> = a.split('=').collect();
+            if parts.len() != 2 { return Err(err(format!("invalid assign: '{}'", a))); }
+            let cc: i32 = parts[0].trim_start_matches('#').parse().map_err(|_| err(format!("invalid child: '{}'", parts[0])))?;
+            let target: usize = parts[1].parse().map_err(|_| err(format!("invalid target: '{}'", parts[1])))?;
+            assignments.insert(cc, target);
+        }
+
+        if !children.is_empty() && assignments.is_empty() && !p.children_to_parent && p.children_to.is_none() {
+            let child_list: Vec<String> = children.iter().map(|c| format!("#{}", c.short_code.unwrap_or(0))).collect();
+            return Err(err(format!("source has children that need assignment: {}. Use assign, children_to_parent, or children_to.", child_list.join(", "))));
+        }
+
+        if p.dry_run {
+            return json_result(&serde_json::json!({
+                "dry_run": true,
+                "source_id": source.id,
+                "source_short_code": source.short_code,
+                "desires": p.desires,
+                "children_count": children.len(),
+            }));
+        }
+
+        let gesture_id = store.begin_gesture(Some("split")).map_err(|e| err(e.to_string()))?;
+
+        store.create_epoch_typed(&source.id, &source.desired, &source.actual, None, Some(&gesture_id), Some("split_source"))
+            .map_err(|e| err(e.to_string()))?;
+
+        let mut new_tensions = Vec::new();
+        for desire in &p.desires {
+            let t = store.create_tension_with_parent(desire, "", source.parent_id.clone())
+                .map_err(|e| err(e.to_string()))?;
+            store.create_edge(&t.id, &source.id, sd_core::EDGE_SPLIT_FROM).map_err(|e| err(e.to_string()))?;
+            store.create_epoch_typed(&t.id, desire, "", None, Some(&gesture_id), Some("split_target"))
+                .map_err(|e| err(e.to_string()))?;
+            new_tensions.push(t);
+        }
+
+        for child in &children {
+            let cc = child.short_code.unwrap_or(0);
+            let target_idx = if let Some(&t) = assignments.get(&cc) { Some(t - 1) }
+                else if p.children_to_parent { None }
+                else if let Some(t) = p.children_to { Some(t - 1) }
+                else { None };
+            let new_parent = match target_idx {
+                Some(idx) => Some(new_tensions[idx].id.as_str()),
+                None => source.parent_id.as_deref(),
+            };
+            store.update_parent(&child.id, new_parent).map_err(|e| err(e.to_string()))?;
+        }
+
+        if !p.keep {
+            store.update_status(&source.id, TensionStatus::Resolved).map_err(|e| err(e.to_string()))?;
+        }
+
+        store.end_gesture();
+        autoflush(&workspace);
+
+        let result: Vec<serde_json::Value> = new_tensions.iter().map(|t| {
+            serde_json::json!({ "id": t.id, "short_code": t.short_code, "desired": t.desired })
+        }).collect();
+
+        json_result(&serde_json::json!({
+            "source_id": source.id,
+            "source_short_code": source.short_code,
+            "source_status": if p.keep { "active" } else { "resolved" },
+            "new_tensions": result,
+        }))
+    }
+
+    // ── Merge ─────────────────────────────────────────────────────
+
+    #[tool(description = "Merge tensions with provenance. Asymmetric (into=id, one survives) or symmetric (as_desire='text', both absorbed into new). Creates merged_into edges and cross-tension epochs.")]
+    async fn merge(
+        &self,
+        Parameters(p): Parameters<MergeParam>,
+    ) -> Result<CallToolResult, McpError> {
+        if p.into.is_none() && p.as_desire.is_none() {
+            return Err(err("merge requires either 'into' (asymmetric) or 'as_desire' (symmetric)"));
+        }
+
+        let (workspace, mut store) = open_store()?;
+        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
+        let resolver = PrefixResolver::new(tensions.clone());
+
+        let t1 = resolver.resolve(&p.id1).map_err(|e| err(e.to_string()))?;
+        let t2 = resolver.resolve(&p.id2).map_err(|e| err(e.to_string()))?;
+
+        if t1.id == t2.id { return Err(err("cannot merge a tension with itself")); }
+        for t in [&t1, &t2] {
+            if t.status != TensionStatus::Active {
+                return Err(err(format!("cannot merge {} tension #{}", t.status, t.short_code.unwrap_or(0))));
+            }
+        }
+
+        if p.dry_run {
+            return json_result(&serde_json::json!({
+                "dry_run": true,
+                "id1": t1.id, "id2": t2.id,
+                "mode": if p.into.is_some() { "asymmetric" } else { "symmetric" },
+            }));
+        }
+
+        let gesture_id = store.begin_gesture(Some("merge")).map_err(|e| err(e.to_string()))?;
+
+        if let Some(ref as_desire) = p.as_desire {
+            // Symmetric
+            for t in [&t1, &t2] {
+                store.create_epoch_typed(&t.id, &t.desired, &t.actual, None, Some(&gesture_id), Some("merge_source"))
+                    .map_err(|e| err(e.to_string()))?;
+            }
+            let new_t = store.create_tension_with_parent(as_desire, "", t1.parent_id.clone())
+                .map_err(|e| err(e.to_string()))?;
+            store.create_epoch_typed(&new_t.id, as_desire, "", None, Some(&gesture_id), Some("merge_target"))
+                .map_err(|e| err(e.to_string()))?;
+            for t in [&t1, &t2] {
+                store.create_edge(&t.id, &new_t.id, sd_core::EDGE_MERGED_INTO).map_err(|e| err(e.to_string()))?;
+                store.update_status(&t.id, TensionStatus::Resolved).map_err(|e| err(e.to_string()))?;
+            }
+            store.end_gesture();
+            autoflush(&workspace);
+            return json_result(&serde_json::json!({
+                "mode": "symmetric",
+                "new_tension": { "id": new_t.id, "short_code": new_t.short_code, "desired": new_t.desired },
+                "absorbed": [
+                    { "id": t1.id, "short_code": t1.short_code },
+                    { "id": t2.id, "short_code": t2.short_code },
+                ],
+            }));
+        }
+
+        // Asymmetric
+        let into_id = p.into.unwrap();
+        let into_resolved = resolver.resolve(&into_id).map_err(|e| err(e.to_string()))?;
+        if into_resolved.id != t1.id && into_resolved.id != t2.id {
+            return Err(err("--into must be one of the merge arguments"));
+        }
+        let (survivor, absorbed) = if into_resolved.id == t1.id { (&t1, &t2) } else { (&t2, &t1) };
+
+        store.create_epoch_typed(&absorbed.id, &absorbed.desired, &absorbed.actual, None, Some(&gesture_id), Some("merge_source"))
+            .map_err(|e| err(e.to_string()))?;
+        store.create_epoch_typed(&survivor.id, &survivor.desired, &survivor.actual, None, Some(&gesture_id), Some("merge_target"))
+            .map_err(|e| err(e.to_string()))?;
+        store.create_edge(&absorbed.id, &survivor.id, sd_core::EDGE_MERGED_INTO).map_err(|e| err(e.to_string()))?;
+
+        if let Some(ref d) = p.desire {
+            store.update_desired(&survivor.id, d).map_err(|e| err(e.to_string()))?;
+        }
+
+        // Reparent absorbed children
+        let absorbed_children = store.get_children(&absorbed.id).map_err(|e| err(e.to_string()))?;
+        for child in &absorbed_children {
+            let new_parent = if p.children_to_parent { absorbed.parent_id.as_deref() } else { Some(survivor.id.as_str()) };
+            store.update_parent(&child.id, new_parent).map_err(|e| err(e.to_string()))?;
+        }
+
+        store.update_status(&absorbed.id, TensionStatus::Resolved).map_err(|e| err(e.to_string()))?;
+        store.end_gesture();
+        autoflush(&workspace);
+
+        json_result(&serde_json::json!({
+            "mode": "asymmetric",
+            "survivor": { "id": survivor.id, "short_code": survivor.short_code },
+            "absorbed": { "id": absorbed.id, "short_code": absorbed.short_code, "status": "resolved" },
+            "children_reparented": absorbed_children.len(),
+        }))
+    }
+
+    // ── Edge queries ──────────────────────────────────────────────
+
+    #[tool(description = "Query typed edges (structural relationships). Returns edges for a tension or all edges of a given type. Edge types: contains (parent-child), split_from (provenance), merged_into (provenance).")]
+    async fn edges(
+        &self,
+        Parameters(p): Parameters<EdgesParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let (_workspace, store) = open_store()?;
+
+        let edges = if let Some(ref id) = p.id {
+            let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
+            let resolver = PrefixResolver::new(tensions);
+            let t = resolver.resolve(id).map_err(|e| err(e.to_string()))?;
+            store.get_edges_for_tension(&t.id).map_err(|e| err(e.to_string()))?
+        } else if let Some(ref edge_type) = p.edge_type {
+            store.get_edges_by_type(edge_type).map_err(|e| err(e.to_string()))?
+        } else {
+            store.get_all_edges().map_err(|e| err(e.to_string()))?
+        };
+
+        let mut filtered = edges;
+        if let Some(ref et) = p.edge_type {
+            if p.id.is_some() {
+                filtered.retain(|e| &e.edge_type == et);
+            }
+        }
+
+        let entries: Vec<serde_json::Value> = filtered.iter().map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "from_id": e.from_id,
+                "to_id": e.to_id,
+                "edge_type": e.edge_type,
+                "created_at": e.created_at.to_rfc3339(),
+                "gesture_id": e.gesture_id,
+            })
+        }).collect();
+
+        json_result(&serde_json::json!({ "edges": entries, "count": entries.len() }))
     }
 
     // ── Batch tool ──────────────────────────────────────────────
