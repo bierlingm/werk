@@ -48,6 +48,14 @@ impl Model for InstrumentApp {
 
         // Open palette on Ctrl+K (works from any mode in Normal)
         if matches!(msg, Msg::OpenPalette) {
+            // Build combined items (actions only — tensions populate on typing)
+            let items = crate::palette::build_combined_items(
+                "",
+                Some(&self.palette_feedback),
+                self.search_index.as_ref(),
+                self.engine.store(),
+            );
+            self.command_palette.replace_actions(items);
             self.command_palette.open();
             return Cmd::none();
         }
@@ -76,7 +84,6 @@ impl Model for InstrumentApp {
                 InputMode::Editing { .. } => self.update_editing(msg),
                 InputMode::Annotating { .. } => self.update_annotating(msg),
                 InputMode::Confirming(_) => self.update_confirming(msg),
-                InputMode::Searching => self.update_searching(msg),
                 InputMode::Moving { .. } => self.update_moving(msg),
                 InputMode::Reordering { .. } => self.update_reordering(msg),
                 InputMode::Pathway => self.update_pathway(msg),
@@ -134,8 +141,6 @@ impl Model for InstrumentApp {
         if !in_survey {
             if matches!(self.input_mode, InputMode::Help) {
                 self.render_help(&content_area, frame);
-            } else if matches!(self.input_mode, InputMode::Searching) {
-                self.render_search(&content_area, frame);
             } else if matches!(self.input_mode, InputMode::Moving { .. }) {
                 self.render_search(&content_area, frame);
             } else if self.siblings.is_empty() && self.parent_id.is_none()
@@ -184,20 +189,24 @@ impl Model for InstrumentApp {
             _ => {}
         }
 
-        // Bottom bar (survey bar already rendered above if in_survey)
-        if !in_survey {
+        // Bottom bar (survey bar already rendered above if in_survey, hidden when palette is open)
+        if !in_survey && !self.command_palette.is_visible() {
             self.render_deck_bar(&lever_area, frame);
         }
 
-        // Command palette (above modals, below toasts)
+        // Command palette — unified search/command/navigation surface (above modals, below toasts)
         if self.command_palette.is_visible() {
             // Backdrop dims the field behind the palette
             crate::modal::render_backdrop(frame, content_area, &self.styles);
-            // Render palette in upper-center of content area
-            let palette_area = crate::modal::center_modal(
-                content_area,
-                60.min(content_area.width),
-                14.min(content_area.height),
+            // The widget internally sizes to 60% of the area width and centers
+            // itself. We pass the full content area — upstream issue #58 tracks
+            // making this configurable.
+            let palette_height = (content_area.height / 2).max(8).min(content_area.height.saturating_sub(1));
+            let palette_area = ftui::layout::Rect::new(
+                content_area.x,
+                content_area.y,
+                content_area.width,
+                palette_height,
             );
             use ftui::widgets::Widget;
             self.command_palette.render(palette_area, frame);
@@ -219,7 +228,6 @@ impl Model for InstrumentApp {
                     InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &hints_area, frame),
                     InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &hints_area, frame),
                     InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &hints_area, frame),
-                    InputMode::Searching => self.render_input_hints("Enter jump  j/k navigate  Esc cancel", &hints_area, frame),
                     InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
                     InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
                     _ => if !in_survey { self.render_hints(&hints_area, frame) },
@@ -277,17 +285,51 @@ impl InstrumentApp {
             _ => return None, // Don't consume system messages
         };
 
+        // Track query before event to detect changes
+        let query_before = self.command_palette.query().to_string();
+
         match self.command_palette.handle_event(&event) {
             Some(PaletteAction::Execute(id)) => {
                 Some(self.dispatch_palette_action(&id))
             }
             Some(PaletteAction::Dismiss) => Some(Cmd::none()),
-            None => None, // Event consumed, no action yet
+            None => {
+                // Query changed — refresh combined items with tension results
+                let query_after = self.command_palette.query().to_string();
+                if query_after != query_before {
+                    let items = crate::palette::build_combined_items(
+                        &query_after,
+                        Some(&self.palette_feedback),
+                        self.search_index.as_ref(),
+                        self.engine.store(),
+                    );
+                    self.command_palette.replace_actions(items);
+                    // Restore query that was cleared by replace_actions
+                    self.command_palette.set_query(&query_after);
+                }
+                None
+            }
         }
     }
 
     /// Dispatch a palette action to the same code path as direct keybindings.
     fn dispatch_palette_action(&mut self, action_id: &str) -> Cmd<Msg> {
+        // Handle tension navigation — IDs prefixed with "t:"
+        if let Some(tension_id) = action_id.strip_prefix(crate::palette::TENSION_ID_PREFIX) {
+            // Navigate to the tension's parent level with cursor on the tension
+            let parent_id = if let Ok(Some(t)) = self.engine.store().get_tension(tension_id) {
+                t.parent_id.clone()
+            } else {
+                None
+            };
+            self.parent_id = parent_id;
+            self.load_siblings();
+            if let Some(idx) = self.siblings.iter().position(|s| s.id == tension_id) {
+                self.deck_cursor_to_sibling(idx);
+            }
+            return Cmd::none();
+        }
+
         // Record selection for cross-session learning
         crate::palette::record_action_selected(&mut self.palette_feedback, action_id);
         match action_id {
@@ -402,11 +444,6 @@ impl InstrumentApp {
                 } else {
                     self.global_undo_redo(true);
                 }
-            }
-            "search" => {
-                self.input_mode = InputMode::Searching;
-                self.input_buffer.clear();
-                self.search_state = Some(crate::search::SearchState::new());
             }
             "help" => {
                 self.input_mode = InputMode::Help;
@@ -749,11 +786,16 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Search
+            // Search — opens unified palette (same as Ctrl+K)
             Msg::Char('/') | Msg::Search => {
-                self.input_mode = InputMode::Searching;
-                self.input_buffer.clear();
-                self.search_state = Some(crate::search::SearchState::new());
+                let items = crate::palette::build_combined_items(
+                    "",
+                    Some(&self.palette_feedback),
+                    self.search_index.as_ref(),
+                    self.engine.store(),
+                );
+                self.command_palette.replace_actions(items);
+                self.command_palette.open();
                 Cmd::none()
             }
 
@@ -1530,71 +1572,6 @@ impl InstrumentApp {
             }
             Msg::Char('n') | Msg::Cancel => {
                 self.input_mode = InputMode::Normal;
-                Cmd::none()
-            }
-            Msg::Quit => self.save_and_quit(),
-            _ => Cmd::none(),
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Search
-    // -----------------------------------------------------------------------
-
-    fn update_searching(&mut self, msg: Msg) -> Cmd<Msg> {
-        match msg {
-            Msg::Char(c) => {
-                self.input_buffer.push(c);
-                self.refresh_search_results(false);
-                Cmd::none()
-            }
-            Msg::Backspace => {
-                self.input_buffer.pop();
-                self.refresh_search_results(false);
-                Cmd::none()
-            }
-            Msg::Up => {
-                if let Some(ref mut s) = self.search_state {
-                    if s.cursor > 0 {
-                        s.cursor -= 1;
-                    }
-                }
-                Cmd::none()
-            }
-            Msg::Down => {
-                if let Some(ref mut s) = self.search_state {
-                    if s.cursor + 1 < s.results.len() {
-                        s.cursor += 1;
-                    }
-                }
-                Cmd::none()
-            }
-            Msg::Submit => {
-                // Navigate to selected result
-                if let Some(ref s) = self.search_state {
-                    if let Some(result) = s.selected().cloned() {
-                        // Navigate to the tension's parent level, cursor on the tension
-                        let parent_id = if let Ok(Some(t)) = self.engine.store().get_tension(&result.id) {
-                            t.parent_id.clone()
-                        } else {
-                            None
-                        };
-                        self.parent_id = parent_id;
-                        self.load_siblings();
-                        if let Some(idx) = self.siblings.iter().position(|s| s.id == result.id) {
-                            self.deck_cursor_to_sibling(idx);
-                        }
-                    }
-                }
-                self.input_mode = InputMode::Normal;
-                self.search_state = None;
-                self.input_buffer.clear();
-                Cmd::none()
-            }
-            Msg::Cancel => {
-                self.input_mode = InputMode::Normal;
-                self.search_state = None;
-                self.input_buffer.clear();
                 Cmd::none()
             }
             Msg::Quit => self.save_and_quit(),
