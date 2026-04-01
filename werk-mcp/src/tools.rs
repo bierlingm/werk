@@ -57,6 +57,7 @@ fn default_active() -> String {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[allow(dead_code)]
 pub struct ListParam {
     /// Filter: "all", "urgent", "neglected", "stagnant", or omit for active.
     #[serde(default)]

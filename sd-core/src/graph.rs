@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use fnx_algorithms::{
-    BetweennessCentralityResult, ComplexityWitness, TopologicalGenerationsResult,
+    BetweennessCentralityResult, ComplexityWitness,
     betweenness_centrality_directed, dag_longest_path, descendants, topological_generations,
 };
 use serde::{Deserialize, Serialize};

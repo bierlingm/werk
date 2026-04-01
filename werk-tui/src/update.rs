@@ -33,8 +33,10 @@ impl Model for InstrumentApp {
         }
 
         // Check for external DB changes on user input (not reorder — preserves drag state)
+        // Skip in logbase view — logbase has its own data, and load_siblings is irrelevant.
         if !matches!(msg, Msg::Tick | Msg::Noop)
             && !matches!(self.input_mode, InputMode::Reordering { .. })
+            && self.view_orientation != crate::state::ViewOrientation::Logbase
             && self.db_has_changed()
         {
             self.load_siblings();
@@ -1308,7 +1310,6 @@ impl InstrumentApp {
             Msg::Char('j') | Msg::Down => {
                 if self.logbase_cursor + 1 < total {
                     self.logbase_cursor += 1;
-                    // Update focused epoch to match cursor
                     self.logbase_focused_epoch = self.logbase_events[self.logbase_cursor].epoch_index();
                 }
                 Cmd::none()
