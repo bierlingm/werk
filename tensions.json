@@ -1,14 +1,14 @@
 {
-  "flushed_at": "2026-04-01T16:05:37Z",
+  "flushed_at": "2026-04-01T16:21:39Z",
   "summary": {
-    "active": 66,
+    "active": 67,
     "released": 20,
     "resolved": 84,
-    "total": 170
+    "total": 171
   },
   "tensions": [
     {
-      "actual": "v1.4.0: Conceptual foundation mature — standard of measurement principle, operative identity clarified. CLI reading surface consolidated to 4 primary commands (show/list/tree/stats) with rich filtering. MCP gains stats tool (8 sections). Output taxonomy settled. Three interface surfaces operational: TUI (survey V1.3), CLI (consolidated reading surface), MCP (31 tools). Cooperative dynamics remain unexplored (pending Foundations course April 2026).",
+      "actual": "v1.5-dev: Logbase exists — edges table as universal relationship substrate, werk log (6 modes), split/merge gestures with provenance, address parser (#42~e3), 35 MCP tools. CLI reading surface: 5 commands (show/list/tree/stats/log). Three interface surfaces operational: TUI (survey V1.3, deck with epoch boundary awareness), CLI (logbase + structural gestures), MCP (35 tools). TUI logbase view (#175) blocks next release. Cooperative dynamics unexplored.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -1636,9 +1636,9 @@
       "status": "Resolved"
     },
     {
-      "actual": "Evaluation completed 2026-03-31. Reframing as 'operative observations' is partially valid (no enforcement differs from blocking) but partially rationalization (the topology and computation are management regardless of vocabulary). Violates locality principle. Marginal value at current scale (70 active tensions). Premature — other FrankenSuite work (#142, #143, #144, #145) delivers more value sooner. Design doc preserved for future revisit when scale warrants it. Repositioning lower under #140.",
+      "actual": "Infrastructure complete: edges table with typed CRUD, FNX DiGraph with edge attributes, Forest::from_tensions_and_edges(). Three system types in use (contains, split_from, merged_into). What's missing: link/unlink CLI commands, user-defined type registration, signal computation from user types, TUI display of custom edges. The structural-graph-overlay.md design doc needs rewriting to reflect generic types instead of fixed enables/competes/informs.",
       "created_at": "2026-03-31T09:27:51.656375+00:00",
-      "desired": "Typed cross-cutting edges implemented — edges table in store, link/unlink gestures in CLI/MCP/TUI, combined graph (containment + typed edges) fed to FNX algorithms, new signals from full graph (community detection, competing pair collision, enabling chains)",
+      "desired": "Generic user-configurable typed edges — practitioners define their own relationship types between tensions. The edges table infrastructure exists (shipped with #89/#49: contains, split_from, merged_into). link/unlink commands expose this to users. The instrument computes from user-supplied edge types without prescribing enables/competes/informs — those are examples, not the vocabulary.",
       "horizon": "2026-07",
       "id": "01KN1KH238279JN5STC577157H",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
@@ -1875,6 +1875,17 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 175,
+      "status": "Active"
+    },
+    {
+      "actual": "cass CLI exists (v0.1.63, 2793 sessions indexed across 8 agents). CLAUDECODE=1 env var detected at runtime. cass search --workspace filters by project. cass timeline shows activity by time range. No integration point exists in werk yet. Agent session columns (agent_type, agent_session_id) added to sessions table but not populated.",
+      "created_at": "2026-04-01T16:21:19.114555+00:00",
+      "desired": "cass integration — werk detects cass CLI, queries agent session history for the workspace, surfaces it alongside epoch history in werk log (--cass flag) and TUI logbase view. Agent sessions become visible engagement records. Stretch: bootstrap a werk project from cass session archaeology.",
+      "horizon": null,
+      "id": "01KN4XJV4A5RQRJZHY0T9RTQYH",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 176,
       "status": "Active"
     }
   ]
