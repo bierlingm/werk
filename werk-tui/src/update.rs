@@ -1208,15 +1208,19 @@ impl InstrumentApp {
                     InputMode::Adding(AddStep::Desire) => {
                         if buf.is_empty() { return Cmd::none(); } // desire is required
                         let reality = self.parent_id.as_ref().and_then(|pid| {
-                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
-                        }).unwrap_or_default();
+                            self.engine.store().get_tension(pid).ok().flatten()
+                                .map(|p| p.actual)
+                                .filter(|a| !a.is_empty())
+                        }).unwrap_or_else(|| "(not yet assessed)".to_string());
                         self.create_tension(&buf, &reality);
                     }
                     InputMode::Adding(AddStep::Reality { desire }) => {
                         let reality = if buf.is_empty() {
                             self.parent_id.as_ref().and_then(|pid| {
-                                self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
-                            }).unwrap_or_default()
+                                self.engine.store().get_tension(pid).ok().flatten()
+                                    .map(|p| p.actual)
+                                    .filter(|a| !a.is_empty())
+                            }).unwrap_or_else(|| "(not yet assessed)".to_string())
                         } else { buf };
                         self.create_tension(&desire, &reality);
                     }
@@ -1256,8 +1260,10 @@ impl InstrumentApp {
                     InputMode::Adding(AddStep::Reality { desire }) => {
                         let reality = if buf.is_empty() {
                             self.parent_id.as_ref().and_then(|pid| {
-                                self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
-                            }).unwrap_or_default()
+                                self.engine.store().get_tension(pid).ok().flatten()
+                                    .map(|p| p.actual)
+                                    .filter(|a| !a.is_empty())
+                            }).unwrap_or_else(|| "(not yet assessed)".to_string())
                         } else { buf };
                         self.input_buffer.clear();
                         self.input_mode = InputMode::Adding(AddStep::Horizon { desire, reality });
@@ -1690,12 +1696,17 @@ impl InstrumentApp {
             .create_tension_with_parent(desired, actual, parent);
         self.end_gesture();
 
-        if let Ok(tension) = result {
-            self.set_transient(format!("created: {}", truncate_str(&tension.desired, 30)));
-            self.load_siblings();
-            // Position cursor on the new item
-            if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
-                self.deck_cursor_to_sibling(idx);
+        match result {
+            Ok(tension) => {
+                self.set_transient(format!("created: {}", truncate_str(&tension.desired, 30)));
+                self.load_siblings();
+                // Position cursor on the new item
+                if let Some(idx) = self.siblings.iter().position(|s| s.id == tension.id) {
+                    self.deck_cursor_to_sibling(idx);
+                }
+            }
+            Err(e) => {
+                self.set_transient(format!("create failed: {e}"));
             }
         }
     }

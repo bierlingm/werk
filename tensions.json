@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-01T06:22:41Z",
+  "flushed_at": "2026-04-01T10:40:00Z",
   "summary": {
-    "active": 66,
+    "active": 72,
     "released": 19,
-    "resolved": 77,
-    "total": 162
+    "resolved": 78,
+    "total": 169
   },
   "tensions": [
     {
@@ -374,7 +374,7 @@
       "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
       "created_at": "2026-03-24T17:52:27.203679+00:00",
       "desired": "werk has a sustainable business model that funds continued development while remaining fundamentally true to the conceptual foundation",
-      "horizon": "2026-09",
+      "horizon": "2026-06",
       "id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
@@ -1537,7 +1537,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "ftui v0.2.1 confirmed: 77 widgets, 19 layout modules, 48 runtime modules available. Full API audit complete. Imaginal sketch written (designs/tui-reimagined.md). Dead code cleaned (temporal_indicator string, trail, gap_bar removed). Current TUI: 7,884 lines hand-rolled rendering inside ftui Program shell. Theme is 8 hardcoded colors. Bayesian diff disabled. 10 input modes instead of modals. No undo, no persistence, no responsive layout.",
+      "actual": "Core structural foundation delivered across 5 phases (#162-#166): three-pane layout with responsive regimes, AdaptiveColor theme (19 slots), FocusGraph (per-item navigation), CommandPalette with FeedbackCollector learning, toast system with action buttons, undo/redo with gesture history, workspace persistence via StateRegistry, survey temporal view, inspector overlay. REMAINING: HelpSystem+HintRanker, tooltips, guided tours, sparklines, badges, animated transitions, VirtualizedList, Observable/Computed reactive state, degradation cascade, asciicast recording, input macros, drag-resize, FrankenSearch-in-palette unification, focus history/breadcrumb.",
       "created_at": "2026-03-30T21:30:03.681819+00:00",
       "desired": "the TUI is reimagined on ftui — PaneLayout spatial skeleton, focus graph navigation, modal interaction, widget-native rendering, adaptive theme, reactive state, undo, responsive breakpoints, session persistence. See designs/tui-reimagined.md",
       "horizon": "2026-07",
@@ -1729,7 +1729,7 @@
       "desired": "rendering foundation — AdaptiveColor theme replaces hardcoded palette, Bayesian diff re-enabled with proper evidence tracking. Delivers dark/light adaptation. Resolves #101 and #127 as side effects",
       "horizon": "2026-05",
       "id": "01KN22RG6SS0930JWPCT1WPEGW",
-      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "parent_id": null,
       "position": 1,
       "short_code": 162,
       "status": "Resolved"
@@ -1740,7 +1740,7 @@
       "desired": "spatial skeleton — PaneLayout three-pane (desire/field/reality) with drag-resize and snap points, Focus graph replaces cursor arithmetic, Responsive breakpoints for compact/standard/expansive regimes",
       "horizon": "2026-06",
       "id": "01KN22RMA0QZ0JDC4D3TCWKVKF",
-      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "parent_id": null,
       "position": 2,
       "short_code": 163,
       "status": "Resolved"
@@ -1751,7 +1751,7 @@
       "desired": "interaction model — Modal overlays replace 10 input modes, CommandPalette unifies search/command/navigation, Undo transactions make gestures explorative, Toast notifications replace TransientMessage",
       "horizon": "2026-06",
       "id": "01KN22RQTHPVWD88BD858GKG3G",
-      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "parent_id": null,
       "position": 3,
       "short_code": 164,
       "status": "Resolved"
@@ -1762,7 +1762,7 @@
       "desired": "widget migration — deck zones use List widget, survey uses Tree + VirtualizedList, reactive state (Observable/Computed/Binding) replaces manual cache invalidation. deck.rs and survey.rs rewritten on ftui widgets",
       "horizon": "2026-07",
       "id": "01KN22RVVGR08V2RZ2HWGE9DQV",
-      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "parent_id": null,
       "position": 4,
       "short_code": 165,
       "status": "Resolved"
@@ -1773,10 +1773,10 @@
       "desired": "polish and infrastructure — Workspace persistence (pane proportions, cursor, expansion state across sessions), development tools (Inspector overlay, Program simulator for CI testing, Input macros for regression, Asciicast recording)",
       "horizon": "2026-07",
       "id": "01KN22RZ62K8C4ZCC1T4GY8G28",
-      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "parent_id": null,
       "position": 5,
       "short_code": 166,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Engine has gesture lifecycle (begin/end/active_gesture) and mutations store old_value, but no reversal method exists. All mutations are append-only. Phase 3 TUI undo (#164) works without this by snapshotting UI state, but full undo requires sd-core support.",
@@ -1787,6 +1787,83 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 167,
+      "status": "Active"
+    },
+    {
+      "actual": "Search exists as separate InputMode::Searching. CommandPalette has fuzzy action matching only. Two disconnected surfaces.",
+      "created_at": "2026-04-01T07:19:07.253807+00:00",
+      "desired": "Unified search surface — FrankenSearch feeds results into CommandPalette, search and command become one gesture, result selection navigates to tension",
+      "horizon": null,
+      "id": "01KN3YJ1QND5ZSVRFY3B6D7DF9",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 1,
+      "short_code": 168,
+      "status": "Active"
+    },
+    {
+      "actual": "Basic help overlay toggled by ? — flat keybinding list, no context awareness, no learning, no ftui HelpSystem integration",
+      "created_at": "2026-04-01T07:19:18.553731+00:00",
+      "desired": "Contextual help system — HelpSystem with HintRanker learns which bindings the practitioner uses, surfaces less-used ones more prominently, context-sensitive to focus position",
+      "horizon": null,
+      "id": "01KN3YJCRS1C1QWVZGRDBP0FAR",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 2,
+      "short_code": 169,
+      "status": "Active"
+    },
+    {
+      "actual": "Three-pane layout works with responsive regimes. Pane height override fields prepared but not wired to input. No focus history — ascend is structural, not spatial recall.",
+      "created_at": "2026-04-01T07:19:30.361239+00:00",
+      "desired": "Spatial refinement — drag-resize panes (fields exist, not wired), focus history with back() navigation, breadcrumb derivation from focus trail",
+      "horizon": null,
+      "id": "01KN3YJR9SV2QN0FN6XW7KBD6M",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 3,
+      "short_code": 170,
+      "status": "Active"
+    },
+    {
+      "actual": "All zones load fully into memory. Fine at current scale (dozens). No frame budget monitoring or graceful degradation.",
+      "created_at": "2026-04-01T07:19:41.475933+00:00",
+      "desired": "Scale readiness — VirtualizedList for frontier zones (hundreds of siblings without lag), degradation cascade sheds visual polish under frame pressure",
+      "horizon": null,
+      "id": "01KN3YK3530BE1WD7XH02JX18N",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 4,
+      "short_code": 171,
+      "status": "Active"
+    },
+    {
+      "actual": "None implemented. Design document describes all of these. No evidence yet whether practitioners need sparklines to read urgency (glyphs may suffice) or badges to see signals (text may suffice). Evaluation before implementation.",
+      "created_at": "2026-04-01T07:19:55.202370+00:00",
+      "desired": "Evaluate visual polish layer — sparklines for temporal urgency, badge widgets for exceptional states, animated transitions (slide/fade), tooltips on dwell, guided tours for onboarding. Assess which of these produce real practitioner value vs decorative complexity.",
+      "horizon": null,
+      "id": "01KN3YKGJ2S2ZGR7XVG5ZFVVGA",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 5,
+      "short_code": 172,
+      "status": "Active"
+    },
+    {
+      "actual": "State is imperative — frontier recomputed on gesture completion. Modals work via InputMode enum. Session telemetry exists but not in asciicast/macro format. Current approach is simple and correct. Question is whether the lift produces enough value.",
+      "created_at": "2026-04-01T07:20:06.508717+00:00",
+      "desired": "Evaluate architectural lifts — Observable/Computed reactive state (requires Rc<RefCell<>> restructuring), true ftui::Modal focus trapping (replacing InputMode dispatch), asciicast recording, input macros for regression testing. Assess cost/benefit vs current imperative approach.",
+      "horizon": null,
+      "id": "01KN3YKVKC79HTB3MCPGSP5RZC",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": 6,
+      "short_code": 173,
+      "status": "Active"
+    },
+    {
+      "actual": "Session telemetry exists (session_log.rs). Mutation timestamps exist. FeedbackCollector pattern exists for exponential-decay tracking. Graph analysis exists in sd-core. None of these are connected — no attention computation, no practice signals, no blind spot detection. No CLI or MCP exposure of practice patterns.",
+      "created_at": "2026-04-01T10:23:12.559272+00:00",
+      "desired": "Attention topology — the instrument observes the practitioner's engagement patterns (visit frequency, gesture density, neglect, decision friction, closure drift, desire instability) and surfaces structural blind spots as signals. Computation in sd-core, exposed through CLI (werk attention), MCP (attention_report, neglected_tensions, decision_friction, closure_drift), and TUI (gutter signals, survey blind-spots band, ground zoom). Feeds into what was ground mode — analytical surface reimagined as in-place signals plus a dedicated zoom level.",
+      "horizon": null,
+      "id": "01KN49345FDYPSGGG8Z953T4FQ",
+      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "position": 1,
+      "short_code": 174,
       "status": "Active"
     }
   ]
