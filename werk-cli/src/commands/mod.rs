@@ -20,6 +20,7 @@ pub mod init;
 pub mod insights;
 pub mod list;
 pub mod log;
+pub mod merge;
 pub mod move_cmd;
 pub mod note;
 pub mod position;
@@ -32,6 +33,7 @@ pub mod resolve;
 pub mod rm;
 pub mod show;
 pub mod snooze;
+pub mod split;
 pub mod stats;
 pub mod survey;
 pub mod trajectory;
@@ -361,6 +363,97 @@ Examples:
         parent: Option<String>,
 
         /// Preview what would happen without making changes.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Split a tension into N new tensions with provenance tracking.
+    ///
+    /// Creates N new tensions, each with a `split_from` provenance edge
+    /// pointing to the source. The source is resolved by default.
+    #[command(after_help = "\
+Examples:
+  werk split 25 \"API concern\" \"UI concern\"
+  werk split 25 \"A\" \"B\" \"C\"                Three-way split
+  werk split 25 \"A\" \"B\" --assign 30=1       Child #30 to successor 1
+  werk split 25 \"A\" \"B\" --children-to-parent
+  werk split 25 \"A\" \"B\" --keep              Source stays active
+  werk split 25 \"A\" \"B\" --dry-run           Preview")]
+    Split {
+        /// Source tension ID or prefix.
+        id: String,
+
+        /// Desired states for new tensions (at least 2).
+        #[arg(required = true, num_args = 2..)]
+        desires: Vec<String>,
+
+        /// Assign children: CHILD_SHORT_CODE=TARGET_NUM (e.g., 30=1).
+        #[arg(long, num_args = 1..)]
+        assign: Vec<String>,
+
+        /// Float all children to source's parent.
+        #[arg(long)]
+        children_to_parent: bool,
+
+        /// Move all children to successor N.
+        #[arg(long)]
+        children_to: Option<usize>,
+
+        /// Keep source active (don't resolve).
+        #[arg(long)]
+        keep: bool,
+
+        /// Release source instead of resolving.
+        #[arg(long)]
+        release: bool,
+
+        /// Hold source (unpositioned) instead of resolving.
+        #[arg(long)]
+        hold: bool,
+
+        /// Preview without making changes.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Merge tensions with provenance tracking.
+    ///
+    /// Asymmetric: `--into <id>` — one survives, the other is absorbed.
+    /// Symmetric: `--as "desire"` — both absorbed into a new tension.
+    #[command(after_help = "\
+Examples:
+  werk merge 18 19 --into 18                   #18 survives, #19 absorbed
+  werk merge 18 19 --into 18 --desire \"updated\"  Update survivor's desire
+  werk merge 18 19 --as \"combined concern\"     Both absorbed into new
+  werk merge 18 19 --into 18 --dry-run         Preview")]
+    Merge {
+        /// First tension ID.
+        id1: String,
+
+        /// Second tension ID.
+        id2: String,
+
+        /// Asymmetric: surviving tension ID (must be id1 or id2).
+        #[arg(long)]
+        into: Option<String>,
+
+        /// Symmetric: desire for the new merged tension.
+        #[arg(long, name = "as")]
+        as_desire: Option<String>,
+
+        /// Update survivor's desire (asymmetric mode).
+        #[arg(long)]
+        desire: Option<String>,
+
+        /// Assign children: CHILD_SHORT_CODE=TARGET (e.g., 30=survivor).
+        #[arg(long, num_args = 1..)]
+        assign: Vec<String>,
+
+        /// Float absorbed tension's children to its parent.
+        #[arg(long)]
+        children_to_parent: bool,
+
+        /// Preview without making changes.
         #[arg(long)]
         dry_run: bool,
     },
@@ -733,6 +826,8 @@ impl Commands {
                 | Commands::Note { .. }
                 | Commands::Horizon { .. }
                 | Commands::Epoch { .. }
+                | Commands::Split { .. }
+                | Commands::Merge { .. }
                 | Commands::Snooze { .. }
                 | Commands::Recur { .. }
                 | Commands::Batch { .. }

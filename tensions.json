@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-01T15:19:17Z",
+  "flushed_at": "2026-04-01T15:26:02Z",
   "summary": {
     "active": 68,
     "released": 20,
@@ -514,7 +514,7 @@
       "status": "Active"
     },
     {
-      "actual": "Edge types split_from and merged_into defined. Forest.split_sources(), split_children(), merge_targets(), merge_sources() methods implemented. Engine.create_edge/remove_edge wired. Data model ready for split/merge gestures.",
+      "actual": "werk split and werk merge commands complete. Split: 1→N with split_from edges, cross-tension epochs (split_source/split_target), child assignment (--assign, --children-to-parent, --children-to=N), source disposition (resolve/--keep/--release/--hold), --dry-run. Merge: asymmetric (--into) and symmetric (--as), merged_into edges, cross-tension epochs (merge_source/merge_target), child reparenting, --dry-run. Both commands are gesture-wrapped.",
       "created_at": "2026-03-24T17:52:28.264233+00:00",
       "desired": "structural transformation gestures (split, merge, restructure) and cross-tension provenance — the foundation and data model support identity-topology-changing operations with lineage tracking",
       "horizon": null,
