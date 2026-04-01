@@ -728,11 +728,25 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Yank (copy tension ID to clipboard)
+            // Yank — y copies short code, Y copies full context for agent handoff
             Msg::Char('y') => {
                 if let Some(entry) = self.action_target().cloned() {
-                    let _ = self.copy_to_clipboard(&entry.id);
-                    self.set_transient(format!("copied: {}", &entry.id[..12.min(entry.id.len())]));
+                    let label = entry.short_code
+                        .map(|c| format!("#{}", c))
+                        .unwrap_or_else(|| entry.id[..12.min(entry.id.len())].to_string());
+                    let _ = self.copy_to_clipboard(&label);
+                    self.set_transient(format!("copied: {}", label));
+                }
+                Cmd::none()
+            }
+            Msg::Char('Y') => {
+                if let Some(entry) = self.action_target().cloned() {
+                    let ctx = self.build_clipboard_context(&entry.id);
+                    let _ = self.copy_to_clipboard(&ctx);
+                    let label = entry.short_code
+                        .map(|c| format!("#{}", c))
+                        .unwrap_or_else(|| "tension".to_string());
+                    self.set_transient(format!("copied {} context", label));
                 }
                 Cmd::none()
             }
