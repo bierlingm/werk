@@ -53,6 +53,16 @@
 //!     description TEXT
 //! );
 //!
+//! CREATE TABLE edges (
+//!     id TEXT PRIMARY KEY,
+//!     from_id TEXT NOT NULL,
+//!     to_id TEXT NOT NULL,
+//!     edge_type TEXT NOT NULL,
+//!     created_at TEXT NOT NULL,
+//!     gesture_id TEXT,
+//!     UNIQUE(from_id, to_id, edge_type)
+//! );
+//!
 //! CREATE TABLE epochs (
 //!     id TEXT PRIMARY KEY,
 //!     tension_id TEXT NOT NULL,
@@ -396,6 +406,42 @@ impl Store {
             StoreError::DatabaseError(format!("failed to create epochs table: {:?}", e))
         })?;
 
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS edges (
+                id TEXT PRIMARY KEY,
+                from_id TEXT NOT NULL,
+                to_id TEXT NOT NULL,
+                edge_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                gesture_id TEXT,
+                UNIQUE(from_id, to_id, edge_type)
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create edges table: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id)",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create edges from index: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_id)",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create edges to index: {:?}", e))
+        })?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create edges type index: {:?}", e))
+        })?;
+
         // Migration: Add horizon column to existing databases
         // Check if the column exists, and if not, add it
         let columns: Vec<fsqlite::Row> =
@@ -555,6 +601,106 @@ impl Store {
             StoreError::DatabaseError(format!("failed to create tensions parent index: {:?}", e))
         })?;
 
+        // Migration: Add epoch_type to epochs
+        let epoch_columns: Vec<fsqlite::Row> =
+            conn.query("PRAGMA table_info(epochs)").map_err(|e| {
+                StoreError::DatabaseError(format!("failed to query epochs schema: {:?}", e))
+            })?;
+
+        let has_epoch_type = epoch_columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                &**s == "epoch_type"
+            } else {
+                false
+            }
+        });
+
+        if !has_epoch_type {
+            conn.execute("ALTER TABLE epochs ADD COLUMN epoch_type TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add epoch_type column: {:?}", e))
+                })?;
+        }
+
+        // Migration: Add agent_type and agent_session_id to sessions
+        let session_columns: Vec<fsqlite::Row> =
+            conn.query("PRAGMA table_info(sessions)").map_err(|e| {
+                StoreError::DatabaseError(format!("failed to query sessions schema: {:?}", e))
+            })?;
+
+        let has_agent_type = session_columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                &**s == "agent_type"
+            } else {
+                false
+            }
+        });
+
+        if !has_agent_type {
+            conn.execute("ALTER TABLE sessions ADD COLUMN agent_type TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("failed to add agent_type column: {:?}", e))
+                })?;
+            conn.execute("ALTER TABLE sessions ADD COLUMN agent_session_id TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!(
+                        "failed to add agent_session_id column: {:?}",
+                        e
+                    ))
+                })?;
+        }
+
+        // Migration: Populate edges table from existing parent_id relationships.
+        // Check if edges are already populated by looking for any contains edges.
+        let edge_count: Vec<fsqlite::Row> = conn
+            .query("SELECT COUNT(*) FROM edges WHERE edge_type = 'contains'")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("failed to count edges: {:?}", e))
+            })?;
+
+        let has_edges = match edge_count.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Integer(n)) => *n > 0,
+            _ => false,
+        };
+
+        if !has_edges {
+            // Migrate parent_id relationships to contains edges
+            let parent_rows: Vec<fsqlite::Row> = conn
+                .query(
+                    "SELECT id, parent_id FROM tensions WHERE parent_id IS NOT NULL",
+                )
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!(
+                        "failed to query tensions for edge migration: {:?}",
+                        e
+                    ))
+                })?;
+
+            let now = Utc::now().to_rfc3339();
+            for row in &parent_rows {
+                if let (Some(SqliteValue::Text(child_id)), Some(SqliteValue::Text(parent_id))) =
+                    (row.get(0), row.get(1))
+                {
+                    let edge_id = ulid::Ulid::new().to_string();
+                    conn.execute_with_params(
+                        "INSERT OR IGNORE INTO edges (id, from_id, to_id, edge_type, created_at) VALUES (?1, ?2, ?3, 'contains', ?4)",
+                        &[
+                            SqliteValue::Text(edge_id.into()),
+                            SqliteValue::Text(parent_id.to_string().into()),
+                            SqliteValue::Text(child_id.to_string().into()),
+                            SqliteValue::Text(now.clone().into()),
+                        ],
+                    )
+                    .map_err(|e| {
+                        StoreError::DatabaseError(format!(
+                            "failed to migrate parent_id to edge: {:?}",
+                            e
+                        ))
+                    })?;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -627,6 +773,11 @@ impl Store {
 
         self.persist_tension(&tension)?;
 
+        // Create contains edge if parent exists
+        if let Some(ref pid) = tension.parent_id {
+            let _ = self.create_edge(pid, &tension.id, crate::edge::EDGE_CONTAINS);
+        }
+
         // Build creation mutation value with optional horizon
         let creation_value = match &tension.horizon {
             Some(h) => format!(
@@ -683,6 +834,11 @@ impl Store {
         )?;
         tension.short_code = Some(self.next_short_code()?);
         self.persist_tension(&tension)?;
+
+        // Create contains edge if parent exists
+        if let Some(ref pid) = tension.parent_id {
+            let _ = self.create_edge(pid, &tension.id, crate::edge::EDGE_CONTAINS);
+        }
 
         // Build creation mutation value with optional horizon
         let creation_value = match &tension.horizon {
@@ -1353,6 +1509,14 @@ impl Store {
                     return Err(e);
                 }
             }
+        }
+
+        // Update edges: remove old contains edge, create new one
+        if let Some(ref old_pid) = old_parent {
+            let _ = self.remove_edge(old_pid, id, crate::edge::EDGE_CONTAINS);
+        }
+        if let Some(ref new_pid) = new_parent {
+            let _ = self.create_edge(new_pid, id, crate::edge::EDGE_CONTAINS);
         }
 
         // Emit StructureChanged event
@@ -2049,6 +2213,21 @@ impl Store {
             }
         }
 
+        // Clean up edges: remove all edges involving this tension
+        // and update contains edges for reparented children
+        if let Some(ref old_pid) = grandparent_id {
+            // Remove old contains edge from deleted tension's parent
+            let _ = self.remove_edge(old_pid, id, crate::edge::EDGE_CONTAINS);
+        }
+        for child in &children {
+            // Remove contains edge from deleted tension to child
+            let _ = self.remove_edge(id, &child.id, crate::edge::EDGE_CONTAINS);
+            // Create new contains edge from grandparent to child
+            if let Some(ref gp_id) = grandparent_id {
+                let _ = self.create_edge(gp_id, &child.id, crate::edge::EDGE_CONTAINS);
+            }
+        }
+
         // Emit TensionDeleted event
         self.emit_event(&EventBuilder::tension_deleted(
             tension.id,
@@ -2263,7 +2442,7 @@ impl Store {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
-                "SELECT id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id FROM epochs WHERE tension_id = ?1 ORDER BY timestamp ASC",
+                "SELECT id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id, epoch_type FROM epochs WHERE tension_id = ?1 ORDER BY timestamp ASC",
                 &[SqliteValue::Text(tension_id.to_owned().into())],
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
@@ -2311,6 +2490,11 @@ impl Store {
                 reality_snapshot: reality,
                 children_snapshot_json: children_json,
                 trigger_gesture_id: trigger,
+                epoch_type: match row.get(7) {
+                    Some(SqliteValue::Text(s)) => Some(s.to_string()),
+                    Some(SqliteValue::Null) | None => None,
+                    _ => None,
+                },
             });
         }
         Ok(epochs)
@@ -2336,6 +2520,246 @@ impl Store {
         }
         Ok(None)
     }
+
+    /// Create an epoch with a type annotation (for split/merge provenance).
+    pub fn create_epoch_typed(
+        &self,
+        tension_id: &str,
+        desire_snapshot: &str,
+        reality_snapshot: &str,
+        children_snapshot_json: Option<&str>,
+        trigger_gesture_id: Option<&str>,
+        epoch_type: Option<&str>,
+    ) -> Result<String, StoreError> {
+        let id = ulid::Ulid::new().to_string();
+        let now = Utc::now();
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO epochs (id, tension_id, timestamp, desire_snapshot, reality_snapshot, children_snapshot_json, trigger_gesture_id, epoch_type) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            &[
+                SqliteValue::Text(id.to_string().into()),
+                SqliteValue::Text(tension_id.to_owned().into()),
+                SqliteValue::Text(now.to_rfc3339().into()),
+                SqliteValue::Text(desire_snapshot.to_owned().into()),
+                SqliteValue::Text(reality_snapshot.to_owned().into()),
+                match children_snapshot_json {
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
+                    None => SqliteValue::Null,
+                },
+                match trigger_gesture_id {
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
+                    None => SqliteValue::Null,
+                },
+                match epoch_type {
+                    Some(s) => SqliteValue::Text(s.to_owned().into()),
+                    None => SqliteValue::Null,
+                },
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to create typed epoch: {:?}", e)))?;
+        Ok(id)
+    }
+
+    // ── Edge management ───────────────────────────────────────────
+
+    /// Create a typed edge between two tensions.
+    pub fn create_edge(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        edge_type: &str,
+    ) -> Result<crate::edge::Edge, StoreError> {
+        let edge = crate::edge::Edge {
+            id: ulid::Ulid::new().to_string(),
+            from_id: from_id.to_owned(),
+            to_id: to_id.to_owned(),
+            edge_type: edge_type.to_owned(),
+            created_at: Utc::now(),
+            gesture_id: self.active_gesture_id.clone(),
+        };
+
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO edges (id, from_id, to_id, edge_type, created_at, gesture_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            &[
+                SqliteValue::Text(edge.id.clone().into()),
+                SqliteValue::Text(edge.from_id.clone().into()),
+                SqliteValue::Text(edge.to_id.clone().into()),
+                SqliteValue::Text(edge.edge_type.clone().into()),
+                SqliteValue::Text(edge.created_at.to_rfc3339().into()),
+                match &edge.gesture_id {
+                    Some(g) => SqliteValue::Text(g.clone().into()),
+                    None => SqliteValue::Null,
+                },
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to create edge: {:?}", e)))?;
+
+        Ok(edge)
+    }
+
+    /// Remove an edge by from_id, to_id, and type.
+    pub fn remove_edge(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        edge_type: &str,
+    ) -> Result<bool, StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "DELETE FROM edges WHERE from_id = ?1 AND to_id = ?2 AND edge_type = ?3",
+            &[
+                SqliteValue::Text(from_id.to_owned().into()),
+                SqliteValue::Text(to_id.to_owned().into()),
+                SqliteValue::Text(edge_type.to_owned().into()),
+            ],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("failed to remove edge: {:?}", e)))?;
+
+        // fsqlite doesn't return affected rows directly; check if edge still exists
+        let check = conn
+            .query_with_params(
+                "SELECT COUNT(*) FROM edges WHERE from_id = ?1 AND to_id = ?2 AND edge_type = ?3",
+                &[
+                    SqliteValue::Text(from_id.to_owned().into()),
+                    SqliteValue::Text(to_id.to_owned().into()),
+                    SqliteValue::Text(edge_type.to_owned().into()),
+                ],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("edge check failed: {:?}", e)))?;
+
+        let still_exists = match check.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Integer(n)) => *n > 0,
+            _ => false,
+        };
+
+        Ok(!still_exists)
+    }
+
+    /// Get all edges involving a tension (as source or target).
+    pub fn get_edges_for_tension(
+        &self,
+        tension_id: &str,
+    ) -> Result<Vec<crate::edge::Edge>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT id, from_id, to_id, edge_type, created_at, gesture_id FROM edges WHERE from_id = ?1 OR to_id = ?1 ORDER BY created_at ASC",
+                &[SqliteValue::Text(tension_id.to_owned().into())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_edge_rows(rows)
+    }
+
+    /// Get all edges of a specific type.
+    pub fn get_edges_by_type(
+        &self,
+        edge_type: &str,
+    ) -> Result<Vec<crate::edge::Edge>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT id, from_id, to_id, edge_type, created_at, gesture_id FROM edges WHERE edge_type = ?1 ORDER BY created_at ASC",
+                &[SqliteValue::Text(edge_type.to_owned().into())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_edge_rows(rows)
+    }
+
+    /// Get all edges (for Forest construction).
+    pub fn get_all_edges(&self) -> Result<Vec<crate::edge::Edge>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query(
+                "SELECT id, from_id, to_id, edge_type, created_at, gesture_id FROM edges ORDER BY created_at ASC",
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        self.parse_edge_rows(rows)
+    }
+
+    /// Get the parent ID for a tension (from contains edges).
+    /// This replaces direct parent_id column reads.
+    pub fn get_parent_id_from_edges(&self, tension_id: &str) -> Result<Option<String>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT from_id FROM edges WHERE to_id = ?1 AND edge_type = 'contains' LIMIT 1",
+                &[SqliteValue::Text(tension_id.to_owned().into())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        match rows.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Text(s)) => Ok(Some(s.to_string())),
+            _ => Ok(None),
+        }
+    }
+
+    /// Get children IDs for a tension (from contains edges).
+    /// This replaces direct parent_id = ? queries.
+    pub fn get_children_ids_from_edges(&self, parent_id: &str) -> Result<Vec<String>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT to_id FROM edges WHERE from_id = ?1 AND edge_type = 'contains'",
+                &[SqliteValue::Text(parent_id.to_owned().into())],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+
+        let mut ids = Vec::new();
+        for row in &rows {
+            if let Some(SqliteValue::Text(s)) = row.get(0) {
+                ids.push(s.to_string());
+            }
+        }
+        Ok(ids)
+    }
+
+    fn parse_edge_rows(&self, rows: Vec<fsqlite::Row>) -> Result<Vec<crate::edge::Edge>, StoreError> {
+        let mut edges = Vec::new();
+        for row in &rows {
+            let id = match row.get(0) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => return Err(StoreError::DatabaseError("invalid edge id".to_owned())),
+            };
+            let from_id = match row.get(1) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => return Err(StoreError::DatabaseError("invalid edge from_id".to_owned())),
+            };
+            let to_id = match row.get(2) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => return Err(StoreError::DatabaseError("invalid edge to_id".to_owned())),
+            };
+            let edge_type = match row.get(3) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => return Err(StoreError::DatabaseError("invalid edge edge_type".to_owned())),
+            };
+            let created_at_str = match row.get(4) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => return Err(StoreError::DatabaseError("invalid edge created_at".to_owned())),
+            };
+            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::DatabaseError(format!("invalid edge timestamp: {}", e)))?;
+            let gesture_id = match row.get(5) {
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            edges.push(crate::edge::Edge {
+                id,
+                from_id,
+                to_id,
+                edge_type,
+                created_at,
+                gesture_id,
+            });
+        }
+        Ok(edges)
+    }
 }
 
 /// A record of an epoch snapshot.
@@ -2348,6 +2772,9 @@ pub struct EpochRecord {
     pub reality_snapshot: String,
     pub children_snapshot_json: Option<String>,
     pub trigger_gesture_id: Option<String>,
+    /// Type of epoch: None for normal, "split_source", "split_target",
+    /// "merge_source", "merge_target" for provenance events.
+    pub epoch_type: Option<String>,
 }
 
 #[cfg(test)]

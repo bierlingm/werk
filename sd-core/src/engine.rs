@@ -248,6 +248,41 @@ impl Engine {
     pub fn compute_urgency(&self, tension: &Tension) -> Option<crate::temporal::Urgency> {
         compute_urgency(tension, chrono::Utc::now())
     }
+
+    // ── Edge operations ───────────────────────────────────────────
+
+    /// Create a typed edge between two tensions.
+    pub fn create_edge(
+        &mut self,
+        from_id: &str,
+        to_id: &str,
+        edge_type: &str,
+    ) -> Result<crate::edge::Edge, crate::store::StoreError> {
+        self.store.create_edge(from_id, to_id, edge_type)
+    }
+
+    /// Remove an edge by from_id, to_id, and type.
+    pub fn remove_edge(
+        &mut self,
+        from_id: &str,
+        to_id: &str,
+        edge_type: &str,
+    ) -> Result<bool, crate::store::StoreError> {
+        self.store.remove_edge(from_id, to_id, edge_type)
+    }
+
+    /// Get all edges for a tension.
+    pub fn get_edges_for_tension(
+        &self,
+        tension_id: &str,
+    ) -> Result<Vec<crate::edge::Edge>, crate::store::StoreError> {
+        self.store.get_edges_for_tension(tension_id)
+    }
+
+    /// Get all edges (for Forest construction).
+    pub fn get_all_edges(&self) -> Result<Vec<crate::edge::Edge>, crate::store::StoreError> {
+        self.store.get_all_edges()
+    }
 }
 
 #[cfg(test)]
