@@ -345,7 +345,7 @@ impl InstrumentApp {
 
     /// End the current gesture and commit its snapshot to undo history.
     pub fn end_gesture(&mut self) {
-        self.end_gesture();
+        let _ = self.engine.end_gesture();
         if let Some((desc, snapshot)) = self.pending_gesture.take() {
             self.gesture_history.push(desc, snapshot);
         }
