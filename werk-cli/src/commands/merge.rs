@@ -271,7 +271,7 @@ fn cmd_merge_symmetric(
     t1: &sd_core::Tension,
     t2: &sd_core::Tension,
     new_desire: &str,
-    assign: &[String],
+    _assign: &[String],
     children_to_parent: bool,
     dry_run: bool,
 ) -> Result<(), WerkError> {

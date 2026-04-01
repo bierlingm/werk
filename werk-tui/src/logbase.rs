@@ -377,6 +377,10 @@ impl InstrumentApp {
 impl InstrumentApp {
     /// Render the logbase view.
     pub fn render_logbase(&self, area: &Rect, frame: &mut Frame<'_>) {
+        // Clear the full content area to prevent stale cell bleed-through.
+        // Same pattern as the deck view — Cell::default() has WHITE fg.
+        crate::helpers::clear_area_styled(frame, *area, self.styles.clr_dim);
+
         let area = self.layout.content_area(*area);
         let w = area.width as usize;
 
@@ -405,11 +409,11 @@ impl InstrumentApp {
             }
         }
 
-        // Identity: desire
+        // Identity: desire (capped to 2 lines to preserve space for the stream)
         let display = werk_shared::display_id(tension.short_code, &tension.id);
         let desire_text = format!("  \u{25C6} {} {}", display, tension.desired);
         let desire_wrapped = word_wrap(&desire_text, w);
-        for line_text in &desire_wrapped {
+        for line_text in desire_wrapped.iter().take(2) {
             header_lines.push(Line::from_spans([
                 Span::styled(line_text.clone(), self.styles.text),
             ]));
@@ -434,11 +438,11 @@ impl InstrumentApp {
             }
         }
 
-        // Reality
+        // Reality (capped to 2 lines)
         if !tension.actual.is_empty() {
             let reality_text = format!("  \u{25C7} {}", tension.actual);
             let reality_wrapped = word_wrap(&reality_text, w);
-            for line_text in &reality_wrapped {
+            for line_text in reality_wrapped.iter().take(2) {
                 header_lines.push(Line::from_spans([
                     Span::styled(line_text.clone(), self.styles.subdued),
                 ]));
@@ -477,42 +481,36 @@ impl InstrumentApp {
             }
         }
 
-        // Summary line
+        let header_height = header_lines.len() as u16;
+
         let epoch_count = self.logbase_epochs.len();
         let mutation_count: usize = self.logbase_events.iter()
             .filter(|e| matches!(e, LogbaseEvent::Mutation { .. }))
             .count();
-        let age = if let Some(first) = self.logbase_epochs.first() {
-            format_age(first.timestamp)
-        } else {
-            "no history".to_owned()
-        };
-        let summary = format!("  {} epoch{} \u{00b7} {} mutation{} \u{00b7} {}",
-            epoch_count, if epoch_count == 1 { "" } else { "s" },
-            mutation_count, if mutation_count == 1 { "" } else { "s" },
-            age,
-        );
-        header_lines.push(Line::from_spans([
-            Span::styled(summary, self.styles.dim),
-        ]));
 
-        let header_height = header_lines.len() as u16;
-
-        // === Layout: header + separator + stream + hints ===
+        // === Layout: header + separator + stream ===
         let stream_height = area.height.saturating_sub(header_height + 1); // +1 for separator
 
         // Render header
         let header_area = Rect::new(area.x, area.y, area.width, header_height);
         Paragraph::new(Text::from_lines(header_lines)).render(header_area, frame);
 
-        // Separator
+        // Separator with epoch/mutation counts
         let sep_y = area.y + header_height;
         if sep_y < area.y + area.height {
-            let sep_text = format_separator(
-                w,
-                epoch_count,
-                mutation_count,
+            let _age = if let Some(first) = self.logbase_epochs.first() {
+                format!(" \u{00b7} {}", format_age(first.timestamp))
+            } else {
+                String::new()
+            };
+            let label = format!(" {} epoch{} \u{00b7} {} mut{} ",
+                epoch_count, if epoch_count == 1 { "" } else { "s" },
+                mutation_count, if mutation_count == 1 { "" } else { "s" },
             );
+            let rule_w = w.saturating_sub(label.len());
+            let left = rule_w / 2;
+            let right = rule_w - left;
+            let sep_text = format!("{}{}{}", "\u{2500}".repeat(left), label, "\u{2500}".repeat(right));
             render_styled_line(frame, area.x, sep_y, area.width, &sep_text, self.styles.dim);
         }
 
@@ -548,6 +546,13 @@ impl InstrumentApp {
 
             match event {
                 LogbaseEvent::EpochBoundary { epoch_index, boundary_trigger } => {
+                    // Blank line between epochs (not before the first)
+                    if !lines.is_empty() {
+                        lines.push((Line::from_spans([
+                            Span::styled(pad_to_width("", w), self.styles.dim),
+                        ]), false));
+                    }
+
                     let epoch = &self.logbase_epochs[*epoch_index];
                     let epoch_num = epoch_index + 1;
                     let age_text = format_age(epoch.timestamp);
@@ -570,11 +575,15 @@ impl InstrumentApp {
                     };
 
                     // Epoch boundary line
+                    let cursor_mark = if is_cursor { "\u{25B8}" } else { "\u{2500}" }; // ▸ or ─
                     let label = format!("epoch {}", epoch_num);
                     let right = format!("{}{} ", age_text, structural_label);
                     let rule_w = w.saturating_sub(4 + label.len() + right.len() + 2);
                     let rule = "\u{2500}".repeat(rule_w);
-                    let boundary_text = format!(" \u{2500}\u{2500} {} {} {} ", label, rule, right);
+                    let mut boundary_text = format!(" {} \u{2500} {} {} {} ", cursor_mark, label, rule, right);
+                    while boundary_text.chars().count() < w {
+                        boundary_text.push(' ');
+                    }
 
                     let style = if is_cursor { self.styles.selected } else { self.styles.dim };
                     lines.push((Line::from_spans([Span::styled(boundary_text, style)]), is_cursor));
@@ -584,12 +593,12 @@ impl InstrumentApp {
                         // Full desire/reality
                         let desire_trunc = werk_shared::truncate(&epoch.desire_snapshot, w.saturating_sub(6));
                         lines.push((Line::from_spans([
-                            Span::styled(format!("    \u{25C6} {}", desire_trunc), self.styles.text),
+                            Span::styled(pad_to_width(&format!("    \u{25C6} {}", desire_trunc), w), self.styles.text),
                         ]), false));
 
                         let reality_trunc = werk_shared::truncate(&epoch.reality_snapshot, w.saturating_sub(6));
                         lines.push((Line::from_spans([
-                            Span::styled(format!("    \u{25C7} {}", reality_trunc), self.styles.subdued),
+                            Span::styled(pad_to_width(&format!("    \u{25C7} {}", reality_trunc), w), self.styles.subdued),
                         ]), false));
 
                         // Dotted rule before mutations
@@ -599,7 +608,7 @@ impl InstrumentApp {
                         if mutation_count > 0 {
                             let dots = "\u{2508}".repeat(w.saturating_sub(4));
                             lines.push((Line::from_spans([
-                                Span::styled(format!("    {}", dots), self.styles.dim),
+                                Span::styled(pad_to_width(&format!("    {}", dots), w), self.styles.dim),
                             ]), false));
                         }
                     } else {
@@ -614,7 +623,7 @@ impl InstrumentApp {
                             format!("    \u{25C6} {}", desire_short)
                         };
                         lines.push((Line::from_spans([
-                            Span::styled(summary, self.styles.dim),
+                            Span::styled(pad_to_width(&summary, w), self.styles.dim),
                         ]), false));
                     }
                 }
@@ -626,58 +635,87 @@ impl InstrumentApp {
                     }
 
                     let ts_display = format_date_short(*timestamp);
+                    let child_label = child_short_code
+                        .map(|sc| format!("#{}", sc))
+                        .unwrap_or_default();
+
+                    // Fixed overhead: "  ▸ GLYPH " (7) + " " + date (6) + margin (2) = ~15
+                    let overhead = 15 + child_label.len();
+                    let text_budget = w.saturating_sub(overhead);
 
                     let (glyph, text) = match field.as_str() {
                         "note" => {
-                            let trunc = werk_shared::truncate(new_value, w.saturating_sub(12 + ts_display.len()));
-                            ("\u{203B}", format!("{}", trunc)) // ※
+                            ("\u{203B}", werk_shared::truncate(new_value, text_budget).to_string()) // ※
                         }
-                        "status" if new_value == "Resolved" => {
-                            let child_label = child_short_code
-                                .map(|sc| format!("#{} ", sc))
-                                .unwrap_or_default();
-                            ("\u{2713}", format!("{}{}", child_label, werk_shared::truncate(new_value, w.saturating_sub(16)))) // ✓
+                        "status" if new_value == "Resolved" || new_value == "resolved" => {
+                            // Show what was resolved — desire text is more useful than "Resolved"
+                            let label = if child_label.is_empty() {
+                                "resolved".to_owned()
+                            } else {
+                                format!("{} resolved", child_label)
+                            };
+                            ("\u{2713}", label) // ✓
                         }
-                        "status" if new_value == "Released" => {
-                            let child_label = child_short_code
-                                .map(|sc| format!("#{} ", sc))
-                                .unwrap_or_default();
-                            ("\u{2717}", format!("{}{}", child_label, "released")) // ✗
+                        "status" if new_value == "Released" || new_value == "released" => {
+                            let label = if child_label.is_empty() {
+                                "released".to_owned()
+                            } else {
+                                format!("{} released", child_label)
+                            };
+                            ("\u{2717}", label) // ✗
                         }
                         "desired" => {
-                            let child_label = child_short_code
-                                .map(|sc| format!("#{} ", sc))
-                                .unwrap_or_default();
-                            let trunc = werk_shared::truncate(new_value, w.saturating_sub(16 + child_label.len()));
-                            ("\u{25C6}", format!("{}desire: {}", child_label, trunc)) // ◆
+                            let prefix = if child_label.is_empty() { "desire" } else { &child_label };
+                            let trunc = werk_shared::truncate(new_value, text_budget.saturating_sub(prefix.len() + 2));
+                            ("\u{25C6}", format!("{}: {}", prefix, trunc)) // ◆
                         }
                         "actual" => {
-                            let child_label = child_short_code
-                                .map(|sc| format!("#{} ", sc))
-                                .unwrap_or_default();
-                            let trunc = werk_shared::truncate(new_value, w.saturating_sub(18 + child_label.len()));
-                            ("\u{25C7}", format!("{}reality: {}", child_label, trunc)) // ◇
+                            let prefix = if child_label.is_empty() { "reality" } else { &child_label };
+                            let trunc = werk_shared::truncate(new_value, text_budget.saturating_sub(prefix.len() + 2));
+                            ("\u{25C7}", format!("{}: {}", prefix, trunc)) // ◇
                         }
                         "position" => {
-                            let child_label = child_short_code
-                                .map(|sc| format!("#{} ", sc))
-                                .unwrap_or_default();
-                            ("\u{2022}", format!("{}positioned", child_label)) // •
+                            let pos_text = if new_value.is_empty() || new_value == "null" {
+                                "unpositioned (held)".to_owned()
+                            } else {
+                                format!("position {}", new_value)
+                            };
+                            let label = if child_label.is_empty() {
+                                pos_text
+                            } else {
+                                format!("{} {}", child_label, pos_text)
+                            };
+                            ("\u{2022}", label) // •
+                        }
+                        "horizon" => {
+                            let label = if child_label.is_empty() {
+                                format!("horizon: {}", werk_shared::truncate(new_value, text_budget.saturating_sub(10)))
+                            } else {
+                                format!("{} horizon: {}", child_label, werk_shared::truncate(new_value, text_budget.saturating_sub(10 + child_label.len())))
+                            };
+                            ("\u{2022}", label) // •
                         }
                         _ => {
-                            let child_label = child_short_code
-                                .map(|sc| format!("#{} ", sc))
-                                .unwrap_or_default();
-                            let trunc = werk_shared::truncate(new_value, w.saturating_sub(16 + field.len()));
-                            ("\u{2022}", format!("{}[{}] {}", child_label, field, trunc)) // •
+                            let trunc = werk_shared::truncate(new_value, text_budget.saturating_sub(field.len() + 3 + child_label.len()));
+                            let label = if child_label.is_empty() {
+                                format!("[{}] {}", field, trunc)
+                            } else {
+                                format!("{} [{}] {}", child_label, field, trunc)
+                            };
+                            ("\u{2022}", label) // •
                         }
                     };
 
-                    // Pad to right-align timestamp
-                    let content = format!("    {} {}", glyph, text);
+                    // Pad to right-align timestamp, then pad to full width for bg color
+                    let cursor_mark = if is_cursor { " \u{25B8}" } else { "  " }; // ▸ or space
+                    let content = format!("  {} {} {}", cursor_mark, glyph, text);
                     let content_w = content.chars().count();
                     let pad = w.saturating_sub(content_w + ts_display.len() + 1);
-                    let line_text = format!("{}{}{}", content, " ".repeat(pad), ts_display);
+                    let mut line_text = format!("{}{}{}", content, " ".repeat(pad), ts_display);
+                    // Pad to full width so selected bg covers entire row
+                    while line_text.chars().count() < w {
+                        line_text.push(' ');
+                    }
 
                     let style = if is_cursor { self.styles.selected } else { self.styles.dim };
                     lines.push((Line::from_spans([Span::styled(line_text, style)]), is_cursor));
@@ -747,7 +785,8 @@ impl InstrumentApp {
             String::new()
         };
 
-        let bar_text = format!(" {} \u{00b7} {} ", tension_label, epoch_label);
+        let cursor_info = format!("{}/{}", self.logbase_cursor + 1, self.logbase_events.len());
+        let bar_text = format!(" {} \u{00b7} {} \u{00b7} {} ", tension_label, epoch_label, cursor_info);
         render_styled_line(frame, bar_area.x, bar_area.y, bar_area.width, &bar_text, self.styles.dim);
     }
 }
@@ -755,17 +794,6 @@ impl InstrumentApp {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn format_separator(w: usize, epoch_count: usize, mutation_count: usize) -> String {
-    let label = format!(" {} epoch{} \u{00b7} {} mutation{} ",
-        epoch_count, if epoch_count == 1 { "" } else { "s" },
-        mutation_count, if mutation_count == 1 { "" } else { "s" },
-    );
-    let rule_w = w.saturating_sub(label.len());
-    let left = rule_w / 2;
-    let right = rule_w - left;
-    format!("{}{}{}", "\u{2500}".repeat(left), label, "\u{2500}".repeat(right))
-}
 
 fn format_age(timestamp: DateTime<Utc>) -> String {
     let delta = Utc::now().signed_duration_since(timestamp);
@@ -779,6 +807,16 @@ fn format_age(timestamp: DateTime<Utc>) -> String {
 
 fn format_date_short(timestamp: DateTime<Utc>) -> String {
     timestamp.format("%b %d").to_string()
+}
+
+/// Pad a string to exactly `width` characters (for full-width bg coverage).
+fn pad_to_width(s: &str, width: usize) -> String {
+    let len = s.chars().count();
+    if len >= width {
+        s.to_owned()
+    } else {
+        format!("{}{}", s, " ".repeat(width - len))
+    }
 }
 
 /// Render a single styled line at a position.
