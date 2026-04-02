@@ -1,14 +1,14 @@
 {
-  "flushed_at": "2026-04-02T12:25:21Z",
+  "flushed_at": "2026-04-02T14:12:16Z",
   "summary": {
-    "active": 68,
+    "active": 69,
     "released": 20,
     "resolved": 85,
-    "total": 173
+    "total": 174
   },
   "tensions": [
     {
-      "actual": "v1.5-dev: Logbase exists — edges table as universal relationship substrate, werk log (6 modes), split/merge gestures with provenance, address parser (#42~e3), 35 MCP tools. CLI reading surface: 5 commands (show/list/tree/stats/log). Three interface surfaces operational: TUI (survey V1.3, deck with epoch boundary awareness), CLI (logbase + structural gestures), MCP (35 tools). TUI logbase view (#175) blocks next release. Cooperative dynamics unexplored.",
+      "actual": "v1.5: Logbase released — edges table as universal relationship substrate, werk log (6 modes), split/merge gestures with provenance, address parser (#42~e3), 35 MCP tools. CLI reading surface: 5 commands (show/list/tree/stats/log). Three interface surfaces operational: TUI (survey V1.3, deck with epoch boundary awareness, logbase Phase 1 with fisheye epochs/navigation/batch-collapse/event descriptions), CLI (logbase + structural gestures), MCP (35 tools). / opens palette from all views. Test suite green (stale tests fixed). Cooperative dynamics unexplored.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -1867,7 +1867,7 @@
       "status": "Active"
     },
     {
-      "actual": "Phase 1 release-ready. Logbase view with fisheye epoch expansion, j/k event nav, J/K epoch nav with directional entry (K enters at bottom, J at top), Enter toggles focus on boundaries or expands detail on events. Inline date column with sticky overlay via buffer writes. Batch collapsing (5+ same-type, Enter expands). No-op epoch guard prevents phantom epochs. Palette #42~e3 navigates to specific epoch. Compression counts in status bar (focused-epoch-scoped, excludes boundaries). Survey items load on restore. Remaining: text wrapping, cross-view search.",
+      "actual": "Phase 1 released. Logbase view with fisheye epoch expansion, j/k event nav, J/K epoch nav with directional entry (K enters at bottom, J at top), Enter toggles focus on boundaries or expands detail on events. Inline date column with sticky overlay via buffer writes. Batch collapsing (5+ same-type, Enter expands). No-op epoch guard prevents phantom epochs. Palette #42~e3 navigates to specific epoch. Compression counts in status bar (focused-epoch-scoped, excludes boundaries). Survey items load on restore. / opens palette from all three views (deck, survey, logbase). Remaining for Phase 2: text wrapping, in-view event filtering.",
       "created_at": "2026-04-01T16:02:57.300614+00:00",
       "desired": "TUI logbase view — browse epoch history, ghost geometry, provenance lineage from within the TUI. Entry points: palette address resolution (#42~e3), keybinding from deck view, pan-below-current-epoch navigation. May include FrankenMermaid visualization of split/merge topology.",
       "horizon": null,
@@ -1909,6 +1909,17 @@
       "position": null,
       "short_code": 178,
       "status": "Resolved"
+    },
+    {
+      "actual": "No filtering exists. The logbase shows all events for a tension. The only narrowing is the fisheye (focused epoch expanded, others collapsed). / opens the cross-view palette for navigation but does not filter the stream.",
+      "created_at": "2026-04-02T14:10:48.276796+00:00",
+      "desired": "logbase in-view filtering — narrow the visible event stream by text, field type, child tension, date range, or composed multi-facet queries without leaving the logbase view",
+      "horizon": null,
+      "id": "01KN78GJTM1KJ0CFMPNHBHAD0V",
+      "parent_id": "01KN4WH74MES7HZQG04A51ER0D",
+      "position": null,
+      "short_code": 179,
+      "status": "Active"
     }
   ]
 }

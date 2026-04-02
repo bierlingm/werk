@@ -135,8 +135,8 @@ fn test_full_lifecycle_dynamics_evolution() {
 
     let stdout = String::from_utf8_lossy(&output);
     assert!(
-        stdout.contains("Facts:"),
-        "Should show Facts section, got: {}",
+        stdout.contains("Activity:"),
+        "Should show Activity section, got: {}",
         stdout
     );
 
@@ -1430,10 +1430,7 @@ fn test_context_has_expected_fields() {
     assert!(context_json.get("siblings").is_some(), "Should have siblings");
     assert!(context_json.get("children").is_some(), "Should have children");
     assert!(context_json.get("mutations").is_some(), "Should have mutations");
-    assert!(context_json.get("projection").is_some(), "Should have projection");
-
-    // Context should NOT have dynamics
-    assert!(context_json.get("dynamics").is_none(), "Should not have dynamics");
+    assert!(context_json.get("engagement").is_some(), "Should have engagement");
 }
 
 // =============================================================================

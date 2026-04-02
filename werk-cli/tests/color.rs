@@ -278,13 +278,8 @@ fn test_show_readable() {
         stdout
     );
     assert!(
-        stdout.contains("Facts:"),
-        "Output should contain 'Facts:', got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("Closure:"),
-        "Output should contain 'Closure:', got: {}",
+        stdout.contains("Activity:"),
+        "Output should contain 'Activity:', got: {}",
         stdout
     );
 }

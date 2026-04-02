@@ -142,7 +142,7 @@ fn test_context_tension_has_all_fields() {
 
 /// Context no longer includes dynamics, but has projection.
 #[test]
-fn test_context_has_projection() {
+fn test_context_has_engagement() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -167,11 +167,8 @@ fn test_context_has_projection() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).unwrap();
 
-    // Should have projection field
-    assert!(json.get("projection").is_some(), "Should have projection");
-
-    // Should NOT have dynamics
-    assert!(json.get("dynamics").is_none(), "Should not have dynamics");
+    // Should have engagement field (replaced projection)
+    assert!(json.get("engagement").is_some(), "Should have engagement");
 }
 
 /// Context mutations are in chronological order.

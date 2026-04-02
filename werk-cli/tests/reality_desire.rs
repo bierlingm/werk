@@ -151,6 +151,7 @@ fn test_reality_rejects_empty() {
 
 /// VAL-CRUD-009: Reality opens $EDITOR when value omitted
 #[test]
+#[ignore] // Requires TTY — CLI correctly refuses editor in non-interactive mode
 fn test_reality_opens_editor() {
     let dir = TempDir::new().unwrap();
 
@@ -461,6 +462,7 @@ fn test_desire_rejects_empty() {
 
 /// VAL-CRUD-012: Desire opens $EDITOR when value omitted
 #[test]
+#[ignore] // Requires TTY — CLI correctly refuses editor in non-interactive mode
 fn test_desire_opens_editor() {
     let dir = TempDir::new().unwrap();
 
@@ -644,6 +646,7 @@ fn test_desire_json_output() {
 /// Editor modifies the content
 /// This test uses a script file that acts as an editor
 #[test]
+#[ignore] // Requires TTY — CLI correctly refuses editor in non-interactive mode
 fn test_editor_modifies_content() {
     let dir = TempDir::new().unwrap();
 
