@@ -471,9 +471,7 @@ impl InstrumentApp {
 
 /// Build display items from the event stream.
 ///
-/// Layout for mutation events follows deck column pattern:
-///   [date 6ch] [gutter 2] [glyph 2] [text...] [gap] [#child-id]
-///
+/// Events grouped by date: date header, then indented glyph+text lines.
 /// Epoch sections: desire at top, events in middle, reality at bottom.
 /// Changed snapshots get HeaderStyle::Text, unchanged get HeaderStyle::Dim.
 fn build_list_items(
@@ -486,12 +484,15 @@ fn build_list_items(
     show_all: bool,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
+    let mut current_date = String::new(); // Track date for grouping headers
 
     for (i, event) in events.iter().enumerate() {
         let is_focused = event.epoch_index() == focused_epoch;
 
         match event {
             LogbaseEvent::EpochBoundary { epoch_index, .. } => {
+                // Reset date grouping for each epoch section
+                current_date.clear();
                 // Blank separator between epochs (not before first)
                 if !items.is_empty() {
                     items.push(LogbaseItem {
@@ -585,8 +586,19 @@ fn build_list_items(
                     continue;
                 }
 
-                // Column layout: [date 6] [gutter 2] [glyph 2] [text]
+                // Date grouping: emit a date header when the date changes
                 let date = format_date_short(*timestamp);
+                if date != current_date {
+                    current_date = date.clone();
+                    items.push(LogbaseItem {
+                        text: format!("  {}", date),
+                        style: Style::default(),
+                        event_index: i,
+                        is_boundary: false,
+                        selectable: false,
+                        bright: false,
+                    });
+                }
 
                 // Resolve ULID to "#N" (short code only — detail on expansion)
                 let resolve_id = |ulid: &str| -> String {
@@ -677,7 +689,7 @@ fn build_list_items(
                     }
                 };
 
-                let display = format!("{:<6}  {} {}", date, glyph, text);
+                let display = format!("    {} {}", glyph, text);
 
                 items.push(LogbaseItem {
                     text: display,
@@ -763,15 +775,9 @@ fn collapse_consecutive_runs(items: Vec<LogbaseItem>) -> Vec<LogbaseItem> {
         if !item.selectable || item.is_boundary {
             return None;
         }
-        // Format is: "date   glyph text..." — extract glyph + first word after glyph
+        // Format is: "    glyph text..." — extract glyph + first word
         let text = item.text.trim();
-        // Skip date (6 chars + 2 spaces)
-        if text.len() < 10 {
-            return None;
-        }
-        let after_date = &text[8..]; // after "MMM DD  "
-        // Take glyph + first word
-        let parts: Vec<&str> = after_date.splitn(3, ' ').collect();
+        let parts: Vec<&str> = text.splitn(3, ' ').collect();
         if parts.len() >= 2 {
             Some(format!("{} {}", parts[0], parts[1]))
         } else {
