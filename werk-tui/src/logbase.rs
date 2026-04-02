@@ -550,17 +550,22 @@ fn build_list_items(
                     right_parts.push(trigger_label);
                 }
 
-                // Epoch boundary line — selectable
-                items.push(LogbaseItem {
-                    text: format!("\u{2500}\u{2500} epoch {} \u{2500}\u{2500} {}", epoch_num, right_parts.join(" ")),
-                    style: Style::default(),
-                    event_index: i,
-                    is_boundary: true,
-                    selectable: true,
-                    bright: true,
-                });
+                // Focused epoch: boundary is pinned above the list, not in the list.
+                // Non-focused epochs: boundary + summary in the list.
+                if is_focused {
+                    // No boundary line — it's rendered as the pinned header.
+                    // Events follow directly.
+                } else {
+                    items.push(LogbaseItem {
+                        text: format!("\u{2500}\u{2500} epoch {} \u{2500}\u{2500} {}", epoch_num, right_parts.join(" ")),
+                        style: Style::default(),
+                        event_index: i,
+                        is_boundary: true,
+                        selectable: true,
+                        bright: true,
+                    });
+                }
 
-                // Focused epoch: desire/reality are pinned anchors (not in list).
                 // Non-focused epoch: one summary line showing what changed.
                 if !is_focused {
                     let summary = if desire_changed && reality_changed {
