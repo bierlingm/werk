@@ -486,14 +486,12 @@ fn build_list_items(
     show_all: bool,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
-    let mut current_date = String::new();
 
     for (i, event) in events.iter().enumerate() {
         let is_focused = event.epoch_index() == focused_epoch;
 
         match event {
             LogbaseEvent::EpochBoundary { epoch_index, .. } => {
-                current_date.clear();
                 // Blank separator between epochs (not before first)
                 if !items.is_empty() {
                     items.push(LogbaseItem {
@@ -596,13 +594,6 @@ fn build_list_items(
                 }
 
                 let item_date = format_date_short(*timestamp);
-                // Date column: show date on first event of each group, blank otherwise
-                let date_col = if item_date != current_date {
-                    current_date = item_date.clone();
-                    format!("{:<8}", item_date)
-                } else {
-                    "        ".to_owned()
-                };
 
                 // Resolve ULID to "#N" (short code only — detail on expansion)
                 let resolve_id = |ulid: &str| -> String {
@@ -693,7 +684,7 @@ fn build_list_items(
                     }
                 };
 
-                let display = format!("{}{} {}", date_col, glyph, text);
+                let display = format!("    {} {}", glyph, text);
 
                 items.push(LogbaseItem {
                     text: display,
