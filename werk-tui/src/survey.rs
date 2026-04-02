@@ -951,7 +951,7 @@ fn render_provider_line(
     is_selected: bool,
     w: usize,
     styles: &InstrumentStyles,
-) -> Line {
+) -> Line<'static> {
     // Plain text for the horizon column. Emoji-range glyphs (⏱) cause width
     // misalignment: unicode-width reports 1 cell but terminals render 2.
     let horizon_str = match &item.own_horizon_label {
@@ -1011,7 +1011,7 @@ fn render_tree_child_line(
     is_selected: bool,
     w: usize,
     styles: &InstrumentStyles,
-) -> Line {
+) -> Line<'static> {
     let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
     let prefix_w = item.tree_prefix.chars().count();
     let glyph = position_glyph(item);
@@ -1094,7 +1094,7 @@ fn render_now_zone(w: usize, lines: &mut Vec<Line>, add_blank_before: bool, styl
 
 /// Render a dimmed breadcrumb line for an ancestor that scrolled off-screen.
 /// Same layout as a regular line but fully dim — provides structural context.
-fn render_breadcrumb_line(item: &SurveyItem, w: usize, styles: &InstrumentStyles) -> Line {
+fn render_breadcrumb_line(item: &SurveyItem, w: usize, styles: &InstrumentStyles) -> Line<'static> {
     let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
     let glyph = position_glyph(item);
     let glyph_str = format!("{glyph} ");

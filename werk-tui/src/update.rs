@@ -209,9 +209,8 @@ impl Model for InstrumentApp {
         if self.command_palette.is_visible() {
             // Backdrop dims the field behind the palette
             crate::modal::render_backdrop(frame, content_area, &self.styles);
-            // The widget internally sizes to 60% of the area width and centers
-            // itself. We pass the full content area — upstream issue #58 tracks
-            // making this configurable.
+            // with_fill_area(true) makes the widget use our full area instead
+            // of its default 60%-width centered layout.
             let palette_height = (content_area.height / 2).max(8).min(content_area.height.saturating_sub(1));
             let palette_area = ftui::layout::Rect::new(
                 content_area.x,

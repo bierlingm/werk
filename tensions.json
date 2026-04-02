@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-02T14:17:13Z",
+  "flushed_at": "2026-04-02T14:41:47Z",
   "summary": {
-    "active": 69,
+    "active": 68,
     "released": 20,
-    "resolved": 85,
+    "resolved": 86,
     "total": 174
   },
   "tensions": [
@@ -1889,7 +1889,7 @@
       "status": "Active"
     },
     {
-      "actual": "frankentui issues #57 and #58 both closed. Code locations identified: palette.rs (glyph comment L152, builder L41), update.rs (layout comment L210). Cargo.toml needs version bump.",
+      "actual": "Done. Dep bumped to git rev d73c9f47. Palette builder chains with_fill_area(true).with_title(\"Search\"). Workaround comments in palette.rs and update.rs updated. Also fixed 7 Line lifetime annotations in deck_zones.rs and survey.rs required by the new ftui version. All 7 TUI tests pass. Switch back to crates.io version when 0.2.2 is published.",
       "created_at": "2026-04-01T18:55:40.651435+00:00",
       "desired": "integrate ftui palette API — bump dep to pick up d73c9f47, call with_fill_area(true) and with_title(\"Search\"), update workaround comments in palette.rs and update.rs",
       "horizon": null,
@@ -1897,7 +1897,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 177,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Done. Summary-level event descriptions: verb-first natural language (resolved #83, moved #138 to root, #49 reality updated, positioned #36 at 1). Glyph taxonomy (✓ ∼ ↻ ✕ → ▸ ◆ ◇ ⊘ ※). Enter expansion shows child desire text, new value, old value. Date grouping via inline column with sticky overlay. Batch collapsing with Enter to expand. Epoch boundary triggers use snapshot comparison (ground truth).",

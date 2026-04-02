@@ -1874,8 +1874,7 @@ dependencies = [
 [[package]]
 name = "ftui"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c067649514af6d1cc308f78826fd8e7655b05bb001f44824e04d296fdb7d43c3"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ftui-core",
  "ftui-extras",
@@ -1888,10 +1887,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ftui-a11y"
+version = "0.1.0"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
+dependencies = [
+ "ahash",
+ "ftui-core",
+]
+
+[[package]]
 name = "ftui-backend"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d2a7626014a38b2676f18362d744d7fefefbd2d531860d72e9fd2ff8137ef83"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ftui-core",
  "ftui-render",
@@ -1900,8 +1907,7 @@ dependencies = [
 [[package]]
 name = "ftui-core"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07f72a180b002371a31ad286c396801adc47a095df6a4f5f5d3e4f91ee0a3c06"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ahash",
  "arc-swap",
@@ -1917,8 +1923,7 @@ dependencies = [
 [[package]]
 name = "ftui-extras"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bae79f17f6392916417005d2f3c128e1d7b7cad08acef4e8e62ac3b87b5615b"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "web-time",
 ]
@@ -1926,25 +1931,23 @@ dependencies = [
 [[package]]
 name = "ftui-i18n"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f4ce37b0ad45d37e083d4db5ccee5540ea18725f87045673f41adda86a92ea2"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 
 [[package]]
 name = "ftui-layout"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cebeada8b3b542471ed2e43b3e9fae43d8fc7f275f340861fdcab6794b4ce4e"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ftui-core",
  "rustc-hash",
  "serde",
+ "smallvec",
 ]
 
 [[package]]
 name = "ftui-render"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66559719b7cf30a9824fcb368b82e36eacee7178ef85c8bc2ec4c588dc3dfdf9"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ahash",
  "bitflags 2.11.0",
@@ -1959,9 +1962,9 @@ dependencies = [
 [[package]]
 name = "ftui-runtime"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "441fd2910cef058c40241e4a6ec48a0165cf2cfb787c493f13063ca311a462c8"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
+ "arc-swap",
  "base64 0.22.1",
  "ftui-backend",
  "ftui-core",
@@ -1981,8 +1984,7 @@ dependencies = [
 [[package]]
 name = "ftui-style"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9d0f4c1a06ca3ec677dd52d7418ee7dc38fe5df983b62a4f91938cf52185906"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ahash",
  "arc-swap",
@@ -1993,8 +1995,7 @@ dependencies = [
 [[package]]
 name = "ftui-text"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4936f5a4d61e9c99e96e23240fc6084d70eef5b0ecd4a726609a6bedbae77c44"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ftui-core",
  "ftui-layout",
@@ -2012,14 +2013,15 @@ dependencies = [
 [[package]]
 name = "ftui-widgets"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5cd953320541aafc80ca0546ff26a9478e161baf421d9e0372c2f503b1e881b"
+source = "git+https://github.com/Dicklesworthstone/frankentui?rev=d73c9f47#d73c9f47506860963adb983cfadf19c750b48a6b"
 dependencies = [
  "ahash",
  "bitflags 2.11.0",
+ "ftui-a11y",
  "ftui-core",
  "ftui-layout",
  "ftui-render",
+ "ftui-runtime",
  "ftui-style",
  "ftui-text",
  "unicode-segmentation",

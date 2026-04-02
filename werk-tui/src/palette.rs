@@ -38,7 +38,9 @@ pub fn build_palette(feedback: Option<&FeedbackCollector>) -> CommandPalette {
     };
 
     let mut palette = CommandPalette::new()
-        .with_max_visible(12);
+        .with_max_visible(12)
+        .with_fill_area(true)
+        .with_title("Search");
 
     for id in ordered_ids {
         if let Some(action) = make_action(id) {
@@ -178,9 +180,8 @@ fn tension_action_item(
     status: sd_core::TensionStatus,
     parent_ref: &str,
 ) -> ActionItem {
-    // Status glyph goes in the category badge — rendered separately by the
-    // widget, outside the title's match-highlight logic. This avoids the
-    // widget's byte-vs-char position bug with non-ASCII title characters.
+    // Status glyph in category badge — rendered separately by the widget,
+    // outside the title's match-highlight logic. Keeps titles clean.
     let badge = match status {
         sd_core::TensionStatus::Active => "\u{25C7}",    // ◇
         sd_core::TensionStatus::Resolved => "\u{2713}",  // ✓

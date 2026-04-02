@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 sd-core = { path = "../sd-core" }
 werk-shared = { path = "../werk-shared" }
-ftui = { version = "0.2", features = ["crossterm"] }
-ftui-runtime = { version = "0.2", features = ["state-persistence"] }
+ftui = { git = "https://github.com/Dicklesworthstone/frankentui", rev = "d73c9f47", features = ["crossterm"] }
+ftui-runtime = { git = "https://github.com/Dicklesworthstone/frankentui", rev = "d73c9f47", features = ["state-persistence"] }
 crossterm = "0.28"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

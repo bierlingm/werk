@@ -52,7 +52,7 @@ pub fn build_child_line(
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
-) -> Line {
+) -> Line<'static> {
     let is_done = entry.status == TensionStatus::Resolved
         || entry.status == TensionStatus::Released;
 
@@ -156,7 +156,7 @@ pub fn build_note_line(
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
-) -> Line {
+) -> Line<'static> {
     let base_style = if is_selected {
         styles.selected
     } else {
@@ -204,7 +204,7 @@ pub fn build_indicator_line(
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
-) -> Line {
+) -> Line<'static> {
     let style = if is_selected {
         styles.selected
     } else {
@@ -227,7 +227,7 @@ pub fn build_input_line(
     cols: &ColumnLayout,
     w: usize,
     styles: &InstrumentStyles,
-) -> Line {
+) -> Line<'static> {
     let content = if is_selected {
         if is_empty_console {
             "\u{25B8} a add first step \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality"
