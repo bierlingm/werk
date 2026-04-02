@@ -1041,23 +1041,14 @@ impl InstrumentApp {
         let offset = state.offset;
         drop(state);
 
-        // Sticky date: if the first visible item has a blank date column,
-        // overlay the date from the nearest preceding item that has one.
-        // Only covers the date column (first 10 chars including highlight marker),
-        // so the event text and highlight remain intact.
+        // Sticky date: if the first visible item has a blank date column
+        // (starts with spaces — not the first event of its date group),
+        // overlay the date so it stays visible when scrolled.
         if offset > 0 {
-            let first_visible_date = self.logbase_items.get(offset)
-                .filter(|i| i.date.is_empty())
-                .is_some();
-            if first_visible_date {
-                // Find the date by scanning backward from offset
-                let date = self.logbase_items[..offset].iter().rev()
-                    .find(|i| !i.date.is_empty())
-                    .map(|i| i.date.as_str())
-                    .unwrap_or("");
-                if !date.is_empty() {
-                    // Overlay just the date column area (after the 2-char marker)
-                    let date_text = format!("{:<8}", date);
+            if let Some(item) = self.logbase_items.get(offset) {
+                let has_blank_date_col = item.text.starts_with("        ");
+                if has_blank_date_col && !item.date.is_empty() {
+                    let date_text = format!("{:<8}", item.date);
                     Paragraph::new(Text::from(Line::from_spans([
                         Span::styled(date_text, self.styles.dim),
                     ])))
