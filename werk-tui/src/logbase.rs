@@ -701,12 +701,25 @@ fn build_list_items(
                 });
 
                 // Expanded detail (Enter/Space): show child desire, new value, old value.
+                // Each detail line is a single list item — must not exceed terminal
+                // width or the List widget wraps it visually. Cap at 120 chars.
                 if expanded_event == Some(i) {
+                    let detail_line = |text: &str| -> String {
+                        let prefix = "          ";
+                        let max = 120usize.saturating_sub(prefix.len());
+                        if text.chars().count() <= max {
+                            format!("{}{}", prefix, text)
+                        } else {
+                            let truncated: String = text.chars().take(max.saturating_sub(1)).collect();
+                            format!("{}{}…", prefix, truncated)
+                        }
+                    };
+
                     // Show child tension's desire text if this is a child mutation
                     if let Some(cid) = child_tension_id {
                         if let Some(desire) = id_to_desire.get(cid.as_str()) {
                             items.push(LogbaseItem {
-                                text: format!("          {}", desire),
+                                text: detail_line(desire),
                                 style: Style::default(),
                                 event_index: i,
                                 is_boundary: false,
@@ -722,7 +735,7 @@ fn build_list_items(
                         && !new_value.contains("eleased") && !new_value.contains("ctive"));
                     if show_new && !new_value.is_empty() {
                         items.push(LogbaseItem {
-                            text: format!("          {}", new_value),
+                            text: detail_line(new_value),
                             style: Style::default(),
                             event_index: i,
                             is_boundary: false,
@@ -739,7 +752,7 @@ fn build_list_items(
                                 old.clone()
                             };
                             items.push(LogbaseItem {
-                                text: format!("          was {}", old_display),
+                                text: detail_line(&format!("was {}", old_display)),
                                 style: Style::default(),
                                 event_index: i,
                                 is_boundary: false,
