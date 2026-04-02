@@ -128,6 +128,8 @@ pub struct LogbaseItem {
     pub selectable: bool,
     /// Whether to use bright/text style instead of dim (for changed snapshots, boundaries).
     pub bright: bool,
+    /// Date label for this item (used for sticky date header).
+    pub date: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -484,15 +486,12 @@ fn build_list_items(
     show_all: bool,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
-    let mut current_date = String::new(); // Track date for grouping headers
 
     for (i, event) in events.iter().enumerate() {
         let is_focused = event.epoch_index() == focused_epoch;
 
         match event {
             LogbaseEvent::EpochBoundary { epoch_index, .. } => {
-                // Reset date grouping for each epoch section
-                current_date.clear();
                 // Blank separator between epochs (not before first)
                 if !items.is_empty() {
                     items.push(LogbaseItem {
@@ -502,6 +501,7 @@ fn build_list_items(
                         is_boundary: false,
                         selectable: false,
                     bright: false,
+                    date: String::new(),
                     });
                 }
 
@@ -563,6 +563,7 @@ fn build_list_items(
                         is_boundary: true,
                         selectable: true,
                         bright: true,
+                        date: String::new(),
                     });
                 }
 
@@ -582,6 +583,7 @@ fn build_list_items(
                         is_boundary: false,
                         selectable: false,
                         bright: false,
+                        date: String::new(),
                     });
                 }
             }
@@ -591,19 +593,7 @@ fn build_list_items(
                     continue;
                 }
 
-                // Date grouping: emit a date header when the date changes
-                let date = format_date_short(*timestamp);
-                if date != current_date {
-                    current_date = date.clone();
-                    items.push(LogbaseItem {
-                        text: format!("  {}", date),
-                        style: Style::default(),
-                        event_index: i,
-                        is_boundary: false,
-                        selectable: false,
-                        bright: false,
-                    });
-                }
+                let item_date = format_date_short(*timestamp);
 
                 // Resolve ULID to "#N" (short code only — detail on expansion)
                 let resolve_id = |ulid: &str| -> String {
@@ -703,6 +693,7 @@ fn build_list_items(
                     is_boundary: false,
                     selectable: true,
                     bright: true,
+                    date: item_date.clone(),
                 });
 
                 // Expanded detail (Enter/Space): show child desire, new value, old value.
@@ -720,17 +711,22 @@ fn build_list_items(
                         }
                     };
 
+                    let detail_item = |text: String| -> LogbaseItem {
+                        LogbaseItem {
+                            text,
+                            style: Style::default(),
+                            event_index: i,
+                            is_boundary: false,
+                            selectable: false,
+                            bright: false,
+                            date: item_date.clone(),
+                        }
+                    };
+
                     // Show child tension's desire text if this is a child mutation
                     if let Some(cid) = child_tension_id {
                         if let Some(desire) = id_to_desire.get(cid.as_str()) {
-                            items.push(LogbaseItem {
-                                text: detail_line(desire),
-                                style: Style::default(),
-                                event_index: i,
-                                is_boundary: false,
-                                selectable: false,
-                                bright: false,
-                            });
+                            items.push(detail_item(detail_line(desire)));
                         }
                     }
                     // Show the new value (for fields where the summary doesn't include it)
@@ -739,14 +735,7 @@ fn build_list_items(
                     ) || (field == "status" && !new_value.contains("esolved")
                         && !new_value.contains("eleased") && !new_value.contains("ctive"));
                     if show_new && !new_value.is_empty() {
-                        items.push(LogbaseItem {
-                            text: detail_line(new_value),
-                            style: Style::default(),
-                            event_index: i,
-                            is_boundary: false,
-                            selectable: false,
-                            bright: false,
-                        });
+                        items.push(detail_item(detail_line(new_value)));
                     }
                     // Show old value if present
                     if let Some(old) = old_value {
@@ -756,14 +745,7 @@ fn build_list_items(
                             } else {
                                 old.clone()
                             };
-                            items.push(LogbaseItem {
-                                text: detail_line(&format!("was {}", old_display)),
-                                style: Style::default(),
-                                event_index: i,
-                                is_boundary: false,
-                                selectable: false,
-                                bright: false,
-                            });
+                            items.push(detail_item(detail_line(&format!("was {}", old_display))));
                         }
                     }
                 }
@@ -840,6 +822,7 @@ fn collapse_consecutive_runs(items: Vec<LogbaseItem>) -> Vec<LogbaseItem> {
                 is_boundary: false,
                 selectable: true, // Enter expands the full run
                 bright: false,
+                date: items[run_start + 2].date.clone(),
             });
             result.push(items[run_end - 1].clone());
         }
@@ -987,7 +970,6 @@ impl InstrumentApp {
 
         let stream_y = sep_y + sep_height;
         let list_height = stream_height.saturating_sub(epoch_line_h + desire_h + reality_h);
-        self.logbase_list_height.set(list_height);
         if list_height < 2 || self.logbase_items.is_empty() {
             return;
         }
@@ -1028,10 +1010,13 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // Render list at full height — no reserved rows, no overlays.
-        // Compression counts are shown in the status bar instead.
-        let list_y = stream_y + epoch_line_h + desire_h;
-        let list_area = Rect::new(area.x, list_y, area.width, list_height);
+        // Sticky date header + list below it.
+        let date_y = stream_y + epoch_line_h + desire_h;
+        let date_h: u16 = 1;
+        let actual_list_h = list_height.saturating_sub(date_h);
+        let list_y = date_y + date_h;
+        self.logbase_list_height.set(actual_list_h);
+        let list_area = Rect::new(area.x, list_y, area.width, actual_list_h);
 
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
@@ -1048,7 +1033,19 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, list_area, frame, &mut state);
+        let offset = state.offset;
         drop(state);
+
+        // Render sticky date: date of the first visible item
+        let sticky_date = self.logbase_items.get(offset..)
+            .and_then(|items| items.iter().find(|i| !i.date.is_empty()))
+            .map(|i| i.date.as_str())
+            .unwrap_or("");
+        if !sticky_date.is_empty() {
+            let date_text = format!("  {}", sticky_date);
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(date_text, self.styles.dim)])))
+                .render(Rect::new(area.x, date_y, area.width, 1), frame);
+        }
 
         // Render reality anchor (word-wrapped, below list)
         if let Some(epoch) = focused {
