@@ -1036,13 +1036,18 @@ impl InstrumentApp {
         let offset = state.offset;
         drop(state);
 
-        // Render sticky date: date of the first visible item
-        let sticky_date = self.logbase_items.get(offset..)
-            .and_then(|items| items.iter().find(|i| !i.date.is_empty()))
-            .map(|i| i.date.as_str())
-            .unwrap_or("");
-        if !sticky_date.is_empty() {
-            let date_text = format!("  {}", sticky_date);
+        // Render sticky date: all unique dates from visible items
+        let visible_end = (offset + actual_list_h as usize).min(self.logbase_items.len());
+        let mut visible_dates: Vec<&str> = Vec::new();
+        for item in &self.logbase_items[offset..visible_end] {
+            if !item.date.is_empty() {
+                if visible_dates.last().map_or(true, |&last| last != item.date.as_str()) {
+                    visible_dates.push(&item.date);
+                }
+            }
+        }
+        if !visible_dates.is_empty() {
+            let date_text = format!("  {}", visible_dates.join(" \u{00b7} "));
             Paragraph::new(Text::from(Line::from_spans([Span::styled(date_text, self.styles.dim)])))
                 .render(Rect::new(area.x, date_y, area.width, 1), frame);
         }
@@ -1054,7 +1059,7 @@ impl InstrumentApp {
             let lines: Vec<Line> = reality_lines.iter()
                 .map(|l| Line::from_spans([Span::styled(l.clone(), reality_style)]))
                 .collect();
-            let reality_y = list_y + list_height;
+            let reality_y = list_y + actual_list_h;
             Paragraph::new(Text::from_lines(lines))
                 .render(Rect::new(area.x, reality_y, area.width, reality_h), frame);
         }
