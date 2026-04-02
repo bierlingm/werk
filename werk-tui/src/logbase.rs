@@ -698,10 +698,25 @@ impl InstrumentApp {
             None
         };
 
-        // Desire anchor (1 line, above list)
-        let desire_h: u16 = if focused.is_some() { 1 } else { 0 };
-        // Reality anchor (1 line, below list)
-        let reality_h: u16 = if focused.is_some() { 1 } else { 0 };
+        // Desire anchor (word-wrapped, capped at 3 lines)
+        let desire_lines: Vec<String> = if let Some(epoch) = focused {
+            let desire_text = format!("  \u{25C6} {}", &epoch.desire_snapshot);
+            let wrapped = word_wrap(&desire_text, w.saturating_sub(2));
+            wrapped.into_iter().take(3).collect()
+        } else {
+            Vec::new()
+        };
+        let desire_h = desire_lines.len() as u16;
+
+        // Reality anchor (word-wrapped, capped at 3 lines)
+        let reality_lines: Vec<String> = if let Some(epoch) = focused {
+            let reality_text = format!("  \u{25C7} {}", &epoch.reality_snapshot);
+            let wrapped = word_wrap(&reality_text, w.saturating_sub(2));
+            wrapped.into_iter().take(3).collect()
+        } else {
+            Vec::new()
+        };
+        let reality_h = reality_lines.len() as u16;
 
         let stream_y = sep_y + sep_height;
         let list_height = stream_height.saturating_sub(desire_h + reality_h);
@@ -709,12 +724,14 @@ impl InstrumentApp {
             return;
         }
 
-        // Render desire anchor
+        // Render desire anchor (word-wrapped)
         if let Some(epoch) = focused {
             let desire_changed = prev_epoch.map_or(true, |p| p.desire_snapshot != epoch.desire_snapshot);
-            let desire_style = if desire_changed { self.styles.cyan } else { self.styles.text };
-            let desire_text = format!("  \u{25C6} {}", &epoch.desire_snapshot);
-            Paragraph::new(Text::from(Line::from_spans([Span::styled(desire_text, desire_style)])))
+            let desire_style = if desire_changed { self.styles.amber } else { self.styles.subdued };
+            let lines: Vec<Line> = desire_lines.iter()
+                .map(|l| Line::from_spans([Span::styled(l.clone(), desire_style)]))
+                .collect();
+            Paragraph::new(Text::from_lines(lines))
                 .render(Rect::new(area.x, stream_y, area.width, desire_h), frame);
         }
 
@@ -739,15 +756,40 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, list_area, frame, &mut state);
+
+        // Compression indicators — overlay on first/last row if items exist beyond viewport
+        let total_items = self.logbase_items.len();
+        let offset = state.offset;
         drop(state); // release borrow before accessing other fields
 
-        // Render reality anchor (below list)
+        let visible_count = list_height as usize;
+        if total_items > visible_count {
+            // Items above viewport
+            if offset > 0 {
+                let above_text = format!("  \u{25B4} {} more events above", offset);
+                Paragraph::new(Text::from(Line::from_spans([Span::styled(above_text, self.styles.dim)])))
+                    .render(Rect::new(list_area.x, list_area.y, list_area.width, 1), frame);
+            }
+            // Items below viewport
+            let last_visible = offset + visible_count;
+            if last_visible < total_items {
+                let below_count = total_items - last_visible;
+                let below_text = format!("  \u{25BE} {} more events below", below_count);
+                let below_y = list_area.y + list_area.height.saturating_sub(1);
+                Paragraph::new(Text::from(Line::from_spans([Span::styled(below_text, self.styles.dim)])))
+                    .render(Rect::new(list_area.x, below_y, list_area.width, 1), frame);
+            }
+        }
+
+        // Render reality anchor (word-wrapped, below list)
         if let Some(epoch) = focused {
             let reality_changed = prev_epoch.map_or(true, |p| p.reality_snapshot != epoch.reality_snapshot);
-            let reality_style = if reality_changed { self.styles.green } else { self.styles.subdued };
-            let reality_text = format!("  \u{25C7} {}", &epoch.reality_snapshot);
+            let reality_style = if reality_changed { self.styles.amber } else { self.styles.subdued };
+            let lines: Vec<Line> = reality_lines.iter()
+                .map(|l| Line::from_spans([Span::styled(l.clone(), reality_style)]))
+                .collect();
             let reality_y = list_y + list_height;
-            Paragraph::new(Text::from(Line::from_spans([Span::styled(reality_text, reality_style)])))
+            Paragraph::new(Text::from_lines(lines))
                 .render(Rect::new(area.x, reality_y, area.width, reality_h), frame);
         }
     }
