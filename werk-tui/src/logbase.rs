@@ -1022,18 +1022,10 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // Only reserve compression rows when items overflow the available space.
-        // When everything fits, no rows are wasted on indicators.
+        // Render list at full height — no reserved rows.
         let list_y = stream_y + epoch_line_h + desire_h;
-        let needs_compression = self.logbase_items.len() > list_height as usize;
-        let reserved = if needs_compression { 2u16 } else { 0 };
-        let inner_list_h = list_height.saturating_sub(reserved);
-        let comp_above_y = list_y;
-        let comp_below_y = list_y + list_height.saturating_sub(1);
-        let inner_y = list_y + if needs_compression { 1 } else { 0 };
-        let inner_area = Rect::new(area.x, inner_y, area.width, inner_list_h);
+        let list_area = Rect::new(area.x, list_y, area.width, list_height);
 
-        // Render list first — this updates the list state's offset
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
                 ListItem::new(item.text.as_str())
@@ -1048,15 +1040,15 @@ impl InstrumentApp {
             .highlight_symbol("\u{25B8} ");
 
         let mut state = self.logbase_list_state.borrow_mut();
-        StatefulWidget::render(&list, inner_area, frame, &mut state);
+        StatefulWidget::render(&list, list_area, frame, &mut state);
 
-        // Now read the UPDATED offset (after the List widget processed it)
+        // Read the updated offset after render
         let total_items = self.logbase_items.len();
         let offset = state.offset;
         drop(state);
 
-        // Count only items from the focused epoch for compression indicators.
-        // Items from other epochs are structural navigation, not scrollable content.
+        // Overlay compression lines on top of the first/last list rows when
+        // 2+ focused-epoch items are hidden. Only overwrites non-critical rows.
         let focused_ep = self.logbase_focused_epoch;
         let is_focused_selectable = |item: &crate::logbase::LogbaseItem| -> bool {
             item.selectable && self.logbase_events.get(item.event_index)
@@ -1064,31 +1056,27 @@ impl InstrumentApp {
                 .unwrap_or(false)
         };
 
-        let has_above = offset > 0;
-        let has_below = (offset + inner_list_h as usize) < total_items;
-
-        // Render "above" compression line — only when 2+ focused items hidden
-        if has_above {
+        if offset > 0 {
             let above_count = self.logbase_items[..offset].iter().filter(|i| is_focused_selectable(i)).count();
             if above_count > 1 {
                 let above_text = format!("  \u{25B4} {} more above", above_count);
                 let pad = w.saturating_sub(above_text.chars().count() + 1);
                 let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
                 Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                    .render(Rect::new(area.x, comp_above_y, area.width, 1), frame);
+                    .render(Rect::new(area.x, list_y, area.width, 1), frame);
             }
         }
 
-        // Render "below" compression line — focused epoch items only
-        if has_below {
-            let last_visible = offset + inner_list_h as usize;
-            let below_count = self.logbase_items[last_visible.min(total_items)..].iter().filter(|i| is_focused_selectable(i)).count();
+        let visible_end = offset + list_height as usize;
+        if visible_end < total_items {
+            let below_count = self.logbase_items[visible_end.min(total_items)..].iter().filter(|i| is_focused_selectable(i)).count();
             if below_count > 1 {
                 let below_text = format!("  \u{25BE} {} more below", below_count);
                 let pad = w.saturating_sub(below_text.chars().count() + 1);
                 let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
+                let below_y = list_y + list_height.saturating_sub(1);
                 Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                    .render(Rect::new(area.x, comp_below_y, area.width, 1), frame);
+                    .render(Rect::new(area.x, below_y, area.width, 1), frame);
             }
         }
 
