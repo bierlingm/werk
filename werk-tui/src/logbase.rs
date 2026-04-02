@@ -1022,36 +1022,17 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // Compute compression indicators BEFORE rendering the list,
-        // so we can reserve rows for them (not overlay).
-        let total_items = self.logbase_items.len();
-        let offset = self.logbase_list_state.borrow().offset;
-
-        let has_above = offset > 0;
-        let items_in_list_space = list_height as usize;
-        let has_below = (offset + items_in_list_space) < total_items;
-
-        // Reserve rows for compression lines (they get their own rows, not overlays)
-        let comp_above_h: u16 = if has_above { 1 } else { 0 };
-        let comp_below_h: u16 = if has_below { 1 } else { 0 };
-        let inner_list_h = list_height.saturating_sub(comp_above_h + comp_below_h);
-
+        // Always reserve 2 rows for compression indicators (above/below).
+        // This avoids the chicken-and-egg problem of needing the list's
+        // updated offset to know if compression lines are needed.
         let list_y = stream_y + epoch_line_h + desire_h;
-
-        // Render "above" compression line — count only selectable (meaningful) items
-        if has_above {
-            let above_selectable = self.logbase_items[..offset].iter().filter(|i| i.selectable).count();
-            let above_text = format!("  \u{25B4} {} more above", above_selectable);
-            let pad = w.saturating_sub(above_text.chars().count() + 1);
-            let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
-            Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                .render(Rect::new(area.x, list_y, area.width, 1), frame);
-        }
-
-        // Render list in the inner area (between compression lines)
-        let inner_y = list_y + comp_above_h;
+        let comp_above_y = list_y;
+        let comp_below_y = list_y + list_height.saturating_sub(1);
+        let inner_list_h = list_height.saturating_sub(2);
+        let inner_y = list_y + 1;
         let inner_area = Rect::new(area.x, inner_y, area.width, inner_list_h);
 
+        // Render list first — this updates the list state's offset
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
                 ListItem::new(item.text.as_str())
@@ -1067,9 +1048,26 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, inner_area, frame, &mut state);
+
+        // Now read the UPDATED offset (after the List widget processed it)
+        let total_items = self.logbase_items.len();
+        let offset = state.offset;
         drop(state);
 
-        // Render "below" compression line — count only selectable items
+        let has_above = offset > 0;
+        let has_below = (offset + inner_list_h as usize) < total_items;
+
+        // Render "above" compression line with accurate count
+        if has_above {
+            let above_selectable = self.logbase_items[..offset].iter().filter(|i| i.selectable).count();
+            let above_text = format!("  \u{25B4} {} more above", above_selectable);
+            let pad = w.saturating_sub(above_text.chars().count() + 1);
+            let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
+                .render(Rect::new(area.x, comp_above_y, area.width, 1), frame);
+        }
+
+        // Render "below" compression line with accurate count
         if has_below {
             let last_visible = offset + inner_list_h as usize;
             let below_selectable = self.logbase_items[last_visible.min(total_items)..].iter().filter(|i| i.selectable).count();
@@ -1077,9 +1075,8 @@ impl InstrumentApp {
                 let below_text = format!("  \u{25BE} {} more below", below_selectable);
                 let pad = w.saturating_sub(below_text.chars().count() + 1);
                 let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
-                let below_y = inner_y + inner_list_h;
                 Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                    .render(Rect::new(area.x, below_y, area.width, 1), frame);
+                    .render(Rect::new(area.x, comp_below_y, area.width, 1), frame);
             }
         }
 
