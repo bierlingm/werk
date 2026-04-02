@@ -1453,7 +1453,8 @@ impl InstrumentApp {
 
     /// Update the focused epoch based on the current list selection.
     /// If the epoch changes, rebuild items to update fisheye expansion.
-    /// Preserves cursor on the event the user navigated to (not the boundary).
+    /// Places cursor at the edge closest to where the user came from:
+    /// entering from below (K) → last event; entering from above (J) → first event.
     fn update_focused_epoch_from_selection(&mut self) {
         let selected_idx = self.logbase_list_state.borrow().selected();
         let item = selected_idx.and_then(|i| self.logbase_items.get(i).cloned());
@@ -1461,26 +1462,32 @@ impl InstrumentApp {
             let event_idx = item.event_index;
             if let Some(event) = self.logbase_events.get(event_idx) {
                 let new_epoch = event.epoch_index();
-                if new_epoch != self.logbase_focused_epoch {
+                let old_epoch = self.logbase_focused_epoch;
+                if new_epoch != old_epoch {
+                    let entering_from_below = new_epoch > old_epoch;
                     self.logbase_focused_epoch = new_epoch;
                     self.logbase_expanded = None;
                     self.logbase_show_all = false;
-                    // Rebuild items with new fisheye expansion
                     self.rebuild_logbase_items();
-                    // Find the item matching the same event_index the user was on
-                    if let Some(pos) = self.logbase_items.iter().position(|item| {
-                        item.event_index == event_idx && item.selectable
-                    }) {
-                        self.logbase_list_state.borrow_mut().select(Some(pos));
-                    } else {
-                        // Fallback: select boundary for the new epoch
-                        if let Some(pos) = self.logbase_items.iter().position(|item| {
-                            item.is_boundary && self.logbase_events.get(item.event_index)
+
+                    // Find the right entry point in the new epoch's events
+                    let is_new_epoch_event = |item: &crate::logbase::LogbaseItem| -> bool {
+                        item.selectable && !item.is_boundary
+                            && self.logbase_events.get(item.event_index)
                                 .map(|e| e.epoch_index() == new_epoch)
                                 .unwrap_or(false)
-                        }) {
-                            self.logbase_list_state.borrow_mut().select(Some(pos));
-                        }
+                    };
+
+                    let pos = if entering_from_below {
+                        // Came from below (K) — enter at last event of new epoch
+                        self.logbase_items.iter().rposition(|i| is_new_epoch_event(i))
+                    } else {
+                        // Came from above (J) — enter at first event of new epoch
+                        self.logbase_items.iter().position(|i| is_new_epoch_event(i))
+                    };
+
+                    if let Some(pos) = pos {
+                        self.logbase_list_state.borrow_mut().select(Some(pos));
                     }
                 }
             }
