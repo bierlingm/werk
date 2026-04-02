@@ -982,6 +982,7 @@ impl InstrumentApp {
 
         let stream_y = sep_y + sep_height;
         let list_height = stream_height.saturating_sub(epoch_line_h + desire_h + reality_h);
+        self.logbase_list_height.set(list_height);
         if list_height < 2 || self.logbase_items.is_empty() {
             return;
         }
@@ -1090,8 +1091,7 @@ impl InstrumentApp {
         let above = self.logbase_items.get(..offset)
             .map(|s| s.iter().filter(|i| is_focused_sel(i)).count())
             .unwrap_or(0);
-        // Estimate visible rows from the content area height minus header/anchors
-        let visible = area.height as usize; // approximate
+        let visible = self.logbase_list_height.get() as usize;
         let below_start = (offset + visible).min(self.logbase_items.len());
         let below = self.logbase_items.get(below_start..)
             .map(|s| s.iter().filter(|i| is_focused_sel(i)).count())
