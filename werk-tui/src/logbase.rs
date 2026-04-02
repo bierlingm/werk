@@ -1019,10 +1019,12 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // List at full height — dates are inline in the event text.
-        let list_y = stream_y + epoch_line_h + desire_h;
-        self.logbase_list_height.set(list_height);
-        let list_area = Rect::new(area.x, list_y, area.width, list_height);
+        // Sticky date header (1 row) + list below.
+        let date_y = stream_y + epoch_line_h + desire_h;
+        let actual_list_h = list_height.saturating_sub(1);
+        let list_y = date_y + 1;
+        self.logbase_list_height.set(actual_list_h);
+        let list_area = Rect::new(area.x, list_y, area.width, actual_list_h);
 
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
@@ -1039,7 +1041,20 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, list_area, frame, &mut state);
+        let offset = state.offset;
         drop(state);
+
+        // Sticky date: find the date of the first visible item
+        let sticky_date = self.logbase_items.get(offset..)
+            .and_then(|items| items.iter().find(|i| !i.date.is_empty()))
+            .map(|i| i.date.as_str())
+            .unwrap_or("");
+        if !sticky_date.is_empty() {
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(
+                format!("  {}", sticky_date), self.styles.dim,
+            )])))
+            .render(Rect::new(area.x, date_y, area.width, 1), frame);
+        }
 
         // Render reality anchor (word-wrapped, below list)
         if let Some(epoch) = focused {
@@ -1048,7 +1063,7 @@ impl InstrumentApp {
             let lines: Vec<Line> = reality_lines.iter()
                 .map(|l| Line::from_spans([Span::styled(l.clone(), reality_style)]))
                 .collect();
-            let reality_y = list_y + list_height;
+            let reality_y = list_y + actual_list_h;
             Paragraph::new(Text::from_lines(lines))
                 .render(Rect::new(area.x, reality_y, area.width, reality_h), frame);
         }
