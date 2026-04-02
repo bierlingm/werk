@@ -588,138 +588,92 @@ fn build_list_items(
                 // Column layout: [date 6] [gutter 2] [glyph 2] [text]
                 let date = format_date_short(*timestamp);
 
-                // Resolve ULID to "#N desire text" or just "#N"
-                let resolve_id_named = |ulid: &str| -> String {
-                    let sc = id_to_shortcode.get(ulid)
-                        .and_then(|sc| *sc)
-                        .map(|n| format!("#{}", n));
-                    let desire = id_to_desire.get(ulid).cloned();
-                    match (sc, desire) {
-                        (Some(code), Some(name)) => format!("{} {}", code, name),
-                        (Some(code), None) => code,
-                        (None, _) => format!("{}…", &ulid[..8.min(ulid.len())]),
-                    }
-                };
-                let resolve_id_short = |ulid: &str| -> String {
+                // Resolve ULID to "#N" (short code only — detail on expansion)
+                let resolve_id = |ulid: &str| -> String {
                     id_to_shortcode.get(ulid)
                         .and_then(|sc| sc.map(|n| format!("#{}", n)))
                         .unwrap_or_else(|| format!("{}…", &ulid[..8.min(ulid.len())]))
                 };
 
-                // Child context: "#N desire text" for child mutations — no truncation,
-                // the List widget clips at terminal width.
-                let child_label = child_tension_id.as_ref().map(|cid| {
-                    let code = child_short_code.map(|sc| format!("#{}", sc))
-                        .unwrap_or_else(|| format!("{}…", &cid[..8.min(cid.len())]));
-                    let desire = id_to_desire.get(cid.as_str()).cloned();
-                    match desire {
-                        Some(name) => format!("{} {}", code, name),
-                        None => code,
-                    }
-                });
+                // Child ref: just "#N" for the summary line.
+                let child_code = child_short_code.map(|sc| format!("#{}", sc))
+                    .or_else(|| child_tension_id.as_ref().map(|cid| format!("{}…", &cid[..8.min(cid.len())])));
 
+                // Summary line: high-level description only. Detail on expansion.
+                let cc = child_code.as_deref().unwrap_or("");
                 let (glyph, text) = match field.as_str() {
-                    "note" => {
-                        let prefix = child_label.as_ref()
-                            .map(|c| format!("{} ", c))
-                            .unwrap_or_default();
-                        ("\u{203B}", format!("{}{}", prefix, new_value))
-                    }
-                    "status" if new_value.contains("esolved") => {
-                        let label = child_label.as_ref()
-                            .map(|c| format!("resolved {}", c))
-                            .unwrap_or_else(|| "resolved".to_owned());
-                        ("\u{2713}", label)
-                    }
-                    "status" if new_value.contains("eleased") => {
-                        let label = child_label.as_ref()
-                            .map(|c| format!("released {}", c))
-                            .unwrap_or_else(|| "released".to_owned());
-                        ("\u{223C}", label)
-                    }
-                    "status" if new_value.contains("ctive") => {
-                        let label = child_label.as_ref()
-                            .map(|c| format!("reactivated {}", c))
-                            .unwrap_or_else(|| "reactivated".to_owned());
-                        ("\u{21BB}", label) // ↻
-                    }
-                    "status" if new_value.contains("eleted") || new_value.contains("Deleted") => {
-                        let label = child_label.as_ref()
-                            .map(|c| format!("deleted {}", c))
-                            .unwrap_or_else(|| "deleted".to_owned());
-                        ("\u{2715}", label)
-                    }
-                    "desired" => {
-                        let prefix = child_label.as_ref()
-                            .map(|c| format!("{} ", c))
-                            .unwrap_or_default();
-                        ("\u{25C6}", format!("{}{}", prefix, new_value))
-                    }
-                    "actual" => {
-                        let prefix = child_label.as_ref()
-                            .map(|c| format!("{} ", c))
-                            .unwrap_or_default();
-                        ("\u{25C7}", format!("{}{}", prefix, new_value))
-                    }
-                    "position" => {
-                        if new_value.is_empty() || new_value == "null" {
-                            let label = child_label.as_ref()
-                                .map(|c| format!("held {}", c))
-                                .unwrap_or_else(|| "held".to_owned());
-                            ("\u{25B8}", label) // ▸
-                        } else {
-                            let label = child_label.as_ref()
-                                .map(|c| format!("positioned {} at {}", c, new_value))
-                                .unwrap_or_else(|| format!("positioned at {}", new_value));
-                            ("\u{25B8}", label) // ▸
-                        }
-                    }
-                    "horizon" => {
-                        if new_value.is_empty() || new_value == "null" {
-                            ("\u{2298}", "horizon cleared".to_owned()) // ⊘
-                        } else {
-                            ("\u{2298}", format!("horizon {}", new_value)) // ⊘
-                        }
-                    }
+                    "note" if !cc.is_empty() => ("\u{203B}", format!("{} noted", cc)),
+                    "note" => ("\u{203B}", werk_shared::truncate(new_value, 80).to_owned()),
+                    "status" if new_value.contains("esolved") && !cc.is_empty() =>
+                        ("\u{2713}", format!("resolved {}", cc)),
+                    "status" if new_value.contains("esolved") =>
+                        ("\u{2713}", "resolved".to_owned()),
+                    "status" if new_value.contains("eleased") && !cc.is_empty() =>
+                        ("\u{223C}", format!("released {}", cc)),
+                    "status" if new_value.contains("eleased") =>
+                        ("\u{223C}", "released".to_owned()),
+                    "status" if new_value.contains("ctive") && !cc.is_empty() =>
+                        ("\u{21BB}", format!("reactivated {}", cc)),
+                    "status" if new_value.contains("ctive") =>
+                        ("\u{21BB}", "reactivated".to_owned()),
+                    "status" if !cc.is_empty() =>
+                        ("\u{2022}", format!("{} status {}", cc, new_value)),
+                    "status" =>
+                        ("\u{2022}", format!("status {}", new_value)),
+                    "desired" if !cc.is_empty() =>
+                        ("\u{25C6}", format!("{} desire changed", cc)),
+                    "desired" =>
+                        ("\u{25C6}", "desire changed".to_owned()),
+                    "actual" if !cc.is_empty() =>
+                        ("\u{25C7}", format!("{} reality updated", cc)),
+                    "actual" =>
+                        ("\u{25C7}", "reality updated".to_owned()),
+                    "position" if (new_value.is_empty() || new_value == "null") && !cc.is_empty() =>
+                        ("\u{25B8}", format!("held {}", cc)),
+                    "position" if new_value.is_empty() || new_value == "null" =>
+                        ("\u{25B8}", "held".to_owned()),
+                    "position" if !cc.is_empty() =>
+                        ("\u{25B8}", format!("positioned {} at {}", cc, new_value)),
+                    "position" =>
+                        ("\u{25B8}", format!("positioned at {}", new_value)),
+                    "horizon" if new_value.is_empty() || new_value == "null" =>
+                        ("\u{2298}", "horizon cleared".to_owned()),
+                    "horizon" =>
+                        ("\u{2298}", format!("horizon {}", new_value)),
                     "parent_id" => {
                         let target = if new_value.is_empty() || new_value == "null" {
                             "root".to_owned()
                         } else {
-                            resolve_id_named(new_value)
+                            resolve_id(new_value)
                         };
-                        let label = child_label.as_ref()
-                            .map(|c| format!("moved {} to {}", c, target))
-                            .unwrap_or_else(|| format!("moved to {}", target));
-                        ("\u{2192}", label)
-                    }
-                    "release_reason" => {
-                        let prefix = child_label.as_ref()
-                            .map(|c| format!("{} ", c))
-                            .unwrap_or_default();
-                        ("\u{223C}", format!("{}{}", prefix, new_value))
-                    }
-                    "deleted" => {
-                        if new_value.is_empty() || new_value == "true" {
-                            let label = child_label.as_ref()
-                                .map(|c| format!("deleted {}", c))
-                                .unwrap_or_else(|| "deleted".to_owned());
-                            ("\u{2715}", label)
+                        if !cc.is_empty() {
+                            ("\u{2192}", format!("moved {} to {}", cc, target))
                         } else {
-                            let target = resolve_id_short(new_value);
-                            ("\u{2715}", format!("deleted {}", target))
+                            ("\u{2192}", format!("moved to {}", target))
                         }
                     }
+                    "release_reason" if !cc.is_empty() =>
+                        ("\u{223C}", format!("{} release reason set", cc)),
+                    "release_reason" =>
+                        ("\u{223C}", "release reason set".to_owned()),
+                    "deleted" if (new_value.is_empty() || new_value == "true") && !cc.is_empty() =>
+                        ("\u{2715}", format!("deleted {}", cc)),
+                    "deleted" if new_value.is_empty() || new_value == "true" =>
+                        ("\u{2715}", "deleted".to_owned()),
+                    "deleted" => {
+                        let target = resolve_id(new_value);
+                        ("\u{2715}", format!("deleted {}", target))
+                    }
+                    _ if !cc.is_empty() => {
+                        ("\u{2022}", format!("{} [{}] changed", cc, field))
+                    }
                     _ => {
-                        // For any field with a ULID-looking value, try to resolve
                         let display_value = if new_value.len() > 20 && new_value.chars().all(|c| c.is_alphanumeric()) {
-                            resolve_id_short(new_value)
+                            resolve_id(new_value)
                         } else {
-                            new_value.clone()
+                            werk_shared::truncate(new_value, 60).to_owned()
                         };
-                        let prefix = child_label.as_ref()
-                            .map(|c| format!("{} ", c))
-                            .unwrap_or_default();
-                        ("\u{2022}", format!("{}[{}] {}", prefix, field, display_value))
+                        ("\u{2022}", format!("[{}] {}", field, display_value))
                     }
                 };
 
@@ -734,14 +688,41 @@ fn build_list_items(
                     bright: true,
                 });
 
-                // Expanded detail (Enter/Space): show previous value if it exists.
-                // The new value is already visible in the line above (no truncation).
+                // Expanded detail (Enter/Space): show child desire, new value, old value.
                 if expanded_event == Some(i) {
+                    // Show child tension's desire text if this is a child mutation
+                    if let Some(cid) = child_tension_id {
+                        if let Some(desire) = id_to_desire.get(cid.as_str()) {
+                            items.push(LogbaseItem {
+                                text: format!("          {}", desire),
+                                style: Style::default(),
+                                event_index: i,
+                                is_boundary: false,
+                                selectable: false,
+                                bright: false,
+                            });
+                        }
+                    }
+                    // Show the new value (for fields where the summary doesn't include it)
+                    let show_new = matches!(field.as_str(),
+                        "note" | "desired" | "actual" | "release_reason"
+                    ) || (field == "status" && !new_value.contains("esolved")
+                        && !new_value.contains("eleased") && !new_value.contains("ctive"));
+                    if show_new && !new_value.is_empty() {
+                        items.push(LogbaseItem {
+                            text: format!("          {}", new_value),
+                            style: Style::default(),
+                            event_index: i,
+                            is_boundary: false,
+                            selectable: false,
+                            bright: false,
+                        });
+                    }
+                    // Show old value if present
                     if let Some(old) = old_value {
                         if !old.is_empty() {
-                            // Resolve ULIDs in old value
                             let old_display = if old.len() > 20 && old.chars().all(|c| c.is_alphanumeric()) {
-                                resolve_id_named(old)
+                                resolve_id(old)
                             } else {
                                 old.clone()
                             };
