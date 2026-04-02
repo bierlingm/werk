@@ -142,6 +142,8 @@ pub struct LogbaseData {
     pub provenance: LogbaseProvenance,
     pub header: Vec<(String, HeaderStyle)>,
     pub separator_label: String,
+    /// ID → short_code lookup for resolving ULIDs in mutation values.
+    pub id_lookup: std::collections::HashMap<String, Option<i32>>,
 }
 
 pub fn load_logbase_data(
@@ -178,7 +180,12 @@ pub fn load_logbase_data(
         mutation_count, if mutation_count == 1 { "" } else { "s" },
     );
 
-    LogbaseData { events, provenance, header, separator_label }
+    // Build owned ID lookup for list item construction
+    let id_lookup: std::collections::HashMap<String, Option<i32>> = all_tensions.iter()
+        .map(|t| (t.id.clone(), t.short_code))
+        .collect();
+
+    LogbaseData { events, provenance, header, separator_label, id_lookup }
 }
 
 /// Build the flat event stream from epochs and pre-loaded mutations.
@@ -384,7 +391,7 @@ impl InstrumentApp {
         let data = load_logbase_data(&tension, &epochs, self.engine.store());
 
         let focused_epoch = if !epochs.is_empty() { epochs.len() - 1 } else { 0 };
-        let items = build_list_items(&data.events, &epochs, focused_epoch);
+        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup);
 
         self.logbase_tension_id = Some(tension_id.to_owned());
         self.logbase_tension = Some(tension);
@@ -393,6 +400,7 @@ impl InstrumentApp {
         self.logbase_provenance = data.provenance;
         self.logbase_focused_epoch = focused_epoch;
         self.logbase_items = items;
+        self.logbase_id_lookup = data.id_lookup;
         self.logbase_header = data.header;
         self.logbase_separator = data.separator_label;
 
@@ -408,6 +416,7 @@ impl InstrumentApp {
             &self.logbase_events,
             &self.logbase_epochs,
             self.logbase_focused_epoch,
+            &self.logbase_id_lookup,
         );
     }
 
@@ -457,6 +466,7 @@ fn build_list_items(
     events: &[LogbaseEvent],
     epochs: &[EpochRecord],
     focused_epoch: usize,
+    id_to_shortcode: &std::collections::HashMap<String, Option<i32>>,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
 
@@ -548,10 +558,20 @@ fn build_list_items(
                 let date = format_date_short(*timestamp);
                 let child = child_short_code.map(|sc| format!("#{}", sc)).unwrap_or_default();
 
+                // Resolve ULID values to #shortcode where possible
+                let resolve_id = |ulid: &str| -> String {
+                    id_to_shortcode.get(ulid)
+                        .and_then(|sc| sc.map(|n| format!("#{}", n)))
+                        .unwrap_or_else(|| format!("{}...", &ulid[..8.min(ulid.len())]))
+                };
+
                 let (glyph, text) = match field.as_str() {
                     "note" => ("\u{203B}", new_value.clone()),
                     "status" if new_value.contains("esolved") => ("\u{2713}", "resolved".to_owned()),
                     "status" if new_value.contains("eleased") => ("\u{2717}", "released".to_owned()),
+                    "status" if new_value.contains("eleted") || new_value.contains("Deleted") => {
+                        ("\u{2715}", "deleted".to_owned()) // ✕
+                    }
                     "desired" => ("\u{25C6}", format!("desire: {}", new_value)),
                     "actual" => ("\u{25C7}", format!("reality: {}", new_value)),
                     "position" => {
@@ -559,7 +579,28 @@ fn build_list_items(
                         ("\u{2022}", format!("position {}", val))
                     }
                     "horizon" => ("\u{2022}", format!("horizon: {}", new_value)),
-                    _ => ("\u{2022}", format!("[{}] {}", field, new_value)),
+                    "parent_id" => {
+                        let target = resolve_id(new_value);
+                        ("\u{2022}", format!("moved to {}", target))
+                    }
+                    "deleted" => {
+                        // "deleted" field: the value is often empty or the tension ID
+                        if new_value.is_empty() || new_value == "true" {
+                            ("\u{2715}", "deleted".to_owned())
+                        } else {
+                            let target = resolve_id(new_value);
+                            ("\u{2715}", format!("deleted {}", target))
+                        }
+                    }
+                    _ => {
+                        // For any field with a ULID-looking value, try to resolve
+                        let display_value = if new_value.len() > 20 && new_value.chars().all(|c| c.is_alphanumeric()) {
+                            resolve_id(new_value)
+                        } else {
+                            new_value.clone()
+                        };
+                        ("\u{2022}", format!("[{}] {}", field, display_value))
+                    }
                 };
 
                 // Format: date  glyph child text
@@ -763,20 +804,30 @@ impl InstrumentApp {
         drop(state); // release borrow before accessing other fields
 
         let visible_count = list_height as usize;
+        let selected = self.logbase_list_state.borrow().selected().unwrap_or(0);
         if total_items > visible_count {
-            // Items above viewport
-            if offset > 0 {
-                let above_text = format!("  \u{25B4} {} more events above", offset);
-                Paragraph::new(Text::from(Line::from_spans([Span::styled(above_text, self.styles.dim)])))
+            let comp_style = self.styles.dim;
+
+            // Items above viewport — don't overlay if cursor is on the first visible row
+            let cursor_on_first = selected == offset;
+            if offset > 0 && !cursor_on_first {
+                let above_text = format!("  \u{25B4} {} more above", offset);
+                // Pad to full width and fill with box chars to fully overwrite
+                let pad = w.saturating_sub(above_text.chars().count() + 1);
+                let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
+                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, comp_style)])))
                     .render(Rect::new(list_area.x, list_area.y, list_area.width, 1), frame);
             }
-            // Items below viewport
+            // Items below viewport — don't overlay if cursor is on the last visible row
             let last_visible = offset + visible_count;
-            if last_visible < total_items {
+            let cursor_on_last = selected == last_visible.saturating_sub(1);
+            if last_visible < total_items && !cursor_on_last {
                 let below_count = total_items - last_visible;
-                let below_text = format!("  \u{25BE} {} more events below", below_count);
+                let below_text = format!("  \u{25BE} {} more below", below_count);
+                let pad = w.saturating_sub(below_text.chars().count() + 1);
+                let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
                 let below_y = list_area.y + list_area.height.saturating_sub(1);
-                Paragraph::new(Text::from(Line::from_spans([Span::styled(below_text, self.styles.dim)])))
+                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, comp_style)])))
                     .render(Rect::new(list_area.x, below_y, list_area.width, 1), frame);
             }
         }
