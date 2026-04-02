@@ -1302,19 +1302,19 @@ impl InstrumentApp {
             return Cmd::none();
         }
 
-        let current = self.logbase_list_state.selected().unwrap_or(0);
+        let current = self.logbase_list_state.borrow().selected().unwrap_or(0);
 
         match msg {
             // Event-level navigation — operates on list items
             Msg::Char('j') | Msg::Down => {
                 let next = (current + 1).min(item_count - 1);
-                self.logbase_list_state.select(Some(next));
+                self.logbase_list_state.borrow_mut().select(Some(next));
                 self.update_focused_epoch_from_selection();
                 Cmd::none()
             }
             Msg::Char('k') | Msg::Up => {
                 let prev = current.saturating_sub(1);
-                self.logbase_list_state.select(Some(prev));
+                self.logbase_list_state.borrow_mut().select(Some(prev));
                 self.update_focused_epoch_from_selection();
                 Cmd::none()
             }
@@ -1323,7 +1323,7 @@ impl InstrumentApp {
             Msg::Char('J') | Msg::MoveDown => {
                 for i in (current + 1)..item_count {
                     if self.logbase_items[i].is_boundary {
-                        self.logbase_list_state.select(Some(i));
+                        self.logbase_list_state.borrow_mut().select(Some(i));
                         self.update_focused_epoch_from_selection();
                         break;
                     }
@@ -1333,7 +1333,7 @@ impl InstrumentApp {
             Msg::Char('K') | Msg::MoveUp => {
                 for i in (0..current).rev() {
                     if self.logbase_items[i].is_boundary {
-                        self.logbase_list_state.select(Some(i));
+                        self.logbase_list_state.borrow_mut().select(Some(i));
                         self.update_focused_epoch_from_selection();
                         break;
                     }
@@ -1343,12 +1343,12 @@ impl InstrumentApp {
 
             // Jump to top/bottom
             Msg::Char('g') | Msg::JumpTop => {
-                self.logbase_list_state.select(Some(0));
+                self.logbase_list_state.borrow_mut().select(Some(0));
                 self.update_focused_epoch_from_selection();
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
-                self.logbase_list_state.select(Some(item_count - 1));
+                self.logbase_list_state.borrow_mut().select(Some(item_count - 1));
                 self.update_focused_epoch_from_selection();
                 Cmd::none()
             }
@@ -1367,9 +1367,9 @@ impl InstrumentApp {
     /// Update the focused epoch based on the current list selection.
     /// If the epoch changes, rebuild items to update fisheye expansion.
     fn update_focused_epoch_from_selection(&mut self) {
-        if let Some(item) = self.logbase_list_state.selected()
-            .and_then(|i| self.logbase_items.get(i))
-        {
+        let selected_idx = self.logbase_list_state.borrow().selected();
+        let item = selected_idx.and_then(|i| self.logbase_items.get(i).cloned());
+        if let Some(item) = item {
             let event_idx = item.event_index;
             if let Some(event) = self.logbase_events.get(event_idx) {
                 let new_epoch = event.epoch_index();
@@ -1383,7 +1383,7 @@ impl InstrumentApp {
                             .map(|e| e.epoch_index() == new_epoch)
                             .unwrap_or(false)
                     }) {
-                        self.logbase_list_state.select(Some(pos));
+                        self.logbase_list_state.borrow_mut().select(Some(pos));
                     }
                 }
             }
