@@ -510,12 +510,22 @@ fn build_list_items(
                     .count();
 
                 let trigger_label = match boundary_trigger {
-                    BoundaryTrigger::DesireChanged => " [\u{25C6}]",
-                    BoundaryTrigger::RealityChanged => " [\u{25C7}]",
-                    BoundaryTrigger::BothChanged if *epoch_index > 0 => " [\u{25C6}\u{25C7}]",
-                    BoundaryTrigger::BothChanged => "",
-                    BoundaryTrigger::Structural(s) => s.as_str(),
-                    BoundaryTrigger::Unknown => "",
+                    BoundaryTrigger::DesireChanged => " [\u{25C6}]".to_owned(),
+                    BoundaryTrigger::RealityChanged => " [\u{25C7}]".to_owned(),
+                    BoundaryTrigger::BothChanged if *epoch_index > 0 => " [\u{25C6}\u{25C7}]".to_owned(),
+                    BoundaryTrigger::BothChanged => String::new(),
+                    BoundaryTrigger::Structural(s) => s.clone(),
+                    BoundaryTrigger::Unknown => {
+                        // Neither desire nor reality changed — summarize what did
+                        let child_count = events.iter()
+                            .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, child_tension_id: Some(_), .. } if *ei == *epoch_index))
+                            .count();
+                        if child_count > 0 {
+                            format!(" [{}ch]", child_count)
+                        } else {
+                            String::new()
+                        }
+                    }
                 };
 
                 let mut right_parts = Vec::new();
@@ -524,7 +534,7 @@ fn build_list_items(
                 }
                 right_parts.push(age_text);
                 if !trigger_label.is_empty() {
-                    right_parts.push(trigger_label.to_owned());
+                    right_parts.push(trigger_label);
                 }
 
                 // Determine what changed vs prior epoch (for color coding)
@@ -625,7 +635,7 @@ fn build_list_items(
                         let label = child_label.as_ref()
                             .map(|c| format!("reactivated {}", c))
                             .unwrap_or_else(|| "reactivated".to_owned());
-                        ("\u{25C7}", label)
+                        ("\u{21BB}", label) // ↻
                     }
                     "status" if new_value.contains("eleted") || new_value.contains("Deleted") => {
                         let label = child_label.as_ref()
@@ -650,27 +660,31 @@ fn build_list_items(
                             let label = child_label.as_ref()
                                 .map(|c| format!("held {}", c))
                                 .unwrap_or_else(|| "held".to_owned());
-                            ("\u{2022}", label)
+                            ("\u{25B8}", label) // ▸
                         } else {
                             let label = child_label.as_ref()
                                 .map(|c| format!("positioned {} at {}", c, new_value))
                                 .unwrap_or_else(|| format!("positioned at {}", new_value));
-                            ("\u{2022}", label)
+                            ("\u{25B8}", label) // ▸
                         }
                     }
                     "horizon" => {
                         if new_value.is_empty() || new_value == "null" {
-                            ("\u{2022}", "horizon cleared".to_owned())
+                            ("\u{2298}", "horizon cleared".to_owned()) // ⊘
                         } else {
-                            ("\u{2022}", format!("horizon \u{2192} {}", new_value))
+                            ("\u{2298}", format!("horizon \u{2192} {}", new_value)) // ⊘
                         }
                     }
                     "parent_id" => {
-                        let target = resolve_id_named(new_value);
+                        let target = if new_value.is_empty() || new_value == "null" {
+                            "root".to_owned()
+                        } else {
+                            resolve_id_named(new_value)
+                        };
                         let label = child_label.as_ref()
-                            .map(|c| format!("moved {} to {}", c, target))
-                            .unwrap_or_else(|| format!("moved to {}", target));
-                        ("\u{2022}", label)
+                            .map(|c| format!("moved {} \u{2192} {}", c, target))
+                            .unwrap_or_else(|| format!("moved \u{2192} {}", target));
+                        ("\u{2192}", label)
                     }
                     "release_reason" => {
                         let prefix = child_label.as_ref()
@@ -716,15 +730,26 @@ fn build_list_items(
 
                 // Expanded detail lines (shown when Enter/Space pressed on this event)
                 if expanded_event == Some(i) {
-                    // Show old→new for fields that have old_value
-                    if let Some(old) = old_value {
-                        if !old.is_empty() {
-                            // Resolve ULIDs in old value too
-                            let old_display = if old.len() > 20 && old.chars().all(|c| c.is_alphanumeric()) {
-                                resolve_id_named(old)
-                            } else {
-                                old.clone()
-                            };
+                    let has_old = old_value.as_ref().map_or(false, |o| !o.is_empty());
+                    if has_old {
+                        let old = old_value.as_ref().unwrap();
+                        // Resolve ULIDs in old value
+                        let old_display = if old.len() > 20 && old.chars().all(|c| c.is_alphanumeric()) {
+                            resolve_id_named(old)
+                        } else {
+                            old.clone()
+                        };
+                        // Short fields: single-line "was → now" format
+                        if old.len() < 40 && new_value.len() < 40 {
+                            items.push(LogbaseItem {
+                                text: format!("          {} \u{2192} {}", old_display, new_value),
+                                style: Style::default(),
+                                event_index: i,
+                                is_boundary: false,
+                                selectable: false,
+                                bright: false,
+                            });
+                        } else {
                             items.push(LogbaseItem {
                                 text: format!("          was: {}", old_display),
                                 style: Style::default(),
@@ -733,12 +758,19 @@ fn build_list_items(
                                 selectable: false,
                                 bright: false,
                             });
+                            items.push(LogbaseItem {
+                                text: format!("          now: {}", new_value),
+                                style: Style::default(),
+                                event_index: i,
+                                is_boundary: false,
+                                selectable: false,
+                                bright: false,
+                            });
                         }
-                    }
-                    // Show full new value if it was truncated in the summary line
-                    if new_value.len() > 80 {
+                    } else if new_value.len() > 80 {
+                        // No old value but long new value — show full text
                         items.push(LogbaseItem {
-                            text: format!("          now: {}", new_value),
+                            text: format!("          {}", new_value),
                             style: Style::default(),
                             event_index: i,
                             is_boundary: false,
@@ -751,10 +783,84 @@ fn build_list_items(
         }
     }
 
-    // Desire/reality for focused epoch are rendered as pinned anchors,
-    // not list items. No post-processing needed.
+    // Batch-collapse consecutive same-type events (e.g., 12 "moved" in a row).
+    // Show first 2, a "… and N more" summary, and last 1.
+    items = collapse_consecutive_runs(items);
 
     items
+}
+
+/// Collapse consecutive runs of same-type selectable items into summaries.
+/// Runs of 5+ items get collapsed: first 2, summary line, last 1.
+fn collapse_consecutive_runs(items: Vec<LogbaseItem>) -> Vec<LogbaseItem> {
+    if items.len() < 5 {
+        return items;
+    }
+
+    // Extract a "run key" from item text: the glyph+verb prefix (e.g., "→ moved", "✓ resolved")
+    let run_key = |item: &LogbaseItem| -> Option<String> {
+        if !item.selectable || item.is_boundary {
+            return None;
+        }
+        // Format is: "date   glyph text..." — extract glyph + first word after glyph
+        let text = item.text.trim();
+        // Skip date (6 chars + 2 spaces)
+        if text.len() < 10 {
+            return None;
+        }
+        let after_date = &text[8..]; // after "MMM DD  "
+        // Take glyph + first word
+        let parts: Vec<&str> = after_date.splitn(3, ' ').collect();
+        if parts.len() >= 2 {
+            Some(format!("{} {}", parts[0], parts[1]))
+        } else {
+            None
+        }
+    };
+
+    let mut result = Vec::with_capacity(items.len());
+    let mut i = 0;
+    while i < items.len() {
+        let key = run_key(&items[i]);
+        if key.is_none() {
+            result.push(items[i].clone());
+            i += 1;
+            continue;
+        }
+        let key = key.unwrap();
+
+        // Count the run length
+        let run_start = i;
+        while i < items.len() && run_key(&items[i]).as_deref() == Some(&key) {
+            i += 1;
+        }
+        // Also include non-selectable detail lines that follow each item
+        let run_end = i; // exclusive
+
+        let run_len = run_end - run_start;
+        if run_len < 5 {
+            // Short run — keep all
+            for j in run_start..run_end {
+                result.push(items[j].clone());
+            }
+        } else {
+            // Long run — show first 2, summary, last 1
+            result.push(items[run_start].clone());
+            result.push(items[run_start + 1].clone());
+            let collapsed = run_len - 3;
+            result.push(LogbaseItem {
+                text: format!("          \u{2026} and {} more {}", collapsed, key),
+                style: Style::default(),
+                event_index: items[run_start + 2].event_index,
+                is_boundary: false,
+                selectable: false,
+                bright: false,
+            });
+            result.push(items[run_end - 1].clone());
+        }
+    }
+
+    result
 }
 
 /// Build cached header lines (called once during enter_logbase).
