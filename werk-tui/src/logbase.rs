@@ -1022,14 +1022,15 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // Always reserve 2 rows for compression indicators (above/below).
-        // This avoids the chicken-and-egg problem of needing the list's
-        // updated offset to know if compression lines are needed.
+        // Only reserve compression rows when items overflow the available space.
+        // When everything fits, no rows are wasted on indicators.
         let list_y = stream_y + epoch_line_h + desire_h;
+        let needs_compression = self.logbase_items.len() > list_height as usize;
+        let reserved = if needs_compression { 2u16 } else { 0 };
+        let inner_list_h = list_height.saturating_sub(reserved);
         let comp_above_y = list_y;
         let comp_below_y = list_y + list_height.saturating_sub(1);
-        let inner_list_h = list_height.saturating_sub(2);
-        let inner_y = list_y + 1;
+        let inner_y = list_y + if needs_compression { 1 } else { 0 };
         let inner_area = Rect::new(area.x, inner_y, area.width, inner_list_h);
 
         // Render list first — this updates the list state's offset
