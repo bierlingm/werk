@@ -518,39 +518,15 @@ fn build_list_items(
                     bright: true,
                 });
 
-                // Spatial law: desire at top, reality at bottom.
-                // Focused epoch: desire, separator, [mutations...], reality
-                // Non-focused epoch: desire (if changed) or reality (if changed) — one summary line
-                if is_focused {
-                    // DESIRE at top — bright if changed, dim if same
-                    items.push(LogbaseItem {
-                        text: format!("  \u{25C6} {}", &epoch.desire_snapshot),
-                        style: Style::default(),
-                        event_index: i,
-                        is_boundary: false,
-                        selectable: false,
-                        bright: desire_changed,
-                    });
-                    if mutation_count > 0 {
-                        items.push(LogbaseItem {
-                            text: format!("  {}", "\u{2508}".repeat(60)),
-                            style: Style::default(),
-                            event_index: i,
-                            is_boundary: false,
-                            selectable: false,
-                            bright: false,
-                        });
-                    }
-                    // [mutations go here — pushed by the Mutation arm below]
-                    // REALITY at bottom is pushed after all mutations for this epoch
-                } else {
-                    // Compressed: show what changed
+                // Focused epoch: desire/reality are pinned anchors (not in list).
+                // Non-focused epoch: one summary line showing what changed.
+                if !is_focused {
                     let summary = if desire_changed && reality_changed {
-                        format!("  \u{25C6} {}", &epoch.desire_snapshot)
+                        format!("  \u{25C6}\u{25C7} {}", werk_shared::truncate(&epoch.desire_snapshot, 120))
                     } else if reality_changed {
-                        format!("  \u{25C7} {}", &epoch.reality_snapshot)
+                        format!("  \u{25C7} {}", werk_shared::truncate(&epoch.reality_snapshot, 120))
                     } else {
-                        format!("  \u{25C6} {}", &epoch.desire_snapshot)
+                        format!("  \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, 120))
                     };
                     items.push(LogbaseItem {
                         text: summary,
@@ -558,7 +534,7 @@ fn build_list_items(
                         event_index: i,
                         is_boundary: false,
                         selectable: false,
-                    bright: false,
+                        bright: false,
                     });
                 }
             }
@@ -602,31 +578,8 @@ fn build_list_items(
         }
     }
 
-    // Post-process: insert reality line at the bottom of the focused epoch.
-    // Find the last item belonging to the focused epoch and insert after it.
-    if let Some(focused_boundary_idx) = events.iter().position(|e| {
-        matches!(e, LogbaseEvent::EpochBoundary { epoch_index, .. } if *epoch_index == focused_epoch)
-    }) {
-        let epoch = &epochs[focused_epoch];
-        let prev_epoch = if focused_epoch > 0 { Some(&epochs[focused_epoch - 1]) } else { None };
-        let reality_changed = prev_epoch.map_or(true, |p| p.reality_snapshot != epoch.reality_snapshot);
-
-        // Find insertion point: last item with this epoch's event_index range
-        let insert_pos = items.iter().rposition(|item| {
-            events.get(item.event_index)
-                .map(|e| e.epoch_index() == focused_epoch)
-                .unwrap_or(false)
-        }).map(|p| p + 1).unwrap_or(items.len());
-
-        items.insert(insert_pos, LogbaseItem {
-            text: format!("  \u{25C7} {}", &epoch.reality_snapshot),
-            style: Style::default(),
-            event_index: focused_boundary_idx,
-            is_boundary: false,
-            selectable: false,
-            bright: reality_changed,
-        });
-    }
+    // Desire/reality for focused epoch are rendered as pinned anchors,
+    // not list items. No post-processing needed.
 
     items
 }
@@ -737,19 +690,45 @@ impl InstrumentApp {
         Paragraph::new(Text::from(Line::from_spans([Span::styled(sep_line, self.styles.dim)])))
             .render(Rect::new(area.x, sep_y, area.width, 1), frame);
 
-        // === Event stream via ftui List widget ===
+        // === Focused epoch desire/reality anchors (pinned, never scroll away) ===
+        let focused = self.logbase_epochs.get(self.logbase_focused_epoch);
+        let prev_epoch = if self.logbase_focused_epoch > 0 {
+            self.logbase_epochs.get(self.logbase_focused_epoch - 1)
+        } else {
+            None
+        };
+
+        // Desire anchor (1 line, above list)
+        let desire_h: u16 = if focused.is_some() { 1 } else { 0 };
+        // Reality anchor (1 line, below list)
+        let reality_h: u16 = if focused.is_some() { 1 } else { 0 };
+
         let stream_y = sep_y + sep_height;
-        if stream_height < 2 || self.logbase_items.is_empty() {
+        let list_height = stream_height.saturating_sub(desire_h + reality_h);
+        if list_height < 2 || self.logbase_items.is_empty() {
             return;
         }
-        let stream_area = Rect::new(area.x, stream_y, area.width, stream_height);
+
+        // Render desire anchor
+        if let Some(epoch) = focused {
+            let desire_changed = prev_epoch.map_or(true, |p| p.desire_snapshot != epoch.desire_snapshot);
+            let desire_style = if desire_changed { self.styles.cyan } else { self.styles.text };
+            let desire_text = format!("  \u{25C6} {}", &epoch.desire_snapshot);
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(desire_text, desire_style)])))
+                .render(Rect::new(area.x, stream_y, area.width, desire_h), frame);
+        }
+
+        // Render list (middle)
+        let list_y = stream_y + desire_h;
+        let list_area = Rect::new(area.x, list_y, area.width, list_height);
 
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
-                let style = if item.bright { self.styles.text } else { self.styles.dim };
+                // Events are dim, boundaries are slightly brighter
+                let style = if item.is_boundary { self.styles.dim } else { self.styles.dim };
                 ListItem::new(item.text.as_str())
                     .style(style)
-                    .marker("  ") // 2 spaces = same width as highlight_symbol "▸ "
+                    .marker("  ")
             })
             .collect();
 
@@ -759,7 +738,18 @@ impl InstrumentApp {
             .highlight_symbol("\u{25B8} ");
 
         let mut state = self.logbase_list_state.borrow_mut();
-        StatefulWidget::render(&list, stream_area, frame, &mut state);
+        StatefulWidget::render(&list, list_area, frame, &mut state);
+        drop(state); // release borrow before accessing other fields
+
+        // Render reality anchor (below list)
+        if let Some(epoch) = focused {
+            let reality_changed = prev_epoch.map_or(true, |p| p.reality_snapshot != epoch.reality_snapshot);
+            let reality_style = if reality_changed { self.styles.green } else { self.styles.subdued };
+            let reality_text = format!("  \u{25C7} {}", &epoch.reality_snapshot);
+            let reality_y = list_y + list_height;
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(reality_text, reality_style)])))
+                .render(Rect::new(area.x, reality_y, area.width, reality_h), frame);
+        }
     }
 
     /// Render the logbase bottom bar.
