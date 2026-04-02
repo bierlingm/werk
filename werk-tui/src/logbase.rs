@@ -588,13 +588,12 @@ fn build_list_items(
                 // Column layout: [date 6] [gutter 2] [glyph 2] [text]
                 let date = format_date_short(*timestamp);
 
-                // Resolve ULID to "#N name" or just "#N"
+                // Resolve ULID to "#N desire text" or just "#N"
                 let resolve_id_named = |ulid: &str| -> String {
                     let sc = id_to_shortcode.get(ulid)
                         .and_then(|sc| *sc)
                         .map(|n| format!("#{}", n));
-                    let desire = id_to_desire.get(ulid)
-                        .map(|d| werk_shared::truncate(d, 50));
+                    let desire = id_to_desire.get(ulid).cloned();
                     match (sc, desire) {
                         (Some(code), Some(name)) => format!("{} {}", code, name),
                         (Some(code), None) => code,
@@ -607,12 +606,12 @@ fn build_list_items(
                         .unwrap_or_else(|| format!("{}…", &ulid[..8.min(ulid.len())]))
                 };
 
-                // Child context: "#N desire text" for child mutations
+                // Child context: "#N desire text" for child mutations — no truncation,
+                // the List widget clips at terminal width.
                 let child_label = child_tension_id.as_ref().map(|cid| {
                     let code = child_short_code.map(|sc| format!("#{}", sc))
                         .unwrap_or_else(|| format!("{}…", &cid[..8.min(cid.len())]));
-                    let desire = id_to_desire.get(cid.as_str())
-                        .map(|d| werk_shared::truncate(d, 40));
+                    let desire = id_to_desire.get(cid.as_str()).cloned();
                     match desire {
                         Some(name) => format!("{} {}", code, name),
                         None => code,
@@ -622,9 +621,9 @@ fn build_list_items(
                 let (glyph, text) = match field.as_str() {
                     "note" => {
                         let prefix = child_label.as_ref()
-                            .map(|c| format!("{}: ", c))
+                            .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{203B}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
+                        ("\u{203B}", format!("{}{}", prefix, new_value))
                     }
                     "status" if new_value.contains("esolved") => {
                         let label = child_label.as_ref()
@@ -654,13 +653,13 @@ fn build_list_items(
                         let prefix = child_label.as_ref()
                             .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{25C6}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
+                        ("\u{25C6}", format!("{}{}", prefix, new_value))
                     }
                     "actual" => {
                         let prefix = child_label.as_ref()
                             .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{25C7}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
+                        ("\u{25C7}", format!("{}{}", prefix, new_value))
                     }
                     "position" => {
                         if new_value.is_empty() || new_value == "null" {
@@ -679,7 +678,7 @@ fn build_list_items(
                         if new_value.is_empty() || new_value == "null" {
                             ("\u{2298}", "horizon cleared".to_owned()) // ⊘
                         } else {
-                            ("\u{2298}", format!("horizon \u{2192} {}", new_value)) // ⊘
+                            ("\u{2298}", format!("horizon {}", new_value)) // ⊘
                         }
                     }
                     "parent_id" => {
@@ -689,15 +688,15 @@ fn build_list_items(
                             resolve_id_named(new_value)
                         };
                         let label = child_label.as_ref()
-                            .map(|c| format!("moved {} \u{2192} {}", c, target))
-                            .unwrap_or_else(|| format!("moved \u{2192} {}", target));
+                            .map(|c| format!("moved {} to {}", c, target))
+                            .unwrap_or_else(|| format!("moved to {}", target));
                         ("\u{2192}", label)
                     }
                     "release_reason" => {
                         let prefix = child_label.as_ref()
-                            .map(|c| format!("{}: ", c))
+                            .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{223C}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
+                        ("\u{223C}", format!("{}{}", prefix, new_value))
                     }
                     "deleted" => {
                         if new_value.is_empty() || new_value == "true" {
@@ -735,38 +734,19 @@ fn build_list_items(
                     bright: true,
                 });
 
-                // Expanded detail lines (shown when Enter/Space pressed on this event)
+                // Expanded detail (Enter/Space): show previous value if it exists.
+                // The new value is already visible in the line above (no truncation).
                 if expanded_event == Some(i) {
-                    let has_old = old_value.as_ref().map_or(false, |o| !o.is_empty());
-                    if has_old {
-                        let old = old_value.as_ref().unwrap();
-                        // Resolve ULIDs in old value
-                        let old_display = if old.len() > 20 && old.chars().all(|c| c.is_alphanumeric()) {
-                            resolve_id_named(old)
-                        } else {
-                            old.clone()
-                        };
-                        // Short fields: single-line "was → now" format
-                        if old.len() < 40 && new_value.len() < 40 {
+                    if let Some(old) = old_value {
+                        if !old.is_empty() {
+                            // Resolve ULIDs in old value
+                            let old_display = if old.len() > 20 && old.chars().all(|c| c.is_alphanumeric()) {
+                                resolve_id_named(old)
+                            } else {
+                                old.clone()
+                            };
                             items.push(LogbaseItem {
-                                text: format!("          {} \u{2192} {}", old_display, new_value),
-                                style: Style::default(),
-                                event_index: i,
-                                is_boundary: false,
-                                selectable: false,
-                                bright: false,
-                            });
-                        } else {
-                            items.push(LogbaseItem {
-                                text: format!("          was: {}", old_display),
-                                style: Style::default(),
-                                event_index: i,
-                                is_boundary: false,
-                                selectable: false,
-                                bright: false,
-                            });
-                            items.push(LogbaseItem {
-                                text: format!("          now: {}", new_value),
+                                text: format!("          was {}", old_display),
                                 style: Style::default(),
                                 event_index: i,
                                 is_boundary: false,
@@ -774,16 +754,6 @@ fn build_list_items(
                                 bright: false,
                             });
                         }
-                    } else if new_value.len() > 80 {
-                        // No old value but long new value — show full text
-                        items.push(LogbaseItem {
-                            text: format!("          {}", new_value),
-                            style: Style::default(),
-                            event_index: i,
-                            is_boundary: false,
-                            selectable: false,
-                            bright: false,
-                        });
                     }
                 }
             }
