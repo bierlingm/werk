@@ -391,7 +391,7 @@ impl InstrumentApp {
         let data = load_logbase_data(&tension, &epochs, self.engine.store());
 
         let focused_epoch = if !epochs.is_empty() { epochs.len() - 1 } else { 0 };
-        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup);
+        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup, None);
 
         self.logbase_tension_id = Some(tension_id.to_owned());
         self.logbase_tension = Some(tension);
@@ -417,6 +417,7 @@ impl InstrumentApp {
             &self.logbase_epochs,
             self.logbase_focused_epoch,
             &self.logbase_id_lookup,
+            self.logbase_expanded,
         );
     }
 
@@ -441,6 +442,7 @@ impl InstrumentApp {
         self.logbase_header.clear();
         self.logbase_separator.clear();
         self.logbase_provenance = LogbaseProvenance::default();
+        self.logbase_expanded = None;
     }
 
     /// Get the event index for the currently selected list item.
@@ -467,6 +469,7 @@ fn build_list_items(
     epochs: &[EpochRecord],
     focused_epoch: usize,
     id_to_shortcode: &std::collections::HashMap<String, Option<i32>>,
+    expanded_event: Option<usize>,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
 
@@ -549,7 +552,7 @@ fn build_list_items(
                 }
             }
 
-            LogbaseEvent::Mutation { epoch_index, field, new_value, timestamp, child_short_code, .. } => {
+            LogbaseEvent::Mutation { epoch_index, field, old_value, new_value, timestamp, child_short_code, .. } => {
                 if *epoch_index != focused_epoch {
                     continue;
                 }
@@ -615,6 +618,34 @@ fn build_list_items(
                     selectable: true,
                     bright: true,
                 });
+
+                // Expanded detail lines (shown when Enter/Space pressed on this event)
+                if expanded_event == Some(i) {
+                    // Show old→new for fields that have old_value
+                    if let Some(old) = old_value {
+                        if !old.is_empty() {
+                            items.push(LogbaseItem {
+                                text: format!("          was: {}", old),
+                                style: Style::default(),
+                                event_index: i,
+                                is_boundary: false,
+                                selectable: false,
+                                bright: false,
+                            });
+                        }
+                    }
+                    // Show full new value if it was truncated in the summary line
+                    if new_value.len() > 80 {
+                        items.push(LogbaseItem {
+                            text: format!("          now: {}", new_value),
+                            style: Style::default(),
+                            event_index: i,
+                            is_boundary: false,
+                            selectable: false,
+                            bright: false,
+                        });
+                    }
+                }
             }
         }
     }
@@ -776,16 +807,39 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, stream_y, area.width, desire_h), frame);
         }
 
-        // Render list (middle)
+        // Compute compression indicators BEFORE rendering the list,
+        // so we can reserve rows for them (not overlay).
+        let total_items = self.logbase_items.len();
+        let offset = self.logbase_list_state.borrow().offset;
+
+        let has_above = offset > 0;
+        let items_in_list_space = list_height as usize;
+        let has_below = (offset + items_in_list_space) < total_items;
+
+        // Reserve rows for compression lines (they get their own rows, not overlays)
+        let comp_above_h: u16 = if has_above { 1 } else { 0 };
+        let comp_below_h: u16 = if has_below { 1 } else { 0 };
+        let inner_list_h = list_height.saturating_sub(comp_above_h + comp_below_h);
+
         let list_y = stream_y + desire_h;
-        let list_area = Rect::new(area.x, list_y, area.width, list_height);
+
+        // Render "above" compression line
+        if has_above {
+            let above_text = format!("  \u{25B4} {} more above", offset);
+            let pad = w.saturating_sub(above_text.chars().count() + 1);
+            let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
+                .render(Rect::new(area.x, list_y, area.width, 1), frame);
+        }
+
+        // Render list in the inner area (between compression lines)
+        let inner_y = list_y + comp_above_h;
+        let inner_area = Rect::new(area.x, inner_y, area.width, inner_list_h);
 
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
-                // Events are dim, boundaries are slightly brighter
-                let style = if item.is_boundary { self.styles.dim } else { self.styles.dim };
                 ListItem::new(item.text.as_str())
-                    .style(style)
+                    .style(self.styles.dim)
                     .marker("  ")
             })
             .collect();
@@ -796,39 +850,20 @@ impl InstrumentApp {
             .highlight_symbol("\u{25B8} ");
 
         let mut state = self.logbase_list_state.borrow_mut();
-        StatefulWidget::render(&list, list_area, frame, &mut state);
+        StatefulWidget::render(&list, inner_area, frame, &mut state);
+        drop(state);
 
-        // Compression indicators — overlay on first/last row if items exist beyond viewport
-        let total_items = self.logbase_items.len();
-        let offset = state.offset;
-        drop(state); // release borrow before accessing other fields
-
-        let visible_count = list_height as usize;
-        let selected = self.logbase_list_state.borrow().selected().unwrap_or(0);
-        if total_items > visible_count {
-            let comp_style = self.styles.dim;
-
-            // Items above viewport — don't overlay if cursor is on the first visible row
-            let cursor_on_first = selected == offset;
-            if offset > 0 && !cursor_on_first {
-                let above_text = format!("  \u{25B4} {} more above", offset);
-                // Pad to full width and fill with box chars to fully overwrite
-                let pad = w.saturating_sub(above_text.chars().count() + 1);
-                let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
-                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, comp_style)])))
-                    .render(Rect::new(list_area.x, list_area.y, list_area.width, 1), frame);
-            }
-            // Items below viewport — don't overlay if cursor is on the last visible row
-            let last_visible = offset + visible_count;
-            let cursor_on_last = selected == last_visible.saturating_sub(1);
-            if last_visible < total_items && !cursor_on_last {
-                let below_count = total_items - last_visible;
+        // Render "below" compression line
+        if has_below {
+            let last_visible = offset + inner_list_h as usize;
+            let below_count = total_items.saturating_sub(last_visible);
+            if below_count > 0 {
                 let below_text = format!("  \u{25BE} {} more below", below_count);
                 let pad = w.saturating_sub(below_text.chars().count() + 1);
                 let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
-                let below_y = list_area.y + list_area.height.saturating_sub(1);
-                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, comp_style)])))
-                    .render(Rect::new(list_area.x, below_y, list_area.width, 1), frame);
+                let below_y = inner_y + inner_list_h;
+                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
+                    .render(Rect::new(area.x, below_y, area.width, 1), frame);
             }
         }
 

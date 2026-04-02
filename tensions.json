@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-02T08:25:35Z",
+  "flushed_at": "2026-04-02T08:39:11Z",
   "summary": {
-    "active": 68,
+    "active": 69,
     "released": 20,
     "resolved": 84,
-    "total": 172
+    "total": 173
   },
   "tensions": [
     {
@@ -1897,6 +1897,17 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 177,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Events show raw field names ([parent_id], [deleted]), ULIDs partially resolved to #shortcodes but no tension names. No old→new diffs. No grouping. Enter/Space expansion not yet implemented.",
+      "created_at": "2026-04-02T08:29:49.751414+00:00",
+      "desired": "Logbase event descriptions — make mutation display more human-friendly, ergonomic, and informationally dense. Current: raw field names, truncated text, no context. Target: natural language summaries, child tension names alongside IDs, old→new for field changes, grouped by type.",
+      "horizon": null,
+      "id": "01KN6N07SQHZ275V17W7E725ZX",
+      "parent_id": null,
+      "position": null,
+      "short_code": 178,
       "status": "Active"
     }
   ]
