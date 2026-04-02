@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-02T17:47:18Z",
+  "flushed_at": "2026-04-02T21:05:09Z",
   "summary": {
     "active": 70,
     "released": 20,
@@ -190,7 +190,7 @@
       "horizon": null,
       "id": "01KMGFKY9WR1AM9ZA1FTMSA1YP",
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
-      "position": 2,
+      "position": null,
       "short_code": 19,
       "status": "Active"
     },
@@ -374,7 +374,7 @@
       "actual": "business foundation document is drafted covering economic thesis, market positioning, revenue architecture, and venture web; no revenue yet; no pricing validated; no public presence beyond statecraft.systems listing",
       "created_at": "2026-03-24T17:52:27.203679+00:00",
       "desired": "werk has a sustainable business model that funds continued development while remaining fundamentally true to the conceptual foundation",
-      "horizon": "2026-06",
+      "horizon": null,
       "id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
@@ -385,7 +385,7 @@
       "actual": "nobody outside immediate circle knows werk exists; no public content, no posts, no demos",
       "created_at": "2026-03-24T17:52:27.258074+00:00",
       "desired": "werk is publicly known as the structural intent layer for agentic work — builders in the terminal-native AI ecosystem recognize it",
-      "horizon": "2026-07",
+      "horizon": null,
       "id": "01KMGFKZ3TYJPB2KZCCHG0ADEJ",
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
@@ -443,7 +443,7 @@
       "horizon": null,
       "id": "01KMGFKZCAX2NHZ124DNE191GK",
       "parent_id": "01KMGFKZ3TYJPB2KZCCHG0ADEJ",
-      "position": 2,
+      "position": null,
       "short_code": 42,
       "status": "Active"
     },
@@ -715,7 +715,7 @@
       "actual": "three candidate paths identified: setup calls (service), donations (requires public presence first), build something obviously valuable (product). No validation on any path yet.",
       "created_at": "2026-03-25T15:52:39.283174+00:00",
       "desired": "first $1000 earned through practical means — proving someone will pay for what werk enables",
-      "horizon": "2026-07",
+      "horizon": null,
       "id": "01KMJV5AKKY3H468YCS52WD640",
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": 1,
@@ -729,7 +729,7 @@
       "horizon": null,
       "id": "01KMJV5PPKA66E225CP5PKN2EW",
       "parent_id": "01KMJV5AKKY3H468YCS52WD640",
-      "position": 1,
+      "position": null,
       "short_code": 70,
       "status": "Active"
     },
@@ -751,7 +751,7 @@
       "horizon": null,
       "id": "01KMJV5T3H5TRHKRXND86GVQPK",
       "parent_id": "01KMJV5AKKY3H468YCS52WD640",
-      "position": 3,
+      "position": null,
       "short_code": 72,
       "status": "Active"
     },
@@ -858,7 +858,7 @@
       "actual": "Tauri 2.0 desktop app exists and opens natively on macOS. werk-app/src-tauri/ has the Rust backend (store actor, 8 commands), werk-app/src-web/ has the adapted HTML frontend. Full tension tree loads, all CRUD gestures work through native IPC. werk-web Axum server also works (werk serve). Two GUI paths operational: native Tauri app and browser via Axum. Not yet a practice tool — needs polish, deeper SD feel, step-level actions, proper icon/bundling.",
       "created_at": "2026-03-25T20:15:19.805413+00:00",
       "desired": "werk has a graphical interface — browser or native Mac app — that non-terminal users find inviting and natural to use, and that serves as the premium product",
-      "horizon": "2026-08",
+      "horizon": null,
       "id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
@@ -1246,7 +1246,7 @@
       "horizon": null,
       "id": "01KMR93N9H66024HRFR36X57BZ",
       "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
-      "position": 3,
+      "position": null,
       "short_code": 118,
       "status": "Active"
     },
@@ -1257,7 +1257,7 @@
       "horizon": null,
       "id": "01KMR93Q6GRG8GGK5TDMWS2ACD",
       "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
-      "position": 4,
+      "position": null,
       "short_code": 119,
       "status": "Active"
     },
@@ -1268,7 +1268,7 @@
       "horizon": null,
       "id": "01KMR93S43XCGEK93NBHAZCC89",
       "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
-      "position": 5,
+      "position": null,
       "short_code": 120,
       "status": "Active"
     },
@@ -1485,7 +1485,7 @@
       "actual": "First integration delivered: FrankenNetworkX (#141 resolved). DiGraph substrate in Forest, four structural signals (centrality, waves, longest path, descendants), surfaced across CLI/MCP/TUI. Phase 2 design doc written for typed edges. Remaining: #142 FrankenMermaid, #143 FrankenSearch, #144 fsqlite MVCC, #145 ftui, #146 FrankenPandas, #147 FrankenEngine, #148 FrankenWhisper.",
       "created_at": "2026-03-30T21:29:15.331282+00:00",
       "desired": "werk integrates the full FrankenSuite — graph intelligence, visual output, hybrid search, deeper storage and TUI, analytics, sandboxed extensions, voice input",
-      "horizon": "2026-09",
+      "horizon": null,
       "id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
@@ -1507,7 +1507,7 @@
       "actual": "blocked — FrankenMermaid exists (github.com/Dicklesworthstone/frankenmermaid) but depends on unpublished franken-kernel (local path only). Cannot integrate until franken-kernel is publicly available. No visual output on any surface.",
       "created_at": "2026-03-30T21:29:36.931342+00:00",
       "desired": "FrankenMermaid renders tension structures visually — flowchart/mindmap for web and desktop, SVG export from CLI, braille/block minimap in TUI, auto-generated diagrams for docs and public content, gantt/timeline for temporal views",
-      "horizon": "2026-06",
+      "horizon": null,
       "id": "01KN0ADXD3NA3SJDXK65MC2QFK",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": null,
@@ -1554,7 +1554,7 @@
       "horizon": "2026-07",
       "id": "01KN0AF8TYYR9ZPXE1XJCQQR4H",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
-      "position": 6,
+      "position": null,
       "short_code": 146,
       "status": "Active"
     },
@@ -1565,7 +1565,7 @@
       "horizon": "2026-08",
       "id": "01KN0AFKPMSB3TQKTBGWNCD6YJ",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
-      "position": 7,
+      "position": null,
       "short_code": 147,
       "status": "Active"
     },
@@ -1576,7 +1576,7 @@
       "horizon": "2026-09",
       "id": "01KN0AQGR74SVQ2JSKQR12ZWVX",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
-      "position": 8,
+      "position": null,
       "short_code": 148,
       "status": "Active"
     },
@@ -1862,7 +1862,7 @@
       "horizon": null,
       "id": "01KN49345FDYPSGGG8Z953T4FQ",
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
-      "position": 1,
+      "position": null,
       "short_code": 174,
       "status": "Active"
     },
@@ -1927,7 +1927,7 @@
       "desired": "SurveyView is rewritten greenfield on ftui List widget — pre-built stable display items, single ListState scroll owner, no per-render line count variation, no double-scroll, sticky band header overlay",
       "horizon": null,
       "id": "01KN7DTK6XRA2V1QWWAV06PEN8",
-      "parent_id": null,
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 180,
       "status": "Active"
@@ -1938,7 +1938,7 @@
       "desired": "cross-tension timeline is the survey's downward surface — field-level logbase showing all epochs across all tensions, most-recent first, accessible by navigating past the last band",
       "horizon": null,
       "id": "01KN7MT2KT63MYTN0JG23NAZFZ",
-      "parent_id": null,
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 181,
       "status": "Active"
