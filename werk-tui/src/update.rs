@@ -1303,6 +1303,19 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Search — opens unified palette (same as Ctrl+K)
+            Msg::Char('/') | Msg::Search => {
+                let items = crate::palette::build_combined_items(
+                    "",
+                    Some(&self.palette_feedback),
+                    self.search_index.as_ref(),
+                    self.engine.store(),
+                );
+                self.command_palette.replace_actions(items);
+                self.command_palette.open();
+                Cmd::none()
+            }
+
             Msg::Char('?') | Msg::ToggleHelp => {
                 self.view_orientation = ViewOrientation::Stream;
                 self.input_mode = InputMode::Help;
@@ -1437,6 +1450,19 @@ impl InstrumentApp {
                         }
                     }
                 }
+                Cmd::none()
+            }
+
+            // Search — opens unified palette (same as Ctrl+K)
+            Msg::Char('/') | Msg::Search => {
+                let items = crate::palette::build_combined_items(
+                    "",
+                    Some(&self.palette_feedback),
+                    self.search_index.as_ref(),
+                    self.engine.store(),
+                );
+                self.command_palette.replace_actions(items);
+                self.command_palette.open();
                 Cmd::none()
             }
 

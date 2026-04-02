@@ -44,13 +44,10 @@ fn test_show_displays_tension_magnitude() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show structural tension or magnitude
+    // Should show the tension header with desired/reality
     assert!(
-        stdout.contains("tension")
-            || stdout.contains("magnitude")
-            || stdout.contains("Magnitude")
-            || stdout.contains("Structural"),
-        "Should show tension magnitude, got: {}",
+        stdout.contains("Tension") && stdout.contains("Desired:") && stdout.contains("Reality:"),
+        "Should show tension with desired/reality, got: {}",
         stdout
     );
 }
@@ -81,10 +78,10 @@ fn test_show_displays_phase() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show Facts section with closure info
+    // Should show Status and Activity sections
     assert!(
-        stdout.contains("Facts:") && stdout.contains("Closure:"),
-        "Should show Facts with Closure, got: {}",
+        stdout.contains("Status:") && stdout.contains("Activity:"),
+        "Should show Status and Activity, got: {}",
         stdout
     );
 }
@@ -207,10 +204,10 @@ fn test_show_displays_mutation_history() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show mutation history
+    // Should show activity section with mutation history
     assert!(
-        stdout.contains("Mutation") || stdout.contains("mutation") || stdout.contains("History"),
-        "Should show mutation history, got: {}",
+        stdout.contains("Activity:"),
+        "Should show activity section, got: {}",
         stdout
     );
 }
@@ -248,10 +245,10 @@ fn test_show_limits_mutation_history() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should contain mutation history (creation + updates)
+    // Should contain activity section (creation + updates)
     assert!(
-        stdout.contains("Mutation") || stdout.contains("mutation"),
-        "Should show mutations, got: {}",
+        stdout.contains("Activity:"),
+        "Should show activity, got: {}",
         stdout
     );
 }
@@ -368,10 +365,10 @@ fn test_show_new_tension_shows_germination() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // New tension with no children should show leaf status
+    // New tension should show status and wave info
     assert!(
-        stdout.contains("leaf tension"),
-        "New tension should show leaf closure status, got: {}",
+        stdout.contains("Status:") && stdout.contains("Wave:"),
+        "New tension should show status and wave, got: {}",
         stdout
     );
 }

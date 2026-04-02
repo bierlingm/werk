@@ -55,8 +55,9 @@ fn test_werk_help_lists_all_subcommands() {
         .stdout(predicate::str::contains("note"))
         // Display commands
         .stdout(predicate::str::contains("tree"))
-        // Structural context
-        .stdout(predicate::str::contains("context"));
+        // Framing commands
+        .stdout(predicate::str::contains("list"))
+        .stdout(predicate::str::contains("stats"));
 }
 
 #[test]

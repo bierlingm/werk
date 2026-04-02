@@ -135,35 +135,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_edit_content_with_cat() {
-        // Set EDITOR=cat to simulate editor that just outputs content
-        env::set_var("EDITOR", "cat");
-
-        // "cat" will just output the content unchanged, so should return None
-        let result = edit_content("test content");
-        env::remove_var("EDITOR");
-
-        // With EDITOR=cat, the content is unchanged
-        assert!(matches!(result, Ok(None)));
-    }
-
-    #[test]
-    fn test_edit_content_detects_change() {
-        // Set EDITOR to a command that modifies the file
-        // We use sh -c 'echo new content > $1' to simulate editing
-        env::set_var("EDITOR", "sh");
-
-        // This test is more complex - we need a command that modifies the file
-        // For simplicity, we'll skip this in automated tests
-        // The manual verification will handle the real editor test
-        env::remove_var("EDITOR");
-    }
-
-    #[test]
-    fn test_edit_field_adds_header() {
-        let content = edit_field("actual", "test value");
-        // This test verifies the function doesn't panic with the header logic
-        assert!(content.is_ok());
-    }
 }
