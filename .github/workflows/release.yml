@@ -13,7 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Create GitHub Release
-        run: gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          MSG=$(git tag -l --format='%(contents:subject)' "$TAG")
+          if [ -n "$MSG" ]; then
+            TITLE="$TAG: $MSG"
+          else
+            TITLE="$TAG"
+          fi
+          gh release create "$TAG" --title "$TITLE" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
