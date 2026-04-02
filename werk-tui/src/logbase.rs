@@ -1083,18 +1083,18 @@ impl InstrumentApp {
 
         // Count focused-epoch selectable items above/below visible area
         let focused_ep = self.logbase_focused_epoch;
-        let is_focused_sel = |item: &LogbaseItem| -> bool {
-            item.selectable && self.logbase_events.get(item.event_index)
+        let is_focused_event = |item: &LogbaseItem| -> bool {
+            item.selectable && !item.is_boundary && self.logbase_events.get(item.event_index)
                 .map(|e| e.epoch_index() == focused_ep)
                 .unwrap_or(false)
         };
         let above = self.logbase_items.get(..offset)
-            .map(|s| s.iter().filter(|i| is_focused_sel(i)).count())
+            .map(|s| s.iter().filter(|i| is_focused_event(i)).count())
             .unwrap_or(0);
         let visible = self.logbase_list_height.get() as usize;
         let below_start = (offset + visible).min(self.logbase_items.len());
         let below = self.logbase_items.get(below_start..)
-            .map(|s| s.iter().filter(|i| is_focused_sel(i)).count())
+            .map(|s| s.iter().filter(|i| is_focused_event(i)).count())
             .unwrap_or(0);
 
         let mut parts = vec![tension_label, epoch_label];
