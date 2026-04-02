@@ -1048,11 +1048,11 @@ impl InstrumentApp {
             if let Some(item) = self.logbase_items.get(offset) {
                 let has_blank_date_col = item.text.starts_with("        ");
                 if has_blank_date_col && !item.date.is_empty() {
-                    let date_text = format!("{:<8}", item.date);
+                    let date_text = format!("  {:<8}", item.date);
                     Paragraph::new(Text::from(Line::from_spans([
                         Span::styled(date_text, self.styles.dim),
                     ])))
-                    .render(Rect::new(area.x + 2, list_y, 8, 1), frame);
+                    .render(Rect::new(area.x, list_y, 10, 1), frame);
                 }
             }
         }
