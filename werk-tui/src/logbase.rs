@@ -1038,7 +1038,33 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, list_area, frame, &mut state);
+        let offset = state.offset;
         drop(state);
+
+        // Sticky date: if the first visible item has a blank date column,
+        // overlay the date from the nearest preceding item that has one.
+        // Only covers the date column (first 10 chars including highlight marker),
+        // so the event text and highlight remain intact.
+        if offset > 0 {
+            let first_visible_date = self.logbase_items.get(offset)
+                .filter(|i| i.date.is_empty())
+                .is_some();
+            if first_visible_date {
+                // Find the date by scanning backward from offset
+                let date = self.logbase_items[..offset].iter().rev()
+                    .find(|i| !i.date.is_empty())
+                    .map(|i| i.date.as_str())
+                    .unwrap_or("");
+                if !date.is_empty() {
+                    // Overlay just the date column area (after the 2-char marker)
+                    let date_text = format!("{:<8}", date);
+                    Paragraph::new(Text::from(Line::from_spans([
+                        Span::styled(date_text, self.styles.dim),
+                    ])))
+                    .render(Rect::new(area.x + 2, list_y, 8, 1), frame);
+                }
+            }
+        }
 
         // Render reality anchor (word-wrapped, below list)
         if let Some(epoch) = focused {
