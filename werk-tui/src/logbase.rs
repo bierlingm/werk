@@ -486,12 +486,14 @@ fn build_list_items(
     show_all: bool,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
+    let mut current_date = String::new();
 
     for (i, event) in events.iter().enumerate() {
         let is_focused = event.epoch_index() == focused_epoch;
 
         match event {
             LogbaseEvent::EpochBoundary { epoch_index, .. } => {
+                current_date.clear();
                 // Blank separator between epochs (not before first)
                 if !items.is_empty() {
                     items.push(LogbaseItem {
@@ -594,6 +596,13 @@ fn build_list_items(
                 }
 
                 let item_date = format_date_short(*timestamp);
+                // Date column: show date on first event of each group, blank otherwise
+                let date_col = if item_date != current_date {
+                    current_date = item_date.clone();
+                    format!("{:<8}", item_date)
+                } else {
+                    "        ".to_owned()
+                };
 
                 // Resolve ULID to "#N" (short code only — detail on expansion)
                 let resolve_id = |ulid: &str| -> String {
@@ -684,7 +693,7 @@ fn build_list_items(
                     }
                 };
 
-                let display = format!("    {} {}", glyph, text);
+                let display = format!("{}{} {}", date_col, glyph, text);
 
                 items.push(LogbaseItem {
                     text: display,
@@ -1010,13 +1019,10 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // Sticky date header + list below it.
-        let date_y = stream_y + epoch_line_h + desire_h;
-        let date_h: u16 = 1;
-        let actual_list_h = list_height.saturating_sub(date_h);
-        let list_y = date_y + date_h;
-        self.logbase_list_height.set(actual_list_h);
-        let list_area = Rect::new(area.x, list_y, area.width, actual_list_h);
+        // List at full height — dates are inline in the event text.
+        let list_y = stream_y + epoch_line_h + desire_h;
+        self.logbase_list_height.set(list_height);
+        let list_area = Rect::new(area.x, list_y, area.width, list_height);
 
         let list_items: Vec<ListItem> = self.logbase_items.iter()
             .map(|item| {
@@ -1033,24 +1039,7 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, list_area, frame, &mut state);
-        let offset = state.offset;
         drop(state);
-
-        // Render sticky date: all unique dates from visible items
-        let visible_end = (offset + actual_list_h as usize).min(self.logbase_items.len());
-        let mut visible_dates: Vec<&str> = Vec::new();
-        for item in &self.logbase_items[offset..visible_end] {
-            if !item.date.is_empty() {
-                if visible_dates.last().map_or(true, |&last| last != item.date.as_str()) {
-                    visible_dates.push(&item.date);
-                }
-            }
-        }
-        if !visible_dates.is_empty() {
-            let date_text = format!("  {}", visible_dates.join(" \u{00b7} "));
-            Paragraph::new(Text::from(Line::from_spans([Span::styled(date_text, self.styles.dim)])))
-                .render(Rect::new(area.x, date_y, area.width, 1), frame);
-        }
 
         // Render reality anchor (word-wrapped, below list)
         if let Some(epoch) = focused {
@@ -1059,7 +1048,7 @@ impl InstrumentApp {
             let lines: Vec<Line> = reality_lines.iter()
                 .map(|l| Line::from_spans([Span::styled(l.clone(), reality_style)]))
                 .collect();
-            let reality_y = list_y + actual_list_h;
+            let reality_y = list_y + list_height;
             Paragraph::new(Text::from_lines(lines))
                 .render(Rect::new(area.x, reality_y, area.width, reality_h), frame);
         }
