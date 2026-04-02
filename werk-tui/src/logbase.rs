@@ -1043,16 +1043,25 @@ impl InstrumentApp {
 
         // Sticky date: if the first visible item has a blank date column
         // (starts with spaces — not the first event of its date group),
-        // overlay the date so it stays visible when scrolled.
+        // write the date directly into the frame buffer cells to match
+        // the List widget's exact positioning.
         if offset > 0 {
             if let Some(item) = self.logbase_items.get(offset) {
                 let has_blank_date_col = item.text.starts_with("        ");
                 if has_blank_date_col && !item.date.is_empty() {
-                    let date_text = format!("  {:<8}", item.date);
-                    Paragraph::new(Text::from(Line::from_spans([
-                        Span::styled(date_text, self.styles.dim),
-                    ])))
-                    .render(Rect::new(area.x, list_y, 10, 1), frame);
+                    let date_str = format!("{:<6}", item.date);
+                    // Write date chars directly into the buffer at the exact
+                    // positions where the List widget placed the blank padding.
+                    let y = list_y;
+                    for (i, ch) in date_str.chars().enumerate() {
+                        let x = list_area.x + 2 + i as u16;
+                        if x < list_area.x + list_area.width {
+                            let cell = ftui::Cell::from_char(ch)
+                                .with_fg(self.styles.clr_dim)
+                                .with_bg(ftui::PackedRgba::TRANSPARENT);
+                            frame.buffer.set(x, y, cell);
+                        }
+                    }
                 }
             }
         }
