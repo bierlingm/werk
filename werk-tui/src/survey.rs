@@ -73,6 +73,39 @@ impl TimeBand {
         }
     }
 
+    /// Count items in this band from a sorted items list.
+    pub fn count_in(&self, items: &[SurveyItem]) -> usize {
+        items.iter().filter(|it| it.band == *self).count()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Band ranges — identify contiguous band regions in survey_items
+// ---------------------------------------------------------------------------
+
+/// A contiguous range of items belonging to one time band.
+#[derive(Debug, Clone)]
+pub struct BandRange {
+    pub band: TimeBand,
+    /// Start index in survey_items (inclusive).
+    pub start: usize,
+    /// Item count in this band.
+    pub count: usize,
+}
+
+/// Compute band ranges from sorted survey_items.
+pub fn compute_band_ranges(items: &[SurveyItem]) -> Vec<BandRange> {
+    let mut ranges = Vec::new();
+    let mut i = 0;
+    while i < items.len() {
+        let band = items[i].band;
+        let start = i;
+        while i < items.len() && items[i].band == band {
+            i += 1;
+        }
+        ranges.push(BandRange { band, start, count: i - start });
+    }
+    ranges
 }
 
 /// A single selectable row in the survey view.
@@ -327,7 +360,52 @@ impl InstrumentApp {
         }
 
         self.survey_items = items;
+        self.rebuild_survey_display();
     }
+
+    /// Rebuild the focused band's List items.
+    /// Called after load_survey_items(), cursor band change, or collapse toggle.
+    pub fn rebuild_survey_display(&mut self) {
+        let ranges = compute_band_ranges(&self.survey_items);
+        let focused_band = self.survey_items.get(self.survey_cursor)
+            .map(|it| it.band);
+
+        // Build List items for the focused band only.
+        let mut display = Vec::new();
+        if let Some(fb) = focused_band {
+            if let Some(range) = ranges.iter().find(|r| r.band == fb) {
+                for idx in range.start..range.start + range.count {
+                    display.push(idx);
+                }
+            }
+        }
+        self.survey_display_items = display;
+        self.sync_survey_selection();
+    }
+
+    /// Sync ListState.selected from survey_cursor (no scroll trigger).
+    pub fn sync_survey_selection(&self) {
+        let list_idx = self.survey_display_items.iter()
+            .position(|&data_idx| data_idx == self.survey_cursor);
+        if let Some(idx) = list_idx {
+            self.survey_list_state.borrow_mut().selected = Some(idx);
+        }
+    }
+
+    /// Sync ListState.selected AND scroll to make it visible.
+    pub fn sync_survey_selection_with_scroll(&self) {
+        let list_idx = self.survey_display_items.iter()
+            .position(|&data_idx| data_idx == self.survey_cursor);
+        if let Some(idx) = list_idx {
+            self.survey_list_state.borrow_mut().select(Some(idx));
+        }
+    }
+
+    /// Get the focused band (the band containing survey_cursor).
+    pub fn survey_focused_band(&self) -> Option<TimeBand> {
+        self.survey_items.get(self.survey_cursor).map(|it| it.band)
+    }
+
 }
 
 /// Walk up the ancestry chain to find the nearest horizon.
@@ -559,108 +637,7 @@ fn truncate_desired(s: &str, max_chars: usize) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Zone expansion — decide how many items to show per band
-// ---------------------------------------------------------------------------
-
-/// How a band should be rendered.
-struct BandExpansion {
-    /// First item index in the global survey_items list.
-    start: usize,
-    /// Number of items in this band.
-    count: usize,
-    /// How many to show individually.
-    show: usize,
-}
-
-/// Minimum items to show for temporally-close bands (overdue/imminent/approaching).
-const TEMPORAL_BAND_MIN: usize = 5;
-
-/// Compute how many items to show per band given available rows.
-fn compute_band_expansion(
-    items: &[SurveyItem],
-    cursor: usize,
-    available_rows: usize,
-    now_zone_lines: usize,
-    collapsed_bands: &std::collections::HashSet<TimeBand>,
-) -> Vec<(TimeBand, BandExpansion)> {
-    // Identify non-empty bands and their ranges.
-    let mut bands: Vec<(TimeBand, usize, usize)> = Vec::new(); // (band, start, count)
-    let mut i = 0;
-    while i < items.len() {
-        let band = items[i].band;
-        let start = i;
-        while i < items.len() && items[i].band == band {
-            i += 1;
-        }
-        bands.push((band, start, i - start));
-    }
-
-    if bands.is_empty() {
-        return Vec::new();
-    }
-
-    let cursor_band = items.get(cursor).map(|it| it.band);
-
-    // Each band needs: 1 header line + at least 1 content line (item or summary).
-    // Blank line between bands (except first): bands.len() - 1.
-    // NOW zone: counted via now_zone_lines parameter.
-    let overhead = bands.len() * 2 + bands.len().saturating_sub(1) + now_zone_lines;
-    let content_rows = available_rows.saturating_sub(overhead);
-
-    // First pass: give every band 1 line (summary). Collapsed bands get 0.
-    let mut allocs: Vec<usize> = bands.iter()
-        .map(|(band, _, _)| if collapsed_bands.contains(band) { 0 } else { 1 })
-        .collect();
-    let mut used: usize = allocs.iter().sum();
-
-    // Second pass: temporal bands near NOW get a minimum floor.
-    // Overdue, imminent, approaching should always expand (up to TEMPORAL_BAND_MIN).
-    for (bi, (band, _, count)) in bands.iter().enumerate() {
-        if collapsed_bands.contains(band) { continue; }
-        if matches!(band, TimeBand::Overdue | TimeBand::ThisWeek | TimeBand::ThisMonth) {
-            let floor = TEMPORAL_BAND_MIN.min(*count);
-            let extra = floor.saturating_sub(allocs[bi]);
-            let can_give = content_rows.saturating_sub(used).min(extra);
-            allocs[bi] += can_give;
-            used += can_give;
-        }
-    }
-
-    // Third pass: expand the cursor's band up to its full count.
-    if let Some(cursor_idx) = bands.iter().position(|b| Some(b.0) == cursor_band) {
-        let max = bands[cursor_idx].2;
-        let can_give = content_rows.saturating_sub(used).min(max.saturating_sub(allocs[cursor_idx]));
-        allocs[cursor_idx] += can_give;
-        used += can_give;
-    }
-
-    // Fourth pass: distribute remaining rows to other bands (overdue first, then this_week, etc).
-    let priority_order: Vec<usize> = {
-        let mut idxs: Vec<usize> = (0..bands.len()).collect();
-        idxs.sort_by(|&a, &b| bands[b].0.cmp(&bands[a].0));
-        idxs
-    };
-    for &band_idx in &priority_order {
-        if used >= content_rows {
-            break;
-        }
-        let max = bands[band_idx].2;
-        let can_give = content_rows.saturating_sub(used).min(max.saturating_sub(allocs[band_idx]));
-        allocs[band_idx] += can_give;
-        used += can_give;
-    }
-
-    bands.into_iter().enumerate().map(|(i, (band, start, count))| {
-        (band, BandExpansion {
-            start,
-            count,
-            show: allocs[i].min(count),
-        })
-    }).collect()
-}
-
-// ---------------------------------------------------------------------------
-// Rendering
+// Rendering — List widget (ftui)
 // ---------------------------------------------------------------------------
 
 const HORIZON_COL_W: usize = 9; // "Apr 10   " — date + trailing padding
@@ -668,225 +645,143 @@ const SURVEY_INDENT: &str = "  ";
 
 impl InstrumentApp {
     pub fn render_survey(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.layout.content_area(*area);
+        use ftui::layout::{Constraint, Flex};
+        use ftui::widgets::list::{List, ListItem};
+        use ftui::widgets::StatefulWidget;
 
-        let w = area.width as usize;
-        let items = &self.survey_items;
+        let full_area = self.layout.content_area(*area);
+        let w = full_area.width as usize;
 
-        if items.is_empty() {
+        if self.survey_items.is_empty() {
             let line = Line::from_spans([
                 Span::styled("  No active tensions.", self.styles.dim),
             ]);
-            Paragraph::new(Text::from_lines(vec![line])).render(area, frame);
+            Paragraph::new(Text::from_lines(vec![line])).render(full_area, frame);
             return;
         }
 
-        // Width allocation is per-line: each line computes its own text budget
-        // from w, left indent, tree prefix, and right column content.
+        let area = full_area;
 
-        // NOW zone: 2 lines (blank + rule). No vitals in the zone itself — they go in the bar.
-        let now_zone_lines = 2;
-        let expansions = compute_band_expansion(
-            items, self.survey_cursor, area.height as usize,
-            now_zone_lines, &self.survey_tree_state.collapsed,
-        );
+        let ranges = compute_band_ranges(&self.survey_items);
+        let focused_band = self.survey_focused_band();
+        let total_h = area.height as usize;
 
-        let mut lines: Vec<Line> = Vec::new();
-        let mut cursor_line: usize = 0;
-        // Track band header lines for sticky pinning.
-        let mut band_headers: Vec<(usize, Line)> = Vec::new(); // (line_index, header_line)
-        // Track which band header the cursor belongs to (by index into band_headers).
-        let mut cursor_band_header: usize = 0;
+        // Height allocation: each band gets 1 header row. Focused band gets
+        // remaining space (up to its item count). Leftover goes to other bands
+        // so they can show items too (nearest-to-focused first).
+        let header_rows = ranges.len();
+        let content_rows = total_h.saturating_sub(header_rows);
 
-        let mut prev_band: Option<TimeBand> = None;
-        let has_overdue_band = expansions.iter().any(|(b, _)| *b == TimeBand::Overdue);
+        // Per-band item allocation.
+        let mut allocs: Vec<usize> = vec![0; ranges.len()];
+        let focused_idx = ranges.iter().position(|r| Some(r.band) == focused_band);
 
-        for (band, exp) in &expansions {
-            // Insert NOW zone between imminent (ThisWeek) and overdue.
-            if *band == TimeBand::Overdue {
-                render_now_zone(w, &mut lines, prev_band.is_some(), &self.styles);
-            }
+        // Give the focused band what it needs (up to content_rows).
+        let mut used = 0;
+        if let Some(fi) = focused_idx {
+            allocs[fi] = ranges[fi].count.min(content_rows);
+            used = allocs[fi];
+        }
 
-            // Blank line before band (except first and except after NOW zone).
-            // Must be full-width styled span — empty Span::raw("") leaves all
-            // cells at Cell::default() (WHITE fg), causing the all-white glitch.
-            if !lines.is_empty() && *band != TimeBand::Overdue {
-                lines.push(Line::from_spans([Span::styled(" ".repeat(w), self.styles.dim)]));
-            }
-
-            // Band header — padded to full width to prevent bleed-through when sticky.
-            let band_label = band.label();
-            let is_collapsed = self.survey_tree_state.collapsed.contains(band);
-            let fold_indicator = if is_collapsed { "\u{25B8}" } else { "\u{25BE}" }; // ▸ or ▾
-            let count_label = format!(" ({})", exp.count);
-            let rule_w = w.saturating_sub(4 + 2 + band_label.len() + count_label.len() + 3);
-            let rule = "\u{2500}".repeat(rule_w);
-            let mut header_text = format!("{SURVEY_INDENT}\u{2500}{fold_indicator} {band_label}{count_label} {rule}");
-            while header_text.chars().count() < w {
-                header_text.push('\u{2500}');
-            }
-            let header_line = Line::from_spans([
-                Span::styled(header_text, self.styles.dim),
-            ]);
-            band_headers.push((lines.len(), header_line.clone()));
-            // Track if cursor is in THIS band.
-            if self.survey_cursor >= exp.start
-                && self.survey_cursor < exp.start + exp.count
-            {
-                cursor_band_header = band_headers.len() - 1;
-            }
-            lines.push(header_line);
-
-            // Which items from this band to show.
-            let (show_start, show_end) = if exp.show >= exp.count {
-                (exp.start, exp.start + exp.count)
-            } else {
-                let cursor_in_band = self.survey_cursor >= exp.start
-                    && self.survey_cursor < exp.start + exp.count;
-                if cursor_in_band {
-                    let cursor_offset = self.survey_cursor - exp.start;
-                    let half = exp.show / 2;
-                    let win_start = if cursor_offset > half {
-                        (cursor_offset - half).min(exp.count - exp.show)
-                    } else {
-                        0
-                    };
-                    (exp.start + win_start, exp.start + win_start + exp.show)
-                } else {
-                    (exp.start, exp.start + exp.show)
-                }
-            };
-
-            let hidden_above = show_start - exp.start;
-            let hidden_below = (exp.start + exp.count) - show_end;
-
-            // "... N above" summary at top of visible window.
-            if hidden_above > 0 {
-                let style = self.styles.dim;
-                let text = format!("{SURVEY_INDENT}{:>width$}\u{2191} {hidden_above} above", "", width = HORIZON_COL_W);
-                let mut spans = vec![Span::styled(text, style)];
-                pad_to_width(&mut spans, w, style);
-                lines.push(Line::from_spans(spans));
-            }
-
-            // Sticky provider: if the first visible item is a tree child whose
-            // provider scrolled off, insert the provider line here so the
-            // deadline context is always visible with its inheritors.
-            if let Some(first_visible) = items.get(show_start) {
-                if let Some(ref pid) = first_visible.horizon_provider_id {
-                    // Provider is off-screen if it's before show_start.
-                    let provider_off = items[exp.start..show_start].iter()
-                        .any(|it| &it.tension_id == pid);
-                    if provider_off {
-                        if let Some(provider) = items.iter().find(|it| &it.tension_id == pid) {
-                            lines.push(render_provider_line(provider, false, w, &self.styles));
-                        }
-                    }
-                }
-            }
-
-            // Render visible items. Tree prefixes are pre-computed during loading.
-            // Build set of visible item IDs for breadcrumb detection.
-            let visible_ids: std::collections::HashSet<&str> = (show_start..show_end)
-                .map(|i| items[i].tension_id.as_str())
+        // Distribute remaining to other bands, nearest-to-focused first.
+        if let Some(fi) = focused_idx {
+            let mut dist: Vec<usize> = (0..ranges.len())
+                .filter(|&i| i != fi)
                 .collect();
-            // Map from id → item for all items in this band (for breadcrumb lookup).
-            let band_item_map: std::collections::HashMap<&str, &SurveyItem> =
-                items[exp.start..exp.start + exp.count].iter()
-                    .map(|it| (it.tension_id.as_str(), it))
-                    .collect();
-            let mut breadcrumbs_inserted: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
+            dist.sort_by_key(|&i| (i as isize - fi as isize).unsigned_abs());
+            for &bi in &dist {
+                let remaining = content_rows.saturating_sub(used);
+                if remaining == 0 { break; }
+                let give = ranges[bi].count.min(remaining);
+                allocs[bi] = give;
+                used += give;
+            }
+        }
 
-            for idx in show_start..show_end {
-                let item = &items[idx];
-                let is_selected = idx == self.survey_cursor;
-                if is_selected {
-                    cursor_line = lines.len();
+        // Build layout constraints.
+        let mut constraints: Vec<Constraint> = Vec::new();
+        // Track which constraint index maps to which band's items.
+        let mut band_item_slots: Vec<Option<usize>> = Vec::new(); // constraint_idx → band_idx or None
+        for (bi, _range) in ranges.iter().enumerate() {
+            constraints.push(Constraint::Fixed(1)); // header
+            band_item_slots.push(None);
+            if allocs[bi] > 0 {
+                let is_focused = Some(bi) == focused_idx;
+                if is_focused {
+                    constraints.push(Constraint::Fill);
+                } else {
+                    constraints.push(Constraint::Fixed(allocs[bi] as u16));
                 }
+                band_item_slots.push(Some(bi));
+            }
+        }
 
-                // Breadcrumb: if this is a tree child whose parent is not visible,
-                // insert dimmed breadcrumb lines for missing ancestors.
-                if !item.tree_prefix.is_empty() {
-                    if let Some(ref pid) = item.parent_id {
-                        if !visible_ids.contains(pid.as_str()) && !breadcrumbs_inserted.contains(pid.as_str()) {
-                            // Walk up to find all missing ancestors up to the provider.
-                            let mut missing_chain: Vec<&SurveyItem> = Vec::new();
-                            let mut current_pid = Some(pid.as_str());
-                            for _ in 0..20 {
-                                match current_pid {
-                                    Some(cpid) if !visible_ids.contains(cpid) => {
-                                        if let Some(ancestor) = band_item_map.get(cpid) {
-                                            missing_chain.push(ancestor);
-                                            current_pid = ancestor.parent_id.as_deref();
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    _ => break,
-                                }
-                            }
-                            // Insert breadcrumbs top-down (reverse the chain).
-                            for ancestor in missing_chain.iter().rev() {
-                                if !breadcrumbs_inserted.contains(&ancestor.tension_id) {
-                                    breadcrumbs_inserted.insert(ancestor.tension_id.clone());
-                                    lines.push(render_breadcrumb_line(ancestor, w, &self.styles));
-                                }
+        let slots = Flex::vertical().constraints(constraints).split(area);
+
+        // Render each slot.
+        for (si, slot) in slots.iter().enumerate() {
+            match band_item_slots.get(si) {
+                Some(None) => {
+                    // This is a header slot. Find which band by counting headers.
+                    let header_count = band_item_slots[..=si].iter()
+                        .filter(|s| s.is_none()).count();
+                    if let Some(range) = ranges.get(header_count - 1) {
+                        let is_focused = Some(range.band) == focused_band;
+                        let line = build_band_header_line(
+                            range.band, range.count, is_focused, w, &self.styles,
+                        );
+                        Paragraph::new(Text::from(line)).render(*slot, frame);
+                    }
+                }
+                Some(Some(bi)) => {
+                    let range = &ranges[*bi];
+                    let is_focused = Some(range.band) == focused_band;
+
+                    if is_focused {
+                        // Focused band: List widget with scroll.
+                        let list_items: Vec<ListItem> = self.survey_display_items.iter()
+                            .map(|&data_idx| {
+                                let item = &self.survey_items[data_idx];
+                                let is_sel = data_idx == self.survey_cursor;
+                                let line = if item.tree_prefix.is_empty() {
+                                    render_provider_line(item, is_sel, w, &self.styles)
+                                } else {
+                                    render_tree_child_line(item, is_sel, w, &self.styles)
+                                };
+                                ListItem::new(line).marker("")
+                            })
+                            .collect();
+
+                        let list = List::new(list_items)
+                            .style(self.styles.dim)
+                            .highlight_style(self.styles.selected);
+
+                        let mut state = self.survey_list_state.borrow_mut();
+                        StatefulWidget::render(&list, *slot, frame, &mut state);
+                        drop(state);
+                    } else {
+                        // Non-focused band: render static items (no scroll).
+                        let show = allocs[*bi].min(range.count);
+                        for i in 0..show {
+                            let data_idx = range.start + i;
+                            let item = &self.survey_items[data_idx];
+                            let line = if item.tree_prefix.is_empty() {
+                                render_provider_line(item, false, w, &self.styles)
+                            } else {
+                                render_tree_child_line(item, false, w, &self.styles)
+                            };
+                            let y = slot.y + i as u16;
+                            if y < slot.y + slot.height {
+                                Paragraph::new(Text::from(line))
+                                    .render(Rect::new(slot.x, y, slot.width, 1), frame);
                             }
                         }
                     }
                 }
-
-                if item.tree_prefix.is_empty() {
-                    lines.push(render_provider_line(item, is_selected, w, &self.styles));
-                } else {
-                    lines.push(render_tree_child_line(item, is_selected, w, &self.styles));
-                }
-            }
-
-            // "... N below" summary at bottom of visible window.
-            if hidden_below > 0 {
-                let summary_selected = self.survey_cursor >= show_end
-                    && self.survey_cursor < exp.start + exp.count;
-                if summary_selected {
-                    cursor_line = lines.len();
-                }
-                let style = if summary_selected { self.styles.selected } else { self.styles.dim };
-                let text = format!("{SURVEY_INDENT}{:>width$}\u{2193} {hidden_below} below", "", width = HORIZON_COL_W);
-                let mut spans = vec![Span::styled(text, style)];
-                pad_to_width(&mut spans, w, style);
-                lines.push(Line::from_spans(spans));
-            }
-
-            prev_band = Some(*band);
-        }
-
-        // NOW zone at the bottom if there's no overdue band.
-        if !has_overdue_band && !expansions.is_empty() {
-            render_now_zone(w, &mut lines, true, &self.styles);
-        }
-
-        // Per-line rendering: render each line individually into its own 1-row
-        // Rect. This gives the diff engine clean cell boundaries (no scroll-shift)
-        // and avoids the all-white glitch that Paragraph::scroll causes.
-        let available = area.height as usize;
-        let view_offset = compute_scroll(cursor_line, available, lines.len());
-
-        let visible_lines = &lines[view_offset..lines.len().min(view_offset + available)];
-        for (row, line) in visible_lines.iter().enumerate() {
-            Paragraph::new(Text::from(line.clone()))
-                .render(Rect::new(area.x, area.y + row as u16, area.width, 1), frame);
-        }
-
-        // Sticky header: always pin the cursor's band header when it scrolls off.
-        if self.survey_cursor < items.len() {
-            if let Some((header_line_idx, header_line)) = band_headers.get(cursor_band_header) {
-                if *header_line_idx < view_offset {
-                    Paragraph::new(Text::from(header_line.clone()))
-                        .render(Rect::new(area.x, area.y, area.width, 1), frame);
-                }
+                None => {}
             }
         }
+
     }
 
     /// Render the survey bottom bar with field vitals.
@@ -896,7 +791,6 @@ impl InstrumentApp {
 
         let v = &self.field_vitals;
 
-        // Left: vitals summary.
         let mut vitals_parts: Vec<String> = Vec::new();
         vitals_parts.push(format!("{} active", v.active));
         if v.overdue > 0 {
@@ -916,7 +810,7 @@ impl InstrumentApp {
         }
         let left = vitals_parts.join(" \u{00B7} ");
 
-        let center = "Tab pivot \u{00B7} j/k navigate \u{00B7} Enter descend";
+        let center = "j/k navigate \u{00B7} J/K band \u{00B7} Tab pivot \u{00B7} Enter descend";
 
         let w = bar_area.width as usize;
         let left_w = left.chars().count();
@@ -932,7 +826,6 @@ impl InstrumentApp {
             spans.push(Span::styled(center, self.styles.dim));
         }
 
-        // Pad to full width.
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
         if used < w {
             spans.push(Span::styled(" ".repeat(w - used), self.styles.dim));
@@ -943,17 +836,41 @@ impl InstrumentApp {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Line builders
+// ---------------------------------------------------------------------------
+
+/// Build a band header line: "  ──▾ later (68) ────────────"
+/// `is_focused` = true for the expanded band (▾), false for collapsed (▸).
+fn build_band_header_line(
+    band: TimeBand,
+    count: usize,
+    is_focused: bool,
+    w: usize,
+    styles: &InstrumentStyles,
+) -> Line<'static> {
+    let band_label = band.label();
+    let fold_indicator = if is_focused { "\u{25BE}" } else { "\u{25B8}" }; // ▾ or ▸
+    let count_label = format!(" ({count})");
+    let rule_w = w.saturating_sub(4 + 2 + band_label.len() + count_label.len() + 3);
+    let rule = "\u{2500}".repeat(rule_w);
+    let mut text = format!("{SURVEY_INDENT}\u{2500}{fold_indicator} {band_label}{count_label} {rule}");
+    while text.chars().count() < w {
+        text.push('\u{2500}');
+    }
+    Line::from_spans([Span::styled(text, styles.dim)])
+}
+
+
 /// Render a provider/standalone item line (has own deadline or no deadline).
 ///
-/// Layout: `  Jun    ◆ desire text...                   #2 → [4/8]`
+/// Layout: `  Jun    ◆ desire text...                   #2`
 fn render_provider_line(
     item: &SurveyItem,
     is_selected: bool,
     w: usize,
     styles: &InstrumentStyles,
 ) -> Line<'static> {
-    // Plain text for the horizon column. Emoji-range glyphs (⏱) cause width
-    // misalignment: unicode-width reports 1 cell but terminals render 2.
     let horizon_str = match &item.own_horizon_label {
         Some(label) => {
             let padded = format!("{:<width$}", label, width = HORIZON_COL_W);
@@ -964,7 +881,7 @@ fn render_provider_line(
 
     let glyph = position_glyph(item);
     let glyph_str = format!("{glyph} ");
-    let glyph_w = 2; // glyph + space
+    let glyph_w = 2;
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
@@ -974,7 +891,6 @@ fn render_provider_line(
     let desire_w = w.saturating_sub(left_used + right_w + signal_w + 2);
     let desire_text = truncate_desired(&item.desired, desire_w);
 
-    // Gap between text and right column to push right flush-right.
     let text_w = desire_text.chars().count();
     let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
@@ -1003,9 +919,6 @@ fn render_provider_line(
 }
 
 /// Render a tree-child item line (inherits deadline from a provider ancestor).
-/// Uses the pre-computed tree_prefix for proper │/├/└ connector lines.
-///
-/// Layout: `          │ ├ ◆ desire text...               #18 → [0/3]`
 fn render_tree_child_line(
     item: &SurveyItem,
     is_selected: bool,
@@ -1016,7 +929,7 @@ fn render_tree_child_line(
     let prefix_w = item.tree_prefix.chars().count();
     let glyph = position_glyph(item);
     let glyph_str = format!("{glyph} ");
-    let glyph_w = 2; // glyph + space
+    let glyph_w = 2;
 
     let right_text = build_right_col(item);
     let right_w = right_text.chars().count();
@@ -1048,96 +961,24 @@ fn render_tree_child_line(
     Line::from_spans(spans)
 }
 
-/// Position glyph: ◆ for positioned (route), ✧ for held — matches deck glyphs.
 fn position_glyph(item: &SurveyItem) -> &'static str {
     if item.is_held { "\u{2727}" } else { "\u{25c6}" }
 }
 
-/// Glyph color matching the deck view: green for next step, cyan for route, subdued for held.
 fn glyph_style(item: &SurveyItem, styles: &InstrumentStyles) -> ftui::style::Style {
     if item.is_held { styles.subdued } else if item.is_next { styles.green } else { styles.cyan }
 }
 
-/// Signal glyphs as a compact string for inline display. Empty if no signals.
 fn signal_display_str(item: &SurveyItem) -> String {
     if item.signal_glyphs.is_empty() {
         String::new()
     } else {
-        // Space-separate glyphs, with trailing space before right column.
         format!("{} ", item.signal_glyphs.join(""))
     }
 }
 
-/// Build the right column: just the tension ID number, zero-padded to 2 digits.
 fn build_right_col(item: &SurveyItem) -> String {
     item.short_code.map(|c| format!("{c:02}")).unwrap_or_default()
-}
-
-/// Render the NOW zone separator — a clean dim rule marking the temporal present.
-fn render_now_zone(w: usize, lines: &mut Vec<Line>, add_blank_before: bool, styles: &InstrumentStyles) {
-    if add_blank_before {
-        lines.push(Line::from_spans([Span::styled(" ".repeat(w), styles.dim)]));
-    }
-    let now_rule_w = w.saturating_sub(4 + 5 + 4); // "  ── NOW ──..."
-    let half = now_rule_w / 2;
-    let left_rule = "\u{2500}".repeat(half);
-    let right_rule = "\u{2500}".repeat(now_rule_w - half);
-    let mut text = format!("{SURVEY_INDENT}{left_rule} NOW {right_rule}");
-    // Pad to full width to prevent bleed-through from underlying lines.
-    while text.chars().count() < w {
-        text.push(' ');
-    }
-    lines.push(Line::from_spans([
-        Span::styled(text, styles.dim),
-    ]));
-}
-
-/// Render a dimmed breadcrumb line for an ancestor that scrolled off-screen.
-/// Same layout as a regular line but fully dim — provides structural context.
-fn render_breadcrumb_line(item: &SurveyItem, w: usize, styles: &InstrumentStyles) -> Line<'static> {
-    let base_indent = SURVEY_INDENT.len() + HORIZON_COL_W;
-    let glyph = position_glyph(item);
-    let glyph_str = format!("{glyph} ");
-    let glyph_w = 2;
-    let right_text = build_right_col(item);
-    let right_w = right_text.chars().count();
-
-    if item.tree_prefix.is_empty() {
-        // Provider-level breadcrumb.
-        let left_used = base_indent + glyph_w;
-        let desire_w = w.saturating_sub(left_used + right_w + 2);
-        let desire_text = truncate_desired(&item.desired, desire_w);
-        let text_w = desire_text.chars().count();
-        let gap = w.saturating_sub(left_used + text_w + right_w);
-
-        let mut spans = vec![
-            Span::styled(" ".repeat(base_indent), styles.dim),
-            Span::styled(glyph_str, styles.dim),
-            Span::styled(desire_text, styles.dim),
-            Span::styled(" ".repeat(gap), styles.dim),
-            Span::styled(right_text, styles.dim),
-        ];
-        pad_to_width(&mut spans, w, styles.dim);
-        return Line::from_spans(spans);
-    }
-
-    let prefix_w = item.tree_prefix.chars().count();
-    let left_used = base_indent + prefix_w + glyph_w;
-    let desire_w = w.saturating_sub(left_used + right_w + 2);
-    let desire_text = truncate_desired(&item.desired, desire_w);
-    let text_w = desire_text.chars().count();
-    let gap = w.saturating_sub(left_used + text_w + right_w);
-
-    let mut spans = vec![
-        Span::styled(" ".repeat(base_indent), styles.dim),
-        Span::styled(item.tree_prefix.clone(), styles.dim),
-        Span::styled(glyph_str, styles.dim),
-        Span::styled(desire_text, styles.dim),
-        Span::styled(" ".repeat(gap), styles.dim),
-        Span::styled(right_text, styles.dim),
-    ];
-    pad_to_width(&mut spans, w, styles.dim);
-    Line::from_spans(spans)
 }
 
 fn pad_to_width(spans: &mut Vec<Span>, w: usize, style: ftui::style::Style) {
@@ -1145,19 +986,4 @@ fn pad_to_width(spans: &mut Vec<Span>, w: usize, style: ftui::style::Style) {
     if total < w {
         spans.push(Span::styled(" ".repeat(w - total), style));
     }
-}
-
-// ---------------------------------------------------------------------------
-// Scroll helpers
-// ---------------------------------------------------------------------------
-
-/// Compute scroll offset so that `target_line` is visible within `viewport`.
-fn compute_scroll(target_line: usize, viewport: usize, total_lines: usize) -> usize {
-    if total_lines <= viewport {
-        return 0;
-    }
-    let context = 3_usize;
-    let ideal_top = target_line.saturating_sub(context);
-    let max_scroll = total_lines.saturating_sub(viewport);
-    ideal_top.min(max_scroll)
 }

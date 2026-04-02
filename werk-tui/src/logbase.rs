@@ -1137,7 +1137,7 @@ impl InstrumentApp {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn format_age(timestamp: DateTime<Utc>) -> String {
+pub fn format_age(timestamp: DateTime<Utc>) -> String {
     let delta = Utc::now().signed_duration_since(timestamp);
     let hours = delta.num_hours();
     let days = delta.num_days();

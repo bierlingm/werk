@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-02T14:41:47Z",
+  "flushed_at": "2026-04-02T17:47:18Z",
   "summary": {
-    "active": 68,
+    "active": 70,
     "released": 20,
     "resolved": 86,
-    "total": 174
+    "total": 176
   },
   "tensions": [
     {
@@ -1919,6 +1919,28 @@
       "parent_id": "01KN4WH74MES7HZQG04A51ER0D",
       "position": null,
       "short_code": 179,
+      "status": "Active"
+    },
+    {
+      "actual": "SurveyView uses per-render Vec<Line> with manual scroll and band windowing — causes jitter, blank screens, bar disappearance. Multiple patches failed because dynamic line count from breadcrumbs/providers fights with List widget scroll.",
+      "created_at": "2026-04-02T15:43:39.229356+00:00",
+      "desired": "SurveyView is rewritten greenfield on ftui List widget — pre-built stable display items, single ListState scroll owner, no per-render line count variation, no double-scroll, sticky band header overlay",
+      "horizon": null,
+      "id": "01KN7DTK6XRA2V1QWWAV06PEN8",
+      "parent_id": null,
+      "position": null,
+      "short_code": 180,
+      "status": "Active"
+    },
+    {
+      "actual": "CLI has werk log (no ID) producing cross-tension timeline — 131 entries with timestamps and short codes. No TUI surface yet. Current TUI logbase (L key) is per-tension only.",
+      "created_at": "2026-04-02T17:45:42.266592+00:00",
+      "desired": "cross-tension timeline is the survey's downward surface — field-level logbase showing all epochs across all tensions, most-recent first, accessible by navigating past the last band",
+      "horizon": null,
+      "id": "01KN7MT2KT63MYTN0JG23NAZFZ",
+      "parent_id": null,
+      "position": null,
+      "short_code": 181,
       "status": "Active"
     }
   ]
