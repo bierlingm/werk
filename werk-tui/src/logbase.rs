@@ -1054,7 +1054,8 @@ impl InstrumentApp {
                     // positions where the List widget placed the blank padding.
                     let y = list_y;
                     for (i, ch) in date_str.chars().enumerate() {
-                        let x = list_area.x + 2 + i as u16;
+                        // Marker width: "▸ " may be 3 columns (▸ can be wide)
+                        let x = list_area.x + 3 + i as u16;
                         if x < list_area.x + list_area.width {
                             let cell = ftui::Cell::from_char(ch)
                                 .with_fg(self.styles.clr_dim)
