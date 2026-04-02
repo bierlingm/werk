@@ -1442,6 +1442,7 @@ impl InstrumentApp {
 
     /// Update the focused epoch based on the current list selection.
     /// If the epoch changes, rebuild items to update fisheye expansion.
+    /// Preserves cursor on the event the user navigated to (not the boundary).
     fn update_focused_epoch_from_selection(&mut self) {
         let selected_idx = self.logbase_list_state.borrow().selected();
         let item = selected_idx.and_then(|i| self.logbase_items.get(i).cloned());
@@ -1451,15 +1452,23 @@ impl InstrumentApp {
                 let new_epoch = event.epoch_index();
                 if new_epoch != self.logbase_focused_epoch {
                     self.logbase_focused_epoch = new_epoch;
+                    self.logbase_expanded = None;
                     // Rebuild items with new fisheye expansion
                     self.rebuild_logbase_items();
-                    // Try to keep selection on a boundary item for the new epoch
+                    // Find the item matching the same event_index the user was on
                     if let Some(pos) = self.logbase_items.iter().position(|item| {
-                        item.is_boundary && self.logbase_events.get(item.event_index)
-                            .map(|e| e.epoch_index() == new_epoch)
-                            .unwrap_or(false)
+                        item.event_index == event_idx && item.selectable
                     }) {
                         self.logbase_list_state.borrow_mut().select(Some(pos));
+                    } else {
+                        // Fallback: select boundary for the new epoch
+                        if let Some(pos) = self.logbase_items.iter().position(|item| {
+                            item.is_boundary && self.logbase_events.get(item.event_index)
+                                .map(|e| e.epoch_index() == new_epoch)
+                                .unwrap_or(false)
+                        }) {
+                            self.logbase_list_state.borrow_mut().select(Some(pos));
+                        }
                     }
                 }
             }

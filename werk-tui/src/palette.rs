@@ -102,6 +102,7 @@ pub fn build_combined_items(
     }
 
     // Address resolution — detect deep addresses like #42~e3, #42.n3
+    let mut address_resolved = false;
     if !query.is_empty() {
         if let Ok(addr) = sd_core::address::parse_address(query) {
             match addr {
@@ -110,12 +111,14 @@ pub fn build_combined_items(
                     if let Ok(tensions) = store.list_tensions() {
                         if let Some(t) = tensions.iter().find(|t| t.short_code == Some(tension)) {
                             let action_id = format!("{}{}~e{}", EPOCH_ADDR_PREFIX, t.id, epoch_num);
-                            let title = format!("#{} epoch {} — {}", tension, epoch_num,
-                                werk_shared::truncate(&t.desired, 60));
+                            // Title includes the address syntax so the fuzzy matcher can find it
+                            let title = format!("#{}~e{} — epoch {} — {}", tension, epoch_num, epoch_num,
+                                werk_shared::truncate(&t.desired, 50));
                             items.push(ActionItem::new(action_id, title)
                                 .with_description("open in logbase")
                                 .with_category("\u{2500}")
-                                .with_tags(&["address"]));
+                                .with_tags(&["address", "logbase", "epoch"]));
+                            address_resolved = true;
                         }
                     }
                 }
@@ -124,8 +127,8 @@ pub fn build_combined_items(
         }
     }
 
-    // Tensions — only when there's a query to search for
-    if !query.is_empty() {
+    // Tensions — only when there's a query to search for (skip if address already resolved)
+    if !query.is_empty() && !address_resolved {
         let tension_items = if query.starts_with('#') {
             search_by_short_code(&query[1..], store, search_index)
         } else if query.chars().all(|c| c.is_ascii_digit()) {
