@@ -1367,6 +1367,24 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            // Enter/Space — toggle detail expansion for selected event
+            Msg::Submit | Msg::Char(' ') => {
+                let sel = self.logbase_list_state.borrow().selected();
+                if let Some(sel) = sel {
+                    let item_data = self.logbase_items.get(sel).map(|item| (item.selectable, item.event_index));
+                    if let Some((true, event_idx)) = item_data {
+                        if self.logbase_expanded == Some(event_idx) {
+                            self.logbase_expanded = None;
+                        } else {
+                            self.logbase_expanded = Some(event_idx);
+                        }
+                        self.rebuild_logbase_items();
+                        self.logbase_list_state.borrow_mut().select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
+                    }
+                }
+                Cmd::none()
+            }
+
             // L / Esc / BackTab — return to originating view
             Msg::Char('L') | Msg::Cancel | Msg::BackTab => {
                 self.exit_logbase();

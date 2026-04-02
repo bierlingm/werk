@@ -134,6 +134,8 @@ pub struct InstrumentApp {
     pub logbase_separator: String,
     /// ID → short_code lookup for resolving ULIDs in events.
     pub logbase_id_lookup: std::collections::HashMap<String, Option<i32>>,
+    /// Currently expanded event index (Enter/Space toggles detail view).
+    pub logbase_expanded: Option<usize>,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
     pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
 
@@ -256,6 +258,7 @@ impl InstrumentApp {
             logbase_header: Vec::new(),
             logbase_separator: String::new(),
             logbase_id_lookup: std::collections::HashMap::new(),
+            logbase_expanded: None,
             pre_logbase_state: None,
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
@@ -364,6 +367,7 @@ impl InstrumentApp {
             logbase_header: Vec::new(),
             logbase_separator: String::new(),
             logbase_id_lookup: std::collections::HashMap::new(),
+            logbase_expanded: None,
             pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),
