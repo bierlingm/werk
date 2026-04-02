@@ -140,6 +140,8 @@ pub struct InstrumentApp {
     pub logbase_expanded: Option<usize>,
     /// When true, batch collapsing is disabled (user expanded a collapsed run).
     pub logbase_show_all: bool,
+    /// List area height from last render (used by bar for compression counts).
+    pub logbase_list_height: std::cell::Cell<u16>,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
     pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
 
@@ -265,6 +267,7 @@ impl InstrumentApp {
             logbase_id_to_desire: std::collections::HashMap::new(),
             logbase_expanded: None,
             logbase_show_all: false,
+            logbase_list_height: std::cell::Cell::new(0),
             pre_logbase_state: None,
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
@@ -376,6 +379,7 @@ impl InstrumentApp {
             logbase_id_to_desire: std::collections::HashMap::new(),
             logbase_expanded: None,
             logbase_show_all: false,
+            logbase_list_height: std::cell::Cell::new(0),
             pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),
