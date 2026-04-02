@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-02T12:23:00Z",
+  "flushed_at": "2026-04-02T12:25:21Z",
   "summary": {
-    "active": 69,
+    "active": 68,
     "released": 20,
-    "resolved": 84,
+    "resolved": 85,
     "total": 173
   },
   "tensions": [
@@ -1867,7 +1867,7 @@
       "status": "Active"
     },
     {
-      "actual": "Phase 1 polished. All bugs from review fixed: (1) 'moved to root' for empty parent_id, (2) palette address #42~e3 resolves — title includes address syntax for fuzzy match, (3) cursor preserves position after epoch change instead of jumping to boundary, (4) Enter on epoch boundaries toggles focus. Batch collapsing for 5+ consecutive same-type events. Epoch boundary labels show [Nch] when trigger is child activity. Coherent glyph taxonomy. Remaining: text wrapping for list items, cross-view search filter.",
+      "actual": "Phase 1 release-ready. Logbase view with fisheye epoch expansion, j/k event nav, J/K epoch nav with directional entry (K enters at bottom, J at top), Enter toggles focus on boundaries or expands detail on events. Inline date column with sticky overlay via buffer writes. Batch collapsing (5+ same-type, Enter expands). No-op epoch guard prevents phantom epochs. Palette #42~e3 navigates to specific epoch. Compression counts in status bar (focused-epoch-scoped, excludes boundaries). Survey items load on restore. Remaining: text wrapping, cross-view search.",
       "created_at": "2026-04-01T16:02:57.300614+00:00",
       "desired": "TUI logbase view — browse epoch history, ghost geometry, provenance lineage from within the TUI. Entry points: palette address resolution (#42~e3), keybinding from deck view, pan-below-current-epoch navigation. May include FrankenMermaid visualization of split/merge topology.",
       "horizon": null,
@@ -1900,7 +1900,7 @@
       "status": "Active"
     },
     {
-      "actual": "Event descriptions polished. Glyph taxonomy: ✓ resolved, ∼ released, ↻ reactivated, ✕ deleted, → moved, ▸ positioned, ◆ desire, ◇ reality, ⊘ horizon, ※ note. Verb-first natural language. Empty parent_id → 'moved to root'. Batch collapsing: 5+ consecutive same-type events collapse to first 2 + summary + last 1. Expanded detail: short fields show 'old → new' on one line, long fields show was/now on two lines. ULIDs resolved in both old and new values.",
+      "actual": "Done. Summary-level event descriptions: verb-first natural language (resolved #83, moved #138 to root, #49 reality updated, positioned #36 at 1). Glyph taxonomy (✓ ∼ ↻ ✕ → ▸ ◆ ◇ ⊘ ※). Enter expansion shows child desire text, new value, old value. Date grouping via inline column with sticky overlay. Batch collapsing with Enter to expand. Epoch boundary triggers use snapshot comparison (ground truth).",
       "created_at": "2026-04-02T08:29:49.751414+00:00",
       "desired": "Logbase event descriptions — make mutation display more human-friendly, ergonomic, and informationally dense. Current: raw field names, truncated text, no context. Target: natural language summaries, child tension names alongside IDs, old→new for field changes, grouped by type.",
       "horizon": null,
@@ -1908,7 +1908,7 @@
       "parent_id": null,
       "position": null,
       "short_code": 178,
-      "status": "Active"
+      "status": "Resolved"
     }
   ]
 }
