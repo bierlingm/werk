@@ -770,6 +770,9 @@ impl InstrumentApp {
             None
         };
 
+        // Focused epoch boundary line (pinned above desire)
+        let epoch_line_h: u16 = if focused.is_some() { 1 } else { 0 };
+
         // Desire anchor (word-wrapped, capped at 3 lines)
         let desire_lines: Vec<String> = if let Some(epoch) = focused {
             let desire_text = format!("  \u{25C6} {}", &epoch.desire_snapshot);
@@ -791,12 +794,37 @@ impl InstrumentApp {
         let reality_h = reality_lines.len() as u16;
 
         let stream_y = sep_y + sep_height;
-        let list_height = stream_height.saturating_sub(desire_h + reality_h);
+        let list_height = stream_height.saturating_sub(epoch_line_h + desire_h + reality_h);
         if list_height < 2 || self.logbase_items.is_empty() {
             return;
         }
 
-        // Render desire anchor (word-wrapped)
+        // Render focused epoch boundary line (pinned)
+        if let Some(epoch) = focused {
+            let epoch_num = self.logbase_focused_epoch + 1;
+            let age_text = format_age(epoch.timestamp);
+            let mutation_count = self.logbase_events.iter()
+                .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index, .. } if *epoch_index == self.logbase_focused_epoch))
+                .count();
+            let trigger = if let Some(prev) = prev_epoch {
+                let d = epoch.desire_snapshot != prev.desire_snapshot;
+                let r = epoch.reality_snapshot != prev.reality_snapshot;
+                match (d, r) { (true, true) => " [\u{25C6}\u{25C7}]", (true, false) => " [\u{25C6}]", (false, true) => " [\u{25C7}]", _ => "" }
+            } else { "" };
+            let mut parts = Vec::new();
+            if mutation_count > 0 { parts.push(format!("{} mut", mutation_count)); }
+            parts.push(age_text);
+            if !trigger.is_empty() { parts.push(trigger.to_owned()); }
+            let right = parts.join(" ");
+            let label = format!("epoch {}", epoch_num);
+            let rule_w = w.saturating_sub(5 + label.len() + right.len() + 2);
+            let epoch_text = format!("\u{2500}\u{2500} {} {} {}", label, "\u{2500}".repeat(rule_w), right);
+            Paragraph::new(Text::from(Line::from_spans([Span::styled(epoch_text, self.styles.dim)])))
+                .render(Rect::new(area.x, stream_y, area.width, 1), frame);
+        }
+
+        // Render desire anchor (word-wrapped, below epoch line)
+        let desire_y = stream_y + epoch_line_h;
         if let Some(epoch) = focused {
             let desire_changed = prev_epoch.map_or(true, |p| p.desire_snapshot != epoch.desire_snapshot);
             let desire_style = if desire_changed { self.styles.amber } else { self.styles.subdued };
@@ -804,7 +832,7 @@ impl InstrumentApp {
                 .map(|l| Line::from_spans([Span::styled(l.clone(), desire_style)]))
                 .collect();
             Paragraph::new(Text::from_lines(lines))
-                .render(Rect::new(area.x, stream_y, area.width, desire_h), frame);
+                .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
         // Compute compression indicators BEFORE rendering the list,
@@ -821,11 +849,12 @@ impl InstrumentApp {
         let comp_below_h: u16 = if has_below { 1 } else { 0 };
         let inner_list_h = list_height.saturating_sub(comp_above_h + comp_below_h);
 
-        let list_y = stream_y + desire_h;
+        let list_y = stream_y + epoch_line_h + desire_h;
 
-        // Render "above" compression line
+        // Render "above" compression line — count only selectable (meaningful) items
         if has_above {
-            let above_text = format!("  \u{25B4} {} more above", offset);
+            let above_selectable = self.logbase_items[..offset].iter().filter(|i| i.selectable).count();
+            let above_text = format!("  \u{25B4} {} more above", above_selectable);
             let pad = w.saturating_sub(above_text.chars().count() + 1);
             let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
             Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
@@ -853,12 +882,12 @@ impl InstrumentApp {
         StatefulWidget::render(&list, inner_area, frame, &mut state);
         drop(state);
 
-        // Render "below" compression line
+        // Render "below" compression line — count only selectable items
         if has_below {
             let last_visible = offset + inner_list_h as usize;
-            let below_count = total_items.saturating_sub(last_visible);
-            if below_count > 0 {
-                let below_text = format!("  \u{25BE} {} more below", below_count);
+            let below_selectable = self.logbase_items[last_visible.min(total_items)..].iter().filter(|i| i.selectable).count();
+            if below_selectable > 0 {
+                let below_text = format!("  \u{25BE} {} more below", below_selectable);
                 let pad = w.saturating_sub(below_text.chars().count() + 1);
                 let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
                 let below_y = inner_y + inner_list_h;
