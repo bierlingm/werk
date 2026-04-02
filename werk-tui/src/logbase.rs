@@ -1022,7 +1022,8 @@ impl InstrumentApp {
                 .render(Rect::new(area.x, desire_y, area.width, desire_h), frame);
         }
 
-        // Render list at full height — no reserved rows.
+        // Render list at full height — no reserved rows, no overlays.
+        // Compression counts are shown in the status bar instead.
         let list_y = stream_y + epoch_line_h + desire_h;
         let list_area = Rect::new(area.x, list_y, area.width, list_height);
 
@@ -1041,44 +1042,7 @@ impl InstrumentApp {
 
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, list_area, frame, &mut state);
-
-        // Read the updated offset after render
-        let total_items = self.logbase_items.len();
-        let offset = state.offset;
         drop(state);
-
-        // Overlay compression lines on top of the first/last list rows when
-        // 2+ focused-epoch items are hidden. Only overwrites non-critical rows.
-        let focused_ep = self.logbase_focused_epoch;
-        let is_focused_selectable = |item: &crate::logbase::LogbaseItem| -> bool {
-            item.selectable && self.logbase_events.get(item.event_index)
-                .map(|e| e.epoch_index() == focused_ep)
-                .unwrap_or(false)
-        };
-
-        if offset > 0 {
-            let above_count = self.logbase_items[..offset].iter().filter(|i| is_focused_selectable(i)).count();
-            if above_count > 1 {
-                let above_text = format!("  \u{25B4} {} more above", above_count);
-                let pad = w.saturating_sub(above_text.chars().count() + 1);
-                let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
-                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                    .render(Rect::new(area.x, list_y, area.width, 1), frame);
-            }
-        }
-
-        let visible_end = offset + list_height as usize;
-        if visible_end < total_items {
-            let below_count = self.logbase_items[visible_end.min(total_items)..].iter().filter(|i| is_focused_selectable(i)).count();
-            if below_count > 1 {
-                let below_text = format!("  \u{25BE} {} more below", below_count);
-                let pad = w.saturating_sub(below_text.chars().count() + 1);
-                let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
-                let below_y = list_y + list_height.saturating_sub(1);
-                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                    .render(Rect::new(area.x, below_y, area.width, 1), frame);
-            }
-        }
 
         // Render reality anchor (word-wrapped, below list)
         if let Some(epoch) = focused {
@@ -1093,7 +1057,7 @@ impl InstrumentApp {
         }
     }
 
-    /// Render the logbase bottom bar.
+    /// Render the logbase bottom bar with compression counts.
     pub fn render_logbase_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
         let content = self.layout.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
@@ -1102,7 +1066,11 @@ impl InstrumentApp {
             .map(|t| format!("Log {}", werk_shared::display_id(t.short_code, &t.id)))
             .unwrap_or_default();
 
-        let selected = self.logbase_list_state.borrow().selected();
+        let state = self.logbase_list_state.borrow();
+        let selected = state.selected();
+        let offset = state.offset;
+        drop(state);
+
         let epoch_label = selected
             .and_then(|i| self.logbase_items.get(i))
             .map(|item| {
@@ -1112,7 +1080,32 @@ impl InstrumentApp {
             })
             .unwrap_or_default();
 
-        let bar_text = format!(" {} \u{00b7} {} ", tension_label, epoch_label);
+        // Count focused-epoch selectable items above/below visible area
+        let focused_ep = self.logbase_focused_epoch;
+        let is_focused_sel = |item: &LogbaseItem| -> bool {
+            item.selectable && self.logbase_events.get(item.event_index)
+                .map(|e| e.epoch_index() == focused_ep)
+                .unwrap_or(false)
+        };
+        let above = self.logbase_items.get(..offset)
+            .map(|s| s.iter().filter(|i| is_focused_sel(i)).count())
+            .unwrap_or(0);
+        // Estimate visible rows from the content area height minus header/anchors
+        let visible = area.height as usize; // approximate
+        let below_start = (offset + visible).min(self.logbase_items.len());
+        let below = self.logbase_items.get(below_start..)
+            .map(|s| s.iter().filter(|i| is_focused_sel(i)).count())
+            .unwrap_or(0);
+
+        let mut parts = vec![tension_label, epoch_label];
+        if above > 0 {
+            parts.push(format!("\u{25B4}{} above", above));
+        }
+        if below > 0 {
+            parts.push(format!("\u{25BE}{} below", below));
+        }
+
+        let bar_text = format!(" {} ", parts.join(" \u{00b7} "));
         Paragraph::new(Text::from(Line::from_spans([Span::styled(bar_text, self.styles.dim)])))
             .render(bar_area, frame);
     }
