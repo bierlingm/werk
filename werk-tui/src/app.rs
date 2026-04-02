@@ -138,6 +138,8 @@ pub struct InstrumentApp {
     pub logbase_id_to_desire: std::collections::HashMap<String, String>,
     /// Currently expanded event index (Enter/Space toggles detail view).
     pub logbase_expanded: Option<usize>,
+    /// When true, batch collapsing is disabled (user expanded a collapsed run).
+    pub logbase_show_all: bool,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
     pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
 
@@ -262,6 +264,7 @@ impl InstrumentApp {
             logbase_id_lookup: std::collections::HashMap::new(),
             logbase_id_to_desire: std::collections::HashMap::new(),
             logbase_expanded: None,
+            logbase_show_all: false,
             pre_logbase_state: None,
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
@@ -372,6 +375,7 @@ impl InstrumentApp {
             logbase_id_lookup: std::collections::HashMap::new(),
             logbase_id_to_desire: std::collections::HashMap::new(),
             logbase_expanded: None,
+            logbase_show_all: false,
             pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),

@@ -1390,13 +1390,14 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Enter/Space — on boundary: toggle focused epoch; on mutation: toggle detail expansion
+            // Enter/Space — on boundary: toggle focused epoch; on collapse summary: expand all;
+            // on mutation: toggle detail expansion
             Msg::Submit | Msg::Char(' ') => {
                 let sel = self.logbase_list_state.borrow().selected();
                 if let Some(sel) = sel {
                     let item_data = self.logbase_items.get(sel)
-                        .map(|item| (item.selectable, item.is_boundary, item.event_index));
-                    if let Some((true, is_boundary, event_idx)) = item_data {
+                        .map(|item| (item.selectable, item.is_boundary, item.bright, item.event_index));
+                    if let Some((true, is_boundary, is_bright, event_idx)) = item_data {
                         if is_boundary {
                             // Toggle this epoch as the focused epoch
                             if let Some(event) = self.logbase_events.get(event_idx) {
@@ -1404,6 +1405,7 @@ impl InstrumentApp {
                                 if target_epoch != self.logbase_focused_epoch {
                                     self.logbase_focused_epoch = target_epoch;
                                     self.logbase_expanded = None;
+                                    self.logbase_show_all = false;
                                     self.rebuild_logbase_items();
                                     // Re-select the boundary for this epoch
                                     if let Some(pos) = self.logbase_items.iter().position(|item| {
@@ -1414,6 +1416,11 @@ impl InstrumentApp {
                                     }
                                 }
                             }
+                        } else if !is_bright {
+                            // Collapse summary line (selectable, not bright) — expand all
+                            self.logbase_show_all = !self.logbase_show_all;
+                            self.rebuild_logbase_items();
+                            self.logbase_list_state.borrow_mut().select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
                         } else {
                             // Toggle detail expansion for mutation event
                             if self.logbase_expanded == Some(event_idx) {
@@ -1453,6 +1460,7 @@ impl InstrumentApp {
                 if new_epoch != self.logbase_focused_epoch {
                     self.logbase_focused_epoch = new_epoch;
                     self.logbase_expanded = None;
+                    self.logbase_show_all = false;
                     // Rebuild items with new fisheye expansion
                     self.rebuild_logbase_items();
                     // Find the item matching the same event_index the user was on
@@ -1681,6 +1689,19 @@ impl InstrumentApp {
     fn save_current_edit_field(&mut self) {
         let buf = self.input_buffer.clone();
         if let InputMode::Editing { ref tension_id, ref field } = self.input_mode.clone() {
+            // Check if value actually changed before creating gesture/epoch
+            let old_value = self.engine.store().get_tension(tension_id).ok().flatten();
+            let actually_changed = match (field, &old_value) {
+                (EditField::Desire, Some(t)) => t.desired != buf,
+                (EditField::Reality, Some(t)) => t.actual != buf,
+                (EditField::Horizon, _) => true, // horizon parsing is complex, always allow
+                _ => true,
+            };
+            if !actually_changed {
+                // No change — skip gesture/epoch creation entirely
+                return;
+            }
+
             let gesture_desc = format!("edit {} #{}", field.label(), tension_id.get(..8).unwrap_or(&tension_id));
             self.begin_gesture(&gesture_desc);
 
