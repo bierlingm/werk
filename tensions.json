@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-02T08:52:06Z",
+  "flushed_at": "2026-04-02T09:00:37Z",
   "summary": {
     "active": 69,
     "released": 20,
@@ -1867,7 +1867,7 @@
       "status": "Active"
     },
     {
-      "actual": "Phase 1 functional. ViewOrientation::Logbase with ftui List widget. Entry: L from Deck/Survey, j-below-Reality. Navigation: j/k events (skip non-selectables), J/K epochs, k-at-top exits. Pinned epoch boundary + desire (amber if changed) + reality (amber if changed) anchors. Enter/Space expands event detail. Compression lines with accurate selectable counts. Column layout for events. Remaining: human-friendly event descriptions (#178), text wrapping for list items, Enter for epoch boundaries, palette address resolution.",
+      "actual": "Phase 1 functional. ViewOrientation::Logbase with ftui List widget. Entry: L from Deck/Survey, j-below-Reality. Navigation: j/k events (skip non-selectables), J/K epochs, k-at-top exits. Pinned epoch boundary + desire (amber if changed) + reality (amber if changed) anchors. Enter/Space expands event detail OR toggles focused epoch on boundary items. Compression lines with accurate selectable counts. Column layout for events. Human-friendly event descriptions (#178 done). Palette address resolution (#42~e3) wired. Remaining: text wrapping for list items, cross-view search filter.",
       "created_at": "2026-04-01T16:02:57.300614+00:00",
       "desired": "TUI logbase view — browse epoch history, ghost geometry, provenance lineage from within the TUI. Entry points: palette address resolution (#42~e3), keybinding from deck view, pan-below-current-epoch navigation. May include FrankenMermaid visualization of split/merge topology.",
       "horizon": null,
@@ -1900,7 +1900,7 @@
       "status": "Active"
     },
     {
-      "actual": "Not started. Events show raw field names ([parent_id], [deleted]), ULIDs partially resolved to #shortcodes but no tension names. No old→new diffs. No grouping. Enter/Space expansion not yet implemented.",
+      "actual": "Human-friendly event descriptions implemented. Child tension desire text shown alongside #IDs (e.g. 'resolved #83 logbase — searchable substrate'). Natural language ordering ('resolved #83', 'positioned #36 at 1', 'reactivated', 'horizon → 2026-05'). Old→new shows resolved IDs. Release reasons displayed meaningfully. Status field maps to verbs (resolved/released/reactivated/deleted).",
       "created_at": "2026-04-02T08:29:49.751414+00:00",
       "desired": "Logbase event descriptions — make mutation display more human-friendly, ergonomic, and informationally dense. Current: raw field names, truncated text, no context. Target: natural language summaries, child tension names alongside IDs, old→new for field changes, grouped by type.",
       "horizon": null,

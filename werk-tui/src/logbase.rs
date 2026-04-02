@@ -144,6 +144,8 @@ pub struct LogbaseData {
     pub separator_label: String,
     /// ID → short_code lookup for resolving ULIDs in mutation values.
     pub id_lookup: std::collections::HashMap<String, Option<i32>>,
+    /// ID → desire text lookup for showing child tension names alongside IDs.
+    pub id_to_desire: std::collections::HashMap<String, String>,
 }
 
 pub fn load_logbase_data(
@@ -185,7 +187,12 @@ pub fn load_logbase_data(
         .map(|t| (t.id.clone(), t.short_code))
         .collect();
 
-    LogbaseData { events, provenance, header, separator_label, id_lookup }
+    // Build ID → desire text lookup for child tension names
+    let id_to_desire: std::collections::HashMap<String, String> = all_tensions.iter()
+        .map(|t| (t.id.clone(), t.desired.clone()))
+        .collect();
+
+    LogbaseData { events, provenance, header, separator_label, id_lookup, id_to_desire }
 }
 
 /// Build the flat event stream from epochs and pre-loaded mutations.
@@ -391,7 +398,7 @@ impl InstrumentApp {
         let data = load_logbase_data(&tension, &epochs, self.engine.store());
 
         let focused_epoch = if !epochs.is_empty() { epochs.len() - 1 } else { 0 };
-        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup, None);
+        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup, &data.id_to_desire, None);
 
         self.logbase_tension_id = Some(tension_id.to_owned());
         self.logbase_tension = Some(tension);
@@ -401,6 +408,7 @@ impl InstrumentApp {
         self.logbase_focused_epoch = focused_epoch;
         self.logbase_items = items;
         self.logbase_id_lookup = data.id_lookup;
+        self.logbase_id_to_desire = data.id_to_desire;
         self.logbase_header = data.header;
         self.logbase_separator = data.separator_label;
 
@@ -417,6 +425,7 @@ impl InstrumentApp {
             &self.logbase_epochs,
             self.logbase_focused_epoch,
             &self.logbase_id_lookup,
+            &self.logbase_id_to_desire,
             self.logbase_expanded,
         );
     }
@@ -442,6 +451,7 @@ impl InstrumentApp {
         self.logbase_header.clear();
         self.logbase_separator.clear();
         self.logbase_provenance = LogbaseProvenance::default();
+        self.logbase_id_to_desire.clear();
         self.logbase_expanded = None;
     }
 
@@ -469,6 +479,7 @@ fn build_list_items(
     epochs: &[EpochRecord],
     focused_epoch: usize,
     id_to_shortcode: &std::collections::HashMap<String, Option<i32>>,
+    id_to_desire: &std::collections::HashMap<String, String>,
     expanded_event: Option<usize>,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
@@ -552,63 +563,147 @@ fn build_list_items(
                 }
             }
 
-            LogbaseEvent::Mutation { epoch_index, field, old_value, new_value, timestamp, child_short_code, .. } => {
+            LogbaseEvent::Mutation { epoch_index, field, old_value, new_value, timestamp, child_short_code, child_tension_id } => {
                 if *epoch_index != focused_epoch {
                     continue;
                 }
 
-                // Column layout: [date 6] [gutter 2] [glyph 2] [text] [gap] [#child]
+                // Column layout: [date 6] [gutter 2] [glyph 2] [text]
                 let date = format_date_short(*timestamp);
-                let child = child_short_code.map(|sc| format!("#{}", sc)).unwrap_or_default();
 
-                // Resolve ULID values to #shortcode where possible
-                let resolve_id = |ulid: &str| -> String {
+                // Resolve ULID to "#N name" or just "#N"
+                let resolve_id_named = |ulid: &str| -> String {
+                    let sc = id_to_shortcode.get(ulid)
+                        .and_then(|sc| *sc)
+                        .map(|n| format!("#{}", n));
+                    let desire = id_to_desire.get(ulid)
+                        .map(|d| werk_shared::truncate(d, 50));
+                    match (sc, desire) {
+                        (Some(code), Some(name)) => format!("{} {}", code, name),
+                        (Some(code), None) => code,
+                        (None, _) => format!("{}…", &ulid[..8.min(ulid.len())]),
+                    }
+                };
+                let resolve_id_short = |ulid: &str| -> String {
                     id_to_shortcode.get(ulid)
                         .and_then(|sc| sc.map(|n| format!("#{}", n)))
-                        .unwrap_or_else(|| format!("{}...", &ulid[..8.min(ulid.len())]))
+                        .unwrap_or_else(|| format!("{}…", &ulid[..8.min(ulid.len())]))
                 };
 
+                // Child context: "#N desire text" for child mutations
+                let child_label = child_tension_id.as_ref().map(|cid| {
+                    let code = child_short_code.map(|sc| format!("#{}", sc))
+                        .unwrap_or_else(|| format!("{}…", &cid[..8.min(cid.len())]));
+                    let desire = id_to_desire.get(cid.as_str())
+                        .map(|d| werk_shared::truncate(d, 40));
+                    match desire {
+                        Some(name) => format!("{} {}", code, name),
+                        None => code,
+                    }
+                });
+
                 let (glyph, text) = match field.as_str() {
-                    "note" => ("\u{203B}", new_value.clone()),
-                    "status" if new_value.contains("esolved") => ("\u{2713}", "resolved".to_owned()),
-                    "status" if new_value.contains("eleased") => ("\u{2717}", "released".to_owned()),
+                    "note" => {
+                        let prefix = child_label.as_ref()
+                            .map(|c| format!("{}: ", c))
+                            .unwrap_or_default();
+                        ("\u{203B}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
+                    }
+                    "status" if new_value.contains("esolved") => {
+                        let label = child_label.as_ref()
+                            .map(|c| format!("resolved {}", c))
+                            .unwrap_or_else(|| "resolved".to_owned());
+                        ("\u{2713}", label)
+                    }
+                    "status" if new_value.contains("eleased") => {
+                        let label = child_label.as_ref()
+                            .map(|c| format!("released {}", c))
+                            .unwrap_or_else(|| "released".to_owned());
+                        ("\u{223C}", label)
+                    }
+                    "status" if new_value.contains("ctive") => {
+                        let label = child_label.as_ref()
+                            .map(|c| format!("reactivated {}", c))
+                            .unwrap_or_else(|| "reactivated".to_owned());
+                        ("\u{25C7}", label)
+                    }
                     "status" if new_value.contains("eleted") || new_value.contains("Deleted") => {
-                        ("\u{2715}", "deleted".to_owned()) // ✕
+                        let label = child_label.as_ref()
+                            .map(|c| format!("deleted {}", c))
+                            .unwrap_or_else(|| "deleted".to_owned());
+                        ("\u{2715}", label)
                     }
-                    "desired" => ("\u{25C6}", format!("desire: {}", new_value)),
-                    "actual" => ("\u{25C7}", format!("reality: {}", new_value)),
+                    "desired" => {
+                        let prefix = child_label.as_ref()
+                            .map(|c| format!("{} ", c))
+                            .unwrap_or_default();
+                        ("\u{25C6}", format!("{}desire \u{2192} {}", prefix, werk_shared::truncate(new_value, 70)))
+                    }
+                    "actual" => {
+                        let prefix = child_label.as_ref()
+                            .map(|c| format!("{} ", c))
+                            .unwrap_or_default();
+                        ("\u{25C7}", format!("{}reality \u{2192} {}", prefix, werk_shared::truncate(new_value, 70)))
+                    }
                     "position" => {
-                        let val = if new_value.is_empty() || new_value == "null" { "held" } else { new_value.as_str() };
-                        ("\u{2022}", format!("position {}", val))
+                        if new_value.is_empty() || new_value == "null" {
+                            let label = child_label.as_ref()
+                                .map(|c| format!("held {}", c))
+                                .unwrap_or_else(|| "held".to_owned());
+                            ("\u{2022}", label)
+                        } else {
+                            let label = child_label.as_ref()
+                                .map(|c| format!("positioned {} at {}", c, new_value))
+                                .unwrap_or_else(|| format!("positioned at {}", new_value));
+                            ("\u{2022}", label)
+                        }
                     }
-                    "horizon" => ("\u{2022}", format!("horizon: {}", new_value)),
+                    "horizon" => {
+                        if new_value.is_empty() || new_value == "null" {
+                            ("\u{2022}", "horizon cleared".to_owned())
+                        } else {
+                            ("\u{2022}", format!("horizon \u{2192} {}", new_value))
+                        }
+                    }
                     "parent_id" => {
-                        let target = resolve_id(new_value);
-                        ("\u{2022}", format!("moved to {}", target))
+                        let target = resolve_id_named(new_value);
+                        let label = child_label.as_ref()
+                            .map(|c| format!("moved {} to {}", c, target))
+                            .unwrap_or_else(|| format!("moved to {}", target));
+                        ("\u{2022}", label)
+                    }
+                    "release_reason" => {
+                        let prefix = child_label.as_ref()
+                            .map(|c| format!("{}: ", c))
+                            .unwrap_or_default();
+                        ("\u{223C}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
                     }
                     "deleted" => {
-                        // "deleted" field: the value is often empty or the tension ID
                         if new_value.is_empty() || new_value == "true" {
-                            ("\u{2715}", "deleted".to_owned())
+                            let label = child_label.as_ref()
+                                .map(|c| format!("deleted {}", c))
+                                .unwrap_or_else(|| "deleted".to_owned());
+                            ("\u{2715}", label)
                         } else {
-                            let target = resolve_id(new_value);
+                            let target = resolve_id_short(new_value);
                             ("\u{2715}", format!("deleted {}", target))
                         }
                     }
                     _ => {
                         // For any field with a ULID-looking value, try to resolve
                         let display_value = if new_value.len() > 20 && new_value.chars().all(|c| c.is_alphanumeric()) {
-                            resolve_id(new_value)
+                            resolve_id_short(new_value)
                         } else {
                             new_value.clone()
                         };
-                        ("\u{2022}", format!("[{}] {}", field, display_value))
+                        let prefix = child_label.as_ref()
+                            .map(|c| format!("{} ", c))
+                            .unwrap_or_default();
+                        ("\u{2022}", format!("{}{} \u{2192} {}", prefix, field, display_value))
                     }
                 };
 
-                // Format: date  glyph child text
-                let child_prefix = if child.is_empty() { String::new() } else { format!("{} ", child) };
-                let display = format!("{:<6}  {} {}{}", date, glyph, child_prefix, text);
+                let display = format!("{:<6}  {} {}", date, glyph, text);
 
                 items.push(LogbaseItem {
                     text: display,
@@ -624,8 +719,14 @@ fn build_list_items(
                     // Show old→new for fields that have old_value
                     if let Some(old) = old_value {
                         if !old.is_empty() {
+                            // Resolve ULIDs in old value too
+                            let old_display = if old.len() > 20 && old.chars().all(|c| c.is_alphanumeric()) {
+                                resolve_id_named(old)
+                            } else {
+                                old.clone()
+                            };
                             items.push(LogbaseItem {
-                                text: format!("          was: {}", old),
+                                text: format!("          was: {}", old_display),
                                 style: Style::default(),
                                 event_index: i,
                                 is_boundary: false,

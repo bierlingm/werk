@@ -329,6 +329,29 @@ impl InstrumentApp {
 
     /// Dispatch a palette action to the same code path as direct keybindings.
     fn dispatch_palette_action(&mut self, action_id: &str) -> Cmd<Msg> {
+        // Handle epoch address navigation — "epoch:ULID~eN"
+        if let Some(addr_str) = action_id.strip_prefix(crate::palette::EPOCH_ADDR_PREFIX) {
+            // Parse "ULID~eN" format
+            if let Some((tension_id, epoch_part)) = addr_str.split_once("~e") {
+                let epoch_num: usize = epoch_part.parse().unwrap_or(1);
+                self.enter_logbase(tension_id);
+                // Navigate to the requested epoch (epoch_num is 1-based, index is 0-based)
+                let target_epoch = epoch_num.saturating_sub(1);
+                if target_epoch < self.logbase_epochs.len() {
+                    self.logbase_focused_epoch = target_epoch;
+                    self.rebuild_logbase_items();
+                    // Select the boundary item for that epoch
+                    if let Some(pos) = self.logbase_items.iter().position(|item| {
+                        item.is_boundary && self.logbase_events.get(item.event_index)
+                            .map(|e| e.epoch_index() == target_epoch).unwrap_or(false)
+                    }) {
+                        self.logbase_list_state.borrow_mut().select(Some(pos));
+                    }
+                }
+            }
+            return Cmd::none();
+        }
+
         // Handle tension navigation — IDs prefixed with "t:"
         if let Some(tension_id) = action_id.strip_prefix(crate::palette::TENSION_ID_PREFIX) {
             // Navigate to the tension's parent level with cursor on the tension
@@ -1367,19 +1390,40 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Enter/Space — toggle detail expansion for selected event
+            // Enter/Space — on boundary: toggle focused epoch; on mutation: toggle detail expansion
             Msg::Submit | Msg::Char(' ') => {
                 let sel = self.logbase_list_state.borrow().selected();
                 if let Some(sel) = sel {
-                    let item_data = self.logbase_items.get(sel).map(|item| (item.selectable, item.event_index));
-                    if let Some((true, event_idx)) = item_data {
-                        if self.logbase_expanded == Some(event_idx) {
-                            self.logbase_expanded = None;
+                    let item_data = self.logbase_items.get(sel)
+                        .map(|item| (item.selectable, item.is_boundary, item.event_index));
+                    if let Some((true, is_boundary, event_idx)) = item_data {
+                        if is_boundary {
+                            // Toggle this epoch as the focused epoch
+                            if let Some(event) = self.logbase_events.get(event_idx) {
+                                let target_epoch = event.epoch_index();
+                                if target_epoch != self.logbase_focused_epoch {
+                                    self.logbase_focused_epoch = target_epoch;
+                                    self.logbase_expanded = None;
+                                    self.rebuild_logbase_items();
+                                    // Re-select the boundary for this epoch
+                                    if let Some(pos) = self.logbase_items.iter().position(|item| {
+                                        item.is_boundary && self.logbase_events.get(item.event_index)
+                                            .map(|e| e.epoch_index() == target_epoch).unwrap_or(false)
+                                    }) {
+                                        self.logbase_list_state.borrow_mut().select(Some(pos));
+                                    }
+                                }
+                            }
                         } else {
-                            self.logbase_expanded = Some(event_idx);
+                            // Toggle detail expansion for mutation event
+                            if self.logbase_expanded == Some(event_idx) {
+                                self.logbase_expanded = None;
+                            } else {
+                                self.logbase_expanded = Some(event_idx);
+                            }
+                            self.rebuild_logbase_items();
+                            self.logbase_list_state.borrow_mut().select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
                         }
-                        self.rebuild_logbase_items();
-                        self.logbase_list_state.borrow_mut().select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
                     }
                 }
                 Cmd::none()
