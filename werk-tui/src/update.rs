@@ -1429,7 +1429,11 @@ impl InstrumentApp {
                                 self.logbase_expanded = Some(event_idx);
                             }
                             self.rebuild_logbase_items();
-                            self.logbase_list_state.borrow_mut().select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
+                            // Re-select the item matching this event (items shifted due to detail lines)
+                            let new_sel = self.logbase_items.iter().position(|item| {
+                                item.event_index == event_idx && item.selectable
+                            }).unwrap_or(sel.min(self.logbase_items.len().saturating_sub(1)));
+                            self.logbase_list_state.borrow_mut().select(Some(new_sel));
                         }
                     }
                 }
