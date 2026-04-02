@@ -398,7 +398,7 @@ impl InstrumentApp {
         let data = load_logbase_data(&tension, &epochs, self.engine.store());
 
         let focused_epoch = if !epochs.is_empty() { epochs.len() - 1 } else { 0 };
-        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup, &data.id_to_desire, None);
+        let items = build_list_items(&data.events, &epochs, focused_epoch, &data.id_lookup, &data.id_to_desire, None, false);
 
         self.logbase_tension_id = Some(tension_id.to_owned());
         self.logbase_tension = Some(tension);
@@ -427,6 +427,7 @@ impl InstrumentApp {
             &self.logbase_id_lookup,
             &self.logbase_id_to_desire,
             self.logbase_expanded,
+            self.logbase_show_all,
         );
     }
 
@@ -453,6 +454,7 @@ impl InstrumentApp {
         self.logbase_provenance = LogbaseProvenance::default();
         self.logbase_id_to_desire.clear();
         self.logbase_expanded = None;
+        self.logbase_show_all = false;
     }
 
     /// Get the event index for the currently selected list item.
@@ -481,6 +483,7 @@ fn build_list_items(
     id_to_shortcode: &std::collections::HashMap<String, Option<i32>>,
     id_to_desire: &std::collections::HashMap<String, String>,
     expanded_event: Option<usize>,
+    show_all: bool,
 ) -> Vec<LogbaseItem> {
     let mut items = Vec::new();
 
@@ -488,7 +491,7 @@ fn build_list_items(
         let is_focused = event.epoch_index() == focused_epoch;
 
         match event {
-            LogbaseEvent::EpochBoundary { epoch_index, boundary_trigger } => {
+            LogbaseEvent::EpochBoundary { epoch_index, .. } => {
                 // Blank separator between epochs (not before first)
                 if !items.is_empty() {
                     items.push(LogbaseItem {
@@ -509,21 +512,30 @@ fn build_list_items(
                     .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, .. } if *ei == *epoch_index))
                     .count();
 
-                let trigger_label = match boundary_trigger {
-                    BoundaryTrigger::DesireChanged => " [\u{25C6}]".to_owned(),
-                    BoundaryTrigger::RealityChanged => " [\u{25C7}]".to_owned(),
-                    BoundaryTrigger::BothChanged if *epoch_index > 0 => " [\u{25C6}\u{25C7}]".to_owned(),
-                    BoundaryTrigger::BothChanged => String::new(),
-                    BoundaryTrigger::Structural(s) => s.clone(),
-                    BoundaryTrigger::Unknown => {
-                        // Neither desire nor reality changed — summarize what did
-                        let child_count = events.iter()
-                            .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, child_tension_id: Some(_), .. } if *ei == *epoch_index))
-                            .count();
-                        if child_count > 0 {
-                            format!(" [{}ch]", child_count)
-                        } else {
-                            String::new()
+                // Determine what ACTUALLY changed vs prior epoch (ground truth)
+                let prev_epoch = if *epoch_index > 0 { Some(&epochs[*epoch_index - 1]) } else { None };
+                let desire_changed = prev_epoch.map_or(true, |p| p.desire_snapshot != epoch.desire_snapshot);
+                let reality_changed = prev_epoch.map_or(true, |p| p.reality_snapshot != epoch.reality_snapshot);
+
+                // Trigger label uses actual snapshot comparison, not gesture analysis
+                // (gesture may have "changed" a field to the same value)
+                let trigger_label = if *epoch_index == 0 {
+                    String::new() // First epoch — no comparison
+                } else {
+                    match (desire_changed, reality_changed) {
+                        (true, true) => " [\u{25C6}\u{25C7}]".to_owned(),
+                        (true, false) => " [\u{25C6}]".to_owned(),
+                        (false, true) => " [\u{25C7}]".to_owned(),
+                        (false, false) => {
+                            // No actual desire/reality change — show child activity count
+                            let child_count = events.iter()
+                                .filter(|e| matches!(e, LogbaseEvent::Mutation { epoch_index: ei, child_tension_id: Some(_), .. } if *ei == *epoch_index))
+                                .count();
+                            if child_count > 0 {
+                                format!(" [{}ch]", child_count)
+                            } else {
+                                String::new()
+                            }
                         }
                     }
                 };
@@ -536,11 +548,6 @@ fn build_list_items(
                 if !trigger_label.is_empty() {
                     right_parts.push(trigger_label);
                 }
-
-                // Determine what changed vs prior epoch (for color coding)
-                let prev_epoch = if *epoch_index > 0 { Some(&epochs[*epoch_index - 1]) } else { None };
-                let desire_changed = prev_epoch.map_or(true, |p| p.desire_snapshot != epoch.desire_snapshot);
-                let reality_changed = prev_epoch.map_or(true, |p| p.reality_snapshot != epoch.reality_snapshot);
 
                 // Epoch boundary line — selectable
                 items.push(LogbaseItem {
@@ -647,13 +654,13 @@ fn build_list_items(
                         let prefix = child_label.as_ref()
                             .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{25C6}", format!("{}desire \u{2192} {}", prefix, werk_shared::truncate(new_value, 70)))
+                        ("\u{25C6}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
                     }
                     "actual" => {
                         let prefix = child_label.as_ref()
                             .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{25C7}", format!("{}reality \u{2192} {}", prefix, werk_shared::truncate(new_value, 70)))
+                        ("\u{25C7}", format!("{}{}", prefix, werk_shared::truncate(new_value, 80)))
                     }
                     "position" => {
                         if new_value.is_empty() || new_value == "null" {
@@ -713,7 +720,7 @@ fn build_list_items(
                         let prefix = child_label.as_ref()
                             .map(|c| format!("{} ", c))
                             .unwrap_or_default();
-                        ("\u{2022}", format!("{}{} \u{2192} {}", prefix, field, display_value))
+                        ("\u{2022}", format!("{}[{}] {}", prefix, field, display_value))
                     }
                 };
 
@@ -785,7 +792,10 @@ fn build_list_items(
 
     // Batch-collapse consecutive same-type events (e.g., 12 "moved" in a row).
     // Show first 2, a "… and N more" summary, and last 1.
-    items = collapse_consecutive_runs(items);
+    // Skip when user has expanded the collapsed view.
+    if !show_all {
+        items = collapse_consecutive_runs(items);
+    }
 
     items
 }
@@ -853,7 +863,7 @@ fn collapse_consecutive_runs(items: Vec<LogbaseItem>) -> Vec<LogbaseItem> {
                 style: Style::default(),
                 event_index: items[run_start + 2].event_index,
                 is_boundary: false,
-                selectable: false,
+                selectable: true, // Enter expands the full run
                 bright: false,
             });
             result.push(items[run_end - 1].clone());
