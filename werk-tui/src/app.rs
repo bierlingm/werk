@@ -122,7 +122,8 @@ pub struct InstrumentApp {
     /// Provenance edges for the logbase tension.
     pub logbase_provenance: crate::logbase::LogbaseProvenance,
     /// List widget state for the event stream (selection + scroll offset).
-    pub logbase_list_state: ftui::widgets::list::ListState,
+    /// RefCell because StatefulWidget::render needs &mut but view() has &self.
+    pub logbase_list_state: std::cell::RefCell<ftui::widgets::list::ListState>,
     /// Which epoch index is "focused" (gets fisheye expansion).
     pub logbase_focused_epoch: usize,
     /// Pre-built list items for the event stream (rebuilt on enter/epoch change).
@@ -243,7 +244,7 @@ impl InstrumentApp {
             logbase_epochs: Vec::new(),
             logbase_events: Vec::new(),
             logbase_provenance: crate::logbase::LogbaseProvenance::default(),
-            logbase_list_state: ftui::widgets::list::ListState::default(),
+            logbase_list_state: std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
             logbase_focused_epoch: 0,
             logbase_items: Vec::new(),
             pre_logbase_state: None,
@@ -348,7 +349,7 @@ impl InstrumentApp {
             logbase_epochs: Vec::new(),
             logbase_events: Vec::new(),
             logbase_provenance: crate::logbase::LogbaseProvenance::default(),
-            logbase_list_state: ftui::widgets::list::ListState::default(),
+            logbase_list_state: std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
             logbase_focused_epoch: 0,
             logbase_items: Vec::new(),
             pre_logbase_state: None,

@@ -349,8 +349,8 @@ impl InstrumentApp {
         self.logbase_items = items;
 
         // Initialize list state with cursor on first item (most recent epoch)
-        self.logbase_list_state = ftui::widgets::list::ListState::default();
-        self.logbase_list_state.select(Some(0));
+        *self.logbase_list_state.borrow_mut() = ftui::widgets::list::ListState::default();
+        self.logbase_list_state.borrow_mut().select(Some(0));
 
         self.view_orientation = crate::state::ViewOrientation::Logbase;
     }
@@ -387,7 +387,7 @@ impl InstrumentApp {
 
     /// Get the event index for the currently selected list item.
     pub fn logbase_selected_event(&self) -> Option<usize> {
-        self.logbase_list_state.selected()
+        self.logbase_list_state.borrow().selected()
             .and_then(|i| self.logbase_items.get(i))
             .map(|item| item.event_index)
     }
@@ -643,8 +643,8 @@ impl InstrumentApp {
             .highlight_style(Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold())
             .highlight_symbol("\u{25B8} ");
 
-        // StatefulWidget::render takes &mut state — use a clone
-        let mut state = self.logbase_list_state.clone();
+        // StatefulWidget::render takes &mut state — borrow through RefCell
+        let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, stream_area, frame, &mut state);
     }
 
@@ -657,11 +657,12 @@ impl InstrumentApp {
             .map(|t| format!("Log {} ", werk_shared::display_id(t.short_code, &t.id)))
             .unwrap_or_default();
 
-        let cursor_info = self.logbase_list_state.selected()
+        let selected = self.logbase_list_state.borrow().selected();
+        let cursor_info = selected
             .map(|i| format!("{}/{}", i + 1, self.logbase_items.len()))
             .unwrap_or_default();
 
-        let epoch_label = self.logbase_list_state.selected()
+        let epoch_label = selected
             .and_then(|i| self.logbase_items.get(i))
             .map(|item| format!("epoch {}", self.logbase_events.get(item.event_index).map(|e| e.epoch_index() + 1).unwrap_or(0)))
             .unwrap_or_default();
