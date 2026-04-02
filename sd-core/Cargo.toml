@@ -1,6 +1,6 @@
 [package]
 name = "sd-core"
-version = "1.4.0"
+version = "1.5.0"
 edition = "2024"
 description = "Structural dynamics grammar — a faithful computational model of Fritz's structural tension"
 
