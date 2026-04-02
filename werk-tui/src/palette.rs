@@ -68,6 +68,9 @@ pub fn record_action_selected(feedback: &mut FeedbackCollector, action_id: &str)
 /// Prefix for tension IDs in the palette — distinguishes them from action IDs.
 pub const TENSION_ID_PREFIX: &str = "t:";
 
+/// Prefix for epoch address actions in the palette.
+pub const EPOCH_ADDR_PREFIX: &str = "epoch:";
+
 /// Build a combined list of action + tension ActionItems for the palette.
 ///
 /// Actions come first (feedback-ordered), then tension results from FrankenSearch.
@@ -95,6 +98,29 @@ pub fn build_combined_items(
     for id in ordered_ids {
         if let Some(action) = make_action(id) {
             items.push(action);
+        }
+    }
+
+    // Address resolution — detect deep addresses like #42~e3, #42.n3
+    if !query.is_empty() {
+        if let Ok(addr) = sd_core::address::parse_address(query) {
+            match addr {
+                sd_core::address::Address::Epoch { tension, epoch_num } => {
+                    // Find tension by short code and offer logbase navigation
+                    if let Ok(tensions) = store.list_tensions() {
+                        if let Some(t) = tensions.iter().find(|t| t.short_code == Some(tension)) {
+                            let action_id = format!("{}{}~e{}", EPOCH_ADDR_PREFIX, t.id, epoch_num);
+                            let title = format!("#{} epoch {} — {}", tension, epoch_num,
+                                werk_shared::truncate(&t.desired, 60));
+                            items.push(ActionItem::new(action_id, title)
+                                .with_description("open in logbase")
+                                .with_category("\u{2500}")
+                                .with_tags(&["address"]));
+                        }
+                    }
+                }
+                _ => {} // Other address types handled by existing tension search
+            }
         }
     }
 

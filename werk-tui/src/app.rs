@@ -134,6 +134,8 @@ pub struct InstrumentApp {
     pub logbase_separator: String,
     /// ID → short_code lookup for resolving ULIDs in events.
     pub logbase_id_lookup: std::collections::HashMap<String, Option<i32>>,
+    /// ID → desire text lookup for showing child tension names alongside IDs.
+    pub logbase_id_to_desire: std::collections::HashMap<String, String>,
     /// Currently expanded event index (Enter/Space toggles detail view).
     pub logbase_expanded: Option<usize>,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
@@ -258,6 +260,7 @@ impl InstrumentApp {
             logbase_header: Vec::new(),
             logbase_separator: String::new(),
             logbase_id_lookup: std::collections::HashMap::new(),
+            logbase_id_to_desire: std::collections::HashMap::new(),
             logbase_expanded: None,
             pre_logbase_state: None,
             layout: {
@@ -367,6 +370,7 @@ impl InstrumentApp {
             logbase_header: Vec::new(),
             logbase_separator: String::new(),
             logbase_id_lookup: std::collections::HashMap::new(),
+            logbase_id_to_desire: std::collections::HashMap::new(),
             logbase_expanded: None,
             pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
