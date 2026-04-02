@@ -1054,25 +1054,36 @@ impl InstrumentApp {
         let offset = state.offset;
         drop(state);
 
+        // Count only items from the focused epoch for compression indicators.
+        // Items from other epochs are structural navigation, not scrollable content.
+        let focused_ep = self.logbase_focused_epoch;
+        let is_focused_selectable = |item: &crate::logbase::LogbaseItem| -> bool {
+            item.selectable && self.logbase_events.get(item.event_index)
+                .map(|e| e.epoch_index() == focused_ep)
+                .unwrap_or(false)
+        };
+
         let has_above = offset > 0;
         let has_below = (offset + inner_list_h as usize) < total_items;
 
-        // Render "above" compression line with accurate count
+        // Render "above" compression line — focused epoch items only
         if has_above {
-            let above_selectable = self.logbase_items[..offset].iter().filter(|i| i.selectable).count();
-            let above_text = format!("  \u{25B4} {} more above", above_selectable);
-            let pad = w.saturating_sub(above_text.chars().count() + 1);
-            let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
-            Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
-                .render(Rect::new(area.x, comp_above_y, area.width, 1), frame);
+            let above_count = self.logbase_items[..offset].iter().filter(|i| is_focused_selectable(i)).count();
+            if above_count > 0 {
+                let above_text = format!("  \u{25B4} {} more above", above_count);
+                let pad = w.saturating_sub(above_text.chars().count() + 1);
+                let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
+                Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
+                    .render(Rect::new(area.x, comp_above_y, area.width, 1), frame);
+            }
         }
 
-        // Render "below" compression line with accurate count
+        // Render "below" compression line — focused epoch items only
         if has_below {
             let last_visible = offset + inner_list_h as usize;
-            let below_selectable = self.logbase_items[last_visible.min(total_items)..].iter().filter(|i| i.selectable).count();
-            if below_selectable > 0 {
-                let below_text = format!("  \u{25BE} {} more below", below_selectable);
+            let below_count = self.logbase_items[last_visible.min(total_items)..].iter().filter(|i| is_focused_selectable(i)).count();
+            if below_count > 0 {
+                let below_text = format!("  \u{25BE} {} more below", below_count);
                 let pad = w.saturating_sub(below_text.chars().count() + 1);
                 let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
                 Paragraph::new(Text::from(Line::from_spans([Span::styled(full_text, self.styles.dim)])))
