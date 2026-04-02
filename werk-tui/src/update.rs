@@ -1304,18 +1304,32 @@ impl InstrumentApp {
 
         let current = self.logbase_list_state.borrow().selected().unwrap_or(0);
 
+        // Helper: find next selectable item in a direction
+        let next_selectable = |from: usize, forward: bool| -> Option<usize> {
+            if forward {
+                (from + 1..item_count).find(|&i| self.logbase_items[i].selectable)
+            } else {
+                (0..from).rev().find(|&i| self.logbase_items[i].selectable)
+            }
+        };
+
         match msg {
-            // Event-level navigation — operates on list items
+            // Event-level navigation — skips non-selectable items
             Msg::Char('j') | Msg::Down => {
-                let next = (current + 1).min(item_count - 1);
-                self.logbase_list_state.borrow_mut().select(Some(next));
-                self.update_focused_epoch_from_selection();
+                if let Some(next) = next_selectable(current, true) {
+                    self.logbase_list_state.borrow_mut().select(Some(next));
+                    self.update_focused_epoch_from_selection();
+                }
                 Cmd::none()
             }
             Msg::Char('k') | Msg::Up => {
-                let prev = current.saturating_sub(1);
-                self.logbase_list_state.borrow_mut().select(Some(prev));
-                self.update_focused_epoch_from_selection();
+                if let Some(prev) = next_selectable(current, false) {
+                    self.logbase_list_state.borrow_mut().select(Some(prev));
+                    self.update_focused_epoch_from_selection();
+                } else {
+                    // At topmost selectable item — exit logbase (spatial: up out of history)
+                    self.exit_logbase();
+                }
                 Cmd::none()
             }
 

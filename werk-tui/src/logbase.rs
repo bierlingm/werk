@@ -124,6 +124,8 @@ pub struct LogbaseItem {
     pub event_index: usize,
     /// Whether this is an epoch boundary line (for J/K epoch-level navigation).
     pub is_boundary: bool,
+    /// Whether this item is selectable (false for blanks, dotted rules, snapshot lines).
+    pub selectable: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -422,8 +424,10 @@ impl InstrumentApp {
 // ---------------------------------------------------------------------------
 
 /// Build display items from the event stream.
-/// Each event becomes one ListItem. Epoch boundaries get additional
-/// desire/reality lines as separate items.
+///
+/// The List widget uses `highlight_symbol("▸ ")` which prepends 2 chars
+/// to the selected item. To prevent content shifting, all non-selected
+/// items are prefixed with 2 spaces as compensation (the "marker" field).
 fn build_list_items(
     events: &[LogbaseEvent],
     epochs: &[EpochRecord],
@@ -443,6 +447,7 @@ fn build_list_items(
                         style: Style::default(),
                         event_index: i,
                         is_boundary: false,
+                        selectable: false,
                     });
                 }
 
@@ -472,26 +477,30 @@ fn build_list_items(
                     right_parts.push(trigger_label.to_owned());
                 }
 
+                // Epoch boundary — selectable
                 items.push(LogbaseItem {
                     text: format!("\u{2500}\u{2500} epoch {} \u{2500}\u{2500} {}", epoch_num, right_parts.join(" ")),
                     style: Style::default(),
                     event_index: i,
                     is_boundary: true,
+                    selectable: true,
                 });
 
-                // Desire/reality snapshots
+                // Desire/reality snapshots — NOT selectable (context for the boundary)
                 if is_focused {
                     items.push(LogbaseItem {
-                        text: format!("  \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, 200)),
+                        text: format!("  \u{25C6} {}", &epoch.desire_snapshot),
                         style: Style::default(),
                         event_index: i,
                         is_boundary: false,
+                        selectable: false,
                     });
                     items.push(LogbaseItem {
-                        text: format!("  \u{25C7} {}", werk_shared::truncate(&epoch.reality_snapshot, 200)),
+                        text: format!("  \u{25C7} {}", &epoch.reality_snapshot),
                         style: Style::default(),
                         event_index: i,
                         is_boundary: false,
+                        selectable: false,
                     });
                     if mutation_count > 0 {
                         items.push(LogbaseItem {
@@ -499,16 +508,17 @@ fn build_list_items(
                             style: Style::default(),
                             event_index: i,
                             is_boundary: false,
+                            selectable: false,
                         });
                     }
                 } else {
-                    // Compressed summary
+                    // Compressed summary — not selectable
                     let summary = match boundary_trigger {
                         BoundaryTrigger::RealityChanged => {
-                            format!("  \u{25C7} {}", werk_shared::truncate(&epoch.reality_snapshot, 200))
+                            format!("  \u{25C7} {}", &epoch.reality_snapshot)
                         }
                         _ => {
-                            format!("  \u{25C6} {}", werk_shared::truncate(&epoch.desire_snapshot, 200))
+                            format!("  \u{25C6} {}", &epoch.desire_snapshot)
                         }
                     };
                     items.push(LogbaseItem {
@@ -516,6 +526,7 @@ fn build_list_items(
                         style: Style::default(),
                         event_index: i,
                         is_boundary: false,
+                        selectable: false,
                     });
                 }
             }
@@ -529,23 +540,26 @@ fn build_list_items(
                 let child = child_short_code.map(|sc| format!("#{}", sc)).unwrap_or_default();
 
                 let display = match field.as_str() {
-                    "note" => format!("  \u{203B} {}  {}", werk_shared::truncate(new_value, 200), ts),
-                    "status" if new_value.contains("esolved") => format!("  \u{2713} {} resolved  {}", child, ts),
-                    "status" if new_value.contains("eleased") => format!("  \u{2717} {} released  {}", child, ts),
-                    "desired" => format!("  \u{25C6} {}: {}  {}", child, werk_shared::truncate(new_value, 200), ts),
-                    "actual" => format!("  \u{25C7} {}: {}  {}", child, werk_shared::truncate(new_value, 200), ts),
+                    "note" => format!("\u{203B} {}  {}", new_value, ts),
+                    "status" if new_value.contains("esolved") => format!("\u{2713} {} resolved  {}", child, ts),
+                    "status" if new_value.contains("eleased") => format!("\u{2717} {} released  {}", child, ts),
+                    "desired" => format!("\u{25C6} {}: {}  {}", child, new_value, ts),
+                    "actual" => format!("\u{25C7} {}: {}  {}", child, new_value, ts),
                     "position" => {
-                        let val = if new_value.is_empty() || new_value == "null" { "held" } else { new_value };
-                        format!("  \u{2022} {} position {}  {}", child, val, ts)
+                        let val = if new_value.is_empty() || new_value == "null" { "held" } else { new_value.as_str() };
+                        format!("\u{2022} {} position {}  {}", child, val, ts)
                     }
-                    _ => format!("  \u{2022} {} [{}] {}  {}", child, field, werk_shared::truncate(new_value, 200), ts),
+                    "horizon" => format!("\u{2022} {} horizon: {}  {}", child, new_value, ts),
+                    _ => format!("\u{2022} {} [{}] {}  {}", child, field, new_value, ts),
                 };
 
+                // Mutation events are selectable
                 items.push(LogbaseItem {
                     text: display,
                     style: Style::default(),
                     event_index: i,
                     is_boundary: false,
+                    selectable: true,
                 });
             }
         }
@@ -668,7 +682,11 @@ impl InstrumentApp {
         let stream_area = Rect::new(area.x, stream_y, area.width, stream_height);
 
         let list_items: Vec<ListItem> = self.logbase_items.iter()
-            .map(|item| ListItem::new(item.text.as_str()).style(self.styles.dim))
+            .map(|item| {
+                ListItem::new(item.text.as_str())
+                    .style(self.styles.dim)
+                    .marker("  ") // 2 spaces = same width as highlight_symbol "▸ "
+            })
             .collect();
 
         let list = List::new(list_items)
@@ -686,20 +704,20 @@ impl InstrumentApp {
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
         let tension_label = self.logbase_tension.as_ref()
-            .map(|t| format!("Log {} ", werk_shared::display_id(t.short_code, &t.id)))
+            .map(|t| format!("Log {}", werk_shared::display_id(t.short_code, &t.id)))
             .unwrap_or_default();
 
         let selected = self.logbase_list_state.borrow().selected();
-        let cursor_info = selected
-            .map(|i| format!("{}/{}", i + 1, self.logbase_items.len()))
-            .unwrap_or_default();
-
         let epoch_label = selected
             .and_then(|i| self.logbase_items.get(i))
-            .map(|item| format!("epoch {}", self.logbase_events.get(item.event_index).map(|e| e.epoch_index() + 1).unwrap_or(0)))
+            .map(|item| {
+                let epoch_num = self.logbase_events.get(item.event_index)
+                    .map(|e| e.epoch_index() + 1).unwrap_or(0);
+                format!("epoch {}/{}", epoch_num, self.logbase_epochs.len())
+            })
             .unwrap_or_default();
 
-        let bar_text = format!(" {} \u{00b7} {} \u{00b7} {} ", tension_label, epoch_label, cursor_info);
+        let bar_text = format!(" {} \u{00b7} {} ", tension_label, epoch_label);
         Paragraph::new(Text::from(Line::from_spans([Span::styled(bar_text, self.styles.dim)])))
             .render(bar_area, frame);
     }
