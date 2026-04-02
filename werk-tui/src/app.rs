@@ -128,6 +128,10 @@ pub struct InstrumentApp {
     pub logbase_focused_epoch: usize,
     /// Pre-built list items for the event stream (rebuilt on enter/epoch change).
     pub logbase_items: Vec<crate::logbase::LogbaseItem>,
+    /// Cached header text lines (built once on enter, no store queries during render).
+    pub logbase_header: Vec<(String, crate::logbase::HeaderStyle)>,
+    /// Cached separator text.
+    pub logbase_separator: String,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
     pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
 
@@ -247,6 +251,8 @@ impl InstrumentApp {
             logbase_list_state: std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
             logbase_focused_epoch: 0,
             logbase_items: Vec::new(),
+            logbase_header: Vec::new(),
+            logbase_separator: String::new(),
             pre_logbase_state: None,
             layout: {
                 let mut ls = crate::layout::LayoutState::default();
@@ -352,6 +358,8 @@ impl InstrumentApp {
             logbase_list_state: std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
             logbase_focused_epoch: 0,
             logbase_items: Vec::new(),
+            logbase_header: Vec::new(),
+            logbase_separator: String::new(),
             pre_logbase_state: None,
             layout: crate::layout::LayoutState::default(),
             focus_state: crate::focus::FocusState::new(),

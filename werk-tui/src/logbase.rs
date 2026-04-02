@@ -104,6 +104,14 @@ pub struct ProvenanceRef {
     pub desired: String,
 }
 
+/// Style tag for header lines (resolved to actual Style during render).
+#[derive(Debug, Clone, Copy)]
+pub enum HeaderStyle {
+    Dim,
+    Text,
+    Subdued,
+}
+
 /// A pre-built display item for the List widget.
 /// Each logbase event becomes one or more LogbaseItems.
 #[derive(Debug, Clone)]
@@ -340,6 +348,19 @@ impl InstrumentApp {
         let focused_epoch = if !epochs.is_empty() { epochs.len() - 1 } else { 0 };
         let items = build_list_items(&events, &epochs, focused_epoch);
 
+        // Cache header lines (no store queries during render)
+        let header = build_header_cache(&tension, &provenance, self.engine.store());
+
+        // Cache separator
+        let epoch_count = epochs.len();
+        let mutation_count: usize = events.iter()
+            .filter(|e| matches!(e, LogbaseEvent::Mutation { .. }))
+            .count();
+        let label = format!(" {} epoch{} \u{00b7} {} mut{} ",
+            epoch_count, if epoch_count == 1 { "" } else { "s" },
+            mutation_count, if mutation_count == 1 { "" } else { "s" },
+        );
+
         self.logbase_tension_id = Some(tension_id.to_owned());
         self.logbase_tension = Some(tension);
         self.logbase_epochs = epochs;
@@ -347,8 +368,9 @@ impl InstrumentApp {
         self.logbase_provenance = provenance;
         self.logbase_focused_epoch = focused_epoch;
         self.logbase_items = items;
+        self.logbase_header = header;
+        self.logbase_separator = label;
 
-        // Initialize list state with cursor on first item (most recent epoch)
         *self.logbase_list_state.borrow_mut() = ftui::widgets::list::ListState::default();
         self.logbase_list_state.borrow_mut().select(Some(0));
 
@@ -382,6 +404,8 @@ impl InstrumentApp {
         self.logbase_epochs.clear();
         self.logbase_events.clear();
         self.logbase_items.clear();
+        self.logbase_header.clear();
+        self.logbase_separator.clear();
         self.logbase_provenance = LogbaseProvenance::default();
     }
 
@@ -530,12 +554,73 @@ fn build_list_items(
     items
 }
 
+/// Build cached header lines (called once during enter_logbase).
+fn build_header_cache(
+    tension: &Tension,
+    provenance: &LogbaseProvenance,
+    store: &sd_core::Store,
+) -> Vec<(String, HeaderStyle)> {
+    let mut lines = Vec::new();
+
+    // Parent ref
+    if let Some(ref pid) = tension.parent_id {
+        if let Ok(Some(parent)) = store.get_tension(pid) {
+            let display = werk_shared::display_id(parent.short_code, &parent.id);
+            lines.push((format!("  \u{2190} {} {}", display, werk_shared::truncate(&parent.desired, 120)), HeaderStyle::Dim));
+        }
+    }
+
+    // Desire (capped to 2 lines at ~120 chars each)
+    let display = werk_shared::display_id(tension.short_code, &tension.id);
+    let desire = format!("  \u{25C6} {} {}", display, tension.desired);
+    let wrapped = word_wrap(&desire, 120);
+    for line in wrapped.iter().take(2) {
+        lines.push((line.clone(), HeaderStyle::Text));
+    }
+
+    // Frontier summary
+    if let Ok(children) = store.get_children(&tension.id) {
+        if !children.is_empty() {
+            let done = children.iter().filter(|c| c.status == sd_core::TensionStatus::Resolved || c.status == sd_core::TensionStatus::Released).count();
+            let held = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_none()).count();
+            let mut parts = vec![format!("[{}/{}]", done, children.len())];
+            if held > 0 { parts.push(format!("{} held", held)); }
+            lines.push((format!("    {}", parts.join(" \u{00b7} ")), HeaderStyle::Dim));
+        }
+    }
+
+    // Reality (capped to 2 lines)
+    if !tension.actual.is_empty() {
+        let reality = format!("  \u{25C7} {}", tension.actual);
+        let wrapped = word_wrap(&reality, 120);
+        for line in wrapped.iter().take(2) {
+            lines.push((line.clone(), HeaderStyle::Subdued));
+        }
+    }
+
+    // Provenance
+    for r in &provenance.split_from {
+        let d = werk_shared::display_id(r.short_code, &r.id);
+        lines.push((format!("  \u{2919} split from {} {}", d, werk_shared::truncate(&r.desired, 80)), HeaderStyle::Dim));
+    }
+    for r in &provenance.split_into {
+        let d = werk_shared::display_id(r.short_code, &r.id);
+        lines.push((format!("  \u{291A} split into {} {}", d, werk_shared::truncate(&r.desired, 80)), HeaderStyle::Dim));
+    }
+    for r in &provenance.merged_from {
+        let d = werk_shared::display_id(r.short_code, &r.id);
+        lines.push((format!("  \u{291B} merged from {} {}", d, werk_shared::truncate(&r.desired, 80)), HeaderStyle::Dim));
+    }
+
+    lines
+}
+
 // ---------------------------------------------------------------------------
-// Rendering (using ftui List widget)
+// Rendering (using ftui List widget — pure, no store queries)
 // ---------------------------------------------------------------------------
 
 impl InstrumentApp {
-    /// Render the logbase view.
+    /// Render the logbase view. Pure — reads only cached fields, no store queries.
     pub fn render_logbase(&self, area: &Rect, frame: &mut Frame<'_>) {
         use ftui::widgets::list::{List, ListItem};
         use ftui::widgets::StatefulWidget;
@@ -543,87 +628,35 @@ impl InstrumentApp {
         let area = self.layout.content_area(*area);
         let w = area.width as usize;
 
-        let tension = match &self.logbase_tension {
-            Some(t) => t,
-            None => {
-                Paragraph::new(Text::from_lines(vec![Line::from_spans([
-                    Span::styled("  No tension loaded.", self.styles.dim),
-                ])])).render(area, frame);
-                return;
-            }
-        };
-
-        // === Header (rendered manually — fixed content above the scrollable list) ===
-        let mut header_lines: Vec<Line> = Vec::new();
-
-        if let Some(ref pid) = tension.parent_id {
-            if let Ok(Some(parent)) = self.engine.store().get_tension(pid) {
-                let display = werk_shared::display_id(parent.short_code, &parent.id);
-                header_lines.push(Line::from_spans([
-                    Span::styled(format!("  \u{2190} {} {}", display, werk_shared::truncate(&parent.desired, w.saturating_sub(6))), self.styles.dim),
-                ]));
-            }
+        if self.logbase_tension.is_none() {
+            Paragraph::new(Text::from_lines(vec![Line::from_spans([
+                Span::styled("  No tension loaded.", self.styles.dim),
+            ])])).render(area, frame);
+            return;
         }
 
-        let display = werk_shared::display_id(tension.short_code, &tension.id);
-        let desire_wrapped = word_wrap(&format!("  \u{25C6} {} {}", display, tension.desired), w);
-        for line_text in desire_wrapped.iter().take(2) {
-            header_lines.push(Line::from_spans([Span::styled(line_text.clone(), self.styles.text)]));
-        }
-
-        if let Ok(children) = self.engine.store().get_children(&tension.id) {
-            if !children.is_empty() {
-                let done = children.iter().filter(|c| c.status == sd_core::TensionStatus::Resolved || c.status == sd_core::TensionStatus::Released).count();
-                let held = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_none()).count();
-                let mut parts = vec![format!("[{}/{}]", done, children.len())];
-                if held > 0 { parts.push(format!("{} held", held)); }
-                header_lines.push(Line::from_spans([Span::styled(format!("    {}", parts.join(" \u{00b7} ")), self.styles.dim)]));
-            }
-        }
-
-        if !tension.actual.is_empty() {
-            let reality_wrapped = word_wrap(&format!("  \u{25C7} {}", tension.actual), w);
-            for line_text in reality_wrapped.iter().take(2) {
-                header_lines.push(Line::from_spans([Span::styled(line_text.clone(), self.styles.subdued)]));
-            }
-        }
-
-        // Provenance
-        for r in &self.logbase_provenance.split_from {
-            let d = werk_shared::display_id(r.short_code, &r.id);
-            header_lines.push(Line::from_spans([Span::styled(format!("  \u{2919} split from {} {}", d, werk_shared::truncate(&r.desired, w.saturating_sub(20))), self.styles.dim)]));
-        }
-        for r in &self.logbase_provenance.split_into {
-            let d = werk_shared::display_id(r.short_code, &r.id);
-            header_lines.push(Line::from_spans([Span::styled(format!("  \u{291A} split into {} {}", d, werk_shared::truncate(&r.desired, w.saturating_sub(20))), self.styles.dim)]));
-        }
-        for r in &self.logbase_provenance.merged_from {
-            let d = werk_shared::display_id(r.short_code, &r.id);
-            header_lines.push(Line::from_spans([Span::styled(format!("  \u{291B} merged from {} {}", d, werk_shared::truncate(&r.desired, w.saturating_sub(20))), self.styles.dim)]));
-        }
+        // === Header from cache ===
+        let header_lines: Vec<Line> = self.logbase_header.iter().map(|(text, hstyle)| {
+            let style = match hstyle {
+                HeaderStyle::Dim => self.styles.dim,
+                HeaderStyle::Text => self.styles.text,
+                HeaderStyle::Subdued => self.styles.subdued,
+            };
+            Line::from_spans([Span::styled(text.clone(), style)])
+        }).collect();
 
         let header_height = header_lines.len() as u16;
-        let epoch_count = self.logbase_epochs.len();
-        let mutation_count: usize = self.logbase_events.iter()
-            .filter(|e| matches!(e, LogbaseEvent::Mutation { .. }))
-            .count();
-
-        // Separator
         let sep_height: u16 = 1;
         let stream_height = area.height.saturating_sub(header_height + sep_height);
 
         // Render header
-        let header_area = Rect::new(area.x, area.y, area.width, header_height);
-        Paragraph::new(Text::from_lines(header_lines)).render(header_area, frame);
+        Paragraph::new(Text::from_lines(header_lines))
+            .render(Rect::new(area.x, area.y, area.width, header_height), frame);
 
-        // Render separator
+        // Render separator from cache
         let sep_y = area.y + header_height;
-        let label = format!(" {} epoch{} \u{00b7} {} mut{} ",
-            epoch_count, if epoch_count == 1 { "" } else { "s" },
-            mutation_count, if mutation_count == 1 { "" } else { "s" },
-        );
-        let rule_w = w.saturating_sub(label.len());
-        let sep_line = format!("{}{}{}", "\u{2500}".repeat(rule_w / 2), label, "\u{2500}".repeat(rule_w - rule_w / 2));
+        let rule_w = w.saturating_sub(self.logbase_separator.len());
+        let sep_line = format!("{}{}{}", "\u{2500}".repeat(rule_w / 2), self.logbase_separator, "\u{2500}".repeat(rule_w - rule_w / 2));
         Paragraph::new(Text::from(Line::from_spans([Span::styled(sep_line, self.styles.dim)])))
             .render(Rect::new(area.x, sep_y, area.width, 1), frame);
 
@@ -643,7 +676,6 @@ impl InstrumentApp {
             .highlight_style(Style::new().fg(self.styles.clr_dim).bg(self.styles.clr_cyan).bold())
             .highlight_symbol("\u{25B8} ");
 
-        // StatefulWidget::render takes &mut state — borrow through RefCell
         let mut state = self.logbase_list_state.borrow_mut();
         StatefulWidget::render(&list, stream_area, frame, &mut state);
     }
