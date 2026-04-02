@@ -1066,10 +1066,10 @@ impl InstrumentApp {
         let has_above = offset > 0;
         let has_below = (offset + inner_list_h as usize) < total_items;
 
-        // Render "above" compression line — focused epoch items only
+        // Render "above" compression line — only when 2+ focused items hidden
         if has_above {
             let above_count = self.logbase_items[..offset].iter().filter(|i| is_focused_selectable(i)).count();
-            if above_count > 0 {
+            if above_count > 1 {
                 let above_text = format!("  \u{25B4} {} more above", above_count);
                 let pad = w.saturating_sub(above_text.chars().count() + 1);
                 let full_text = format!("{} {}", above_text, "\u{2500}".repeat(pad));
@@ -1082,7 +1082,7 @@ impl InstrumentApp {
         if has_below {
             let last_visible = offset + inner_list_h as usize;
             let below_count = self.logbase_items[last_visible.min(total_items)..].iter().filter(|i| is_focused_selectable(i)).count();
-            if below_count > 0 {
+            if below_count > 1 {
                 let below_text = format!("  \u{25BE} {} more below", below_count);
                 let pad = w.saturating_sub(below_text.chars().count() + 1);
                 let full_text = format!("{} {}", below_text, "\u{2500}".repeat(pad));
