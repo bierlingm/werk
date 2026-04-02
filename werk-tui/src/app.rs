@@ -301,6 +301,10 @@ impl InstrumentApp {
         app.restore_workspace();
 
         app.load_siblings();
+        // If restoring to Survey, load survey items too
+        if app.view_orientation == crate::state::ViewOrientation::Survey {
+            app.load_survey_items();
+        }
         app
     }
 
