@@ -242,8 +242,6 @@ impl Model for InstrumentApp {
                     InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
                     _ => if in_logbase {
                         self.render_input_hints("j/k events  J/K epochs  Enter expand  L return  Esc return", &hints_area, frame);
-                    } else if !in_survey {
-                        self.render_hints(&hints_area, frame);
                     },
                 }
             }

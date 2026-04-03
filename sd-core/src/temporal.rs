@@ -184,7 +184,10 @@ pub fn detect_horizon_drift(tension_id: &str, mutations: &[Mutation]) -> Horizon
                     precision_loosenings += 1;
                 }
             }
-            (Some(_old), None) => {}
+            (Some(_old), None) => {
+                // Horizon cleared — not counted as a shift or postponement.
+                // Removing a deadline is a distinct gesture from moving one.
+            }
             (None, None) => {}
         }
     }

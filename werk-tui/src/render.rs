@@ -61,9 +61,6 @@ impl InstrumentApp {
     }
 
 
-    pub fn render_hints(&self, _area: &Rect, _frame: &mut Frame<'_>) {
-        // Help hint is now integrated into the lever bar
-    }
 
     // -----------------------------------------------------------------------
     // Help overlay
