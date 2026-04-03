@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "quint-lsp": {
+      "command": "mcp-language-server",
+      "args": [
+        "--workspace",
+        "/Users/moritzbierling/werk/desk/werk/specs",
+        "--lsp",
+        "quint-language-server",
+        "--",
+        "--stdio"
+      ]
+    }
+  }
+}

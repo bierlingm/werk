@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-03T07:41:59Z",
+  "flushed_at": "2026-04-03T09:42:14Z",
   "summary": {
-    "active": 70,
+    "active": 71,
     "released": 20,
     "resolved": 86,
-    "total": 176
+    "total": 177
   },
   "tensions": [
     {
@@ -1941,6 +1941,17 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 181,
+      "status": "Active"
+    },
+    {
+      "actual": "Quint 0.32 adopted. 7 specification modules written and typechecking: types, tension lifecycle, forest structure, temporal calculus, gestures, concurrency, and main composition. systemInvariant passes 683+ traces. strongInvariant finds expected containment violations. 10/10 witnesses reachable. MCP LSP bridge configured. Agents (quint-verifier, quint-analyzer) and commands (/spec:next, /verify:check, /verify:witnesses) created. CLAUDE.md documents the workflow. quint-llm-kit cloned for reference.",
+      "created_at": "2026-04-03T09:30:02.390993+00:00",
+      "desired": "executable formal specifications in Quint verify the sacred core — state machine, forest invariants, temporal calculus, gesture semantics, and concurrent writer safety are all specified and model-checked",
+      "horizon": null,
+      "id": "01KN9AV6RP60Y0GHWGJS1A83EW",
+      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "position": null,
+      "short_code": 182,
       "status": "Active"
     }
   ]

@@ -57,6 +57,25 @@ Before changing data model, display order, or signal logic, check `designs/werk-
 
 Everything else (glyphs, colors, chrome, display breakpoints) is changeable.
 
+## Formal Specifications (Quint)
+
+Executable specs of the sacred core live in `specs/`. Written in [Quint](https://quint-lang.org) — a specification language with TLA+ foundations and familiar syntax.
+
+- **Typecheck**: `quint typecheck specs/werk.qnt`
+- **Verify core invariant**: `quint run specs/werk.qnt --main=werk --max-samples=10000 --invariant=systemInvariant --backend=typescript`
+- **Check strong invariant** (finds containment violations): `quint run specs/werk.qnt --main=werk --max-samples=5000 --invariant=strongInvariant --backend=typescript`
+- **REPL**: `quint -r specs/werk.qnt::werk`
+
+Modules: `types.qnt` (domain types), `tension.qnt` (lifecycle state machine), `forest.qnt` (graph/tree invariants), `temporal.qnt` (urgency, containment, sequencing), `gestures.qnt` (gesture atomicity, split/merge), `concurrency.qnt` (MVCC two-writer model), `werk.qnt` (composition + step relation).
+
+**When changing the data model or invariants**, update the Quint specs first, verify they typecheck, then change the Rust code. The specs are the executable version of the conceptual foundation.
+
+Agents: `quint-verifier` (run invariants + witnesses), `quint-analyzer` (plan spec updates from foundation changes).
+Commands: `/spec:next`, `/verify:check`, `/verify:witnesses`.
+Guideline: `.claude/guidelines/quint-constraints.md` for Quint language limitations.
+
+MCP: The `quint-lsp` MCP server provides LSP diagnostics for `.qnt` files via `.mcp.json`.
+
 ## Code Quality
 
 - **UBS (Ultimate Bug Scanner)** runs automatically on every file write/edit via Claude Code hook. Critical findings are surfaced inline.
