@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-06T13:15:39Z",
+  "flushed_at": "2026-04-06T13:28:03Z",
   "summary": {
-    "active": 63,
+    "active": 64,
     "released": 21,
     "resolved": 94,
-    "total": 178
+    "total": 179
   },
   "tensions": [
     {
@@ -1537,7 +1537,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Core structural foundation delivered across 5 phases (#162-#166): three-pane layout with responsive regimes, AdaptiveColor theme (19 slots), FocusGraph (per-item navigation), CommandPalette with FeedbackCollector learning, toast system with action buttons, undo/redo with gesture history, workspace persistence via StateRegistry, survey temporal view, inspector overlay. #168 delivered: unified palette surface (search+commands merged, InputMode::Searching deleted). REMAINING: HelpSystem+HintRanker, tooltips, guided tours, sparklines, badges, animated transitions, VirtualizedList, Observable/Computed reactive state, degradation cascade, asciicast recording, input macros, drag-resize, focus history/breadcrumb.",
+      "actual": "Core foundation delivered across 5 phases (#162-#166): three-pane layout with responsive regimes, AdaptiveColor theme (19 slots), FocusGraph navigation, CommandPalette with FeedbackCollector, toast system, undo/redo with gesture history, workspace persistence, inspector overlay. #168: unified palette. #177: ftui palette API. #180: survey rewritten with per-band List widgets, content-sized bands, deduplicated bar. REMAINING: context-sensitive help (#169), spatial refinement (#170), visual polish (#172). Scale readiness (#171) and architectural lifts (#173) held — no evidence of need at current scale.",
       "created_at": "2026-03-30T21:30:03.681819+00:00",
       "desired": "the TUI is reimagined on ftui — PaneLayout spatial skeleton, focus graph navigation, modal interaction, widget-native rendering, adaptive theme, reactive state, undo, responsive breakpoints, session persistence. See designs/tui-reimagined.md",
       "horizon": "2026-07",
@@ -1803,7 +1803,7 @@
     {
       "actual": "Basic help overlay toggled by ? — flat keybinding list, no context awareness, no learning, no ftui HelpSystem integration",
       "created_at": "2026-04-01T07:19:18.553731+00:00",
-      "desired": "Contextual help system — HelpSystem with HintRanker learns which bindings the practitioner uses, surfaces less-used ones more prominently, context-sensitive to focus position",
+      "desired": "context-sensitive help — the ? overlay shows different keybinding hints per view (deck, survey, logbase) instead of a flat list. Palette integration: Ctrl+K 'help' surfaces relevant bindings for current context",
       "horizon": null,
       "id": "01KN3YJCRS1C1QWVZGRDBP0FAR",
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
@@ -1823,20 +1823,20 @@
       "status": "Active"
     },
     {
-      "actual": "All zones load fully into memory. Fine at current scale (dozens). No frame budget monitoring or graceful degradation.",
+      "actual": "Held — no scale problem at 64 tensions. Survey rewrite (#180) established per-band List architecture that makes future virtualization straightforward. Revisit when scale actually bites.",
       "created_at": "2026-04-01T07:19:41.475933+00:00",
       "desired": "Scale readiness — VirtualizedList for frontier zones (hundreds of siblings without lag), degradation cascade sheds visual polish under frame pressure",
       "horizon": null,
       "id": "01KN3YK3530BE1WD7XH02JX18N",
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
-      "position": 4,
+      "position": null,
       "short_code": 171,
       "status": "Active"
     },
     {
-      "actual": "None implemented. Design document describes all of these. No evidence yet whether practitioners need sparklines to read urgency (glyphs may suffice) or badges to see signals (text may suffice). Evaluation before implementation.",
+      "actual": "Not started. Notes collected: scroll indicator wants remaining count (#180 session), tick-driven epoch boundaries (#175 cross-tension). Sparklines, badges, transitions deferred — no evidence practitioners need them over current text/glyph approach.",
       "created_at": "2026-04-01T07:19:55.202370+00:00",
-      "desired": "Evaluate visual polish layer — sparklines for temporal urgency, badge widgets for exceptional states, animated transitions (slide/fade), tooltips on dwell, guided tours for onboarding. Assess which of these produce real practitioner value vs decorative complexity.",
+      "desired": "visual polish pass — survey scroll indicator with remaining count, urgency-aware band border colors, consistent glyph/signal rendering across views. Concrete improvements driven by observed friction, not speculative features.",
       "horizon": null,
       "id": "01KN3YKGJ2S2ZGR7XVG5ZFVVGA",
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
@@ -1845,13 +1845,13 @@
       "status": "Active"
     },
     {
-      "actual": "State is imperative — frontier recomputed on gesture completion. Modals work via InputMode enum. Session telemetry exists but not in asciicast/macro format. Current approach is simple and correct. Question is whether the lift produces enough value.",
+      "actual": "Held — imperative state model is simple and correct. Reactive lift (Observable/Computed) adds Rc<RefCell<>> complexity for unclear benefit. Asciicast/macros orthogonal. Revisit only if imperative approach becomes a bottleneck.",
       "created_at": "2026-04-01T07:20:06.508717+00:00",
       "desired": "Evaluate architectural lifts — Observable/Computed reactive state (requires Rc<RefCell<>> restructuring), true ftui::Modal focus trapping (replacing InputMode dispatch), asciicast recording, input macros for regression testing. Assess cost/benefit vs current imperative approach.",
       "horizon": null,
       "id": "01KN3YKVKC79HTB3MCPGSP5RZC",
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
-      "position": 6,
+      "position": null,
       "short_code": 173,
       "status": "Active"
     },
@@ -1964,6 +1964,17 @@
       "position": null,
       "short_code": 183,
       "status": "Resolved"
+    },
+    {
+      "actual": "not started — survey bar shows aggregate stats (active, stale, signaled) that could become interactive filter toggles",
+      "created_at": "2026-04-06T13:19:24.913807+00:00",
+      "desired": "survey view filters by bar vitals — select stale/signaled/held in the status bar or via Ctrl+K to narrow the survey to matching tensions",
+      "horizon": null,
+      "id": "01KNHF5BQH861TQ9XEM4Z9VK70",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 184,
+      "status": "Active"
     }
   ]
 }
