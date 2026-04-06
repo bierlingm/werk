@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-06T08:03:46Z",
+  "flushed_at": "2026-04-06T09:18:01Z",
   "summary": {
-    "active": 70,
+    "active": 69,
     "released": 20,
-    "resolved": 87,
+    "resolved": 88,
     "total": 177
   },
   "tensions": [
@@ -1779,7 +1779,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Engine has gesture lifecycle (begin/end/active_gesture) and mutations store old_value, but no reversal method exists. All mutations are append-only. Phase 3 TUI undo (#164) works without this by snapshotting UI state, but full undo requires sd-core support.",
+      "actual": "Engine.undo_gesture(gesture_id) implemented — reverses mutations using stored old_value with conflict detection, append-only reversal gestures, edge/epoch cleanup, single-transaction atomicity. TUI rewritten from snapshot-based to gesture-ID stack. CLI 'werk undo' and MCP undo_gesture tool added. Children-on-resolve changed from reparent-to-null to auto-resolve (recursive). 16 new tests, all 494+ passing.",
       "created_at": "2026-03-31T14:15:09.414207+00:00",
       "desired": "gesture undo at the database level — Engine.undo_gesture(gesture_id) reverses mutations using stored old_value, enabling Ctrl+Z in TUI to actually reverse structural changes not just restore UI state",
       "horizon": "2026-06",
@@ -1787,7 +1787,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 167,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Delivered: unified palette surface. Ctrl+K and / both open CommandPalette widget. Actions (16, feedback-ordered) + FrankenSearch + substring tension results in single widget. Status glyphs in category badge, #N in title, parent ref in description. Short code filter via # prefix or bare digits. Resolved/released show with status distinction. InputMode::Searching deleted (10→9 modes). Highlight drift worked around via ASCII titles (frankentui#57 filed). 60% width is widget-internal (frankentui#58 filed for layout+structure configurability). All 7 TUI + 10 sd-core tests pass.",

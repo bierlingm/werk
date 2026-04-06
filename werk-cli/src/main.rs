@@ -110,6 +110,9 @@ fn main() {
             werk::commands::release::cmd_release(&output, id, reason)
         }
         Commands::Reopen { id, reason } => werk::commands::reopen::cmd_reopen(&output, id, reason),
+        Commands::Undo { gesture_id, last, dry_run } => {
+            werk::commands::undo::cmd_undo(&output, gesture_id, last, dry_run)
+        }
         Commands::Snooze { id, date, clear } => {
             werk::commands::snooze::cmd_snooze(&output, id, date, clear)
         }

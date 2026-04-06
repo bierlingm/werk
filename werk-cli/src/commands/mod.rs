@@ -38,6 +38,7 @@ pub mod stats;
 pub mod survey;
 pub mod trajectory;
 pub mod tree;
+pub mod undo;
 
 use clap::Subcommand;
 use batch::BatchCommand;
@@ -294,6 +295,25 @@ Examples:
         /// Reason for reopening.
         #[arg(short, long)]
         reason: Option<String>,
+    },
+
+    /// Undo a gesture (reverse all its mutations).
+    #[command(after_help = "\
+Examples:
+  werk undo 01JWAB1234           Undo gesture by ID
+  werk undo --last               Undo the most recent gesture
+  werk undo --last --dry-run     Preview what would be undone")]
+    Undo {
+        /// Gesture ID to undo.
+        gesture_id: Option<String>,
+
+        /// Undo the most recent gesture.
+        #[arg(long)]
+        last: bool,
+
+        /// Preview without making changes.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Snooze a tension until a future date.
@@ -831,6 +851,7 @@ impl Commands {
                 | Commands::Snooze { .. }
                 | Commands::Recur { .. }
                 | Commands::Batch { .. }
+                | Commands::Undo { .. }
         )
     }
 }

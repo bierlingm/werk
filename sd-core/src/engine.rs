@@ -249,6 +249,36 @@ impl Engine {
         compute_urgency(tension, chrono::Utc::now())
     }
 
+    // ── Gesture undo ──────────────────────────────────────────────
+
+    /// Undo a gesture by appending reversal mutations.
+    ///
+    /// Returns the undo gesture ID on success.
+    pub fn undo_gesture(
+        &mut self,
+        gesture_id: &str,
+    ) -> Result<String, crate::tension::SdError> {
+        let undo_id = self.store.undo_gesture(gesture_id)?;
+
+        self.bus.emit(&crate::events::Event::GestureUndone {
+            gesture_id: gesture_id.to_owned(),
+            undo_gesture_id: undo_id.clone(),
+            reversed_mutation_count: self
+                .store
+                .get_gesture_mutations(gesture_id)
+                .map(|m| m.len())
+                .unwrap_or(0),
+            timestamp: chrono::Utc::now(),
+        });
+
+        Ok(undo_id)
+    }
+
+    /// Get the most recent gesture ID.
+    pub fn get_last_gesture_id(&self) -> Result<Option<String>, crate::store::StoreError> {
+        self.store.get_last_gesture_id()
+    }
+
     // ── Edge operations ───────────────────────────────────────────
 
     /// Create a typed edge between two tensions.

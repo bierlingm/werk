@@ -463,22 +463,10 @@ impl InstrumentApp {
                 }
             }
             "undo" => {
-                let current = self.capture_snapshot();
-                if let Some((desc, snapshot)) = self.gesture_history.undo(current) {
-                    self.restore_snapshot(snapshot);
-                    self.toasts.push_undo(&format!("undone: {}", desc));
-                } else {
-                    self.global_undo_redo(false);
-                }
+                self.gesture_undo();
             }
             "redo" => {
-                let current = self.capture_snapshot();
-                if let Some((desc, snapshot)) = self.gesture_history.redo(current) {
-                    self.restore_snapshot(snapshot);
-                    self.toasts.push_success(&format!("redone: {}", desc));
-                } else {
-                    self.global_undo_redo(true);
-                }
+                self.gesture_redo();
             }
             "help" => {
                 self.input_mode = InputMode::Help;
@@ -787,28 +775,15 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // Undo (u / Ctrl+Z) — gesture history first, falls back to DB mutation reversal
+            // Undo (u / Ctrl+Z) — gesture-level undo via Engine::undo_gesture
             Msg::Char('u') | Msg::Undo => {
-                let current = self.capture_snapshot();
-                if let Some((desc, snapshot)) = self.gesture_history.undo(current) {
-                    self.restore_snapshot(snapshot);
-                    self.toasts.push_undo(&format!("undone: {}", desc));
-                } else {
-                    // Fall back to legacy single-mutation undo
-                    self.global_undo_redo(false);
-                }
+                self.gesture_undo();
                 Cmd::none()
             }
 
-            // Redo (U / Ctrl+Shift+Z) — gesture history first, falls back to DB mutation reversal
+            // Redo (U / Ctrl+Shift+Z) — undo the undo gesture
             Msg::Char('U') | Msg::Redo => {
-                let current = self.capture_snapshot();
-                if let Some((desc, snapshot)) = self.gesture_history.redo(current) {
-                    self.restore_snapshot(snapshot);
-                    self.toasts.push_success(&format!("redone: {}", desc));
-                } else {
-                    self.global_undo_redo(true);
-                }
+                self.gesture_redo();
                 Cmd::none()
             }
 

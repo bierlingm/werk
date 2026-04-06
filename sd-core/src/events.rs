@@ -115,6 +115,14 @@ pub enum Event {
         change_count: usize,
         timestamp: DateTime<Utc>,
     },
+
+    /// A gesture was undone (all its mutations reversed).
+    GestureUndone {
+        gesture_id: String,
+        undo_gesture_id: String,
+        reversed_mutation_count: usize,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 impl Event {
@@ -131,6 +139,7 @@ impl Event {
             Event::HorizonChanged { tension_id, .. } => Some(tension_id),
             Event::UrgencyThresholdCrossed { tension_id, .. } => Some(tension_id),
             Event::HorizonDriftDetected { tension_id, .. } => Some(tension_id),
+            Event::GestureUndone { .. } => None, // gesture-level, not tension-level
         }
     }
 
@@ -147,6 +156,7 @@ impl Event {
             Event::HorizonChanged { timestamp, .. } => *timestamp,
             Event::UrgencyThresholdCrossed { timestamp, .. } => *timestamp,
             Event::HorizonDriftDetected { timestamp, .. } => *timestamp,
+            Event::GestureUndone { timestamp, .. } => *timestamp,
         }
     }
 }

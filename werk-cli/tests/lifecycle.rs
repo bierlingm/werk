@@ -75,7 +75,7 @@ fn test_resolve_with_prefix() {
 
 /// VAL-CRUD-014: Resolve reparents children to roots
 #[test]
-fn test_resolve_reparents_children() {
+fn test_resolve_auto_resolves_children() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -104,11 +104,13 @@ fn test_resolve_reparents_children() {
         .assert()
         .success();
 
-    // Children should now be roots
+    // Children should be auto-resolved, parent relationship preserved
     let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
     let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
-    assert!(child1_after.parent_id.is_none());
-    assert!(child2_after.parent_id.is_none());
+    assert_eq!(child1_after.status, sd_core::TensionStatus::Resolved);
+    assert_eq!(child2_after.status, sd_core::TensionStatus::Resolved);
+    assert_eq!(child1_after.parent_id, Some(parent.id.clone()));
+    assert_eq!(child2_after.parent_id, Some(parent.id.clone()));
 }
 
 /// VAL-CRUD-015: Resolve on non-Active tension fails
@@ -269,7 +271,7 @@ fn test_release_without_reason_fails() {
 
 /// VAL-CRUD-017: Release reparents children like resolve
 #[test]
-fn test_release_reparents_children() {
+fn test_release_auto_releases_children() {
     let dir = TempDir::new().unwrap();
 
     cargo_bin_cmd!("werk")
@@ -293,9 +295,10 @@ fn test_release_reparents_children() {
         .assert()
         .success();
 
-    // Child should be a root now
+    // Child should be auto-released
     let child_after = store.get_tension(&child.id).unwrap().unwrap();
-    assert!(child_after.parent_id.is_none());
+    assert_eq!(child_after.status, sd_core::TensionStatus::Released);
+    assert_eq!(child_after.parent_id, Some(parent.id.clone()));
 }
 
 /// Release on resolved tension fails

@@ -246,6 +246,16 @@ pub struct ReopenParam {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UndoGestureParam {
+    /// Gesture ID to undo.
+    #[serde(default)]
+    pub gesture_id: Option<String>,
+    /// If true, undo the most recent gesture.
+    #[serde(default)]
+    pub last: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReleaseParam {
     /// Tension ID, short code, or ULID prefix.
     pub id: String,
@@ -3554,6 +3564,33 @@ impl WerkServer {
             "failed": failed,
             "dry_run": p.dry_run,
             "mutations": results,
+        }))
+    }
+
+    #[tool(description = "Undo a gesture by reversing all its mutations. Creates an append-only reversal gesture. Supports redo by undoing the undo gesture. Returns error if fields have been changed by other gestures since (conflict detection).")]
+    async fn undo_gesture(
+        &self,
+        Parameters(p): Parameters<UndoGestureParam>,
+    ) -> Result<CallToolResult, McpError> {
+        let (workspace, store) = open_store()?;
+
+        let gesture_id = if p.last.unwrap_or(false) {
+            store
+                .get_last_gesture_id()
+                .map_err(|e| err(e.to_string()))?
+                .ok_or_else(|| err("no gestures found"))?
+        } else if let Some(ref id) = p.gesture_id {
+            id.clone()
+        } else {
+            return Err(err("provide gesture_id or set last=true"));
+        };
+
+        let undo_id = store.undo_gesture(&gesture_id).map_err(|e| err(e.to_string()))?;
+        autoflush(&workspace);
+
+        json_result(&serde_json::json!({
+            "gesture_id": gesture_id,
+            "undo_gesture_id": undo_id,
         }))
     }
 }

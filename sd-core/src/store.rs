@@ -384,7 +384,8 @@ impl Store {
                 id TEXT PRIMARY KEY,
                 session_id TEXT,
                 timestamp TEXT NOT NULL,
-                description TEXT
+                description TEXT,
+                undone_gesture_id TEXT
             )",
         )
         .map_err(|e| {
@@ -645,6 +646,30 @@ impl Store {
                 .map_err(|e| {
                     StoreError::DatabaseError(format!(
                         "failed to add agent_session_id column: {:?}",
+                        e
+                    ))
+                })?;
+        }
+
+        // Migration: Add undone_gesture_id to gestures (for gesture undo)
+        let gesture_columns: Vec<fsqlite::Row> =
+            conn.query("PRAGMA table_info(gestures)").map_err(|e| {
+                StoreError::DatabaseError(format!("failed to query gestures schema: {:?}", e))
+            })?;
+
+        let has_undone_gesture_id = gesture_columns.iter().any(|row| {
+            if let Some(SqliteValue::Text(s)) = row.get(1) {
+                &**s == "undone_gesture_id"
+            } else {
+                false
+            }
+        });
+
+        if !has_undone_gesture_id {
+            conn.execute("ALTER TABLE gestures ADD COLUMN undone_gesture_id TEXT")
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!(
+                        "failed to add undone_gesture_id column: {:?}",
                         e
                     ))
                 })?;
@@ -1633,12 +1658,32 @@ impl Store {
 
         tension.status = new_status;
 
-        // Check if this tension has children that need reparenting
+        // Check if this tension has children that need auto-resolving
         let children = self
             .get_children(id)
             .map_err(|e| SdError::ValidationError(e.to_string()))?;
-        let needs_reparent = !children.is_empty()
+        let needs_child_resolve = !children.is_empty()
             && (new_status == TensionStatus::Resolved || new_status == TensionStatus::Released);
+
+        // Collect all active children (and their descendants) for recursive resolution
+        let mut children_to_resolve: Vec<Tension> = Vec::new();
+        if needs_child_resolve {
+            let mut stack: Vec<Tension> = children.iter()
+                .filter(|c| c.status == TensionStatus::Active)
+                .cloned()
+                .collect();
+            while let Some(child) = stack.pop() {
+                children_to_resolve.push(child.clone());
+                // Get grandchildren for recursive resolution
+                if let Ok(grandchildren) = self.get_children(&child.id) {
+                    for gc in grandchildren {
+                        if gc.status == TensionStatus::Active {
+                            stack.push(gc);
+                        }
+                    }
+                }
+            }
+        }
 
         // Persist in transaction
         {
@@ -1663,31 +1708,33 @@ impl Store {
                     )
                 })
                 .and_then(|_| {
-                    // If resolving/releasing with children, reparent all children to null
-                    if needs_reparent {
+                    // Auto-resolve active children (recursively) under the same gesture
+                    if needs_child_resolve {
                         let now = Utc::now();
-                        for child in &children {
-                            // Update child's parent_id to null
+                        for child in &children_to_resolve {
                             conn.execute_with_params(
-                                "UPDATE tensions SET parent_id = NULL WHERE id = ?1",
-                                &[SqliteValue::Text(child.id.to_string().into())],
+                                "UPDATE tensions SET status = ?1 WHERE id = ?2",
+                                &[
+                                    SqliteValue::Text(new_status.to_string().into()),
+                                    SqliteValue::Text(child.id.to_string().into()),
+                                ],
                             )
                             .map_err(|e| {
                                 SdError::ValidationError(format!(
-                                    "failed to reparent child: {:?}",
+                                    "failed to resolve child: {:?}",
                                     e
                                 ))
                             })?;
 
-                            // Record parent_id mutation for the child
+                            // Record status mutation for the child
                             self.record_mutation_in_transaction(
                                 &conn,
                                 &Mutation::new(
                                     child.id.clone(),
                                     now,
-                                    "parent_id".to_owned(),
-                                    child.parent_id.clone(),
-                                    String::new(), // Empty string represents null
+                                    "status".to_owned(),
+                                    Some(child.status.to_string()),
+                                    new_status.to_string(),
                                 ),
                             )?;
                         }
@@ -2398,6 +2445,508 @@ impl Store {
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
         self.parse_mutation_rows(rows)
+    }
+
+    /// Get the most recent gesture ID (by timestamp).
+    pub fn get_last_gesture_id(&self) -> Result<Option<String>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT id FROM gestures ORDER BY timestamp DESC LIMIT 1")
+            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
+        match rows.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Text(s)) => Ok(Some(s.to_string())),
+            _ => Ok(None),
+        }
+    }
+
+    /// Undo a gesture by appending reversal mutations.
+    ///
+    /// Creates a new gesture G' ("undo of G") containing reverse mutations
+    /// for every mutation in the original gesture. The original mutations
+    /// are never deleted — undo is append-only.
+    ///
+    /// # Conflict Detection
+    ///
+    /// Before applying any reversals, checks that every mutation's `new_value`
+    /// still matches the field's current value. If any field has been changed
+    /// by another gesture since, returns an error listing the conflicts.
+    /// No partial reversals — gesture atomicity is sacred.
+    ///
+    /// # Returns
+    ///
+    /// The undo gesture ID on success.
+    pub fn undo_gesture(&self, gesture_id: &str) -> Result<String, SdError> {
+        use crate::edge;
+        use crate::tension::TensionStatus;
+
+        // 1. Check gesture exists and isn't already undone
+        let conn = self.conn.borrow();
+        let gesture_rows = conn
+            .query_with_params(
+                "SELECT id, undone_gesture_id FROM gestures WHERE id = ?1",
+                &[SqliteValue::Text(gesture_id.to_owned().into())],
+            )
+            .map_err(|e| SdError::ValidationError(format!("failed to query gesture: {:?}", e)))?;
+
+        if gesture_rows.is_empty() {
+            return Err(SdError::ValidationError(format!(
+                "gesture not found: {}",
+                gesture_id
+            )));
+        }
+
+        // Check if this gesture is already undone (another gesture has undone_gesture_id pointing to it)
+        let already_undone = conn
+            .query_with_params(
+                "SELECT id FROM gestures WHERE undone_gesture_id = ?1",
+                &[SqliteValue::Text(gesture_id.to_owned().into())],
+            )
+            .map_err(|e| SdError::ValidationError(format!("failed to check undo status: {:?}", e)))?;
+
+        if !already_undone.is_empty() {
+            return Err(SdError::ValidationError(format!(
+                "gesture {} is already undone",
+                gesture_id
+            )));
+        }
+        drop(conn);
+
+        // 2. Get all mutations for this gesture
+        let mutations = self
+            .get_gesture_mutations(gesture_id)
+            .map_err(|e| SdError::ValidationError(format!("failed to get gesture mutations: {}", e)))?;
+
+        if mutations.is_empty() {
+            return Err(SdError::ValidationError(format!(
+                "gesture {} has no mutations",
+                gesture_id
+            )));
+        }
+
+        // 3. Conflict detection — verify every mutation's new_value matches current state
+        let mut conflicts: Vec<String> = Vec::new();
+
+        for m in &mutations {
+            let field = m.field();
+
+            // Skip fields that don't have a reversible current-value check
+            match field {
+                "note" => continue, // notes are append-only, retraction doesn't need conflict check
+                "created" => {
+                    // For creation: check that no other gestures have touched this tension
+                    if m.old_value().is_none() {
+                        let conn = self.conn.borrow();
+                        let other_mutations = conn
+                            .query_with_params(
+                                "SELECT COUNT(*) FROM mutations WHERE tension_id = ?1 AND gesture_id != ?2",
+                                &[
+                                    SqliteValue::Text(m.tension_id().to_owned().into()),
+                                    SqliteValue::Text(gesture_id.to_owned().into()),
+                                ],
+                            )
+                            .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
+                        let count = match other_mutations.first().and_then(|r| r.get(0)) {
+                            Some(SqliteValue::Integer(n)) => *n,
+                            _ => 0,
+                        };
+                        if count > 0 {
+                            conflicts.push(format!(
+                                "tension {} has {} mutations from other gestures — cannot undo creation",
+                                m.tension_id(), count
+                            ));
+                        }
+                    }
+                    continue;
+                }
+                "deleted" => {
+                    conflicts.push(format!(
+                        "undo of deletion is not supported in v1 (tension {})",
+                        m.tension_id()
+                    ));
+                    continue;
+                }
+                _ => {}
+            }
+
+            // Read current value from the tension
+            let tension = self
+                .get_tension(m.tension_id())
+                .map_err(|e| SdError::ValidationError(e.to_string()))?;
+
+            let tension = match tension {
+                Some(t) => t,
+                None => {
+                    conflicts.push(format!(
+                        "tension {} no longer exists",
+                        m.tension_id()
+                    ));
+                    continue;
+                }
+            };
+
+            let current_value = match field {
+                "desired" => tension.desired.clone(),
+                "actual" => tension.actual.clone(),
+                "status" => tension.status.to_string(),
+                "parent_id" => tension.parent_id.clone().unwrap_or_default(),
+                "horizon" => tension.horizon.as_ref().map(|h| h.to_string()).unwrap_or_default(),
+                "position" => tension.position.map(|p| p.to_string()).unwrap_or_default(),
+                _ => continue,
+            };
+
+            if current_value != m.new_value() {
+                conflicts.push(format!(
+                    "tension {} field '{}': expected '{}', found '{}'",
+                    m.tension_id(),
+                    field,
+                    m.new_value(),
+                    current_value
+                ));
+            }
+        }
+
+        if !conflicts.is_empty() {
+            return Err(SdError::ValidationError(format!(
+                "undo conflict — fields changed since gesture:\n  {}",
+                conflicts.join("\n  ")
+            )));
+        }
+
+        // 4. All checks pass — apply reversals in a single transaction
+        let undo_gesture_id = ulid::Ulid::new().to_string();
+        let now = Utc::now();
+
+        {
+            let conn = self.conn.borrow();
+            conn.execute("BEGIN CONCURRENT;").map_err(|e| {
+                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+            })?;
+
+            let result = (|| -> Result<usize, SdError> {
+                // Create the undo gesture with undone_gesture_id set
+                conn.execute_with_params(
+                    "INSERT INTO gestures (id, timestamp, description, undone_gesture_id) VALUES (?1, ?2, ?3, ?4)",
+                    &[
+                        SqliteValue::Text(undo_gesture_id.clone().into()),
+                        SqliteValue::Text(now.to_rfc3339().into()),
+                        SqliteValue::Text(format!("undo of {}", gesture_id).into()),
+                        SqliteValue::Text(gesture_id.to_owned().into()),
+                    ],
+                )
+                .map_err(|e| SdError::ValidationError(format!("failed to create undo gesture: {:?}", e)))?;
+
+                let mut reversed_count = 0;
+
+                // Process mutations in reverse order
+                for m in mutations.iter().rev() {
+                    let field = m.field();
+                    let tension_id = m.tension_id();
+
+                    match field {
+                        "deleted" => {
+                            // Already rejected in conflict detection
+                            return Err(SdError::ValidationError(
+                                "undo of deletion is not supported in v1".to_owned(),
+                            ));
+                        }
+
+                        "created" => {
+                            // Undo creation = delete the tension
+                            conn.execute_with_params(
+                                "DELETE FROM tensions WHERE id = ?1",
+                                &[SqliteValue::Text(tension_id.to_owned().into())],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to delete tension on undo-create: {:?}",
+                                    e
+                                ))
+                            })?;
+
+                            // Record the reverse mutation
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    "deleted".to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    String::new(),
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        "note" => {
+                            // Record a note_retracted mutation
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    "note_retracted".to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    String::new(),
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        "desired" | "actual" => {
+                            let old_val = m.old_value().unwrap_or("").to_owned();
+                            if old_val.is_empty() {
+                                // Can't revert to empty — skip
+                                continue;
+                            }
+                            let column = field;
+                            conn.execute_with_params(
+                                &format!("UPDATE tensions SET {} = ?1 WHERE id = ?2", column),
+                                &[
+                                    SqliteValue::Text(old_val.clone().into()),
+                                    SqliteValue::Text(tension_id.to_owned().into()),
+                                ],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to revert {}: {:?}",
+                                    field, e
+                                ))
+                            })?;
+
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    field.to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    old_val,
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        "status" => {
+                            let old_status_str = m.old_value().unwrap_or("Active");
+                            let old_status = match old_status_str {
+                                "Active" => TensionStatus::Active,
+                                "Resolved" => TensionStatus::Resolved,
+                                "Released" => TensionStatus::Released,
+                                _ => TensionStatus::Active,
+                            };
+
+                            conn.execute_with_params(
+                                "UPDATE tensions SET status = ?1 WHERE id = ?2",
+                                &[
+                                    SqliteValue::Text(old_status.to_string().into()),
+                                    SqliteValue::Text(tension_id.to_owned().into()),
+                                ],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to revert status: {:?}",
+                                    e
+                                ))
+                            })?;
+
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    "status".to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    old_status.to_string(),
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        "parent_id" => {
+                            let old_parent = m.old_value().map(|v| v.to_owned());
+                            let old_parent_or_null = if old_parent.as_deref() == Some("") {
+                                None
+                            } else {
+                                old_parent.clone()
+                            };
+
+                            conn.execute_with_params(
+                                "UPDATE tensions SET parent_id = ?1 WHERE id = ?2",
+                                &[
+                                    match &old_parent_or_null {
+                                        Some(p) => SqliteValue::Text(p.clone().into()),
+                                        None => SqliteValue::Null,
+                                    },
+                                    SqliteValue::Text(tension_id.to_owned().into()),
+                                ],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to revert parent_id: {:?}",
+                                    e
+                                ))
+                            })?;
+
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    "parent_id".to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    old_parent.unwrap_or_default(),
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        "horizon" => {
+                            let old_horizon_str = m.old_value().unwrap_or("");
+                            conn.execute_with_params(
+                                "UPDATE tensions SET horizon = ?1 WHERE id = ?2",
+                                &[
+                                    if old_horizon_str.is_empty() {
+                                        SqliteValue::Null
+                                    } else {
+                                        SqliteValue::Text(old_horizon_str.to_owned().into())
+                                    },
+                                    SqliteValue::Text(tension_id.to_owned().into()),
+                                ],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to revert horizon: {:?}",
+                                    e
+                                ))
+                            })?;
+
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    "horizon".to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    old_horizon_str.to_owned(),
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        "position" => {
+                            let old_pos_str = m.old_value().unwrap_or("");
+                            conn.execute_with_params(
+                                "UPDATE tensions SET position = ?1 WHERE id = ?2",
+                                &[
+                                    if old_pos_str.is_empty() {
+                                        SqliteValue::Null
+                                    } else {
+                                        match old_pos_str.parse::<i64>() {
+                                            Ok(n) => SqliteValue::Integer(n),
+                                            Err(_) => SqliteValue::Null,
+                                        }
+                                    },
+                                    SqliteValue::Text(tension_id.to_owned().into()),
+                                ],
+                            )
+                            .map_err(|e| {
+                                SdError::ValidationError(format!(
+                                    "failed to revert position: {:?}",
+                                    e
+                                ))
+                            })?;
+
+                            self.record_mutation_in_transaction(
+                                &conn,
+                                &Mutation::new_with_gesture(
+                                    tension_id.to_owned(),
+                                    now,
+                                    "position".to_owned(),
+                                    Some(m.new_value().to_owned()),
+                                    old_pos_str.to_owned(),
+                                    Some(undo_gesture_id.clone()),
+                                    None,
+                                ),
+                            )?;
+                            reversed_count += 1;
+                        }
+
+                        _ => {
+                            // Unknown field — skip silently
+                        }
+                    }
+                }
+
+                // Delete edges created by the original gesture
+                conn.execute_with_params(
+                    "DELETE FROM edges WHERE gesture_id = ?1",
+                    &[SqliteValue::Text(gesture_id.to_owned().into())],
+                )
+                .map_err(|e| {
+                    SdError::ValidationError(format!(
+                        "failed to delete edges for gesture: {:?}",
+                        e
+                    ))
+                })?;
+
+                // Delete epochs triggered by the original gesture
+                conn.execute_with_params(
+                    "DELETE FROM epochs WHERE trigger_gesture_id = ?1",
+                    &[SqliteValue::Text(gesture_id.to_owned().into())],
+                )
+                .map_err(|e| {
+                    SdError::ValidationError(format!(
+                        "failed to delete epochs for gesture: {:?}",
+                        e
+                    ))
+                })?;
+
+                Ok(reversed_count)
+            })();
+
+            match result {
+                Ok(_count) => {
+                    Self::commit_with_retry(&conn)?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK;");
+                    return Err(e);
+                }
+            }
+        }
+
+        // Re-sync contains edges for any parent_id reversals
+        // (edges were deleted in-transaction; now rebuild from current parent_id state)
+        for m in &mutations {
+            if m.field() == "parent_id" {
+                let old_parent = m.old_value().filter(|v| !v.is_empty());
+                let new_parent_was = if m.new_value().is_empty() { None } else { Some(m.new_value()) };
+
+                // The revert set parent_id back to old_parent.
+                // Remove the edge that was pointing from new_parent -> tension
+                if let Some(np) = new_parent_was {
+                    let _ = self.remove_edge(np, m.tension_id(), edge::EDGE_CONTAINS);
+                }
+                // Create edge from old_parent -> tension (restoring original structure)
+                if let Some(op) = old_parent {
+                    let _ = self.create_edge(op, m.tension_id(), edge::EDGE_CONTAINS);
+                }
+            }
+        }
+
+        Ok(undo_gesture_id)
     }
 
     // ── Epoch management ───────────────────────────────────────────
@@ -3491,7 +4040,7 @@ mod tests {
     // ── VAL-TENSION-012: Deletion with children (reparent to roots) ──────
 
     #[test]
-    fn test_resolve_tension_with_children_reparents_to_roots() {
+    fn test_resolve_tension_with_children_auto_resolves() {
         let store = Store::new_in_memory().unwrap();
 
         // Create parent with children
@@ -3510,32 +4059,18 @@ mod tests {
             .update_status(&parent.id, TensionStatus::Resolved)
             .unwrap();
 
-        // Children should now be roots (parent_id = None)
+        // Children should be auto-resolved (not reparented)
         let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
         let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
-        assert!(child1_after.parent_id.is_none());
-        assert!(child2_after.parent_id.is_none());
-
-        // Children should appear in get_roots()
-        let roots = store.get_roots().unwrap();
-        assert!(roots.iter().any(|r| r.id == child1.id));
-        assert!(roots.iter().any(|r| r.id == child2.id));
-
-        // Parent should still be in roots (it has null parent_id), but with Resolved status
-        let parent_in_roots = roots.iter().find(|r| r.id == parent.id);
-        assert!(
-            parent_in_roots.is_some(),
-            "parent should still be a root (null parent_id)"
-        );
-        assert_eq!(
-            parent_in_roots.unwrap().status,
-            TensionStatus::Resolved,
-            "parent should have Resolved status"
-        );
+        assert_eq!(child1_after.status, TensionStatus::Resolved);
+        assert_eq!(child2_after.status, TensionStatus::Resolved);
+        // Parent relationship preserved
+        assert_eq!(child1_after.parent_id, Some(parent.id.clone()));
+        assert_eq!(child2_after.parent_id, Some(parent.id.clone()));
     }
 
     #[test]
-    fn test_release_tension_with_children_reparents_to_roots() {
+    fn test_release_tension_with_children_auto_releases() {
         let store = Store::new_in_memory().unwrap();
 
         // Create parent with children
@@ -3554,15 +4089,15 @@ mod tests {
             .update_status(&parent.id, TensionStatus::Released)
             .unwrap();
 
-        // Children should now be roots
+        // Children should be auto-released
         let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
         let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
-        assert!(child1_after.parent_id.is_none());
-        assert!(child2_after.parent_id.is_none());
+        assert_eq!(child1_after.status, TensionStatus::Released);
+        assert_eq!(child2_after.status, TensionStatus::Released);
     }
 
     #[test]
-    fn test_resolve_tension_with_children_records_parent_mutations() {
+    fn test_resolve_tension_with_children_records_status_mutations() {
         let store = Store::new_in_memory().unwrap();
 
         // Create parent with children
@@ -3581,27 +4116,26 @@ mod tests {
             .update_status(&parent.id, TensionStatus::Resolved)
             .unwrap();
 
-        // Each child should have a parent_id mutation recorded
+        // Each child should have a status mutation recorded
         let child1_mutations = store.get_mutations(&child1.id).unwrap();
         let child2_mutations = store.get_mutations(&child2.id).unwrap();
 
-        // Find the parent_id mutation for each child
-        let child1_parent_mutation = child1_mutations.iter().find(|m| m.field() == "parent_id");
-        let child2_parent_mutation = child2_mutations.iter().find(|m| m.field() == "parent_id");
+        let child1_status_mutation = child1_mutations.iter().find(|m| m.field() == "status");
+        let child2_status_mutation = child2_mutations.iter().find(|m| m.field() == "status");
 
         assert!(
-            child1_parent_mutation.is_some(),
-            "child1 should have parent_id mutation"
+            child1_status_mutation.is_some(),
+            "child1 should have status mutation"
         );
         assert!(
-            child2_parent_mutation.is_some(),
-            "child2 should have parent_id mutation"
+            child2_status_mutation.is_some(),
+            "child2 should have status mutation"
         );
 
-        // Verify mutation records the old parent_id and empty new_value (null)
-        let m1 = child1_parent_mutation.unwrap();
-        assert_eq!(m1.old_value(), Some(parent.id.as_str()));
-        assert_eq!(m1.new_value(), ""); // Empty string represents null
+        // Verify mutation records Active -> Resolved
+        let m1 = child1_status_mutation.unwrap();
+        assert_eq!(m1.old_value(), Some("Active"));
+        assert_eq!(m1.new_value(), "Resolved");
     }
 
     #[test]
@@ -3630,7 +4164,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_deep_hierarchy_reparents_all_descendants() {
+    fn test_resolve_deep_hierarchy_auto_resolves_descendants() {
         let store = Store::new_in_memory().unwrap();
 
         // Create a deep hierarchy: grandparent -> parent -> child -> grandchild
@@ -3646,22 +4180,356 @@ mod tests {
             .unwrap();
 
         // Resolve the parent (middle of hierarchy)
-        // This should reparent child and grandchild
+        // This should recursively resolve child and grandchild
         store
             .update_status(&parent.id, TensionStatus::Resolved)
             .unwrap();
 
-        // Child should now be a root
+        // Child should be resolved, parent relationship preserved
         let child_after = store.get_tension(&child.id).unwrap().unwrap();
-        assert!(child_after.parent_id.is_none());
+        assert_eq!(child_after.status, TensionStatus::Resolved);
+        assert_eq!(child_after.parent_id, Some(parent.id.clone()));
 
-        // Grandchild should still have child as parent
+        // Grandchild should also be resolved
         let grandchild_after = store.get_tension(&grandchild.id).unwrap().unwrap();
+        assert_eq!(grandchild_after.status, TensionStatus::Resolved);
         assert_eq!(grandchild_after.parent_id, Some(child.id));
 
-        // Grandparent should still exist (not resolved)
+        // Grandparent should still be active
         let grandparent_after = store.get_tension(&grandparent.id).unwrap().unwrap();
         assert_eq!(grandparent_after.status, TensionStatus::Active);
+    }
+
+    // ── Gesture Undo Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_undo_simple_field_change() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("update desire"));
+        store.update_desired(&t.id, "new goal").unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        // Verify current state
+        let before = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(before.desired, "new goal");
+
+        // Undo
+        let undo_id = store.undo_gesture(&gid).unwrap();
+        assert!(!undo_id.is_empty());
+
+        // Verify reverted
+        let after = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(after.desired, "goal");
+    }
+
+    #[test]
+    fn test_undo_multi_mutation_gesture() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("multi update"));
+        store.update_desired(&t.id, "new goal").unwrap();
+        store.update_actual(&t.id, "new reality").unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        store.undo_gesture(&gid).unwrap();
+
+        let after = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(after.desired, "goal");
+        assert_eq!(after.actual, "reality");
+    }
+
+    #[test]
+    fn test_undo_conflict_detection() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        // Gesture 1: change desired
+        let _ = store.begin_gesture(Some("g1"));
+        store.update_desired(&t.id, "goal v2").unwrap();
+        let g1 = store.end_gesture().unwrap();
+
+        // Gesture 2: change desired again (creates conflict for g1 undo)
+        let _ = store.begin_gesture(Some("g2"));
+        store.update_desired(&t.id, "goal v3").unwrap();
+        store.end_gesture();
+
+        // Undo g1 should fail — desired was changed by g2
+        let result = store.undo_gesture(&g1);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("conflict"), "Error should mention conflict: {}", err);
+    }
+
+    #[test]
+    fn test_undo_double_undo_prevention() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("update"));
+        store.update_desired(&t.id, "new goal").unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        // First undo succeeds
+        store.undo_gesture(&gid).unwrap();
+
+        // Second undo of same gesture should fail
+        let result = store.undo_gesture(&gid);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("already undone"), "Error: {}", err);
+    }
+
+    #[test]
+    fn test_undo_redo_cycle() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("update"));
+        store.update_desired(&t.id, "new goal").unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        // Undo
+        let undo_id = store.undo_gesture(&gid).unwrap();
+        let after_undo = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(after_undo.desired, "goal");
+
+        // Redo (undo the undo)
+        let _redo_id = store.undo_gesture(&undo_id).unwrap();
+        let after_redo = store.get_tension(&t.id).unwrap().unwrap();
+        assert_eq!(after_redo.desired, "new goal");
+    }
+
+    #[test]
+    fn test_undo_status_change() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("resolve"));
+        store.update_status(&t.id, TensionStatus::Resolved).unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        assert_eq!(
+            store.get_tension(&t.id).unwrap().unwrap().status,
+            TensionStatus::Resolved
+        );
+
+        store.undo_gesture(&gid).unwrap();
+
+        assert_eq!(
+            store.get_tension(&t.id).unwrap().unwrap().status,
+            TensionStatus::Active
+        );
+    }
+
+    #[test]
+    fn test_undo_parent_change() {
+        let mut store = Store::new_in_memory().unwrap();
+        let parent = store.create_tension("parent", "p reality").unwrap();
+        let child = store.create_tension("child", "c reality").unwrap();
+
+        let _ = store.begin_gesture(Some("reparent"));
+        store.update_parent(&child.id, Some(&parent.id)).unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        assert_eq!(
+            store.get_tension(&child.id).unwrap().unwrap().parent_id,
+            Some(parent.id.clone())
+        );
+
+        store.undo_gesture(&gid).unwrap();
+
+        assert_eq!(
+            store.get_tension(&child.id).unwrap().unwrap().parent_id,
+            None
+        );
+    }
+
+    #[test]
+    fn test_undo_resolve_with_children_restores_active() {
+        let mut store = Store::new_in_memory().unwrap();
+        let parent = store.create_tension("parent", "p reality").unwrap();
+        let child = store
+            .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
+            .unwrap();
+
+        let _ = store.begin_gesture(Some("resolve parent"));
+        store.update_status(&parent.id, TensionStatus::Resolved).unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        // Both should be resolved
+        assert_eq!(store.get_tension(&parent.id).unwrap().unwrap().status, TensionStatus::Resolved);
+        assert_eq!(store.get_tension(&child.id).unwrap().unwrap().status, TensionStatus::Resolved);
+
+        // Undo should restore both to Active
+        store.undo_gesture(&gid).unwrap();
+
+        assert_eq!(store.get_tension(&parent.id).unwrap().unwrap().status, TensionStatus::Active);
+        assert_eq!(store.get_tension(&child.id).unwrap().unwrap().status, TensionStatus::Active);
+    }
+
+    #[test]
+    fn test_undo_creation_deletes_tension() {
+        let mut store = Store::new_in_memory().unwrap();
+
+        let _ = store.begin_gesture(Some("create"));
+        let t = store.create_tension("goal", "reality").unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        // Tension exists
+        assert!(store.get_tension(&t.id).unwrap().is_some());
+
+        // Undo creation
+        store.undo_gesture(&gid).unwrap();
+
+        // Tension should be gone
+        assert!(store.get_tension(&t.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_undo_creation_refuses_if_other_gestures_touched() {
+        let mut store = Store::new_in_memory().unwrap();
+
+        let _ = store.begin_gesture(Some("create"));
+        let t = store.create_tension("goal", "reality").unwrap();
+        let g1 = store.end_gesture().unwrap();
+
+        // Another gesture touches the tension
+        let _ = store.begin_gesture(Some("update"));
+        store.update_desired(&t.id, "new goal").unwrap();
+        store.end_gesture();
+
+        // Undo creation should fail
+        let result = store.undo_gesture(&g1);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("mutations from other gestures"), "Error: {}", err);
+    }
+
+    #[test]
+    fn test_undo_deletion_refused() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("delete"));
+        store.delete_tension(&t.id).unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        let result = store.undo_gesture(&gid);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("deletion is not supported"), "Error: {}", err);
+    }
+
+    #[test]
+    fn test_undo_note_creates_retraction() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("add note"));
+        store.record_mutation(&Mutation::new(
+            t.id.clone(),
+            Utc::now(),
+            "note".to_owned(),
+            None,
+            "my observation".to_owned(),
+        )).unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        let undo_id = store.undo_gesture(&gid).unwrap();
+
+        // Check that a note_retracted mutation was recorded
+        let undo_mutations = store.get_gesture_mutations(&undo_id)
+            .unwrap();
+        let retraction = undo_mutations.iter().find(|m| m.field() == "note_retracted");
+        assert!(retraction.is_some(), "Should have note_retracted mutation");
+        assert_eq!(retraction.unwrap().old_value(), Some("my observation"));
+    }
+
+    #[test]
+    fn test_undo_edge_cleanup() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t1 = store.create_tension("t1", "r1").unwrap();
+        let t2 = store.create_tension("t2", "r2").unwrap();
+
+        // A gesture that creates an edge AND a mutation (edges alone don't count as mutations)
+        let _ = store.begin_gesture(Some("split with edge"));
+        store.update_actual(&t1.id, "r1 updated").unwrap();
+        store.create_edge(&t1.id, &t2.id, crate::edge::EDGE_SPLIT_FROM).unwrap();
+        let gid = store.end_gesture().unwrap();
+
+        // Edge should exist
+        let edges = store.get_edges_for_tension(&t1.id).unwrap();
+        assert!(edges.iter().any(|e| e.edge_type == crate::edge::EDGE_SPLIT_FROM));
+
+        // Undo should delete the edge (and revert the mutation)
+        store.undo_gesture(&gid).unwrap();
+        let edges_after = store.get_edges_for_tension(&t1.id).unwrap();
+        assert!(!edges_after.iter().any(|e| e.edge_type == crate::edge::EDGE_SPLIT_FROM));
+
+        // Mutation should also be reverted
+        let t1_after = store.get_tension(&t1.id).unwrap().unwrap();
+        assert_eq!(t1_after.actual, "r1");
+    }
+
+    #[test]
+    fn test_undo_epoch_cleanup() {
+        let mut store = Store::new_in_memory().unwrap();
+        let t = store.create_tension("goal", "reality").unwrap();
+
+        let _ = store.begin_gesture(Some("with epoch"));
+        store.update_actual(&t.id, "new reality").unwrap();
+        let gid = store.active_gesture().map(|s| s.to_owned());
+        // Create an epoch linked to this gesture
+        let _ = store.create_epoch(
+            &t.id,
+            "goal",
+            "new reality",
+            None,
+            gid.as_deref(),
+        );
+        let gid = store.end_gesture().unwrap();
+
+        // Undo should remove the epoch
+        store.undo_gesture(&gid).unwrap();
+
+        // Verify epoch was cleaned up by checking the tension's epochs
+        let conn = store.conn.borrow();
+        let rows = conn.query_with_params(
+            "SELECT COUNT(*) FROM epochs WHERE trigger_gesture_id = ?1",
+            &[fsqlite::SqliteValue::Text(gid.into())],
+        ).unwrap();
+        let count = match rows.first().and_then(|r| r.get(0)) {
+            Some(fsqlite::SqliteValue::Integer(n)) => *n,
+            _ => 0,
+        };
+        assert_eq!(count, 0, "Epochs should be deleted on undo");
+    }
+
+    #[test]
+    fn test_undo_gesture_not_found() {
+        let store = Store::new_in_memory().unwrap();
+        let result = store.undo_gesture("nonexistent");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_get_last_gesture_id() {
+        let mut store = Store::new_in_memory().unwrap();
+        assert!(store.get_last_gesture_id().unwrap().is_none());
+
+        let _ = store.begin_gesture(Some("first"));
+        let g1 = store.end_gesture().unwrap();
+
+        assert_eq!(store.get_last_gesture_id().unwrap(), Some(g1.clone()));
+
+        let _ = store.begin_gesture(Some("second"));
+        let g2 = store.end_gesture().unwrap();
+
+        assert_eq!(store.get_last_gesture_id().unwrap(), Some(g2));
     }
 
     // ── Event Emission Tests ────────────────────────────────────────
