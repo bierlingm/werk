@@ -77,6 +77,20 @@ impl TimeBand {
     pub fn count_in(&self, items: &[SurveyItem]) -> usize {
         items.iter().filter(|it| it.band == *self).count()
     }
+
+    /// All band variants in display order.
+    pub fn all() -> &'static [TimeBand] {
+        &[TimeBand::Overdue, TimeBand::ThisWeek, TimeBand::ThisMonth, TimeBand::Later, TimeBand::NoDeadline]
+    }
+
+    /// Create a HashMap of per-band ListStates (used by app initialization).
+    pub fn all_band_states() -> std::collections::HashMap<TimeBand, std::cell::RefCell<ftui::widgets::list::ListState>> {
+        let mut m = std::collections::HashMap::new();
+        for &b in Self::all() {
+            m.insert(b, std::cell::RefCell::new(ftui::widgets::list::ListState::default()));
+        }
+        m
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -360,44 +374,25 @@ impl InstrumentApp {
         }
 
         self.survey_items = items;
-        self.rebuild_survey_display();
+        self.sync_survey_band_states();
     }
 
-    /// Rebuild the focused band's List items.
-    /// Called after load_survey_items(), cursor band change, or collapse toggle.
-    pub fn rebuild_survey_display(&mut self) {
+    /// Compute band + offset from survey_cursor and sync all per-band ListStates.
+    /// Active band gets `select(Some(offset))`, others get `selected = None`.
+    pub fn sync_survey_band_states(&self) {
         let ranges = compute_band_ranges(&self.survey_items);
-        let focused_band = self.survey_items.get(self.survey_cursor)
-            .map(|it| it.band);
+        let focused_band = self.survey_items.get(self.survey_cursor).map(|it| it.band);
 
-        // Build List items for the focused band only.
-        let mut display = Vec::new();
-        if let Some(fb) = focused_band {
-            if let Some(range) = ranges.iter().find(|r| r.band == fb) {
-                for idx in range.start..range.start + range.count {
-                    display.push(idx);
+        for range in &ranges {
+            if let Some(state_cell) = self.survey_band_states.get(&range.band) {
+                let mut state = state_cell.borrow_mut();
+                if Some(range.band) == focused_band {
+                    let offset = self.survey_cursor.saturating_sub(range.start);
+                    state.select(Some(offset));
+                } else {
+                    state.selected = None;
                 }
             }
-        }
-        self.survey_display_items = display;
-        self.sync_survey_selection();
-    }
-
-    /// Sync ListState.selected from survey_cursor (no scroll trigger).
-    pub fn sync_survey_selection(&self) {
-        let list_idx = self.survey_display_items.iter()
-            .position(|&data_idx| data_idx == self.survey_cursor);
-        if let Some(idx) = list_idx {
-            self.survey_list_state.borrow_mut().selected = Some(idx);
-        }
-    }
-
-    /// Sync ListState.selected AND scroll to make it visible.
-    pub fn sync_survey_selection_with_scroll(&self) {
-        let list_idx = self.survey_display_items.iter()
-            .position(|&data_idx| data_idx == self.survey_cursor);
-        if let Some(idx) = list_idx {
-            self.survey_list_state.borrow_mut().select(Some(idx));
         }
     }
 
@@ -646,11 +641,12 @@ const SURVEY_INDENT: &str = "  ";
 impl InstrumentApp {
     pub fn render_survey(&self, area: &Rect, frame: &mut Frame<'_>) {
         use ftui::layout::{Constraint, Flex};
+        use ftui::widgets::block::Block;
+        use ftui::widgets::borders::{BorderType, Borders};
         use ftui::widgets::list::{List, ListItem};
         use ftui::widgets::StatefulWidget;
 
         let full_area = self.layout.content_area(*area);
-        let w = full_area.width as usize;
 
         if self.survey_items.is_empty() {
             let line = Line::from_spans([
@@ -664,124 +660,85 @@ impl InstrumentApp {
 
         let ranges = compute_band_ranges(&self.survey_items);
         let focused_band = self.survey_focused_band();
+
+        // Sync per-band ListStates from survey_cursor.
+        self.sync_survey_band_states();
+
+        // Height allocation strategy:
+        // - Focused band gets Fill (remaining space, scrollable).
+        // - Non-focused bands get Fixed height, but capped so total never
+        //   exceeds available height. Min 3 rows per band (border + 1 item).
         let total_h = area.height as usize;
+        let n_bands = ranges.len();
+        let min_focused: usize = 5; // focused band gets at least this many rows
+        let min_band: usize = 3;    // border top + 1 item + border bottom
+        let non_focused_count = if n_bands > 1 { n_bands - 1 } else { 0 };
 
-        // Height allocation: each band gets 1 header row. Focused band gets
-        // remaining space (up to its item count). Leftover goes to other bands
-        // so they can show items too (nearest-to-focused first).
-        let header_rows = ranges.len();
-        let content_rows = total_h.saturating_sub(header_rows);
+        // Budget for non-focused bands = total - min_focused
+        let non_focused_budget = total_h.saturating_sub(min_focused);
+        // Per-band cap: divide budget evenly, but don't exceed item count + 2.
+        let per_band_budget = if non_focused_count > 0 {
+            non_focused_budget / non_focused_count
+        } else {
+            0
+        };
 
-        // Per-band item allocation.
-        let mut allocs: Vec<usize> = vec![0; ranges.len()];
-        let focused_idx = ranges.iter().position(|r| Some(r.band) == focused_band);
-
-        // Give the focused band what it needs (up to content_rows).
-        let mut used = 0;
-        if let Some(fi) = focused_idx {
-            allocs[fi] = ranges[fi].count.min(content_rows);
-            used = allocs[fi];
-        }
-
-        // Distribute remaining to other bands, nearest-to-focused first.
-        if let Some(fi) = focused_idx {
-            let mut dist: Vec<usize> = (0..ranges.len())
-                .filter(|&i| i != fi)
-                .collect();
-            dist.sort_by_key(|&i| (i as isize - fi as isize).unsigned_abs());
-            for &bi in &dist {
-                let remaining = content_rows.saturating_sub(used);
-                if remaining == 0 { break; }
-                let give = ranges[bi].count.min(remaining);
-                allocs[bi] = give;
-                used += give;
-            }
-        }
-
-        // Build layout constraints.
         let mut constraints: Vec<Constraint> = Vec::new();
-        // Track which constraint index maps to which band's items.
-        let mut band_item_slots: Vec<Option<usize>> = Vec::new(); // constraint_idx → band_idx or None
-        for (bi, _range) in ranges.iter().enumerate() {
-            constraints.push(Constraint::Fixed(1)); // header
-            band_item_slots.push(None);
-            if allocs[bi] > 0 {
-                let is_focused = Some(bi) == focused_idx;
-                if is_focused {
-                    constraints.push(Constraint::Fill);
-                } else {
-                    constraints.push(Constraint::Fixed(allocs[bi] as u16));
-                }
-                band_item_slots.push(Some(bi));
+        for range in &ranges {
+            let is_focused = Some(range.band) == focused_band;
+            if is_focused {
+                constraints.push(Constraint::Fill);
+            } else {
+                let natural = range.count as usize + 2; // items + borders
+                let h = natural.min(per_band_budget).max(min_band) as u16;
+                constraints.push(Constraint::Fixed(h));
             }
         }
 
         let slots = Flex::vertical().constraints(constraints).split(area);
 
-        // Render each slot.
-        for (si, slot) in slots.iter().enumerate() {
-            match band_item_slots.get(si) {
-                Some(None) => {
-                    // This is a header slot. Find which band by counting headers.
-                    let header_count = band_item_slots[..=si].iter()
-                        .filter(|s| s.is_none()).count();
-                    if let Some(range) = ranges.get(header_count - 1) {
-                        let is_focused = Some(range.band) == focused_band;
-                        let line = build_band_header_line(
-                            range.band, range.count, is_focused, w, &self.styles,
-                        );
-                        Paragraph::new(Text::from(line)).render(*slot, frame);
-                    }
-                }
-                Some(Some(bi)) => {
-                    let range = &ranges[*bi];
-                    let is_focused = Some(range.band) == focused_band;
+        // Render each band as a List inside a Block.
+        for (bi, range) in ranges.iter().enumerate() {
+            let slot = slots[bi];
+            let is_focused = Some(range.band) == focused_band;
+            // -2 for block borders, -1 for scroll indicator gutter
+            let inner_w = slot.width.saturating_sub(3) as usize;
 
-                    if is_focused {
-                        // Focused band: List widget with scroll.
-                        let list_items: Vec<ListItem> = self.survey_display_items.iter()
-                            .map(|&data_idx| {
-                                let item = &self.survey_items[data_idx];
-                                let is_sel = data_idx == self.survey_cursor;
-                                let line = if item.tree_prefix.is_empty() {
-                                    render_provider_line(item, is_sel, w, &self.styles)
-                                } else {
-                                    render_tree_child_line(item, is_sel, w, &self.styles)
-                                };
-                                ListItem::new(line).marker("")
-                            })
-                            .collect();
-
-                        let list = List::new(list_items)
-                            .style(self.styles.dim)
-                            .highlight_style(self.styles.selected);
-
-                        let mut state = self.survey_list_state.borrow_mut();
-                        StatefulWidget::render(&list, *slot, frame, &mut state);
-                        drop(state);
+            let list_items: Vec<ListItem> = (range.start..range.start + range.count)
+                .map(|data_idx| {
+                    let item = &self.survey_items[data_idx];
+                    let line = if item.tree_prefix.is_empty() {
+                        render_provider_line(item, false, inner_w, &self.styles)
                     } else {
-                        // Non-focused band: render static items (no scroll).
-                        let show = allocs[*bi].min(range.count);
-                        for i in 0..show {
-                            let data_idx = range.start + i;
-                            let item = &self.survey_items[data_idx];
-                            let line = if item.tree_prefix.is_empty() {
-                                render_provider_line(item, false, w, &self.styles)
-                            } else {
-                                render_tree_child_line(item, false, w, &self.styles)
-                            };
-                            let y = slot.y + i as u16;
-                            if y < slot.y + slot.height {
-                                Paragraph::new(Text::from(line))
-                                    .render(Rect::new(slot.x, y, slot.width, 1), frame);
-                            }
-                        }
-                    }
-                }
-                None => {}
+                        render_tree_child_line(item, false, inner_w, &self.styles)
+                    };
+                    ListItem::new(line).marker("")
+                })
+                .collect();
+
+            let title = format!(" {} ({}) ", range.band.label(), range.count);
+            let border_color = if is_focused {
+                band_accent(range.band, &self.styles)
+            } else {
+                self.styles.dim
+            };
+            let block = Block::new()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(border_color)
+                .title(title.as_str())
+                .style(ftui::style::Style::new().bg(self.styles.clr_bg));
+
+            let list = List::new(list_items)
+                .block(block)
+                .style(self.styles.text)
+                .highlight_style(self.styles.selected);
+
+            if let Some(state_cell) = self.survey_band_states.get(&range.band) {
+                let mut state = state_cell.borrow_mut();
+                StatefulWidget::render(&list, slot, frame, &mut state);
             }
         }
-
     }
 
     /// Render the survey bottom bar with field vitals.
@@ -836,31 +793,20 @@ impl InstrumentApp {
     }
 }
 
+/// Map band to accent style for the active band border.
+fn band_accent(band: TimeBand, styles: &InstrumentStyles) -> ftui::style::Style {
+    match band {
+        TimeBand::Overdue => styles.amber, // overdue uses amber (red reserved for errors)
+        TimeBand::ThisWeek => styles.amber,
+        TimeBand::ThisMonth => styles.cyan,
+        TimeBand::Later => styles.cyan,
+        TimeBand::NoDeadline => styles.subdued,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Line builders
 // ---------------------------------------------------------------------------
-
-/// Build a band header line: "  ──▾ later (68) ────────────"
-/// `is_focused` = true for the expanded band (▾), false for collapsed (▸).
-fn build_band_header_line(
-    band: TimeBand,
-    count: usize,
-    is_focused: bool,
-    w: usize,
-    styles: &InstrumentStyles,
-) -> Line<'static> {
-    let band_label = band.label();
-    let fold_indicator = if is_focused { "\u{25BE}" } else { "\u{25B8}" }; // ▾ or ▸
-    let count_label = format!(" ({count})");
-    let rule_w = w.saturating_sub(4 + 2 + band_label.len() + count_label.len() + 3);
-    let rule = "\u{2500}".repeat(rule_w);
-    let mut text = format!("{SURVEY_INDENT}\u{2500}{fold_indicator} {band_label}{count_label} {rule}");
-    while text.chars().count() < w {
-        text.push('\u{2500}');
-    }
-    Line::from_spans([Span::styled(text, styles.dim)])
-}
-
 
 /// Render a provider/standalone item line (has own deadline or no deadline).
 ///

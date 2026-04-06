@@ -677,7 +677,7 @@ impl InstrumentApp {
                         self.survey_cursor = 0;
                     }
                 }
-                self.sync_survey_selection_with_scroll();
+                self.sync_survey_band_states();
                 self.view_orientation = crate::state::ViewOrientation::Survey;
                 Cmd::none()
             }
@@ -1122,77 +1122,43 @@ impl InstrumentApp {
     pub fn update_survey(&mut self, msg: Msg) -> Cmd<Msg> {
         use crate::state::ViewOrientation;
         match msg {
-            // j/k — navigate within the focused band. Cross into next/prev
-            // band when at the edge.
+            // j/k — move cursor one item. Crosses band boundaries naturally.
             Msg::Char('j') | Msg::Down => {
-                let current = self.survey_list_state.borrow().selected().unwrap_or(0);
-                if current + 1 < self.survey_display_items.len() {
-                    let next = current + 1;
-                    self.survey_cursor = self.survey_display_items[next];
-                    self.survey_list_state.borrow_mut().select(Some(next));
-                } else {
-                    // At bottom of band — cross into next band or enter logbase.
-                    let ranges = crate::survey::compute_band_ranges(&self.survey_items);
-                    let cur_band = self.survey_focused_band();
-                    if let Some(cur_idx) = ranges.iter().position(|r| Some(r.band) == cur_band) {
-                        if cur_idx + 1 < ranges.len() {
-                            let next_range = &ranges[cur_idx + 1];
-                            self.survey_cursor = next_range.start;
-                            self.rebuild_survey_display();
-                            self.sync_survey_selection_with_scroll();
-                        }
-                        // Past last band: future home of cross-tension timeline (#181).
-                    }
+                if self.survey_cursor + 1 < self.survey_items.len() {
+                    self.survey_cursor += 1;
                 }
                 Cmd::none()
             }
             Msg::Char('k') | Msg::Up => {
-                let current = self.survey_list_state.borrow().selected().unwrap_or(0);
-                if current > 0 {
-                    let prev = current - 1;
-                    self.survey_cursor = self.survey_display_items[prev];
-                    self.survey_list_state.borrow_mut().select(Some(prev));
-                } else {
-                    // At top of band — cross into previous band.
-                    let ranges = crate::survey::compute_band_ranges(&self.survey_items);
-                    let cur_band = self.survey_focused_band();
-                    if let Some(cur_idx) = ranges.iter().position(|r| Some(r.band) == cur_band) {
-                        if cur_idx > 0 {
-                            let prev_range = &ranges[cur_idx - 1];
-                            self.survey_cursor = prev_range.start + prev_range.count - 1;
-                            self.rebuild_survey_display();
-                            self.sync_survey_selection_with_scroll();
-                        }
-                    }
+                if self.survey_cursor > 0 {
+                    self.survey_cursor -= 1;
                 }
                 Cmd::none()
             }
-            // g/G — jump to top/bottom of the focused band.
+            // g/G — jump to top/bottom of the current band.
             Msg::Char('g') | Msg::JumpTop => {
-                if !self.survey_display_items.is_empty() {
-                    self.survey_cursor = self.survey_display_items[0];
-                    self.survey_list_state.borrow_mut().select(Some(0));
+                let ranges = crate::survey::compute_band_ranges(&self.survey_items);
+                let cur_band = self.survey_focused_band();
+                if let Some(range) = ranges.iter().find(|r| Some(r.band) == cur_band) {
+                    self.survey_cursor = range.start;
                 }
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
-                if !self.survey_display_items.is_empty() {
-                    let last = self.survey_display_items.len() - 1;
-                    self.survey_cursor = self.survey_display_items[last];
-                    self.survey_list_state.borrow_mut().select(Some(last));
+                let ranges = crate::survey::compute_band_ranges(&self.survey_items);
+                let cur_band = self.survey_focused_band();
+                if let Some(range) = ranges.iter().find(|r| Some(r.band) == cur_band) {
+                    self.survey_cursor = range.start + range.count - 1;
                 }
                 Cmd::none()
             }
-            // J/K (Shift) — jump to next/prev band.
+            // J/K (Shift) — jump to first item of next/prev band.
             Msg::Char('J') | Msg::MoveDown => {
                 let ranges = crate::survey::compute_band_ranges(&self.survey_items);
                 let cur_band = self.survey_focused_band();
                 if let Some(cur_idx) = ranges.iter().position(|r| Some(r.band) == cur_band) {
                     if cur_idx + 1 < ranges.len() {
-                        let next_range = &ranges[cur_idx + 1];
-                        self.survey_cursor = next_range.start;
-                        self.rebuild_survey_display();
-                        self.sync_survey_selection_with_scroll();
+                        self.survey_cursor = ranges[cur_idx + 1].start;
                     }
                 }
                 Cmd::none()
@@ -1202,11 +1168,7 @@ impl InstrumentApp {
                 let cur_band = self.survey_focused_band();
                 if let Some(cur_idx) = ranges.iter().position(|r| Some(r.band) == cur_band) {
                     if cur_idx > 0 {
-                        let prev_range = &ranges[cur_idx - 1];
-                        // Jump to last item of previous band.
-                        self.survey_cursor = prev_range.start + prev_range.count - 1;
-                        self.rebuild_survey_display();
-                        self.sync_survey_selection_with_scroll();
+                        self.survey_cursor = ranges[cur_idx - 1].start;
                     }
                 }
                 Cmd::none()

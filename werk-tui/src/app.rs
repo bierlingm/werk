@@ -112,10 +112,8 @@ pub struct InstrumentApp {
     pub pre_survey_state: Option<(Option<String>, ftui::widgets::FocusId)>,
     /// Survey band collapse/expand state.
     pub survey_tree_state: crate::survey_tree::SurveyTreeState,
-    /// Data indices for the focused band's List widget (into survey_items).
-    pub survey_display_items: Vec<usize>,
-    /// List widget state for survey view (selection + scroll offset).
-    pub survey_list_state: std::cell::RefCell<ftui::widgets::list::ListState>,
+    /// Per-band ListState for survey view — each band scrolls independently.
+    pub survey_band_states: std::collections::HashMap<crate::survey::TimeBand, std::cell::RefCell<ftui::widgets::list::ListState>>,
 
     // Logbase view — epoch stream for a single tension.
     /// Which tension's logbase we're viewing.
@@ -268,8 +266,7 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             survey_tree_state: crate::survey_tree::SurveyTreeState::new(),
-            survey_display_items: Vec::new(),
-            survey_list_state: std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
+            survey_band_states: crate::survey::TimeBand::all_band_states(),
             logbase_tension_id: None,
             logbase_tension: None,
             logbase_epochs: Vec::new(),
@@ -387,8 +384,7 @@ impl InstrumentApp {
             field_vitals: crate::survey::FieldVitals::default(),
             pre_survey_state: None,
             survey_tree_state: crate::survey_tree::SurveyTreeState::new(),
-            survey_display_items: Vec::new(),
-            survey_list_state: std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
+            survey_band_states: crate::survey::TimeBand::all_band_states(),
             logbase_tension_id: None,
             logbase_tension: None,
             logbase_epochs: Vec::new(),
