@@ -664,36 +664,46 @@ impl InstrumentApp {
         // Sync per-band ListStates from survey_cursor.
         self.sync_survey_band_states();
 
-        // Height allocation strategy:
-        // - Focused band gets Fill (remaining space, scrollable).
-        // - Non-focused bands get Fixed height, but capped so total never
-        //   exceeds available height. Min 3 rows per band (border + 1 item).
+        // Height allocation:
+        // 1. Each band's natural height = item count + 2 (borders).
+        // 2. If all bands fit, use natural heights (no wasted space).
+        // 3. If they don't fit, focused band gets Fill (scrollable),
+        //    others get capped to share remaining space evenly.
         let total_h = area.height as usize;
-        let n_bands = ranges.len();
-        let min_focused: usize = 5; // focused band gets at least this many rows
-        let min_band: usize = 3;    // border top + 1 item + border bottom
-        let non_focused_count = if n_bands > 1 { n_bands - 1 } else { 0 };
+        let min_band: usize = 3; // border + 1 item + border
 
-        // Budget for non-focused bands = total - min_focused
-        let non_focused_budget = total_h.saturating_sub(min_focused);
-        // Per-band cap: divide budget evenly, but don't exceed item count + 2.
-        let per_band_budget = if non_focused_count > 0 {
-            non_focused_budget / non_focused_count
+        let natural: Vec<usize> = ranges.iter()
+            .map(|r| r.count + 2)
+            .collect();
+        let total_natural: usize = natural.iter().sum();
+
+        let constraints: Vec<Constraint> = if total_natural <= total_h {
+            // Everything fits — use exact natural heights, no empty Fill space.
+            natural.iter().map(|&h| Constraint::Fixed(h as u16)).collect()
         } else {
-            0
-        };
-
-        let mut constraints: Vec<Constraint> = Vec::new();
-        for range in &ranges {
-            let is_focused = Some(range.band) == focused_band;
-            if is_focused {
-                constraints.push(Constraint::Fill);
+            // Overflow — largest band gets Fill (it needs scrolling most),
+            // all others get capped Fixed heights.
+            let largest_idx = natural.iter().enumerate()
+                .max_by_key(|&(_, h)| h)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            let others_count = ranges.len().saturating_sub(1);
+            let others_budget = total_h.saturating_sub(5); // reserve min 5 for Fill band
+            let per_band_budget = if others_count > 0 {
+                others_budget / others_count
             } else {
-                let natural = range.count as usize + 2; // items + borders
-                let h = natural.min(per_band_budget).max(min_band) as u16;
-                constraints.push(Constraint::Fixed(h));
-            }
-        }
+                0
+            };
+
+            ranges.iter().enumerate().map(|(i, range)| {
+                if i == largest_idx {
+                    Constraint::Fill
+                } else {
+                    let h = (range.count + 2).min(per_band_budget).max(min_band);
+                    Constraint::Fixed(h as u16)
+                }
+            }).collect()
+        };
 
         let slots = Flex::vertical().constraints(constraints).split(area);
 
