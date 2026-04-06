@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-06T09:43:42Z",
+  "flushed_at": "2026-04-06T09:44:07Z",
   "summary": {
-    "active": 69,
+    "active": 68,
     "released": 20,
-    "resolved": 88,
+    "resolved": 89,
     "total": 177
   },
   "tensions": [
@@ -1952,7 +1952,7 @@
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
       "position": null,
       "short_code": 182,
-      "status": "Active"
+      "status": "Resolved"
     }
   ]
 }
