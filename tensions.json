@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-06T10:45:23Z",
+  "flushed_at": "2026-04-06T11:04:39Z",
   "summary": {
     "active": 67,
     "released": 20,
@@ -8,7 +8,7 @@
   },
   "tensions": [
     {
-      "actual": "v1.5: Logbase released — edges table as universal relationship substrate, werk log (6 modes), split/merge gestures with provenance, address parser (#42~e3), 35 MCP tools. CLI reading surface: 5 commands (show/list/tree/stats/log). Three interface surfaces operational: TUI (survey V1.3, deck with epoch boundary awareness, logbase Phase 1 with fisheye epochs/navigation/batch-collapse/event descriptions), CLI (logbase + structural gestures), MCP (35 tools). / opens palette from all views. Test suite green (stale tests fixed). Cooperative dynamics unexplored.",
+      "actual": "v1.5+dev: Source ahead of installed binary. Logbase released (edges table, werk log 6 modes, split/merge with provenance, address parser). User-defined signal thresholds via config (#139). Gesture undo at engine level with CLI/MCP/TUI surfaces in source (#167/#183). Executable Quint formal specifications verifying sacred core (#182). CLI reading surface: 5 commands (show/list/tree/stats/log) + survey + undo in source. Three interface surfaces operational: TUI (survey V1.3, deck with epoch boundary awareness, logbase Phase 1, FrankenSearch-backed palette, undo/redo), CLI (logbase + structural gestures + search), MCP (35+ tools). fsqlite MVCC concurrent writers. Test suite green. Cooperative dynamics unexplored.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -85,7 +85,7 @@
       "status": "Released"
     },
     {
-      "actual": "CLI reading surface consolidated: 10 commands → 4 primary (show, list, tree, stats) + 1 named perspective (survey). list is the general-purpose query engine with 12 filter/sort flags. stats replaces ground/insights/trajectory/health with 8 section flags. show --full absorbs context. tree --stats appends vitals. Tree now shows canonical sort (positioned first), position indicators, structural signal glyphs (‡┃◉◎) by exception, ANSI color layering, and smart terminal-width truncation. MCP surface mirrors CLI: new stats tool, enriched show/list schemas. Old commands hidden but functional. CLI help reflects operative identity.",
+      "actual": "CLI reading surface: 5 primary commands (show, list, tree, stats, log) + survey as named perspective. log is the logbase query surface (6 modes: epoch history, cross-tension timeline, ghost geometry, provenance lineage, gesture detail, field summary). list is the general-purpose query engine with 12+ filter/sort flags including --search. stats replaces ground/insights/trajectory/health with 8 section flags. Undo gesture exists in source (werk undo --last/--dry-run/--json) — not yet in installed binary. Tree shows canonical sort, position indicators, structural signal glyphs, ANSI color, smart truncation. MCP mirrors CLI: 35+ tools. Help grouped by framework. All commands support --json. Old commands hidden but functional.",
       "created_at": "2026-03-24T17:52:26.147317+00:00",
       "desired": "CLI is a complete, honest interface to the structure — foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands",
       "horizon": "2026-05",
@@ -118,7 +118,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Substantial implementation complete. Data model: gestures, sessions, epochs tables; gesture_id + actual_at on mutations; parent_snapshot_json on child creation. TUI fully wired into gesture/session model — every mutation is a session-bound gesture, epoch boundaries carry trigger gesture IDs. Temporal calculus: 6 computed properties in temporal.rs. Frontier projection: operating envelope in frontier.rs. Hook infrastructure: 5 hook types with JSON payloads. Pathway palettes: containment/sequencing signals independent of invocation. Advisory file locking for fsqlite safety. Epoch display in show output across all surfaces (CLI, MCP, TUI frontier). Output taxonomy decided and codified. Remaining gaps: formal state machine extraction (#16), structural transformations (#49), deep addressability (#128), user-defined thresholds (#139).",
+      "actual": "Foundation implementation essentially complete. All major subsystems delivered: gesture/session/epoch data model, temporal calculus (6 computed properties), frontier projection, hook infrastructure, pathway palettes, advisory locking upgraded to MVCC, output taxonomy, split/merge gestures with provenance (#49), deep addressability and address parser (#128), user-defined signal thresholds via config (#139), gesture undo at engine level (#167), executable Quint formal specifications (#182). 13 of 14 children resolved, 2 released. Only remaining child: #19 (threshold mechanics — held, depends on TUI architecture decisions).",
       "created_at": "2026-03-24T17:52:26.260351+00:00",
       "desired": "the conceptual foundation is implemented — data model supports delta versioning, gesture grouping, order of operations distinct from horizon, held steps, and the five temporal concepts",
       "horizon": "2026-06",
@@ -536,7 +536,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Conceptual foundation document amended (2026-03-27): terminology standardized (survey view, deck view, session), unimplemented features clearly marked as future with tension references (thresholds #19, split/merge #49, logbase #89, staging #48), stale concepts removed (over/under flags, aimed execution point, resolution velocity, cass reference), new concepts added (snooze, recurrence, three temporal orientations taxis/chronos/kairos, short codes, pathway palette independence insight), ⏱ glyph note added, StatusLine obsolescence decided. CLAUDE.md updated in prior commit. Two children resolved (#117, #121).",
+      "actual": "Conceptual foundation document maintained as canonical reference — terminology standardized, stale concepts removed, new concepts added (snooze, recurrence, three temporal orientations, short codes, pathway palette independence). CLAUDE.md reflects current CLI capabilities and conventions. Design decisions captured in canonical docs (#121 resolved). Split/merge (#49) and logbase (#89) now implemented — foundation doc references to these as future may need updating. Remaining: practitioner's guide (#118, held), MCP integration guide (#119, held), crate-level rustdoc (#120, held).",
       "created_at": "2026-03-24T17:52:28.427042+00:00",
       "desired": "werk has excellent documentation — the conceptual foundation is canonical, a user guide exists for practitioners at every stage, crate-level rustdoc is published, the CLI self-documents with examples, design decisions are traceable, and session learnings are captured in the right places",
       "horizon": null,
@@ -824,7 +824,7 @@
     {
       "actual": "CreatorTools.net (Ivan Fritz, Robert's son) still operates at $130/month — offers 'structural tension charts' that are essentially goal-tracking forms (desired outcome, current reality, 12 action steps with checkboxes). No hierarchy, no dynamics, no temporal logic. LifeStudio iPad app preceded it (~2015), discontinued ~2019. A PDF chart template also exists. The tool is weak, not gone — which is better for us: the market is paying for something werk already surpasses",
       "created_at": "2026-03-25T20:15:06.715700+00:00",
-      "desired": "Fritz's discontinued tool is researched — what it was, what it did, what practitioners relied on, what's missed, and how werk can surpass it",
+      "desired": "Fritz's tool is researched — what it is, what it does, what practitioners rely on, what's missing, and how werk surpasses it",
       "horizon": null,
       "id": "01KMKA5WYV2AKGXD46VK2T90YY",
       "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
@@ -932,7 +932,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Design inquiry complete. Three design docs produced: command-center-and-time-axis.md, visualization-research.md, three-orientations.md. Key decisions: (1) 2D lattice (structure x time) with stream/survey/frontier as zoom presets. (2) Three temporal axes: taxis, chronos, kairos. (3) NOW zone = command center embedded in survey. (4) Tab is binary stream<->field-wide, with survey/frontier as sub-choice. Survey V1 is implemented and functional. Frontier/kairos view designed but not built.",
+      "actual": "Design inquiry complete. Three design docs produced. Key decisions: 2D lattice with stream/survey/frontier presets, three temporal axes (taxis/chronos/kairos), NOW zone as command center in survey, Tab as binary stream/field-wide toggle. Survey V1 implemented and functional. Logbase Phase 1 operational in TUI (#175): fisheye epoch expansion, j/k event navigation, J/K epoch navigation, Enter toggles focus, L key entry from deck. CLI logbase query surface complete (werk log, 6 modes). #89 resolved. Frontier/kairos view designed but not built. Three held children: #175 (TUI logbase deeper), #176 (cass integration), #181 (cross-tension timeline in TUI).",
       "created_at": "2026-03-25T22:44:54.475353+00:00",
       "desired": "the root level is a command center — structural overview, temporal vitals, logbase access, mission preparation — where stream (deck) and survey (time-first) orientations collapse into one surface",
       "horizon": "2026-05",
@@ -1482,7 +1482,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "First integration delivered: FrankenNetworkX (#141 resolved). DiGraph substrate in Forest, four structural signals (centrality, waves, longest path, descendants), surfaced across CLI/MCP/TUI. Phase 2 design doc written for typed edges. Remaining: #142 FrankenMermaid, #143 FrankenSearch, #144 fsqlite MVCC, #145 ftui, #146 FrankenPandas, #147 FrankenEngine, #148 FrankenWhisper.",
+      "actual": "Two integrations delivered: FrankenNetworkX (#141 — DiGraph substrate, 4 structural signals, glyphs across CLI/MCP/TUI) and fsqlite MVCC (#144 — concurrent writers, advisory lock removed, BEGIN CONCURRENT with retry). FrankenSearch (#143) has core search delivered across all three surfaces (TUI/CLI/MCP) with in-memory index; 6 children decompose remaining hybrid retrieval work. ftui reimagining (#145) has core structural foundation delivered across 5 phases with 6 remaining children. Remaining unstarted: #142 FrankenMermaid (held), #146 FrankenPandas (held), #147 FrankenEngine (held), #148 FrankenWhisper (held), #154 generic typed edges, #174 attention topology (held).",
       "created_at": "2026-03-30T21:29:15.331282+00:00",
       "desired": "werk integrates the full FrankenSuite — graph intelligence, visual output, hybrid search, deeper storage and TUI, analytics, sandboxed extensions, voice input",
       "horizon": null,
