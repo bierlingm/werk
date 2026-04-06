@@ -367,13 +367,13 @@ The survey answers the Napoleonic question: where across the field of opportunit
 
 A **session** is the span from opening the instrument to closing it. It is the atomic unit of engagement — a complete cycle of engagement with the structure.
 
-A session records gestures performed and their timestamps. *(Future: navigation path, dwell times, thresholds crossed, what was viewed but not changed. Over many sessions, patterns would feed the reflection layer.)*
+A session records gestures performed and their timestamps. *(Future: navigation path, dwell times, what was viewed but not changed. Over many sessions, patterns would feed the reflection layer.)*
 
 **Sessions are process-scoped.** Each TUI instance manages its own session. Multiple open TUI panes are multiple independent sessions. CLI commands and agent mutations operate outside any session — their gestures are sessionless (`session_id = NULL`). This is by design: a session represents *the user inhabiting the instrument*, not merely changing data.
 
-**Takeoff threshold** *(future)*: On opening, the instrument surfaces a brief ambient orientation — what's at the frontier, what's changed since last session, what's overdue. The user can linger (engage with the orientation) or flick through (land directly at the envelope).
+**Takeoff**: On opening, the instrument surfaces a brief ambient orientation — what's at the frontier, what's changed since last session, what's overdue. Implemented via the modal system and toast notifications rather than the originally envisioned tap/hold threshold mechanics.
 
-**Landing threshold** *(future)*: On closing, the instrument surfaces a brief summary of the session and an optional invitation to note anything before closing. This is the debrief moment — the natural point for a compressed reflection.
+**Landing**: On closing, the instrument can surface a brief summary of the session and an optional invitation to note anything before closing. The natural point for a compressed reflection.
 
 Sessions are queryable and searchable — session history that can be examined in ground mode.
 
@@ -429,25 +429,16 @@ Pitch and roll are continuous (you can keep moving). Yaw is binary (deck ↔ sur
 - **Framing** — changing what's visible without moving the cursor's structural position. Zoom, frame controls. Changes what you see.
 - **Transition** — crossing a boundary between views or contexts. Yaw, roll into a new tension. Thresholds exist at transitions.
 
-### Thresholds *(future — not yet implemented)*
+### Contextual Signals at Navigation Boundaries
 
-A **threshold** is a navigational boundary where the instrument surfaces contextually relevant information and available actions before the user crosses into a new space. Thresholds exist at:
+When the user navigates between views, the instrument can surface contextually relevant information:
 
 - **Entering a descended view** — staleness facts, recent changes since last visit
 - **Leaving a descended view after mutations** — structural review invitation ("theory changed — is reality still current?")
-- **Crossing the frontier** (moving from theory zone to trace zone) — overdue steps, held moves, uncompressed resolutions
 - **Toggling to survey view** (yaw) — cross-structural signals ("3 tensions due this week")
-- **Returning from a peek or navigation** — "does what you saw change anything here?"
 - **Opening the instrument after absence** — what's at the frontier across the whole structure
 
-Threshold mechanics support two modes of crossing:
-
-- **Flick through** (tap the navigation key) — cross immediately, threshold signals flash briefly in peripheral space
-- **Linger at threshold** (hold the navigation key) — pause at the boundary, see the threshold signals fully, then choose to proceed or return
-
-This tap/hold distinction maps to physical intuition about movement through doorways — you either walk through or you pause at the threshold and look.
-
-**Navigation as implicit confirmation:** Moving through a threshold can serve as confirmation of in-progress edits (flick through = commit and proceed). Lingering at the threshold offers explicit choice (commit and proceed, or abandon and return). Escape from the threshold always abandons and returns.
+These are implemented through the modal system, toast notifications, and command palette — not through the originally envisioned tap/hold "threshold mechanics" (released as impractical given terminal key-release limitations).
 
 **Screen boundaries as signal space:** The edges of the display are where adjacent spaces press against the current view. The top edge hints at the parent context and desire. The bottom edge hints at the logbook. The left/right edges hint at structural neighbors or the alternative view mode. These are peripheral-vision signals — not focused on, but deviations from normal pop into awareness.
 

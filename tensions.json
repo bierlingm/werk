@@ -1,14 +1,14 @@
 {
-  "flushed_at": "2026-04-06T11:12:08Z",
+  "flushed_at": "2026-04-06T11:29:33Z",
   "summary": {
-    "active": 67,
-    "released": 20,
-    "resolved": 91,
+    "active": 64,
+    "released": 21,
+    "resolved": 93,
     "total": 178
   },
   "tensions": [
     {
-      "actual": "v1.5+dev: Source ahead of installed binary. Logbase released (edges table, werk log 6 modes, split/merge with provenance, address parser). User-defined signal thresholds via config (#139). Gesture undo at engine level with CLI/MCP/TUI surfaces in source (#167/#183). Executable Quint formal specifications verifying sacred core (#182). CLI reading surface: 5 commands (show/list/tree/stats/log) + survey + undo in source. Three interface surfaces operational: TUI (survey V1.3, deck with epoch boundary awareness, logbase Phase 1, FrankenSearch-backed palette, undo/redo), CLI (logbase + structural gestures + search), MCP (35+ tools). fsqlite MVCC concurrent writers. Test suite green. Cooperative dynamics unexplored.",
+      "actual": "v1.5+dev: Source ahead of installed binary. Conceptual foundation complete (#13 resolved — 13/14 children, all subsystems delivered). CLI complete (#10 resolved — 5 reading commands, all operative gestures, JSON on everything, help by framework). Three interface surfaces operational: TUI (survey V1.3, deck, logbase Phase 1, FrankenSearch palette, undo/redo), CLI (logbase + structural gestures + search + undo), MCP (35+ tools). FrankenSuite: FNX graph substrate, fsqlite MVCC, FrankenSearch core, ftui structural foundation. User-defined signal thresholds. Gesture undo. Quint formal specifications. Cooperative dynamics unexplored.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-06",
@@ -93,7 +93,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": 3,
       "short_code": 10,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "CLI human-facing output fully aligned with foundation vocabulary: Reality (not Actual), Deadline (not Horizon) in show/add/compose-up/horizon commands. CLI aliases: werk actual → reality, werk deadline → horizon. --phase filter removed from list. 'phase transition' → 'epoch boundary'. Agent prompts updated. DynamicsEngine renamed to Engine. dynamics.rs consolidated into temporal.rs (sd-core), renamed to serialize.rs (CLI). JSON keys and struct fields unchanged (backward compatible). Remaining: TUI labels (blocked on TUI rebuild).",
@@ -126,7 +126,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": 2,
       "short_code": 13,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "All speculative dynamics gutted. sd-core computes only honest facts: urgency (elapsed fraction of horizon), horizon drift (pattern of horizon changes), gap_magnitude (binary — has gap or not), temporal signals (implied window, sequencing pressure, critical path, containment violation), closure progress. Net -15,095 lines across 28 files. 881 tests pass. DynamicsEngine simplified to Store wrapper with parent snapshot capture. CLI JSON output drops dynamics field — shows temporal signals, urgency, overdue, closure instead. strsim dependency removed. TUI updated to render without speculative dynamics. Consider renaming sd-core to werk-core as optional follow-up.",
@@ -189,10 +189,10 @@
       "desired": "threshold mechanics implemented — tap/hold navigation, lingering space visual treatment, screen boundary signals",
       "horizon": null,
       "id": "01KMGFKY9WR1AM9ZA1FTMSA1YP",
-      "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 19,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Schema fully extended: 3 new tables (gestures, sessions, epochs), 3 new columns (gesture_id + actual_at on mutations, parent_snapshot_json on tensions). Gesture context wired into Store with process-scoped session model. All CLI mutation commands create gestures. TUI fully wired — every mutation is a session-bound gesture, epoch boundaries carry trigger gesture IDs. Mutation replay tolerates note/position/deleted. CLI: werk hold, werk position, werk resolve --actual-at. Parent snapshots auto-populated as JSON on child creation. Epoch display in show output (CLI + MCP). All three surfaces consistent.",
@@ -508,7 +508,7 @@
       "desired": "staging mechanism — propose/pending/confirm/reject for asynchronous draft mutations. Multiple independent proposals, each separately confirmable/rejectable. For complex human restructuring and agent-proposed changes held for review.",
       "horizon": null,
       "id": "01KMGFM016NG8KWPY8M0VA1CW6",
-      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": 1,
       "short_code": 48,
       "status": "Active"
@@ -574,7 +574,7 @@
       "desired": "batch positioning exists — reorder multiple tensions in one gesture",
       "horizon": null,
       "id": "01KMGFM0JW0VAMTBQD3E7E0CYB",
-      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 54,
       "status": "Active"
@@ -1047,7 +1047,7 @@
       "desired": "cross-workspace addressing scheme exists — workspace-prefixed short codes (e.g. werk:42, @global:42) distinguish tensions when looking across workspaces without exposing ULIDs to the user",
       "horizon": null,
       "id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
-      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
       "position": null,
       "short_code": 100,
       "status": "Active"
@@ -1223,7 +1223,7 @@
       "desired": "CLI polish pass — diff compact mode, epoch box-drawing, survey urgency column, config file path display",
       "horizon": null,
       "id": "01KMR8XYDQKE4WZ629MYQKQKZ2",
-      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 116,
       "status": "Active"
@@ -1333,7 +1333,7 @@
       "desired": "CLI command to install werk hooks into a repo",
       "horizon": null,
       "id": "01KMR96CKWD1S3QXYV66FEQ2RP",
-      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 126,
       "status": "Active"
