@@ -18,6 +18,7 @@ module gestures {
   var mutations: List[Mutation]
   var activeGesture: str
   var completedGestures: Set[str]
+  var undoneGestures: Set[str]
 
   // =========================================================================
   // Gesture Lifecycle
@@ -29,6 +30,7 @@ module gestures {
     not(gestureId.in(completedGestures)),
     activeGesture' = gestureId,
     completedGestures' = completedGestures,
+    undoneGestures' = undoneGestures,
     tensions' = tensions,
     edges' = edges,
     mutations' = mutations,
@@ -37,6 +39,7 @@ module gestures {
   action endGesture: bool = all {
     activeGesture != "",
     completedGestures' = completedGestures.union(Set(activeGesture)),
+    undoneGestures' = undoneGestures,
     activeGesture' = "",
     tensions' = tensions,
     edges' = edges,
@@ -57,6 +60,7 @@ module gestures {
     edges' = edges,
     activeGesture' = activeGesture,
     completedGestures' = completedGestures,
+    undoneGestures' = undoneGestures,
   }
 
   // =========================================================================
@@ -95,6 +99,7 @@ module gestures {
       mutations' = mutations,
       activeGesture' = activeGesture,
       completedGestures' = completedGestures,
+      undoneGestures' = undoneGestures,
     }
   }
 
@@ -117,6 +122,29 @@ module gestures {
     mutations' = mutations,
     activeGesture' = activeGesture,
     completedGestures' = completedGestures,
+    undoneGestures' = undoneGestures,
+  }
+
+  // =========================================================================
+  // Undo
+  // =========================================================================
+
+  // Undo a completed gesture at the gesture-lifecycle level.
+  // Field-level reversal is modeled in werk.qnt; here we track the
+  // set-membership invariants (double-undo prevention, append-only).
+  action undoGesture(gid: str, undoGid: str): bool = all {
+    gid.in(completedGestures),
+    not(gid.in(undoneGestures)),
+    undoGid != "",
+    undoGid != gid,
+    not(undoGid.in(completedGestures)),
+    activeGesture == "",
+    undoneGestures' = undoneGestures.union(Set(gid)),
+    completedGestures' = completedGestures.union(Set(undoGid)),
+    activeGesture' = activeGesture,
+    tensions' = tensions,
+    edges' = edges,
+    mutations' = mutations,
   }
 
   // =========================================================================
@@ -139,5 +167,14 @@ module gestures {
       e.from_id.in(tensions.keys()) and e.to_id.in(tensions.keys()) and
       tensions.get(e.from_id).status == Resolved
     )
+
+  // INV-G4: Undone gestures are a subset of completed gestures.
+  // You can only undo what was completed.
+  val undoneSubsetOfCompleted: bool =
+    undoneGestures.subseteq(completedGestures)
+
+  // INV-G5: A gesture in undoneGestures is never the activeGesture.
+  val undoneNeverActive: bool =
+    activeGesture == "" or not(activeGesture.in(undoneGestures))
 
 }

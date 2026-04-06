@@ -126,4 +126,24 @@ module forest {
     siblingPositionsUnique,
   }
 
+  // =========================================================================
+  // Cascade Helpers
+  // =========================================================================
+
+  // Direct active children of a parent.
+  pure def activeChildrenOf(es: Set[Edge], ts: str -> Tension, pid: str): Set[str] =
+    es.filter(e => e.edge_type == Contains and e.from_id == pid)
+      .map(e => e.to_id)
+      .filter(cid => cid.in(ts.keys()) and ts.get(cid).status == Active)
+
+  // All active descendants reachable through chains of active nodes.
+  // Bounded to 4 levels (max depth with 5 IDs).
+  pure def allActiveDescendants(es: Set[Edge], ts: str -> Tension, pid: str): Set[str] = {
+    val d1 = activeChildrenOf(es, ts, pid)
+    val d2 = d1.fold(Set(), (acc, c) => acc.union(activeChildrenOf(es, ts, c)))
+    val d3 = d2.fold(Set(), (acc, c) => acc.union(activeChildrenOf(es, ts, c)))
+    val d4 = d3.fold(Set(), (acc, c) => acc.union(activeChildrenOf(es, ts, c)))
+    d1.union(d2).union(d3).union(d4)
+  }
+
 }

@@ -57,4 +57,21 @@ module types {
     | Unpositioned => -1
   }
 
+  // --- Gesture Effect ---
+  // Captures the full pre/post snapshot of a tension affected by a gesture.
+  // Used for conflict detection (post must match current) and reversal (restore pre).
+  type GestureEffect = {
+    tension_id: str,
+    pre_desired: str,
+    post_desired: str,
+    pre_actual: str,
+    post_actual: str,
+    pre_status: TensionStatus,
+    post_status: TensionStatus,
+    pre_horizon: Horizon,
+    post_horizon: Horizon,
+    pre_position: Position,
+    post_position: Position,
+  }
+
 }

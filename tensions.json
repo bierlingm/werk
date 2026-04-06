@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-06T09:18:01Z",
+  "flushed_at": "2026-04-06T09:43:42Z",
   "summary": {
     "active": 69,
     "released": 20,
@@ -1944,7 +1944,7 @@
       "status": "Active"
     },
     {
-      "actual": "Quint 0.32 adopted. 7 specification modules written and typechecking: types, tension lifecycle, forest structure, temporal calculus, gestures, concurrency, and main composition. systemInvariant passes 683+ traces. strongInvariant finds expected containment violations. 10/10 witnesses reachable. MCP LSP bridge configured. Agents (quint-verifier, quint-analyzer) and commands (/spec:next, /verify:check, /verify:witnesses) created. CLAUDE.md documents the workflow. quint-llm-kit cloned for reference.",
+      "actual": "7 modules + witnesses all typechecking. systemInvariant passes 10k traces (514/sec). 14/14 witnesses reachable. Specs now model: (1) gesture undo with GestureEffect snapshots and conflict detection, (2) auto-resolve/release cascade to all active descendants, (3) undoneSubsetOfCompleted invariant, (4) undo-of-undo chains correctly via reversed effects. Out of scope: deletion undo, split/merge undo, edge cleanup, epoch cleanup.",
       "created_at": "2026-04-03T09:30:02.390993+00:00",
       "desired": "executable formal specifications in Quint verify the sacred core — state machine, forest invariants, temporal calculus, gesture semantics, and concurrent writer safety are all specified and model-checked",
       "horizon": null,
