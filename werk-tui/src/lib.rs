@@ -27,6 +27,7 @@ pub mod palette;
 pub mod feedback;
 pub mod inspector;
 pub mod persistence;
+pub mod help;
 
 pub use app::InstrumentApp;
 

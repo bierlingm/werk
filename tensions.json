@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-06T13:28:03Z",
+  "flushed_at": "2026-04-06T18:17:07Z",
   "summary": {
-    "active": 64,
+    "active": 63,
     "released": 21,
-    "resolved": 94,
+    "resolved": 95,
     "total": 179
   },
   "tensions": [
@@ -1801,7 +1801,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Basic help overlay toggled by ? — flat keybinding list, no context awareness, no learning, no ftui HelpSystem integration",
+      "actual": "Context-sensitive help system fully implemented. HelpRegistry populated with all keybindings across 3 views + global. ? reclaimed as universal help — opens KeybindingHints overlay on top of any view without switching orientation. ! parent-quick-edit removed. Palette actions show [key] shortcuts. Palette bottom half renders nav hints. Bottom bars derive from registry. HintRanker initialized with static priorities. Builds clean, all tests pass.",
       "created_at": "2026-04-01T07:19:18.553731+00:00",
       "desired": "context-sensitive help — the ? overlay shows different keybinding hints per view (deck, survey, logbase) instead of a flat list. Palette integration: Ctrl+K 'help' surfaces relevant bindings for current context",
       "horizon": null,
@@ -1809,7 +1809,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 2,
       "short_code": 169,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Three-pane layout works with responsive regimes. Pane height override fields prepared but not wired to input. No focus history — ascend is structural, not spatial recall.",

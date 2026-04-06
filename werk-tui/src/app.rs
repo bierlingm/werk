@@ -39,7 +39,6 @@ pub struct InstrumentApp {
     pub search_index: Option<sd_core::SearchIndex>,
 
     // Chrome
-    pub show_help: bool,
     /// Inspector overlay — dev tool toggled by Ctrl+Shift+I.
     pub show_inspector: bool,
 
@@ -174,6 +173,10 @@ pub struct InstrumentApp {
     /// Feedback collector for palette action learning.
     pub palette_feedback: crate::feedback::FeedbackCollector,
 
+    // Help system — centralized keybinding registry and adaptive ranker.
+    pub help_registry: ftui::widgets::help_registry::HelpRegistry,
+    pub hint_ranker: ftui::widgets::hint_ranker::HintRanker,
+
     // State persistence — file-backed registry for workspace save/restore.
     pub state_registry: Option<Arc<StateRegistry>>,
     /// Deferred cursor target from workspace restore — applied after focus graph rebuild.
@@ -218,7 +221,6 @@ impl InstrumentApp {
             text_input,
             search_state: None,
             search_index,
-            show_help: false,
             show_inspector: false,
             db_modified: None,
             breadcrumb_cache: Vec::new(),
@@ -298,6 +300,14 @@ impl InstrumentApp {
             pending_gesture_desc: None,
             command_palette: crate::palette::build_palette(None), // rebuilt after feedback load
             palette_feedback: crate::palette::create_feedback_collector(),
+            help_registry: {
+                let r = crate::help::build_registry();
+                r
+            },
+            hint_ranker: {
+                let r = crate::help::build_registry();
+                crate::help::build_ranker(&r)
+            },
             state_registry: registry,
             restore_cursor_target: None,
         };
@@ -351,7 +361,6 @@ impl InstrumentApp {
             text_input,
             search_state: None,
             search_index: None,
-            show_help: false,
             show_inspector: false,
             db_modified: None,
             breadcrumb_cache: Vec::new(),
@@ -410,6 +419,14 @@ impl InstrumentApp {
             pending_gesture_desc: None,
             command_palette: crate::palette::build_palette(None),
             palette_feedback: crate::palette::create_feedback_collector(),
+            help_registry: {
+                let r = crate::help::build_registry();
+                r
+            },
+            hint_ranker: {
+                let r = crate::help::build_registry();
+                crate::help::build_ranker(&r)
+            },
             state_registry: None,
             restore_cursor_target: None,
         }

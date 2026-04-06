@@ -1509,7 +1509,7 @@ impl InstrumentApp {
                 CursorTarget::NoteItem(_) =>
                     "Enter focus".to_string(),
                 CursorTarget::InputPoint =>
-                    "a add \u{00B7} n note \u{00B7} ! desire \u{00B7} ? reality".to_string(),
+                    "a add \u{00B7} n note \u{00B7} e edit".to_string(),
                 CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated =>
                     "Enter expand \u{00B7} j/k navigate".to_string(),
                 CursorTarget::Reality =>

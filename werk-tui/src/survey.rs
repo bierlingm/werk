@@ -774,10 +774,12 @@ impl InstrumentApp {
         let left = vitals_parts.join(" \u{00B7} ");
 
         let center = "j/k navigate \u{00B7} J/K band \u{00B7} Tab pivot \u{00B7} Enter descend";
+        let right_text = "? help";
 
         let w = bar_area.width as usize;
         let left_w = left.chars().count();
         let center_w = center.chars().count();
+        let right_w = right_text.chars().count();
         let center_start = w.saturating_sub(center_w) / 2;
 
         let mut spans: Vec<Span> = Vec::new();
@@ -791,7 +793,11 @@ impl InstrumentApp {
         }
 
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
-        if used < w {
+        let right_start = w.saturating_sub(right_w);
+        if used < right_start {
+            spans.push(Span::styled(" ".repeat(right_start - used), self.styles.dim));
+            spans.push(Span::styled(right_text, self.styles.dim));
+        } else if used < w {
             spans.push(Span::styled(" ".repeat(w - used), self.styles.dim));
         }
 

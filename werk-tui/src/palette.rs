@@ -256,58 +256,66 @@ fn search_by_short_code(
         .collect()
 }
 
+/// Format description with shortcut prefix: "[key] description"
+fn desc_with_shortcut(id: &str, desc: &str) -> String {
+    match crate::help::action_shortcut(id) {
+        Some(key) => format!("[{}] {}", key, desc),
+        None => desc.to_string(),
+    }
+}
+
 fn make_action(id: &str) -> Option<ActionItem> {
     let action = match id {
         "add" => ActionItem::new("add", "Add child tension")
-            .with_description("Create a new tension under the current parent")
+            .with_description(desc_with_shortcut("add", "Create a new tension under the current parent"))
             .with_tags(&["create", "new", "child"]),
         "ascend" => ActionItem::new("ascend", "Go to parent")
-            .with_description("Navigate up to the parent tension")
+            .with_description(desc_with_shortcut("ascend", "Navigate up to the parent tension"))
             .with_tags(&["up", "back", "parent"]),
         "descend" => ActionItem::new("descend", "Descend into tension")
-            .with_description("Navigate into the focused tension's children")
+            .with_description(desc_with_shortcut("descend", "Navigate into the focused tension's children"))
             .with_tags(&["into", "focus", "enter"]),
         "move" => ActionItem::new("move", "Move tension")
-            .with_description("Reparent the focused tension")
+            .with_description(desc_with_shortcut("move", "Reparent the focused tension"))
             .with_tags(&["reparent", "relocate"]),
         "resolve" => ActionItem::new("resolve", "Resolve tension")
-            .with_description("Close the gap — desire met reality")
+            .with_description(desc_with_shortcut("resolve", "Close the gap — desire met reality"))
             .with_tags(&["close", "done", "complete"]),
         "release" => ActionItem::new("release", "Release tension")
-            .with_description("Let it go — acknowledge without closing")
+            .with_description(desc_with_shortcut("release", "Let it go — acknowledge without closing"))
             .with_tags(&["drop", "abandon", "let go"]),
         "edit_desire" => ActionItem::new("edit_desire", "Edit desire")
-            .with_description("Change what is wanted")
+            .with_description(desc_with_shortcut("edit_desire", "Change what is wanted"))
             .with_tags(&["edit", "desire", "want"]),
         "edit_reality" => ActionItem::new("edit_reality", "Edit reality")
-            .with_description("Update what is actual")
+            .with_description(desc_with_shortcut("edit_reality", "Update what is actual"))
             .with_tags(&["edit", "reality", "actual"]),
         "edit_horizon" => ActionItem::new("edit_horizon", "Edit horizon")
-            .with_description("Set when this matters")
+            .with_description(desc_with_shortcut("edit_horizon", "Set when this matters"))
             .with_tags(&["edit", "horizon", "deadline", "when"]),
         "note" => ActionItem::new("note", "Add note")
-            .with_description("Annotate the focused tension")
+            .with_description(desc_with_shortcut("note", "Annotate the focused tension"))
             .with_tags(&["annotate", "comment", "note"]),
         "undo" => ActionItem::new("undo", "Undo last gesture")
-            .with_description("Revert the most recent action")
+            .with_description(desc_with_shortcut("undo", "Revert the most recent action"))
             .with_tags(&["undo", "revert", "back"]),
         "redo" => ActionItem::new("redo", "Redo last undo")
-            .with_description("Re-apply the most recently undone action")
+            .with_description(desc_with_shortcut("redo", "Re-apply the most recently undone action"))
             .with_tags(&["redo", "forward"]),
-        "help" => ActionItem::new("help", "Toggle help")
-            .with_description("Show keyboard shortcuts and commands")
-            .with_tags(&["help", "keys", "shortcuts"]),
+        "help" => ActionItem::new("help", "Help")
+            .with_description(desc_with_shortcut("help", "Show keybindings for current view"))
+            .with_tags(&["help", "keys", "shortcuts", "?"]),
         "survey" => ActionItem::new("survey", "Switch to survey view")
-            .with_description("Time-first overview of all tensions")
+            .with_description(desc_with_shortcut("survey", "Time-first overview of all tensions"))
             .with_tags(&["survey", "overview", "time"]),
         "logbase" => ActionItem::new("logbase", "Open logbase")
-            .with_description("Epoch history for the focused tension")
+            .with_description(desc_with_shortcut("logbase", "Epoch history for the focused tension"))
             .with_tags(&["logbase", "log", "history", "epochs"]),
         "hold" => ActionItem::new("hold", "Hold tension")
-            .with_description("Remove positioning — place in held zone")
+            .with_description(desc_with_shortcut("hold", "Remove positioning — place in held zone"))
             .with_tags(&["hold", "park", "pause"]),
         "quit" => ActionItem::new("quit", "Quit")
-            .with_description("Exit the instrument")
+            .with_description(desc_with_shortcut("quit", "Exit the instrument"))
             .with_tags(&["exit", "close", "quit"]),
         _ => return None,
     };

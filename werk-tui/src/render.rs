@@ -13,7 +13,6 @@ use ftui::widgets::status_line::{StatusLine, StatusItem};
 use werk_shared::truncate;
 
 use crate::app::InstrumentApp;
-use crate::glyphs;
 use crate::state::*;
 
 // Content centering moved to layout.rs — LayoutState.content_area().
@@ -62,143 +61,8 @@ impl InstrumentApp {
 
 
 
-    // -----------------------------------------------------------------------
-    // Help overlay
-    // -----------------------------------------------------------------------
-
-    pub fn render_help(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let area = self.layout.content_area(*area);
-        crate::helpers::clear_area_styled(frame, area, self.styles.clr_dim);
-
-        let w = area.width as usize;
-        let content_w = w.min(72);
-        let left_pad = (w.saturating_sub(content_w)) / 2;
-        let pad = " ".repeat(left_pad);
-        let rule_w = content_w.saturating_sub(2);
-        let light_rule = glyphs::LIGHT_RULE.to_string().repeat(rule_w);
-
-        let mut lines: Vec<Line> = Vec::new();
-
-        // --- Navigation section ---
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("NAVIGATION", self.styles.text_bold),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled(&light_rule, self.styles.dim),
-        ]));
-        let nav_keys: &[(&str, &str, &str, &str)] = &[
-            ("j/k", "move up/down", "g/G", "jump to top/bottom"),
-            ("l/Enter", "descend into", "h/Bksp", "ascend out"),
-            ("Shift+J/K", "reorder position", "Space", "gaze (peek)"),
-            ("/", "search", "1-9", "act on alert"),
-        ];
-        for (k1, d1, k2, d2) in nav_keys {
-            lines.push(Line::from_spans([
-                Span::styled(&pad, Style::new()),
-                Span::styled(format!("{:<12}", k1), self.styles.cyan),
-                Span::styled(format!("{:<22}", d1), self.styles.text),
-                Span::styled(format!("{:<12}", k2), self.styles.cyan),
-                Span::styled(*d2, self.styles.text),
-            ]));
-        }
-
-        lines.push(Line::from(""));
-
-        // --- Acts section ---
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("ACTS", self.styles.text_bold),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled(&light_rule, self.styles.dim),
-        ]));
-        let act_keys: &[(&str, &str, &str, &str)] = &[
-            ("a", "add tension", "e", "edit (desire/reality/horizon)"),
-            ("n", "add note", "m", "move / reparent"),
-            ("r", "resolve", "x", "release"),
-            ("o", "reopen", "u/U", "undo / redo"),
-            ("y", "copy ID", "f", "filter"),
-            ("q", "quit", "", ""),
-        ];
-        for (k1, d1, k2, d2) in act_keys {
-            let mut spans = vec![
-                Span::styled(&pad, Style::new()),
-                Span::styled(format!("{:<4}", k1), self.styles.cyan),
-                Span::styled(format!("{:<30}", d1), self.styles.text),
-            ];
-            if !k2.is_empty() {
-                spans.push(Span::styled(format!("{:<4}", k2), self.styles.cyan));
-                spans.push(Span::styled(*d2, self.styles.text));
-            }
-            lines.push(Line::from_spans(spans));
-        }
-
-        lines.push(Line::from(""));
-
-        // --- Glyphs section ---
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("GLYPHS & COLORS", self.styles.text_bold),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled(&light_rule, self.styles.dim),
-        ]));
-
-        // Glyphs with their actual colors inline
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("\u{25C7} ", Style::new().fg(self.styles.clr_text)),
-            Span::styled("active        ", self.styles.dim),
-            Span::styled("\u{2726} ", Style::new().fg(self.styles.clr_dim)),
-            Span::styled("resolved      ", self.styles.dim),
-            Span::styled("\u{00B7} ", Style::new().fg(self.styles.clr_dim)),
-            Span::styled("released", self.styles.dim),
-        ]));
-
-        lines.push(Line::from(""));
-
-        // Temporal indicator legend
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25E6}\u{25CC}\u{25CF}\u{25CC}", Style::new().fg(self.styles.clr_cyan)),
-            Span::styled("  temporal window: ", self.styles.dim),
-            Span::styled("\u{25E6}", self.styles.cyan),
-            Span::styled(" now  ", self.styles.dim),
-            Span::styled("\u{25CF}", self.styles.cyan),
-            Span::styled(" horizon end", self.styles.dim),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CE}", self.styles.dim),
-            Span::styled("  staleness (no horizon set)", self.styles.dim),
-        ]));
-        lines.push(Line::from_spans([
-            Span::styled(&pad, Style::new()),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(self.styles.clr_cyan)),
-            Span::styled(" comfortable  ", self.styles.dim),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(self.styles.clr_amber)),
-            Span::styled(" approaching  ", self.styles.dim),
-            Span::styled("\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}\u{25CC}", Style::new().fg(self.styles.clr_red)),
-            Span::styled(" overdue", self.styles.dim),
-        ]));
-
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            format!("{}press any key to close", pad),
-            self.styles.dim,
-        )));
-
-        // Center vertically
-        let total_lines = lines.len() as u16;
-        let start_y = area.height.saturating_sub(total_lines) / 2;
-        let text_area = Rect::new(area.x, area.y + start_y, area.width, area.height - start_y);
-        let para = Paragraph::new(Text::from_lines(lines));
-        para.render(text_area, frame);
-    }
+    // Help overlay — now rendered via update.rs using ftui KeybindingHints widget.
+    // See crate::help for the centralized keybinding registry.
 
     // -----------------------------------------------------------------------
     // Add prompt (inline)

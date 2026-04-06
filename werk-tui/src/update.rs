@@ -84,7 +84,7 @@ impl Model for InstrumentApp {
         } else {
             match &self.input_mode {
                 InputMode::Normal => self.update_normal(msg),
-                InputMode::Help => self.update_help(msg),
+                InputMode::Help { .. } => self.update_help(msg),
                 InputMode::Adding(_) => self.update_adding(msg),
                 InputMode::Editing { .. } => self.update_editing(msg),
                 InputMode::Annotating { .. } => self.update_annotating(msg),
@@ -150,9 +150,7 @@ impl Model for InstrumentApp {
 
         // Full-screen modes bypass the three-pane layout.
         if !in_survey && !in_logbase {
-            if matches!(self.input_mode, InputMode::Help) {
-                self.render_help(&content_area, frame);
-            } else if matches!(self.input_mode, InputMode::Moving { .. }) {
+            if matches!(self.input_mode, InputMode::Moving { .. }) {
                 self.render_search(&content_area, frame);
             } else if self.siblings.is_empty() && self.parent_id.is_none()
                 && !matches!(self.input_mode, InputMode::Adding(_))
@@ -200,9 +198,16 @@ impl Model for InstrumentApp {
             _ => {}
         }
 
+        // Help overlay — rendered on top of any view (deck, survey, logbase)
+        if let InputMode::Help { from } = self.input_mode {
+            self.render_help_overlay(from, &content_area, frame);
+        }
+
         // Bottom bar (survey/logbase bars already rendered above, hidden when palette is open)
-        if !in_survey && !in_logbase && !self.command_palette.is_visible() {
-            self.render_deck_bar(&lever_area, frame);
+        if !matches!(self.input_mode, InputMode::Help { .. }) {
+            if !in_survey && !in_logbase && !self.command_palette.is_visible() {
+                self.render_deck_bar(&lever_area, frame);
+            }
         }
 
         // Command palette — unified search/command/navigation surface (above modals, below toasts)
@@ -230,7 +235,9 @@ impl Model for InstrumentApp {
 
         // Hints
         if show_hints {
-            if self.command_palette.is_visible() {
+            if matches!(self.input_mode, InputMode::Help { .. }) {
+                self.render_input_hints("press any key to close", &hints_area, frame);
+            } else if self.command_palette.is_visible() {
                 self.render_input_hints("Enter select  \u{2191}/\u{2193} navigate  Esc dismiss", &hints_area, frame);
             } else {
                 match &self.input_mode {
@@ -241,7 +248,7 @@ impl Model for InstrumentApp {
                     InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
                     InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
                     _ => if in_logbase {
-                        self.render_input_hints("j/k events  J/K epochs  Enter expand  L return  Esc return", &hints_area, frame);
+                        self.render_input_hints("j/k events  J/K epochs  Enter expand  L return  ? help", &hints_area, frame);
                     },
                 }
             }
@@ -469,7 +476,7 @@ impl InstrumentApp {
                 self.gesture_redo();
             }
             "help" => {
-                self.input_mode = InputMode::Help;
+                self.input_mode = InputMode::Help { from: self.view_orientation };
             }
             "survey" => {
                 // Save stream position and switch to survey
@@ -890,39 +897,9 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
-            // ? = edit parent reality (V4 quick-edit), help at root
+            // ? = universal help overlay
             Msg::Char('?') | Msg::ToggleHelp => {
-                if let Some(ref pid) = self.parent_id.clone() {
-                    let actual = self.parent_tension.as_ref()
-                        .map(|t| t.actual.clone()).unwrap_or_default();
-                    self.input_buffer = actual.clone();
-                    self.text_input.set_value(&actual);
-                    self.text_input.set_focused(true);
-                    self.text_input.select_all();
-                    self.input_mode = InputMode::Editing {
-                        tension_id: pid.clone(),
-                        field: EditField::Reality,
-                    };
-                } else {
-                    self.input_mode = InputMode::Help;
-                }
-                Cmd::none()
-            }
-
-            // ! = edit parent desire (V4 quick-edit)
-            Msg::Char('!') => {
-                if let Some(ref pid) = self.parent_id.clone() {
-                    let desired = self.parent_tension.as_ref()
-                        .map(|t| t.desired.clone()).unwrap_or_default();
-                    self.input_buffer = desired.clone();
-                    self.text_input.set_value(&desired);
-                    self.text_input.set_focused(true);
-                    self.text_input.select_all();
-                    self.input_mode = InputMode::Editing {
-                        tension_id: pid.clone(),
-                        field: EditField::Desire,
-                    };
-                }
+                self.input_mode = InputMode::Help { from: self.view_orientation };
                 Cmd::none()
             }
 
@@ -1309,8 +1286,7 @@ impl InstrumentApp {
             }
 
             Msg::Char('?') | Msg::ToggleHelp => {
-                self.view_orientation = ViewOrientation::Stream;
-                self.input_mode = InputMode::Help;
+                self.input_mode = InputMode::Help { from: self.view_orientation };
                 Cmd::none()
             }
             Msg::Char('q') | Msg::Quit => self.save_and_quit(),
@@ -1464,6 +1440,11 @@ impl InstrumentApp {
                 Cmd::none()
             }
 
+            Msg::Char('?') | Msg::ToggleHelp => {
+                self.input_mode = InputMode::Help { from: self.view_orientation };
+                Cmd::none()
+            }
+
             Msg::Char('q') | Msg::Quit => self.save_and_quit(),
             _ => Cmd::none(),
         }
@@ -1517,10 +1498,78 @@ impl InstrumentApp {
         match msg {
             Msg::Noop | Msg::Tick => Cmd::none(),
             _ => {
+                // Restore the originating view orientation
+                if let InputMode::Help { from } = self.input_mode {
+                    self.view_orientation = from;
+                }
                 self.input_mode = InputMode::Normal;
                 Cmd::none()
             }
         }
+    }
+
+    /// Render the `?` help overlay — context-sensitive keybinding reference.
+    /// Renders directly with Spans/Paragraph (not KeybindingHints widget)
+    /// to bypass ftui degradation checks and match werk's rendering style.
+    fn render_help_overlay(&self, from: crate::state::ViewOrientation, area: &Rect, frame: &mut Frame<'_>) {
+        use ftui::style::Style;
+        use ftui::text::{Line, Span, Text};
+        use ftui::widgets::paragraph::Paragraph;
+        use ftui::widgets::Widget;
+
+        // Opaque background — fully covers the underlying view (no bleed-through)
+        let cell = ftui::Cell::from_char(' ')
+            .with_fg(self.styles.clr_dim)
+            .with_bg(self.styles.clr_bg);
+        frame.buffer.fill(*area, cell);
+
+        let content = self.layout.content_area(*area);
+        let groups = crate::help::overlay_groups(from);
+
+        // Find max key width for alignment
+        let max_key_w = groups.iter()
+            .flat_map(|g| g.bindings.iter())
+            .map(|(k, _)| k.chars().count())
+            .max()
+            .unwrap_or(8);
+
+        let pad_h = (content.width / 8).min(8) as usize;
+        let pad = " ".repeat(pad_h);
+
+        let mut lines: Vec<Line> = Vec::new();
+
+        for (i, group) in groups.iter().enumerate() {
+            if i > 0 {
+                lines.push(Line::from(""));
+            }
+
+            // Category header
+            lines.push(Line::from_spans([
+                Span::styled(&pad, Style::new()),
+                Span::styled(group.label, self.styles.text_bold),
+            ]));
+
+            // Key-description pairs
+            for (key, desc) in &group.bindings {
+                lines.push(Line::from_spans([
+                    Span::styled(&pad, Style::new()),
+                    Span::styled(format!("{:<width$}", key, width = max_key_w + 2), self.styles.cyan),
+                    Span::styled(*desc, self.styles.text),
+                ]));
+            }
+        }
+
+        // Center vertically
+        let total_lines = lines.len() as u16;
+        let start_y = content.height.saturating_sub(total_lines) / 2;
+        let text_area = Rect::new(
+            content.x,
+            content.y + start_y,
+            content.width,
+            content.height.saturating_sub(start_y),
+        );
+        let para = Paragraph::new(Text::from_lines(lines));
+        para.render(text_area, frame);
     }
 
     fn update_adding(&mut self, msg: Msg) -> Cmd<Msg> {
