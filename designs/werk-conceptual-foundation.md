@@ -158,7 +158,7 @@ The accreted structure (closed epochs, resolved tensions, released tensions, not
 
 Together, the live structure and the logbook form the complete model of a project — one under revision, one settled. There is an instructive difference between: (a) the "live" structure as it is open at any one moment; (b) the "accreted" structure that is no longer under revision or uncertainty; and (c) whatever external artifacts (code, documents, communications) the project produces. The logbook holds (b) and together with (a) constitutes the full structural record from which (c) can be understood, justified, and contextualized.
 
-This means the logbook should be **queryable as structure** *(future — tracked as #89 "logbase")* — semantic search across epochs, filtering by topic or term or tension, cross-epoch pattern analysis, reconstruction of decision chains. The ability to ask "show me every epoch that touched this concern" or "what was the theory of closure when we made that decision" transforms the logbook from a simple record into a *structural resource*.
+This means the logbook should be **queryable as structure** — semantic search across epochs, filtering by topic or term or tension, cross-epoch pattern analysis, reconstruction of decision chains. The ability to ask "show me every epoch that touched this concern" or "what was the theory of closure when we made that decision" transforms the logbook from a simple record into a *structural resource*.
 
 The analogy: geological strata encode Earth's history in queryable form. A well-kept logbook tells the full story of a voyage. Whitehead's perished actual occasions persist as objective data for new occasions of becoming. The logbook is the instrument's memory — not nostalgic, but structurally generative.
 
@@ -404,8 +404,8 @@ The instrument's interaction vocabulary is a set of operative gestures:
 - **Reordering**: restructuring the theory of closure
 - **Snoozing**: deferring a tension until a future date without releasing it
 - **Recurring**: setting a tension to re-activate on an interval after resolution
-- **Splitting** *(future — tracked as #49)*: recognizing that a tension contains distinct concerns and dividing it into two or more tensions. A phase transition that changes the identity topology of the structure.
-- **Merging** *(future — tracked as #49)*: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. Different from composing — composing creates a new parent; merging recognizes identity.
+- **Splitting**: recognizing that a tension contains distinct concerns and dividing it into two or more tensions. A phase transition that changes the identity topology of the structure. Provenance is tracked — the new tensions carry `split_from` edges back to the original.
+- **Merging**: recognizing that multiple tensions are the same concern seen from different angles, combining them into one. Different from composing — composing creates a new parent; merging recognizes identity. Provenance is tracked — `merged_into` edges preserve lineage.
 - **Navigating**: moving through the structure (ascending, descending, scanning)
 
 Each of these is a gesture — a compression of intentionality into enacted form.

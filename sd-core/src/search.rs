@@ -160,7 +160,8 @@ impl SearchIndex {
         while let Some(ref id) = current {
             if let Some(m) = self.meta.get(id.as_str()) {
                 let label = if m.desired.len() > 15 {
-                    format!("{}…", &m.desired[..14])
+                    let end = m.desired.floor_char_boundary(14);
+                    format!("{}…", &m.desired[..end])
                 } else {
                     m.desired.clone()
                 };

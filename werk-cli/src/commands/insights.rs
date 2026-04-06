@@ -155,7 +155,8 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
                     .map(|t| t.desired.as_str())
                     .unwrap_or(id);
                 let label = if desired.len() > 40 {
-                    format!("{}...", &desired[..37])
+                    let end = desired.floor_char_boundary(37);
+                    format!("{}...", &desired[..end])
                 } else {
                     desired.to_string()
                 };
@@ -171,7 +172,8 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
                         .map(|t| t.desired.as_str())
                         .unwrap_or(id);
                     let label = if desired.len() > 40 {
-                        format!("{}...", &desired[..37])
+                        let end = desired.floor_char_boundary(37);
+                        format!("{}...", &desired[..end])
                     } else {
                         desired.to_string()
                     };

@@ -723,10 +723,14 @@ fn compute_changes(
         }
 
         if m.field() == "actual" && seen_reality.insert(m.tension_id().to_string()) {
-            let preview = if m.new_value().len() > 60 {
-                format!("{}...", &m.new_value()[..57])
-            } else {
-                m.new_value().to_string()
+            let preview = {
+                let val = m.new_value();
+                if val.len() > 60 {
+                    let end = val.floor_char_boundary(57);
+                    format!("{}...", &val[..end])
+                } else {
+                    val.to_string()
+                }
             };
             reality_shifts.push(RealityShiftJson {
                 short_code: sc,
