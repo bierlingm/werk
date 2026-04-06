@@ -9,7 +9,10 @@ use ftui::layout::{Constraint, Flex, Rect};
 use ftui::style::Style;
 use ftui::text::{Line, Span, Text};
 use ftui::widgets::Widget;
+use ftui::widgets::borders::BorderType;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::rule::Rule;
+use ftui::widgets::status_line::{StatusLine, StatusItem};
 
 use sd_core::TensionStatus;
 
@@ -37,7 +40,6 @@ impl AccumulatedItem {
 }
 
 use crate::app::InstrumentApp;
-use crate::glyphs;
 use crate::state::FieldEntry;
 
 
@@ -977,11 +979,11 @@ impl InstrumentApp {
                 let msg = "no committed next step";
                 let prefix_len = cols.left + cols.gutter;
                 let pad_right = w.saturating_sub(prefix_len + msg.len());
-                render_line(frame, area.x, my, area.width, &[
-                    (" ".repeat(prefix_len), Style::new()),
-                    (msg.to_string(), self.styles.dim),
-                    (" ".repeat(pad_right), Style::new()),
-                ]);
+                Paragraph::new(Line::from_spans([
+                    Span::styled(" ".repeat(prefix_len), Style::new()),
+                    Span::styled(msg, self.styles.dim),
+                    Span::styled(" ".repeat(pad_right), Style::new()),
+                ])).render(Rect::new(area.x, my, area.width, 1), frame);
                 my += 1;
             }
 
@@ -995,7 +997,7 @@ impl InstrumentApp {
                     my += 1;
                 }
 
-                // Build readout as colored spans
+                // Build readout cells for the console vitals rule title
                 let total_children = self.siblings.len();
                 let done_count = self.siblings.iter()
                     .filter(|s| s.status == TensionStatus::Resolved || s.status == TensionStatus::Released)
@@ -1004,13 +1006,9 @@ impl InstrumentApp {
                     let delta = chrono::Utc::now().signed_duration_since(boundary);
                     let hours = delta.num_hours();
                     let days = delta.num_days();
-                    let text = if hours < 1 { "fresh".to_string() }
-                        else if hours < 24 { format!("epoch {}h", hours) }
-                        else { format!("epoch {}d", days) };
-                    let style = if hours < 1 { self.styles.green }
-                        else if days > 7 { self.styles.amber }
-                        else { self.styles.dim };
-                    (text, style)
+                    if hours < 1 { "fresh".to_string() }
+                    else if hours < 24 { format!("epoch {}h", hours) }
+                    else { format!("epoch {}d", days) }
                 });
                 let next_dl = frontier.next.iter()
                     .filter_map(|&idx| self.siblings.get(idx))
@@ -1023,46 +1021,24 @@ impl InstrumentApp {
                             .next()
                     });
 
-                let mut cells: Vec<(String, Style)> = Vec::new();
+                let mut cells: Vec<String> = Vec::new();
                 if total_children > 0 {
-                    cells.push((format!("{}/{}", done_count, total_children), self.styles.text));
+                    cells.push(format!("{}/{}", done_count, total_children));
                 }
-                if let Some((ref text, style)) = epoch_display {
-                    cells.push((text.clone(), style));
+                if let Some(ref text) = epoch_display {
+                    cells.push(text.clone());
                 }
                 if let Some(dl) = next_dl {
-                    cells.push((format!("next {}", dl), self.styles.dim));
+                    cells.push(format!("next {}", dl));
                 }
                 if !frontier.overdue.is_empty() {
-                    cells.push((
-                        format!("\u{26A0} {} overdue", frontier.overdue.len()),
-                        self.styles.amber,
-                    ));
+                    cells.push(format!("\u{26A0} {} overdue", frontier.overdue.len()));
                 }
 
-                let separator = " \u{00B7} ";
-                let sep_w = separator.chars().count();
-                let readout_w: usize = cells.iter().map(|(t, _)| t.chars().count()).sum::<usize>()
-                    + if cells.len() > 1 { sep_w * (cells.len() - 1) } else { 0 };
-
-                let rule_char = glyphs::LIGHT_RULE.to_string();
-                let pad_total = w.saturating_sub(readout_w + 4);
-                let left_rules = pad_total / 2;
-                let right_rules = pad_total - left_rules;
-
-                let mut header_spans: Vec<Span> = Vec::new();
-                header_spans.push(Span::styled(rule_char.repeat(left_rules), self.styles.dim));
-                header_spans.push(Span::styled(" ", self.styles.dim));
-                for (i, (text, style)) in cells.iter().enumerate() {
-                    if i > 0 {
-                        header_spans.push(Span::styled(separator, self.styles.dim));
-                    }
-                    header_spans.push(Span::styled(text.clone(), *style));
-                }
-                header_spans.push(Span::styled(" ", self.styles.dim));
-                header_spans.push(Span::styled(rule_char.repeat(right_rules), self.styles.dim));
-
-                Paragraph::new(Text::from(Line::from_spans(header_spans)))
+                let title_text = cells.join(" \u{00B7} ");
+                Rule::new()
+                    .title(&title_text)
+                    .style(self.styles.dim)
                     .render(Rect::new(area.x, my, area.width, 1), frame);
                 my += 1;
             }
@@ -1113,11 +1089,11 @@ impl InstrumentApp {
             };
             let prefix_len = cols.left + cols.gutter;
             let pad_right = w.saturating_sub(prefix_len + msg.len());
-            render_line(frame, area.x, my, area.width, &[
-                (" ".repeat(prefix_len), Style::new()),
-                (msg.to_string(), self.styles.dim),
-                (" ".repeat(pad_right), Style::new()),
-            ]);
+            Paragraph::new(Line::from_spans([
+                Span::styled(" ".repeat(prefix_len), Style::new()),
+                Span::styled(msg, self.styles.dim),
+                Span::styled(" ".repeat(pad_right), Style::new()),
+            ])).render(Rect::new(area.x, my, area.width, 1), frame);
             my += 1;
             if my < top_limit { my += 1; } // breathing
         }
@@ -1189,28 +1165,42 @@ impl InstrumentApp {
         deadline_str: &str,
         selected: bool,
     ) {
-        let mut y = zone.y;
+        // Split zone into rows: [breadcrumb?] [blank] [text lines] [rule]
+        let breadcrumb_h: u16 = if has_breadcrumb && self.grandparent_display.is_some() { 1 } else { 0 };
+        let text_h = desire_lines.len().max(1) as u16;
+        let mut constraints = Vec::new();
+        if breadcrumb_h > 0 { constraints.push(Constraint::Fixed(1)); }
+        constraints.push(Constraint::Fixed(1)); // blank
+        constraints.push(Constraint::Fixed(text_h)); // desire text
+        constraints.push(Constraint::Fixed(1)); // rule
+
+        let rows = Flex::vertical().constraints(constraints).split(zone);
+        let mut ri = 0;
 
         // Breadcrumb
-        if has_breadcrumb {
+        if breadcrumb_h > 0 {
             if let Some((ref gp_id, ref gp_desired)) = self.grandparent_display {
+                let pad = " ".repeat(cols.left + cols.gutter);
                 let breadcrumb = format!(
                     "\u{2190} {} {}",
                     gp_id,
                     truncate_str(gp_desired, cols.main.min(60))
                 );
-                render_line(frame, zone.x, y, zone.width, &[
-                    (pad_left(cols), self.styles.dim),
-                    (breadcrumb, self.styles.dim),
-                ]);
-                y += 1;
+                Paragraph::new(Line::from_spans([
+                    Span::styled(pad, self.styles.dim),
+                    Span::styled(breadcrumb, self.styles.dim),
+                ])).render(rows[ri], frame);
             }
+            ri += 1;
         }
 
-        // Blank line
-        y += 1;
+        // Blank line (skip)
+        ri += 1;
 
         // Desire text with right-column facts
+        let text_zone = rows[ri];
+        ri += 1;
+
         let desire_age = self.parent_desire_age.as_deref().unwrap_or("")
             .trim_end_matches(" ago").to_string();
         let desire_id = parent.short_code
@@ -1219,9 +1209,13 @@ impl InstrumentApp {
         let desire_right = format!("{} {}", desire_id, desire_age);
         let desire_right_w = desire_right.chars().count();
 
+        let text_style = if selected { self.styles.selected } else { self.styles.text_bold };
+        let glyph_style = if selected { self.styles.selected } else { self.styles.cyan };
+        let right_style = if selected { self.styles.selected } else { self.styles.dim };
+
+        let mut lines: Vec<Line> = Vec::new();
         for (i, line_text) in desire_lines.iter().enumerate() {
-            if y >= zone.y + zone.height { break; }
-            let mut spans: Vec<(String, Style)> = Vec::new();
+            let mut spans: Vec<Span> = Vec::new();
 
             if has_deadline {
                 let left_content = if i == 0 {
@@ -1229,37 +1223,37 @@ impl InstrumentApp {
                 } else {
                     " ".repeat(cols.left)
                 };
-                spans.push((left_content, self.styles.dim));
-                spans.push((" ".repeat(cols.gutter), Style::new()));
+                spans.push(Span::styled(left_content, self.styles.dim));
+                spans.push(Span::styled(" ".repeat(cols.gutter), Style::new()));
             }
 
-            let text_style = if selected { self.styles.selected } else { self.styles.text_bold };
             if i == 0 {
-                let glyph_style = if selected { self.styles.selected } else { self.styles.cyan };
-                spans.push(("\u{25c6} ".to_string(), glyph_style));
+                spans.push(Span::styled("\u{25c6} ", glyph_style));
             } else {
-                spans.push(("  ".to_string(), text_style)); // align continuation
+                spans.push(Span::styled("  ", text_style));
             }
-            spans.push((line_text.clone(), text_style));
+            spans.push(Span::styled(line_text.clone(), text_style));
 
             if i == 0 {
                 let text_used = if has_deadline { cols.left + cols.gutter } else { 0 } + 2 + line_text.chars().count();
                 let gap = w.saturating_sub(text_used + desire_right_w);
                 if gap >= cols.gutter {
-                    let right_style = if selected { self.styles.selected } else { self.styles.dim };
-                    spans.push((" ".repeat(gap), right_style));
-                    spans.push((desire_right.clone(), right_style));
+                    spans.push(Span::styled(" ".repeat(gap), right_style));
+                    spans.push(Span::styled(desire_right.clone(), right_style));
                 }
             }
 
-            render_line(frame, zone.x, y, zone.width, &spans);
-            y += 1;
+            lines.push(Line::from_spans(spans));
         }
 
-        // Desire rule
-        if y < zone.y + zone.height {
-            let rule = glyphs::HEAVY_RULE.to_string().repeat(w);
-            render_line(frame, zone.x, y, zone.width, &[(rule, self.styles.dim)]);
+        Paragraph::new(Text::from_lines(lines)).render(text_zone, frame);
+
+        // Desire rule — heavy horizontal line
+        if ri < rows.len() {
+            Rule::new()
+                .border_type(BorderType::Heavy)
+                .style(self.styles.dim)
+                .render(rows[ri], frame);
         }
     }
 
@@ -1288,10 +1282,11 @@ impl InstrumentApp {
         // Reality rule at the bottom
         let rule_zone = match zones.last() {
             Some(z) => z,
-            None => return, // no space to render
+            None => return,
         };
-        let rule = glyphs::RULE.to_string().repeat(w);
-        render_line(frame, rule_zone.x, rule_zone.y, rule_zone.width, &[(rule, self.styles.dim)]);
+        Rule::new()
+            .style(self.styles.dim)
+            .render(*rule_zone, frame);
 
         if !has_reality { return; }
 
@@ -1312,9 +1307,9 @@ impl InstrumentApp {
         let text_style = if selected { self.styles.selected } else { self.styles.dim };
         let glyph_style = if selected { self.styles.selected } else { self.styles.subdued };
 
+        let mut lines: Vec<Line> = Vec::new();
         if fits {
             // Full text fits — render all lines, age on last line
-            let mut lines: Vec<Line> = Vec::new();
             for (i, line_text) in full_lines.iter().enumerate() {
                 let prefix = if i == 0 { glyph_prefix } else { "  " };
                 let prefix_style = if i == 0 { glyph_style } else { text_style };
@@ -1331,35 +1326,31 @@ impl InstrumentApp {
                     ]));
                 }
             }
-            Paragraph::new(Text::from_lines(lines))
-                .render(text_zone, frame);
         } else if text_zone.height == 1 {
             // Single line: truncate with "..." + age
-            let text_budget = w.saturating_sub(age_w + 3 + 2); // 3 for "...", 2 for glyph
+            let text_budget = w.saturating_sub(age_w + 3 + 2);
             let truncated: String = parent.actual.chars().take(text_budget).collect();
-            render_line(frame, text_zone.x, text_zone.y, text_zone.width, &[
-                (glyph_prefix.to_string(), glyph_style),
-                (format!("{}...", truncated), text_style),
-                (age_suffix, text_style),
-            ]);
+            lines.push(Line::from_spans([
+                Span::styled(glyph_prefix, glyph_style),
+                Span::styled(format!("{}...", truncated), text_style),
+                Span::styled(&age_suffix, text_style),
+            ]));
         } else {
             // Multi-line truncated: show N-1 full lines, last line = "..." + age
             let avail = (text_zone.height - 1) as usize;
-            let mut lines: Vec<Line> = full_lines.iter().enumerate().take(avail)
-                .map(|(i, l)| {
-                    let pfx = if i == 0 { glyph_prefix } else { "  " };
-                    let ps = if i == 0 { glyph_style } else { text_style };
-                    Line::from_spans([Span::styled(pfx, ps), Span::styled(l.as_str(), text_style)])
-                })
-                .collect();
+            for (i, l) in full_lines.iter().enumerate().take(avail) {
+                let pfx = if i == 0 { glyph_prefix } else { "  " };
+                let ps = if i == 0 { glyph_style } else { text_style };
+                lines.push(Line::from_spans([Span::styled(pfx, ps), Span::styled(l.as_str(), text_style)]));
+            }
             lines.push(Line::from_spans([
                 Span::styled("  ", text_style),
                 Span::styled("...", text_style),
                 Span::styled(&age_suffix, text_style),
             ]));
-            Paragraph::new(Text::from_lines(lines))
-                .render(text_zone, frame);
         }
+
+        Paragraph::new(Text::from_lines(lines)).render(text_zone, frame);
     }
 
     /// Render inline focus detail card below a child line.
@@ -1378,36 +1369,33 @@ impl InstrumentApp {
         detail: &FocusedDetail,
         parent_indent: usize,
     ) -> u16 {
-        let mut y = start_y;
-        if y >= limit_y { return 0; }
+        if start_y >= limit_y { return 0; }
+        let max_lines = (limit_y - start_y) as usize;
 
         let child_indent = parent_indent + HELD_INDENT;
-        let indent_str = " ".repeat(cols.left + cols.gutter + child_indent);
+        let indent_str: String = " ".repeat(cols.left + cols.gutter + child_indent);
         let text_w = w.saturating_sub(cols.left + cols.gutter + child_indent);
         if text_w == 0 { return 0; }
 
+        let mut lines: Vec<Line> = Vec::new();
+
         // 1. Reality (the thing you never see in the list — subdued weight)
         if !detail.actual.is_empty() {
-            let reality_lines = word_wrap(&detail.actual, text_w);
-            for line_text in &reality_lines {
-                if y >= limit_y { return y - start_y; }
-                render_line(frame, x, y, w as u16, &[
-                    (indent_str.clone(), self.styles.subdued),
-                    (line_text.clone(), self.styles.subdued),
-                ]);
-                y += 1;
+            for line_text in word_wrap(&detail.actual, text_w) {
+                if lines.len() >= max_lines { break; }
+                lines.push(Line::from_spans([
+                    Span::styled(indent_str.clone(), self.styles.subdued),
+                    Span::styled(line_text, self.styles.subdued),
+                ]));
             }
         }
 
         // 2. Metadata line: intent → bridge → trace (mirrors deck top→bottom)
-        if y >= limit_y { return y - start_y; }
-        {
+        if lines.len() < max_lines {
             let mut parts: Vec<String> = Vec::new();
-            // Intent (left): deadline/horizon — the aimed-at future
             if let Some(ref dl) = detail.deadline_label {
                 parts.push(dl.clone());
             }
-            // Bridge (middle): child count — theory of closure
             if detail.child_count > 0 {
                 let done = detail.child_resolved + detail.child_released;
                 let mut child_part = format!("{}/{}", done, detail.child_count);
@@ -1416,7 +1404,6 @@ impl InstrumentApp {
                 }
                 parts.push(child_part);
             }
-            // Trace (right): temporal ages — what happened when
             parts.push(format!("born {}", detail.created_age));
             if detail.last_desire_age != detail.created_age {
                 parts.push(format!("\u{25c6} {}", detail.last_desire_age));
@@ -1424,17 +1411,15 @@ impl InstrumentApp {
             if detail.last_reality_age != detail.created_age {
                 parts.push(format!("\u{25c7} {}", detail.last_reality_age));
             }
-            let meta_text = parts.join(" \u{00b7} ");
-            render_line(frame, x, y, w as u16, &[
-                (indent_str.clone(), self.styles.dim),
-                (meta_text, self.styles.dim),
-            ]);
-            y += 1;
+            lines.push(Line::from_spans([
+                Span::styled(indent_str.clone(), self.styles.dim),
+                Span::styled(parts.join(" \u{00b7} "), self.styles.dim),
+            ]));
         }
 
-        // 3. Notes (fill remaining space, bounded by limit_y)
+        // 3. Notes (fill remaining space)
         for (age, text) in detail.recent_notes.iter() {
-            if y >= limit_y { break; }
+            if lines.len() >= max_lines { break; }
             let age_w = age.len() + 2;
             let note_avail = text_w.saturating_sub(age_w + 2);
             let truncated = if text.chars().count() > note_avail {
@@ -1446,14 +1431,16 @@ impl InstrumentApp {
             let display_w = truncated.chars().count();
             let pad = text_w.saturating_sub(2 + display_w + age.len());
             let note_line = format!("\u{203b} {}{}{}", truncated, " ".repeat(pad), age);
-            render_line(frame, x, y, w as u16, &[
-                (indent_str.clone(), self.styles.dim),
-                (note_line, self.styles.dim),
-            ]);
-            y += 1;
+            lines.push(Line::from_spans([
+                Span::styled(indent_str.clone(), self.styles.dim),
+                Span::styled(note_line, self.styles.dim),
+            ]));
         }
 
-        y - start_y
+        let h = lines.len() as u16;
+        let detail_area = Rect::new(x, start_y, w as u16, h);
+        Paragraph::new(Text::from_lines(lines)).render(detail_area, frame);
+        h
     }
 
     /// Handle pitch up (k / Up) in deck mode.
@@ -1497,71 +1484,43 @@ impl InstrumentApp {
             let target = self.focus_state.cursor_target();
             match target {
                 CursorTarget::Desire =>
-                    "e edit desire \u{00B7} Enter focus".to_string(),
+                    "e edit desire \u{00B7} Enter focus",
                 CursorTarget::Route(_) | CursorTarget::Next(_) =>
-                    "e edit \u{00B7} Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve".to_string(),
+                    "e edit \u{00B7} Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve",
                 CursorTarget::Overdue(_) =>
-                    "r resolve \u{00B7} ~ release \u{00B7} l descend".to_string(),
+                    "r resolve \u{00B7} ~ release \u{00B7} l descend",
                 CursorTarget::HeldItem(_) =>
-                    "e edit \u{00B7} p position \u{00B7} Enter focus \u{00B7} r resolve".to_string(),
+                    "e edit \u{00B7} p position \u{00B7} Enter focus \u{00B7} r resolve",
                 CursorTarget::AccumulatedItem(_) =>
-                    "l descend \u{00B7} Enter focus".to_string(),
+                    "l descend \u{00B7} Enter focus",
                 CursorTarget::NoteItem(_) =>
-                    "Enter focus".to_string(),
+                    "Enter focus",
                 CursorTarget::InputPoint =>
-                    "a add \u{00B7} n note \u{00B7} e edit".to_string(),
+                    "a add \u{00B7} n note \u{00B7} e edit",
                 CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated =>
-                    "Enter expand \u{00B7} j/k navigate".to_string(),
+                    "Enter expand \u{00B7} j/k navigate",
                 CursorTarget::Reality =>
-                    "e edit reality \u{00B7} Enter focus".to_string(),
+                    "e edit reality \u{00B7} Enter focus",
             }
         } else {
-            String::new()
+            ""
         };
 
-        // Build dynamic text, then borrow for StatusLine
         let events_text = if self.parent_mutation_count > 0 {
             format!("\u{2193} {} prior epochs", self.parent_mutation_count)
         } else {
             String::new()
         };
 
-        // Render bar manually for true centering of hints
-        let w = bar_area.width as usize;
-        let left_w = events_text.chars().count();
-        let right_text = "? help";
-        let right_w = right_text.chars().count();
-        let hints_w = hints_text.chars().count();
-
-        // True center position for hints
-        let hints_start = if hints_w > 0 {
-            (w.saturating_sub(hints_w)) / 2
-        } else { 0 };
-
-        let mut spans: Vec<Span> = Vec::new();
-
-        // Left: events text
+        let mut bar = StatusLine::new().style(self.styles.lever);
         if !events_text.is_empty() {
-            spans.push(Span::styled(&events_text, self.styles.lever));
+            bar = bar.left(StatusItem::text(&events_text));
         }
-
-        // Gap between left and centered hints
-        let after_left = left_w;
-        if hints_w > 0 {
-            let gap = hints_start.saturating_sub(after_left);
-            spans.push(Span::styled(" ".repeat(gap), self.styles.lever));
-            spans.push(Span::styled(&hints_text, self.styles.lever));
+        if !hints_text.is_empty() {
+            bar = bar.center(StatusItem::text(hints_text));
         }
-
-        // Gap between hints and right
-        let after_hints = if hints_w > 0 { hints_start + hints_w } else { after_left };
-        let right_start = w.saturating_sub(right_w);
-        let gap = right_start.saturating_sub(after_hints);
-        spans.push(Span::styled(" ".repeat(gap), self.styles.lever));
-        spans.push(Span::styled(right_text, self.styles.lever));
-
-        Paragraph::new(Text::from(Line::from_spans(spans)))
-            .render(bar_area, frame);
+        bar = bar.right(StatusItem::text("? help"));
+        bar.render(bar_area, frame);
     }
 }
 
@@ -1569,17 +1528,6 @@ impl InstrumentApp {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Render a single styled line at (x, y) using Paragraph.
-fn render_line(frame: &mut Frame<'_>, x: u16, y: u16, width: u16, parts: &[(String, Style)]) {
-    let spans: Vec<Span> = parts.iter().map(|(text, style)| Span::styled(text.clone(), *style)).collect();
-    Paragraph::new(Text::from(Line::from_spans(spans)))
-        .render(Rect::new(x, y, width, 1), frame);
-}
-
-/// Left padding string (empty left column).
-fn pad_left(cols: &ColumnLayout) -> String {
-    format!("{}{}", " ".repeat(cols.left), " ".repeat(cols.gutter))
-}
 
 /// Word-wrap text to a given width.
 pub fn word_wrap(text: &str, width: usize) -> Vec<String> {

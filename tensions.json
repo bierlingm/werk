@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-06T18:17:07Z",
+  "flushed_at": "2026-04-06T18:59:04Z",
   "summary": {
     "active": 63,
     "released": 21,
-    "resolved": 95,
-    "total": 179
+    "resolved": 96,
+    "total": 180
   },
   "tensions": [
     {
@@ -1975,6 +1975,17 @@
       "position": null,
       "short_code": 184,
       "status": "Active"
+    },
+    {
+      "actual": "deck.rs rewritten: render_line helper eliminated (was 10 callsites), deck bar uses ftui StatusLine, console vitals uses ftui Rule with centered title, desire zone uses Flex+Paragraph+Rule(Heavy), reality zone uses Rule, inline focus detail uses single Paragraph. Net -41 lines. All tests pass, zero warnings.",
+      "created_at": "2026-04-06T18:30:22.355221+00:00",
+      "desired": "DeckView rewritten on ftui widgets — field-of-action list uses ftui List with FocusState integration, desire/reality anchors use proper widget rendering, eliminating manual Span construction and enabling degradation-aware styling",
+      "horizon": null,
+      "id": "01KNJ0YQWKH5A9DPM7A6ZT1CW0",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": null,
+      "short_code": 185,
+      "status": "Resolved"
     }
   ]
 }
