@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-06T09:53:43Z",
+  "flushed_at": "2026-04-06T09:55:41Z",
   "summary": {
     "active": 69,
     "released": 20,
@@ -1779,9 +1779,9 @@
       "status": "Resolved"
     },
     {
-      "actual": "Engine.undo_gesture(gesture_id) implemented — reverses mutations using stored old_value with conflict detection, append-only reversal gestures, edge/epoch cleanup, single-transaction atomicity. TUI rewritten from snapshot-based to gesture-ID stack. CLI 'werk undo' and MCP undo_gesture tool added. Children-on-resolve changed from reparent-to-null to auto-resolve (recursive). 16 new tests, all 494+ passing.",
+      "actual": "Engine::undo_gesture() implemented with full semantics — conflict detection, append-only reversal, edge/epoch cleanup, single-transaction atomicity. Children-on-resolve changed to recursive auto-resolve. 16 tests passing. Store and Engine layers complete. CLI, MCP, and TUI surfaces do NOT expose undo — that work moved to #183.",
       "created_at": "2026-03-31T14:15:09.414207+00:00",
-      "desired": "gesture undo at the database level — Engine.undo_gesture(gesture_id) reverses mutations using stored old_value, enabling Ctrl+Z in TUI to actually reverse structural changes not just restore UI state",
+      "desired": "gesture undo at the database level — Engine::undo_gesture(gesture_id) reverses all mutations in a gesture with conflict detection, append-only reversal, and single-transaction atomicity",
       "horizon": "2026-06",
       "id": "01KN23Z3V6DZ8Y7SY5F2JTVKAR",
       "parent_id": "01KMGFKY4MKHFVKJKWY57WCQ4Q",
