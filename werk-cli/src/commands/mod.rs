@@ -42,6 +42,44 @@ pub mod undo;
 
 use clap::Subcommand;
 use batch::BatchCommand;
+use werk_shared::{AnalysisThresholds, Config, SignalThresholds, Workspace};
+
+/// Convert AnalysisThresholds to sd-core's ProjectionThresholds.
+pub fn to_projection_thresholds(a: &AnalysisThresholds) -> sd_core::ProjectionThresholds {
+    sd_core::ProjectionThresholds {
+        pattern_window_seconds: a.pattern_window_days * 86400,
+        neglect_frequency_threshold: a.neglect_frequency,
+        oscillation_gap_variance: a.oscillation_variance,
+        resolution_gap_threshold: a.resolution_gap,
+    }
+}
+
+/// Load signal thresholds from workspace config, falling back to defaults.
+///
+/// Used by main.rs for CLI flag defaults (before a command discovers its own workspace).
+pub fn load_signal_thresholds() -> SignalThresholds {
+    Workspace::discover()
+        .ok()
+        .and_then(|ws| Config::load(&ws).ok())
+        .map(|c| SignalThresholds::load(&c))
+        .unwrap_or_default()
+}
+
+/// Load signal thresholds from an already-discovered workspace.
+pub fn signal_thresholds_from(workspace: &Workspace) -> SignalThresholds {
+    Config::load(workspace)
+        .ok()
+        .map(|c| SignalThresholds::load(&c))
+        .unwrap_or_default()
+}
+
+/// Load analysis thresholds from an already-discovered workspace.
+pub fn analysis_thresholds_from(workspace: &Workspace) -> AnalysisThresholds {
+    Config::load(workspace)
+        .ok()
+        .map(|c| AnalysisThresholds::load(&c))
+        .unwrap_or_default()
+}
 
 /// CLI subcommands.
 #[derive(Debug, Subcommand)]

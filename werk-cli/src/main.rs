@@ -161,12 +161,13 @@ fn main() {
             long,
             search,
         } => {
+            let sig = werk::commands::load_signal_thresholds();
             let params = werk::commands::list::ListParams {
                 all,
                 status,
                 overdue,
-                approaching: approaching.map(|opt| opt.unwrap_or(14)),
-                stale: stale.map(|opt| opt.unwrap_or(14)),
+                approaching: approaching.map(|opt| opt.unwrap_or(sig.approaching_days)),
+                stale: stale.map(|opt| opt.unwrap_or(sig.stale_days)),
                 held,
                 positioned,
                 root,

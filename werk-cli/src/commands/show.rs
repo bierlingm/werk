@@ -6,7 +6,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, ProjectionThresholds, TensionStatus};
+use sd_core::{compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, TensionStatus};
 use serde::Serialize;
 use werk_shared::{display_id, relative_time, truncate};
 
@@ -77,6 +77,8 @@ struct ChildInfo {
 pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
+    let sig = crate::commands::signal_thresholds_from(&workspace);
+    let analysis = crate::commands::analysis_thresholds_from(&workspace);
 
     let all_tensions = store
         .list_tensions()
@@ -219,8 +221,8 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             .map(|node| node_to_tension_info(node, now))
             .collect();
 
-        let thresholds = ProjectionThresholds::default();
-        let pattern = extract_mutation_pattern(tension, &mutations, thresholds.pattern_window_seconds, now);
+        let proj_thresholds = crate::commands::to_projection_thresholds(&analysis);
+        let pattern = extract_mutation_pattern(tension, &mutations, proj_thresholds.pattern_window_seconds, now);
         let gap = gap_magnitude(&tension.desired, &tension.actual);
         let engagement = serde_json::json!({
             "current_gap": gap,
@@ -383,9 +385,9 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         }
 
         // === Signals (by exception — only shown when something needs attention) ===
-        let has_hub = structural.centrality.map(|c| c > 0.0001).unwrap_or(false);
+        let has_hub = structural.centrality.map(|c| c > sig.hub_centrality).unwrap_or(false);
         let has_spine = structural.on_longest_path;
-        let has_reach = structural.descendant_count.map(|c| c > 5).unwrap_or(false);
+        let has_reach = structural.descendant_count.map(|c| c > sig.reach_descendants as usize).unwrap_or(false);
         let has_signals = temporal.on_critical_path
             || temporal.has_containment_violation
             || !temporal.sequencing_pressures.is_empty()

@@ -307,6 +307,120 @@ fn parse_toml_value(value: &str) -> toml::Value {
     toml::Value::String(value.to_string())
 }
 
+// ── Threshold structs ─────────────────────────────────────────────
+
+/// Layer 2 signal thresholds — user-anchored, consumed on standard surfaces.
+///
+/// These control *when* facts surface (approaching window, stale duration,
+/// structural glyph triggers). Configurable via `signals.*` config keys.
+/// Three-layer precedence: CLI flag > config > hardcoded default.
+#[derive(Debug, Clone)]
+pub struct SignalThresholds {
+    /// Days until deadline to consider "approaching" (default: 14).
+    pub approaching_days: i64,
+    /// Urgency value above which a tension is "approaching" (default: 0.5).
+    pub approaching_urgency: f64,
+    /// Days of inactivity before a tension is "stale" (default: 14).
+    pub stale_days: i64,
+    /// Betweenness centrality above which HUB glyph fires (default: 0.0001).
+    pub hub_centrality: f64,
+    /// Descendant count above which REACH glyph fires (default: 5).
+    pub reach_descendants: u32,
+}
+
+impl Default for SignalThresholds {
+    fn default() -> Self {
+        Self {
+            approaching_days: 14,
+            approaching_urgency: 0.5,
+            stale_days: 14,
+            hub_centrality: 0.0001,
+            reach_descendants: 5,
+        }
+    }
+}
+
+impl SignalThresholds {
+    /// Load from config, falling back to defaults for missing keys.
+    pub fn load(config: &Config) -> Self {
+        let defaults = Self::default();
+        Self {
+            approaching_days: config
+                .get("signals.approaching.days")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.approaching_days),
+            approaching_urgency: config
+                .get("signals.approaching.urgency")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.approaching_urgency),
+            stale_days: config
+                .get("signals.stale.days")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.stale_days),
+            hub_centrality: config
+                .get("signals.hub.centrality")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.hub_centrality),
+            reach_descendants: config
+                .get("signals.reach.descendants")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.reach_descendants),
+        }
+    }
+}
+
+/// Layer 3 analysis thresholds — instrument-originated, consumed on analytical surfaces.
+///
+/// These control the projection engine's pattern recognition sensitivity.
+/// Configurable via `analysis.projection.*` config keys.
+#[derive(Debug, Clone)]
+pub struct AnalysisThresholds {
+    /// Analysis window for mutation patterns in days (default: 30).
+    pub pattern_window_days: i64,
+    /// Frequency below this = neglect risk, per day (default: 0.1).
+    pub neglect_frequency: f64,
+    /// Gap sample variance above this = oscillation risk (default: 0.02).
+    pub oscillation_variance: f64,
+    /// Gap below this considered "resolved" (default: 0.05).
+    pub resolution_gap: f64,
+}
+
+impl Default for AnalysisThresholds {
+    fn default() -> Self {
+        Self {
+            pattern_window_days: 30,
+            neglect_frequency: 0.1,
+            oscillation_variance: 0.02,
+            resolution_gap: 0.05,
+        }
+    }
+}
+
+impl AnalysisThresholds {
+    /// Load from config, falling back to defaults for missing keys.
+    pub fn load(config: &Config) -> Self {
+        let defaults = Self::default();
+        Self {
+            pattern_window_days: config
+                .get("analysis.projection.pattern_window_days")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.pattern_window_days),
+            neglect_frequency: config
+                .get("analysis.projection.neglect_frequency")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.neglect_frequency),
+            oscillation_variance: config
+                .get("analysis.projection.oscillation_variance")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.oscillation_variance),
+            resolution_gap: config
+                .get("analysis.projection.resolution_gap")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.resolution_gap),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

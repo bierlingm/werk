@@ -471,6 +471,26 @@ fn open_store() -> Result<(Workspace, sd_core::Store), McpError> {
     Ok((workspace, store))
 }
 
+fn load_projection_thresholds(workspace: &Workspace) -> ProjectionThresholds {
+    let analysis = Config::load(workspace)
+        .ok()
+        .map(|c| werk_shared::AnalysisThresholds::load(&c))
+        .unwrap_or_default();
+    ProjectionThresholds {
+        pattern_window_seconds: analysis.pattern_window_days * 86400,
+        neglect_frequency_threshold: analysis.neglect_frequency,
+        oscillation_gap_variance: analysis.oscillation_variance,
+        resolution_gap_threshold: analysis.resolution_gap,
+    }
+}
+
+fn load_signal_thresholds(workspace: &Workspace) -> werk_shared::SignalThresholds {
+    Config::load(workspace)
+        .ok()
+        .map(|c| werk_shared::SignalThresholds::load(&c))
+        .unwrap_or_default()
+}
+
 fn resolve_id(
     tensions: &[sd_core::Tension],
     id: &str,
@@ -873,7 +893,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<ShowParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
+        let (ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
 
@@ -970,7 +990,7 @@ impl WerkServer {
 
         // Include context data when full=true (absorbs context tool)
         if p.full.unwrap_or(false) {
-            let thresholds = ProjectionThresholds::default();
+            let thresholds = load_projection_thresholds(&ws);
 
             let ancestors: Vec<serde_json::Value> = forest
                 .ancestors(&tension.id)
@@ -1546,11 +1566,11 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<ContextParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
+        let (ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let forest = Forest::from_tensions(tensions.clone()).map_err(|e| err(e.to_string()))?;
         let now = Utc::now();
-        let thresholds = ProjectionThresholds::default();
+        let thresholds = load_projection_thresholds(&ws);
 
         let build_context = |t: &sd_core::Tension| -> Result<serde_json::Value, McpError> {
             let mutations = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
@@ -1659,10 +1679,10 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<TrajectoryParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
+        let (ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let now = Utc::now();
-        let thresholds = ProjectionThresholds::default();
+        let thresholds = load_projection_thresholds(&ws);
 
         if let Some(ref id) = p.id {
             // Per-tension projection
@@ -1819,7 +1839,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<StatsParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
+        let (ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let all_mutations = store.all_mutations().map_err(|e| err(e.to_string()))?;
         let now = Utc::now();
@@ -1857,12 +1877,13 @@ impl WerkServer {
 
         if has("temporal") {
             let forest = Forest::from_tensions(tensions.to_vec()).map_err(|e| err(e.to_string()))?;
-            let frame_end = now + chrono::Duration::days(14);
+            let sig = load_signal_thresholds(&ws);
+            let frame_end = now + chrono::Duration::days(sig.approaching_days);
 
             let mut approaching: Vec<serde_json::Value> = Vec::new();
             for t in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
                 if let Some(u) = compute_urgency(t, now) {
-                    let close = u.value > 0.5 || t.horizon.as_ref().map(|h| h.range_end() <= frame_end).unwrap_or(false);
+                    let close = u.value > sig.approaching_urgency || t.horizon.as_ref().map(|h| h.range_end() <= frame_end).unwrap_or(false);
                     let past = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
                     if close || past {
                         approaching.push(serde_json::json!({
@@ -1945,7 +1966,7 @@ impl WerkServer {
         }
 
         if has("trajectory") {
-            let thresholds = ProjectionThresholds::default();
+            let thresholds = load_projection_thresholds(&ws);
             let field = project_field(&tensions, &all_mutations, &thresholds, now);
 
             let buckets = field.funnel.get(&ProjectionHorizon::OneWeek);

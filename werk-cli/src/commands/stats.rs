@@ -12,7 +12,7 @@ use crate::output::Output;
 use crate::workspace::Workspace;
 use sd_core::{
     compute_urgency, detect_containment_violations, detect_critical_path_recursive,
-    detect_horizon_drift, detect_sequencing_pressure, project_field, Forest, ProjectionThresholds,
+    detect_horizon_drift, detect_sequencing_pressure, project_field, Forest,
     TensionStatus,
 };
 use werk_shared::truncate;
@@ -208,6 +208,8 @@ pub fn cmd_stats(
     let store = workspace.open_store()?;
     let now = Utc::now();
     let cutoff = now - chrono::Duration::days(days);
+    let sig = crate::commands::signal_thresholds_from(&workspace);
+    let analysis = crate::commands::analysis_thresholds_from(&workspace);
 
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let all_mutations = store.all_mutations().map_err(WerkError::StoreError)?;
@@ -237,7 +239,7 @@ pub fn cmd_stats(
         };
 
         if show_temporal {
-            result.temporal = Some(compute_temporal(&tensions, &store, now)?);
+            result.temporal = Some(compute_temporal(&tensions, &store, now, &sig)?);
         }
         if show_attention {
             result.attention = Some(compute_attention(&tensions, &store, cutoff)?);
@@ -246,7 +248,7 @@ pub fn cmd_stats(
             result.changes = Some(compute_changes(&tensions, &store, cutoff, now)?);
         }
         if show_trajectory {
-            result.trajectory = Some(compute_trajectory(&tensions, &all_mutations, now)?);
+            result.trajectory = Some(compute_trajectory(&tensions, &all_mutations, now, &analysis)?);
         }
         if show_engagement {
             result.engagement = Some(compute_engagement(&tensions, &all_mutations, days, now)?);
@@ -264,7 +266,7 @@ pub fn cmd_stats(
         print_vitals(&vitals);
 
         if show_temporal {
-            print_temporal(&compute_temporal(&tensions, &store, now)?, &tensions);
+            print_temporal(&compute_temporal(&tensions, &store, now, &sig)?, &tensions);
         }
         if show_attention {
             print_attention(&compute_attention(&tensions, &store, cutoff)?, days);
@@ -273,7 +275,7 @@ pub fn cmd_stats(
             print_changes(&compute_changes(&tensions, &store, cutoff, now)?, days);
         }
         if show_trajectory {
-            print_trajectory(&compute_trajectory(&tensions, &all_mutations, now)?);
+            print_trajectory(&compute_trajectory(&tensions, &all_mutations, now, &analysis)?);
         }
         if show_engagement {
             print_engagement(&compute_engagement(&tensions, &all_mutations, days, now)?, days);
@@ -368,14 +370,15 @@ fn compute_temporal(
     tensions: &[sd_core::Tension],
     _store: &sd_core::Store,
     now: DateTime<Utc>,
+    sig: &werk_shared::SignalThresholds,
 ) -> Result<TemporalJson, WerkError> {
-    let frame_end = now + chrono::Duration::days(14);
+    let frame_end = now + chrono::Duration::days(sig.approaching_days);
 
     // Approaching
     let mut approaching: Vec<ApproachingJson> = Vec::new();
     for t in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
         if let Some(u) = compute_urgency(t, now) {
-            let is_approaching = u.value > 0.5
+            let is_approaching = u.value > sig.approaching_urgency
                 || t.horizon.as_ref().map(|h| h.range_end() <= frame_end).unwrap_or(false);
             let is_overdue = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
             if is_approaching || is_overdue {
@@ -795,8 +798,9 @@ fn compute_trajectory(
     tensions: &[sd_core::Tension],
     mutations: &[sd_core::Mutation],
     now: DateTime<Utc>,
+    analysis: &werk_shared::AnalysisThresholds,
 ) -> Result<TrajectoryJson, WerkError> {
-    let thresholds = ProjectionThresholds::default();
+    let thresholds = crate::commands::to_projection_thresholds(analysis);
     let field = project_field(tensions, mutations, &thresholds, now);
 
     let mut resolving = 0;

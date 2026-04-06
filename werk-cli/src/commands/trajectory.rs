@@ -104,7 +104,8 @@ pub fn cmd_trajectory(
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
     let now = Utc::now();
-    let thresholds = ProjectionThresholds::default();
+    let analysis = crate::commands::analysis_thresholds_from(&workspace);
+    let thresholds = crate::commands::to_projection_thresholds(&analysis);
 
     let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
 

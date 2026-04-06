@@ -77,6 +77,9 @@ pub struct InstrumentApp {
     // Deck configuration (V6): read from deck.* config keys.
     pub deck_config: crate::deck::DeckConfig,
 
+    // Signal thresholds: read from signals.* config keys.
+    pub signal_thresholds: werk_shared::SignalThresholds,
+
     // Focus zoom (V7): detail of the currently focused child or note.
     pub deck_zoom: crate::deck::ZoomLevel,
     pub focused_detail: Option<crate::deck::FocusedDetail>,
@@ -242,6 +245,14 @@ impl InstrumentApp {
                 let config = werk_shared::Config::load_from_path(&config_path).unwrap_or_default();
                 crate::deck::DeckConfig::load(&config)
             },
+            signal_thresholds: {
+                let config_path = std::env::current_dir()
+                    .ok()
+                    .map(|d| d.join(".werk").join("config.toml"))
+                    .unwrap_or_default();
+                let config = werk_shared::Config::load_from_path(&config_path).unwrap_or_default();
+                werk_shared::SignalThresholds::load(&config)
+            },
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
             focused_note: None,
@@ -360,6 +371,7 @@ impl InstrumentApp {
             trajectory_mode: false,
             epoch_boundary: None,
             deck_config: crate::deck::DeckConfig::default(),
+            signal_thresholds: werk_shared::SignalThresholds::default(),
             deck_zoom: crate::deck::ZoomLevel::Normal,
             focused_detail: None,
             focused_note: None,

@@ -14,7 +14,7 @@ pub mod util;
 pub mod workspace;
 
 pub use batch_mutation::BatchMutation;
-pub use config::Config;
+pub use config::{AnalysisThresholds, Config, SignalThresholds};
 pub use hooks::{HookEvent, HookRunner};
 pub use error::{ErrorCode, Result, WerkError};
 pub use palette::{

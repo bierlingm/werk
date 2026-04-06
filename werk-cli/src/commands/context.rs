@@ -49,6 +49,8 @@ pub fn cmd_context(
 
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
+    let analysis = crate::commands::analysis_thresholds_from(&workspace);
+    let proj_thresholds = crate::commands::to_projection_thresholds(&analysis);
 
     let all_tensions = store
         .list_tensions()
@@ -89,8 +91,7 @@ pub fn cmd_context(
         .map(|node| node_to_tension_info(node, now))
         .collect();
 
-    let thresholds = ProjectionThresholds::default();
-    let engagement_json = build_engagement_json(tension, &mutations, &thresholds, now);
+    let engagement_json = build_engagement_json(tension, &mutations, &proj_thresholds, now);
 
     let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 
@@ -113,6 +114,8 @@ pub fn cmd_context(
 fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
+    let analysis = crate::commands::analysis_thresholds_from(&workspace);
+    let proj_thresholds = crate::commands::to_projection_thresholds(&analysis);
 
     let all_tensions = store
         .list_tensions()
@@ -166,8 +169,7 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
             .map(|node| node_to_tension_info(node, now))
             .collect();
 
-        let thresholds = ProjectionThresholds::default();
-        let engagement_json = build_engagement_json(tension, &mutations, &thresholds, now);
+        let engagement_json = build_engagement_json(tension, &mutations, &proj_thresholds, now);
 
         let mutation_infos: Vec<MutationInfo> = mutations.iter().map(mutation_to_info).collect();
 

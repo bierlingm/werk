@@ -278,6 +278,7 @@ pub fn cmd_tree(
         node_id: &str,
         structural: &FieldStructuralSignals,
         critical_path_set: &HashMap<String, bool>,
+        sig: &werk_shared::SignalThresholds,
     ) -> Vec<&'static str> {
         let mut glyphs = Vec::new();
 
@@ -288,10 +289,10 @@ pub fn cmd_tree(
             if ss.on_longest_path {
                 glyphs.push("\u{2503}"); // ┃ spine
             }
-            if ss.centrality.map(|c| c > 0.0001).unwrap_or(false) {
+            if ss.centrality.map(|c| c > sig.hub_centrality).unwrap_or(false) {
                 glyphs.push("\u{25c9}"); // ◉ hub
             }
-            if ss.descendant_count.map(|c| c > 5).unwrap_or(false) {
+            if ss.descendant_count.map(|c| c > sig.reach_descendants as usize).unwrap_or(false) {
                 glyphs.push("\u{25ce}"); // ◎ reach
             }
         }
@@ -303,6 +304,7 @@ pub fn cmd_tree(
         filtered_ids: &'a std::collections::HashSet<&'a str>,
         structural: &'a FieldStructuralSignals,
         critical_path_set: &'a HashMap<String, bool>,
+        sig: &'a werk_shared::SignalThresholds,
         term_width: usize,
         use_color: bool,
     }
@@ -387,7 +389,7 @@ pub fn cmd_tree(
             };
 
             // --- Zone 5: Structural glyphs ---
-            let glyphs = signal_glyphs(node.id(), ctx.structural, ctx.critical_path_set);
+            let glyphs = signal_glyphs(node.id(), ctx.structural, ctx.critical_path_set, ctx.sig);
 
             // --- Compute available width for desire text ---
             let prefix_chars = prefix.chars().count() + connector.chars().count();
@@ -506,11 +508,13 @@ pub fn cmd_tree(
         .map(|(w, _)| w.0 as usize)
         .unwrap_or(120);
 
+    let sig = crate::commands::signal_thresholds_from(&workspace);
     let ctx = RenderCtx {
         forest: &forest,
         filtered_ids: &filtered_ids,
         structural: &structural_signals,
         critical_path_set: &critical_path_set,
+        sig: &sig,
         term_width,
         use_color,
     };

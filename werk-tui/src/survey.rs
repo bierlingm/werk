@@ -292,7 +292,7 @@ impl InstrumentApp {
 
                 // Structural signals
                 if let Some(ss) = field_structural.signals.get(&tension_id) {
-                    if ss.centrality.map(|c| c > 0.0001).unwrap_or(false) {
+                    if ss.centrality.map(|c| c > self.signal_thresholds.hub_centrality).unwrap_or(false) {
                         items[idx].signal_glyphs.push("\u{25c9}"); // ◉ HUB
                     }
                     if ss.on_longest_path {

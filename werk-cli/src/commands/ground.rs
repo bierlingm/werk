@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{project_tension, ProjectionThresholds, TensionStatus};
+use sd_core::{project_tension, TensionStatus};
 
 #[derive(Serialize)]
 struct EpochSummary {
@@ -69,6 +69,8 @@ pub fn cmd_ground(output: &Output, days: i64) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
     let now = Utc::now();
+    let analysis = crate::commands::analysis_thresholds_from(&workspace);
+    let proj_thresholds = crate::commands::to_projection_thresholds(&analysis);
 
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
 
@@ -163,7 +165,7 @@ pub fn cmd_ground(output: &Output, days: i64) -> Result<(), WerkError> {
     epochs.sort_by(|a, b| b.epoch_count.cmp(&a.epoch_count));
 
     // Trajectory projections — full analytical layer, ground-mode only (Stance B)
-    let thresholds = ProjectionThresholds::default();
+    let thresholds = proj_thresholds;
     let mut trajectories: Vec<TrajectoryEntry> = Vec::new();
     for tension in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
         let mutations = store
