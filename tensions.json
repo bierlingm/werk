@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-06T09:48:27Z",
+  "flushed_at": "2026-04-06T09:53:43Z",
   "summary": {
-    "active": 68,
+    "active": 69,
     "released": 20,
     "resolved": 89,
-    "total": 177
+    "total": 178
   },
   "tensions": [
     {
@@ -1953,6 +1953,17 @@
       "position": null,
       "short_code": 182,
       "status": "Resolved"
+    },
+    {
+      "actual": "Engine::undo_gesture() exists with full semantics (conflict detection, append-only reversal, cascade-aware). Quint specs verify the model. No CLI command, no MCP tool, no TUI keybinding — zero surface exposure.",
+      "created_at": "2026-04-06T09:53:26.837606+00:00",
+      "desired": "gesture undo is accessible from all three surfaces — CLI 'werk undo' reverses the last gesture (or a named one) with conflict feedback, MCP 'undo_gesture' tool exposes it to agents, TUI Ctrl+Z invokes Engine::undo_gesture with toast feedback on success or conflict",
+      "horizon": null,
+      "id": "01KNH3C79NW7XYRV70TTB2JW2J",
+      "parent_id": "01KMGFKY13827YVY23E14BX4X7",
+      "position": null,
+      "short_code": 183,
+      "status": "Active"
     }
   ]
 }
