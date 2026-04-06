@@ -758,14 +758,10 @@ impl InstrumentApp {
 
         let v = &self.field_vitals;
 
+        // Only show aggregate stats that aren't already in band headers.
+        // Band counts (overdue, imminent) are visible in the band titles.
         let mut vitals_parts: Vec<String> = Vec::new();
         vitals_parts.push(format!("{} active", v.active));
-        if v.overdue > 0 {
-            vitals_parts.push(format!("{} overdue", v.overdue));
-        }
-        if v.imminent > 0 {
-            vitals_parts.push(format!("{} imminent", v.imminent));
-        }
         if v.held_unframed > 0 {
             vitals_parts.push(format!("{} held", v.held_unframed));
         }
@@ -785,7 +781,8 @@ impl InstrumentApp {
         let center_start = w.saturating_sub(center_w) / 2;
 
         let mut spans: Vec<Span> = Vec::new();
-        spans.push(Span::styled(&left, if v.overdue > 0 { self.styles.amber } else { self.styles.dim }));
+        let has_attention = v.stale_realities > 0 || v.signaled > 0;
+        spans.push(Span::styled(&left, if has_attention { self.styles.amber } else { self.styles.dim }));
 
         if center_start > left_w + 1 {
             let pad = " ".repeat(center_start - left_w);
