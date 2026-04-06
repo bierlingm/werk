@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-06T13:13:32Z",
+  "flushed_at": "2026-04-06T13:15:39Z",
   "summary": {
-    "active": 64,
+    "active": 63,
     "released": 21,
-    "resolved": 93,
+    "resolved": 94,
     "total": 178
   },
   "tensions": [
@@ -1922,7 +1922,7 @@
       "status": "Active"
     },
     {
-      "actual": "survey.rs render_survey() rewritten: per-band List widgets with per-band ListState in HashMap<TimeBand, RefCell<ListState>>. Single render path — all bands through List widget inside Block with rounded borders and accent color. Navigation simplified to cursor increment/decrement with natural band crossing. Compiles clean. Needs visual testing.",
+      "actual": "SurveyView rewritten: per-band List widgets with per-band ListState, single render path, content-sized bands (largest gets Fill), no jitter/blank screens/bar disappearance. Bar deduplicated against band headers. Navigation simplified to cursor increment with natural band crossing.",
       "created_at": "2026-04-02T15:43:39.229356+00:00",
       "desired": "SurveyView is rewritten greenfield on ftui List widget — pre-built stable display items, single ListState scroll owner, no per-render line count variation, no double-scroll, sticky band header overlay",
       "horizon": null,
@@ -1930,7 +1930,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 180,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "CLI has werk log (no ID) producing cross-tension timeline — 131 entries with timestamps and short codes. No TUI surface yet. Current TUI logbase (L key) is per-tension only.",
