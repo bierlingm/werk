@@ -5,9 +5,14 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::{Forest, TensionStatus, detect_containment_violations, detect_sequencing_pressure};
+use owo_colors::OwoColorize;
+use sd_core::{
+    Forest, TensionStatus, compute_structural_signals, compute_temporal_signals,
+    detect_containment_violations, detect_sequencing_pressure, FieldStructuralSignals,
+};
 use serde::Serialize;
-use werk_shared::truncate;
+use std::collections::HashMap;
+use std::io::IsTerminal;
 
 /// JSON output structure for a tension in tree.
 #[derive(Serialize)]
@@ -210,79 +215,159 @@ pub fn cmd_tree(
     let filtered_ids: std::collections::HashSet<_> =
         filtered_tensions.iter().map(|t| t.id.as_str()).collect();
 
-    /// Compute the display width of a string (ASCII chars = 1, most Unicode = 1).
-    /// This is a simple approximation — good enough for box-drawing and common text.
-    fn display_width(s: &str) -> usize {
-        s.chars().count()
+    let use_color = std::io::stdout().is_terminal()
+        && std::env::var("NO_COLOR").is_err();
+
+    // Compute structural signals once for the whole forest
+    let structural_signals = compute_structural_signals(&forest);
+
+    // Pre-compute critical path membership for all tensions
+    let critical_path_set: HashMap<String, bool> = filtered_tensions
+        .iter()
+        .map(|t| {
+            let ts = compute_temporal_signals(&forest, &t.id, now);
+            (t.id.clone(), ts.on_critical_path)
+        })
+        .collect();
+
+    /// Sort nodes canonically: positioned DESC, then unpositioned by horizon, then creation time.
+    fn canonical_sort(nodes: &mut Vec<&sd_core::Node>) {
+        nodes.sort_by(|a, b| {
+            let a_pos = a.tension.position;
+            let b_pos = b.tension.position;
+
+            match (a_pos, b_pos) {
+                (Some(pa), Some(pb)) => return pb.cmp(&pa),
+                (Some(_), None) => return std::cmp::Ordering::Less,
+                (None, Some(_)) => return std::cmp::Ordering::Greater,
+                (None, None) => {}
+            }
+
+            match (&a.tension.horizon, &b.tension.horizon) {
+                (Some(ha), Some(hb)) => {
+                    let end_order = ha.range_end().cmp(&hb.range_end());
+                    if end_order != std::cmp::Ordering::Equal {
+                        return end_order;
+                    }
+                    let prec_order = ha.precision_level().cmp(&hb.precision_level());
+                    if prec_order != std::cmp::Ordering::Equal {
+                        return prec_order;
+                    }
+                }
+                (Some(_), None) => return std::cmp::Ordering::Less,
+                (None, Some(_)) => return std::cmp::Ordering::Greater,
+                (None, None) => {}
+            }
+
+            a.tension.created_at.cmp(&b.tension.created_at)
+        });
+    }
+
+    /// Truncate to max chars, appending … if cut.
+    fn smart_truncate(s: &str, max: usize) -> String {
+        if s.chars().count() <= max {
+            s.to_string()
+        } else {
+            let truncated: String = s.chars().take(max.saturating_sub(1)).collect();
+            format!("{}\u{2026}", truncated)
+        }
+    }
+
+    /// Build signal glyphs for a node (by exception).
+    fn signal_glyphs(
+        node_id: &str,
+        structural: &FieldStructuralSignals,
+        critical_path_set: &HashMap<String, bool>,
+    ) -> Vec<&'static str> {
+        let mut glyphs = Vec::new();
+
+        if *critical_path_set.get(node_id).unwrap_or(&false) {
+            glyphs.push("\u{2021}"); // ‡ critical path
+        }
+        if let Some(ss) = structural.signals.get(node_id) {
+            if ss.on_longest_path {
+                glyphs.push("\u{2503}"); // ┃ spine
+            }
+            if ss.centrality.map(|c| c > 0.0001).unwrap_or(false) {
+                glyphs.push("\u{25c9}"); // ◉ hub
+            }
+            if ss.descendant_count.map(|c| c > 5).unwrap_or(false) {
+                glyphs.push("\u{25ce}"); // ◎ reach
+            }
+        }
+        glyphs
+    }
+
+    struct RenderCtx<'a> {
+        forest: &'a Forest,
+        filtered_ids: &'a std::collections::HashSet<&'a str>,
+        structural: &'a FieldStructuralSignals,
+        critical_path_set: &'a HashMap<String, bool>,
+        term_width: usize,
+        use_color: bool,
     }
 
     fn render_tree(
-        forest: &Forest,
+        ctx: &RenderCtx<'_>,
         root_ids: &[String],
-        filtered_ids: &std::collections::HashSet<&str>,
         now: chrono::DateTime<Utc>,
         prefix: &str,
-        term_width: usize,
         lines: &mut Vec<String>,
     ) {
         let mut roots: Vec<_> = root_ids
             .iter()
-            .filter(|id| filtered_ids.contains(id.as_str()))
-            .filter_map(|id| forest.find(id))
+            .filter(|id| ctx.filtered_ids.contains(id.as_str()))
+            .filter_map(|id| ctx.forest.find(id))
             .collect();
 
-        // Sort by horizon (earliest first, None last)
-        roots.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
-            (Some(ha), Some(hb)) => ha.cmp(hb),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
+        canonical_sort(&mut roots);
 
         for (i, node) in roots.iter().enumerate() {
             let is_last = i == roots.len() - 1;
-            let connector = if is_last { "└── " } else { "├── " };
+            let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251c}\u{2500}\u{2500} " };
 
-            // === Left side (plan-facing): id, status, horizon, signals, desired text ===
-            let mut left_prefix_parts = werk_shared::display_id(node.tension.short_code, node.id());
-
-            // Status marker (only for non-Active)
-            match node.tension.status {
-                TensionStatus::Resolved => left_prefix_parts.push_str(" ✓"),
-                TensionStatus::Released => left_prefix_parts.push_str(" ~"),
-                TensionStatus::Active => {}
-            }
-
-            // Horizon and overdue
-            if let Some(h) = &node.tension.horizon {
-                left_prefix_parts.push_str(&format!(" [{}]", h));
-                if node.tension.status == TensionStatus::Active && h.is_past(now) {
-                    left_prefix_parts.push_str(" OVERDUE");
+            // --- Zone 1: Identity (id + position) ---
+            let id_str = werk_shared::display_id(node.tension.short_code, node.id());
+            let pos_str = if node.tension.status == TensionStatus::Active {
+                node.tension.position.map(|p| format!("\u{25b8}{}", p)).unwrap_or_default()
+            } else {
+                match node.tension.status {
+                    TensionStatus::Resolved => "\u{2713}".to_string(),
+                    TensionStatus::Released => "~".to_string(),
+                    _ => String::new(),
                 }
-            }
+            };
 
-            // Containment violation
+            // --- Zone 2: Horizon ---
+            let horizon_str = node.tension.horizon.as_ref().map(|h| format!("[{}]", h)).unwrap_or_default();
+
+            // --- Zone 3: Warning signals (by exception) ---
+            let mut warnings: Vec<String> = Vec::new();
             if node.tension.status == TensionStatus::Active {
-                if let Some(ref parent_id) = node.tension.parent_id {
-                    let violations = detect_containment_violations(forest, parent_id);
-                    if violations.iter().any(|v| v.tension_id == node.id()) {
-                        left_prefix_parts.push_str(" EXCEEDS_PARENT");
+                if let Some(h) = &node.tension.horizon {
+                    if h.is_past(now) {
+                        warnings.push("OVERDUE".to_string());
                     }
                 }
-                // Sequencing pressure
                 if let Some(ref parent_id) = node.tension.parent_id {
-                    let pressures = detect_sequencing_pressure(forest, parent_id);
-                    if pressures.iter().any(|p| p.tension_id == node.id()) {
-                        left_prefix_parts.push_str(" PRESSURE");
+                    if detect_containment_violations(ctx.forest, parent_id)
+                        .iter()
+                        .any(|v| v.tension_id == node.id())
+                    {
+                        warnings.push("EXCEEDS_PARENT".to_string());
+                    }
+                    if detect_sequencing_pressure(ctx.forest, parent_id)
+                        .iter()
+                        .any(|p| p.tension_id == node.id())
+                    {
+                        warnings.push("PRESSURE".to_string());
                     }
                 }
             }
 
-            left_prefix_parts.push(' ');
-
-            // === Right side (trace-facing): closure progress, released ===
-            let all_children = forest.children(node.id()).unwrap_or_default();
-            let right = if !all_children.is_empty() {
+            // --- Zone 4: Closure progress ---
+            let all_children = ctx.forest.children(node.id()).unwrap_or_default();
+            let closure_str = if !all_children.is_empty() {
                 let resolved_count = all_children
                     .iter()
                     .filter(|c| c.tension.status == TensionStatus::Resolved)
@@ -293,94 +378,145 @@ pub fn cmd_tree(
                     .count();
                 let active_count = all_children.len() - released_count;
                 if released_count > 0 {
-                    format!(" [{}/{}] ({} released)", resolved_count, active_count, released_count)
+                    format!("[{}/{}] ({} released)", resolved_count, active_count, released_count)
                 } else {
-                    format!(" [{}/{}]", resolved_count, active_count)
+                    format!("[{}/{}]", resolved_count, active_count)
                 }
             } else {
                 String::new()
             };
 
-            // Compute available space for desired text
-            let tree_prefix_width = display_width(prefix) + display_width(connector);
-            let left_prefix_width = display_width(&left_prefix_parts);
-            let right_width = display_width(&right);
-            // Reserve: tree prefix + left prefix + at least 10 chars of text + gap + right
-            let min_text = 10;
-            let used = tree_prefix_width + left_prefix_width + right_width + 1; // +1 for gap
-            let available_for_text = if term_width > used {
-                term_width - used
-            } else {
-                min_text
+            // --- Zone 5: Structural glyphs ---
+            let glyphs = signal_glyphs(node.id(), ctx.structural, ctx.critical_path_set);
+
+            // --- Compute available width for desire text ---
+            let prefix_chars = prefix.chars().count() + connector.chars().count();
+
+            // Build the meta prefix: "#42 ▸3 [2026-06] "
+            let mut meta_plain = id_str.clone();
+            if !pos_str.is_empty() {
+                meta_plain.push(' ');
+                meta_plain.push_str(&pos_str);
+            }
+            if !horizon_str.is_empty() {
+                meta_plain.push(' ');
+                meta_plain.push_str(&horizon_str);
+            }
+            for w in &warnings {
+                meta_plain.push(' ');
+                meta_plain.push_str(w);
+            }
+            meta_plain.push(' ');
+
+            // Suffix: "  [9/15]  ‡◉"
+            let suffix_plain = {
+                let mut s = String::new();
+                if !closure_str.is_empty() {
+                    s.push_str("  ");
+                    s.push_str(&closure_str);
+                }
+                if !glyphs.is_empty() {
+                    s.push_str("  ");
+                    for g in &glyphs {
+                        s.push_str(g);
+                    }
+                }
+                s
             };
-            let text_max = available_for_text.max(min_text);
-            let desired_text = truncate(&node.tension.desired, text_max);
-            let desired_width = display_width(&desired_text);
 
-            // Assemble: fill gap between left content and right-aligned trace
-            let left_total = tree_prefix_width + left_prefix_width + desired_width;
-            let line = if !right.is_empty() && term_width > left_total + right_width {
-                let gap = term_width - left_total - right_width;
-                format!(
-                    "{}{}{}{}{}{}",
-                    prefix, connector, left_prefix_parts, desired_text,
-                    " ".repeat(gap), right
-                )
+            let chrome_width = prefix_chars + meta_plain.chars().count() + suffix_plain.chars().count();
+            let available = if ctx.term_width > chrome_width + 12 {
+                ctx.term_width - chrome_width
             } else {
-                // Narrow terminal or no right content — just concatenate
-                format!("{}{}{}{}{}", prefix, connector, left_prefix_parts, desired_text, right)
+                40 // minimum readable text
             };
 
-            lines.push(line);
+            let desired_text = smart_truncate(&node.tension.desired, available);
 
-            // Recurse for children (only those that pass the filter)
-            let mut children: Vec<_> = node
+            // --- Assemble with color ---
+            if ctx.use_color {
+                let line = format!(
+                    "{}{}{}{}{}",
+                    prefix,
+                    connector.dimmed(),
+                    format_meta_colored(&id_str, &pos_str, &horizon_str, &warnings),
+                    desired_text,
+                    format_suffix_colored(&closure_str, &glyphs),
+                );
+                lines.push(line);
+            } else {
+                let line = format!(
+                    "{}{}{}{}{}",
+                    prefix, connector, meta_plain, desired_text, suffix_plain
+                );
+                lines.push(line);
+            }
+
+            // Recurse
+            let child_ids: Vec<_> = node
                 .children
                 .iter()
-                .filter(|id| filtered_ids.contains(id.as_str()))
-                .filter_map(|id| forest.find(id))
+                .filter(|id| ctx.filtered_ids.contains(id.as_str()))
+                .cloned()
                 .collect();
 
-            children.sort_by(|a, b| match (&a.tension.horizon, &b.tension.horizon) {
-                (Some(ha), Some(hb)) => ha.cmp(hb),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            });
-
-            if !children.is_empty() {
+            if !child_ids.is_empty() {
                 let new_prefix = if is_last {
                     format!("{}    ", prefix)
                 } else {
-                    format!("{}│   ", prefix)
+                    format!("{}\u{2502}   ", prefix)
                 };
-                render_tree(
-                    forest,
-                    &node.children,
-                    filtered_ids,
-                    now,
-                    &new_prefix,
-                    term_width,
-                    lines,
-                );
+                render_tree(ctx, &child_ids, now, &new_prefix, lines);
             }
         }
     }
 
+    fn format_meta_colored(
+        id_str: &str,
+        pos_str: &str,
+        horizon_str: &str,
+        warnings: &[String],
+    ) -> String {
+        let mut s = format!("{}", id_str.bold());
+        if !pos_str.is_empty() {
+            s.push_str(&format!(" {}", pos_str.dimmed()));
+        }
+        if !horizon_str.is_empty() {
+            s.push_str(&format!(" {}", horizon_str.dimmed()));
+        }
+        for w in warnings {
+            s.push_str(&format!(" {}", w.yellow().bold()));
+        }
+        s.push(' ');
+        s
+    }
+
+    fn format_suffix_colored(closure_str: &str, glyphs: &[&str]) -> String {
+        let mut s = String::new();
+        if !closure_str.is_empty() {
+            s.push_str(&format!("  {}", closure_str.dimmed()));
+        }
+        if !glyphs.is_empty() {
+            s.push_str(&format!("  {}", glyphs.join("").cyan()));
+        }
+        s
+    }
+
     let term_width = terminal_size::terminal_size()
         .map(|(w, _)| w.0 as usize)
-        .unwrap_or(80);
+        .unwrap_or(120);
+
+    let ctx = RenderCtx {
+        forest: &forest,
+        filtered_ids: &filtered_ids,
+        structural: &structural_signals,
+        critical_path_set: &critical_path_set,
+        term_width,
+        use_color,
+    };
 
     let mut lines = Vec::new();
-    render_tree(
-        &forest,
-        forest.root_ids(),
-        &filtered_ids,
-        now,
-        "",
-        term_width,
-        &mut lines,
-    );
+    render_tree(&ctx, forest.root_ids(), now, "", &mut lines);
 
     for line in &lines {
         println!("{}", line);
@@ -401,13 +537,20 @@ pub fn cmd_tree(
         .count();
 
     println!();
-    println!(
-        "Total: {}  Active: {}  Resolved: {}  Released: {}",
-        tensions.len(),
-        active_count,
-        resolved_count,
-        released_count
-    );
+    if use_color {
+        println!(
+            "{}",
+            format!(
+                "Total: {}  Active: {}  Resolved: {}  Released: {}",
+                tensions.len(), active_count, resolved_count, released_count
+            ).dimmed()
+        );
+    } else {
+        println!(
+            "Total: {}  Active: {}  Resolved: {}  Released: {}",
+            tensions.len(), active_count, resolved_count, released_count
+        );
+    }
 
     if stats {
         let deadlined = tensions.iter().filter(|t| t.horizon.is_some()).count();
@@ -426,10 +569,20 @@ pub fn cmd_tree(
             .iter()
             .filter(|t| t.status == TensionStatus::Active && t.position.is_none())
             .count();
-        println!(
-            "Deadlined: {}  Overdue: {}  Positioned: {}  Held: {}",
-            deadlined, overdue, positioned, held
-        );
+        if use_color {
+            println!(
+                "{}",
+                format!(
+                    "Deadlined: {}  Overdue: {}  Positioned: {}  Held: {}",
+                    deadlined, overdue, positioned, held
+                ).dimmed()
+            );
+        } else {
+            println!(
+                "Deadlined: {}  Overdue: {}  Positioned: {}  Held: {}",
+                deadlined, overdue, positioned, held
+            );
+        }
     }
 
     Ok(())

@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-04T05:49:59Z",
+  "flushed_at": "2026-04-06T08:03:46Z",
   "summary": {
-    "active": 71,
+    "active": 70,
     "released": 20,
-    "resolved": 86,
+    "resolved": 87,
     "total": 177
   },
   "tensions": [
@@ -85,7 +85,7 @@
       "status": "Released"
     },
     {
-      "actual": "CLI reading surface consolidated: 10 commands → 4 primary (show, list, tree, stats) + 1 named perspective (survey). list is the general-purpose query engine with 12 filter/sort flags. stats replaces ground/insights/trajectory/health with 8 section flags. show --full absorbs context. tree --stats appends vitals. MCP surface mirrors CLI: new stats tool, enriched show/list schemas. Old commands hidden but functional. CLI help reflects operative identity. CLAUDE.md updated.",
+      "actual": "CLI reading surface consolidated: 10 commands → 4 primary (show, list, tree, stats) + 1 named perspective (survey). list is the general-purpose query engine with 12 filter/sort flags. stats replaces ground/insights/trajectory/health with 8 section flags. show --full absorbs context. tree --stats appends vitals. Tree now shows canonical sort (positioned first), position indicators, structural signal glyphs (‡┃◉◎) by exception, ANSI color layering, and smart terminal-width truncation. MCP surface mirrors CLI: new stats tool, enriched show/list schemas. Old commands hidden but functional. CLI help reflects operative identity.",
       "created_at": "2026-03-24T17:52:26.147317+00:00",
       "desired": "CLI is a complete, honest interface to the structure — foundation vocabulary, readable output, structured JSON, every operative gesture available, no agent-specific orchestration commands",
       "horizon": "2026-05",
@@ -1647,7 +1647,7 @@
       "status": "Active"
     },
     {
-      "actual": "tree renders: ID, status marker, horizon, OVERDUE/EXCEEDS_PARENT/PRESSURE, desired text, closure progress. No position/route. No structural signal glyphs. No staleness indicator. Sort is horizon-only, not canonical children_by_horizon() ordering. The show command displays all these but tree does not.",
+      "actual": "Tree command now shows: (1) canonical sort — positioned children first (DESC by position), then held by horizon, then creation time — matching children_by_horizon() logic. (2) Position indicator ▸N on positioned active tensions. (3) Structural signal glyphs by exception: ‡ critical path, ┃ spine, ◉ hub, ◎ reach. (4) Full desire text — no truncation, lines wrap naturally. Closure progress and signal glyphs follow the desire text. Computation uses compute_structural_signals() (one batch) and compute_temporal_signals() (per-tension for critical path). No new sd-core changes — purely rendering in tree.rs.",
       "created_at": "2026-03-31T10:37:22.294342+00:00",
       "desired": "tree command shows richer per-node signals — position/route indicator, structural signal glyphs (HUB/SPINE/REACH), staleness, and sorts by canonical ordering (position DESC then deadline) instead of horizon-only",
       "horizon": "2026-05",
@@ -1655,7 +1655,7 @@
       "parent_id": "01KMGFKY13827YVY23E14BX4X7",
       "position": null,
       "short_code": 155,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Partially addressed by #168: unified palette navigates to selected tension on Enter. Quick in-overlay gestures (resolve, annotate, move from palette) were evaluated and deferred — palette is a finding surface, user acts from the field after navigation. Remaining: the design decision to not add in-palette gestures may be revisited if frankentui#58 adds structured rows with action affordances.",
