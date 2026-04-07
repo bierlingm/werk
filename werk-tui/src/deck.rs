@@ -550,6 +550,8 @@ pub struct FocusedDetail {
     pub child_resolved: usize,
     pub child_released: usize,
     pub child_held: usize,
+    /// Desire text of the next committed step (lowest-position active child).
+    pub next_step_desired: Option<String>,
     // Notes (most recent first, capped)
     pub recent_notes: Vec<(String, String)>,
 }
@@ -705,9 +707,10 @@ impl InstrumentApp {
                 let reality_lines = if detail.actual.is_empty() { 0 } else {
                     word_wrap(&detail.actual, text_w).len()
                 };
-                let meta_line = 1; // combined temporal + structure
+                let meta_line = 1; // combined temporal + progress bar + counts
+                let next_step_line = if detail.child_count > 0 && detail.next_step_desired.is_some() { 1 } else { 0 };
                 let note_lines = detail.recent_notes.len();
-                reality_lines + meta_line + note_lines
+                reality_lines + meta_line + next_step_line + note_lines
             } else { 0 }
         } else { 0 };
 
@@ -898,32 +901,76 @@ impl InstrumentApp {
             self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, 0);
             my += 1;
         } else {
-            // --- Route zone: List widget ---
+            // --- Route zone: List widget (split around focused item for inline detail) ---
             {
-                let (route_list, mut route_state) = crate::deck_zones::build_route_list(
-                    &frontier, &self.siblings, shown_route, active_target, &cols, w, &self.styles,
-                );
-                let route_item_count = shown_route
-                    + if route_remaining > 0 { 1 } else { 0 }; // summary line
-                let route_h = route_item_count.min((top_limit - my) as usize);
-                if route_h > 0 {
-                    ftui::widgets::StatefulWidget::render(
-                        &route_list,
-                        Rect::new(area.x, my, area.width, route_h as u16),
-                        frame,
-                        &mut route_state,
+                let focused_route_pos = if self.deck_zoom.has_detail() {
+                    focused_sibling.and_then(|si| {
+                        frontier.route[..shown_route.min(frontier.route.len())].iter().position(|&r| r == si)
+                    })
+                } else {
+                    None
+                };
+
+                if let Some(focus_pos) = focused_route_pos {
+                    // Pre-focus segment: items 0..=focus_pos
+                    let pre_count = focus_pos + 1;
+                    let (pre_list, mut pre_state) = crate::deck_zones::build_route_list_segment(
+                        &frontier, &self.siblings, 0, pre_count, shown_route, false,
+                        active_target, &cols, w, &self.styles,
                     );
-                    my += route_h as u16;
-                }
-                // V7: inline focus detail for route items (rendered after List)
-                if self.deck_zoom.has_detail() {
-                    for i in 0..shown_route.min(frontier.route.len()) {
-                        let sibling_idx = frontier.route[i];
-                        if focused_sibling == Some(sibling_idx) {
-                            if let Some(ref detail) = self.focused_detail {
-                                my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
-                            }
+                    let pre_h = pre_count.min((top_limit - my) as usize);
+                    if pre_h > 0 {
+                        ftui::widgets::StatefulWidget::render(
+                            &pre_list,
+                            Rect::new(area.x, my, area.width, pre_h as u16),
+                            frame,
+                            &mut pre_state,
+                        );
+                        my += pre_h as u16;
+                    }
+
+                    // Inline focus detail
+                    if let Some(ref detail) = self.focused_detail {
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                    }
+
+                    // Post-focus segment: items (focus_pos+1)..shown_route + summary
+                    let post_start = pre_count;
+                    let post_count = shown_route.saturating_sub(post_start);
+                    let has_summary = route_remaining > 0;
+                    if post_count > 0 || has_summary {
+                        let (post_list, mut post_state) = crate::deck_zones::build_route_list_segment(
+                            &frontier, &self.siblings, post_start, post_count, shown_route, has_summary,
+                            active_target, &cols, w, &self.styles,
+                        );
+                        let post_item_count = post_count + if has_summary { 1 } else { 0 };
+                        let post_h = post_item_count.min((top_limit - my) as usize);
+                        if post_h > 0 {
+                            ftui::widgets::StatefulWidget::render(
+                                &post_list,
+                                Rect::new(area.x, my, area.width, post_h as u16),
+                                frame,
+                                &mut post_state,
+                            );
+                            my += post_h as u16;
                         }
+                    }
+                } else {
+                    // No focused item in route — render as single list
+                    let (route_list, mut route_state) = crate::deck_zones::build_route_list(
+                        &frontier, &self.siblings, shown_route, active_target, &cols, w, &self.styles,
+                    );
+                    let route_item_count = shown_route
+                        + if route_remaining > 0 { 1 } else { 0 };
+                    let route_h = route_item_count.min((top_limit - my) as usize);
+                    if route_h > 0 {
+                        ftui::widgets::StatefulWidget::render(
+                            &route_list,
+                            Rect::new(area.x, my, area.width, route_h as u16),
+                            frame,
+                            &mut route_state,
+                        );
+                        my += route_h as u16;
                     }
                 }
             }
@@ -1043,31 +1090,76 @@ impl InstrumentApp {
                 my += 1;
             }
 
-            // --- Held zone: List widget ---
+            // --- Held zone: List widget (split around focused item for inline detail) ---
             if !frontier.held.is_empty() && my < top_limit {
-                let (held_list, mut held_state) = crate::deck_zones::build_held_list(
-                    &frontier, &self.siblings, shown_held, active_target, &cols, w, &self.styles,
-                );
-                let held_item_count = shown_held
-                    + if held_remaining == 1 { 1 } else if held_remaining > 1 { 1 } else { 0 };
-                let held_h = held_item_count.min((top_limit - my) as usize);
-                if held_h > 0 {
-                    ftui::widgets::StatefulWidget::render(
-                        &held_list,
-                        Rect::new(area.x, my, area.width, held_h as u16),
-                        frame,
-                        &mut held_state,
+                let focused_held_pos = if self.deck_zoom.has_detail() {
+                    focused_sibling.and_then(|si| {
+                        frontier.held[..shown_held.min(frontier.held.len())].iter().position(|&r| r == si)
+                    })
+                } else {
+                    None
+                };
+
+                if let Some(focus_pos) = focused_held_pos {
+                    // Pre-focus segment
+                    let pre_count = focus_pos + 1;
+                    let (pre_list, mut pre_state) = crate::deck_zones::build_held_list_segment(
+                        &frontier, &self.siblings, 0, pre_count, shown_held, false,
+                        active_target, &cols, w, &self.styles,
                     );
-                    my += held_h as u16;
-                }
-                if self.deck_zoom.has_detail() {
-                    for i in 0..shown_held.min(frontier.held.len()) {
-                        let sibling_idx = frontier.held[i];
-                        if focused_sibling == Some(sibling_idx) {
-                            if let Some(ref detail) = self.focused_detail {
-                                my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
-                            }
+                    let pre_h = pre_count.min((top_limit - my) as usize);
+                    if pre_h > 0 {
+                        ftui::widgets::StatefulWidget::render(
+                            &pre_list,
+                            Rect::new(area.x, my, area.width, pre_h as u16),
+                            frame,
+                            &mut pre_state,
+                        );
+                        my += pre_h as u16;
+                    }
+
+                    // Inline focus detail
+                    if let Some(ref detail) = self.focused_detail {
+                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
+                    }
+
+                    // Post-focus segment + summary
+                    let post_start = pre_count;
+                    let post_count = shown_held.saturating_sub(post_start);
+                    let has_summary = held_remaining > 0;
+                    if post_count > 0 || has_summary {
+                        let (post_list, mut post_state) = crate::deck_zones::build_held_list_segment(
+                            &frontier, &self.siblings, post_start, post_count, shown_held, has_summary,
+                            active_target, &cols, w, &self.styles,
+                        );
+                        let post_item_count = post_count + if has_summary { 1 } else { 0 };
+                        let post_h = post_item_count.min((top_limit - my) as usize);
+                        if post_h > 0 {
+                            ftui::widgets::StatefulWidget::render(
+                                &post_list,
+                                Rect::new(area.x, my, area.width, post_h as u16),
+                                frame,
+                                &mut post_state,
+                            );
+                            my += post_h as u16;
                         }
+                    }
+                } else {
+                    // No focused item in held — render as single list
+                    let (held_list, mut held_state) = crate::deck_zones::build_held_list(
+                        &frontier, &self.siblings, shown_held, active_target, &cols, w, &self.styles,
+                    );
+                    let held_item_count = shown_held
+                        + if held_remaining == 1 { 1 } else if held_remaining > 1 { 1 } else { 0 };
+                    let held_h = held_item_count.min((top_limit - my) as usize);
+                    if held_h > 0 {
+                        ftui::widgets::StatefulWidget::render(
+                            &held_list,
+                            Rect::new(area.x, my, area.width, held_h as u16),
+                            frame,
+                            &mut held_state,
+                        );
+                        my += held_h as u16;
                     }
                 }
             }
@@ -1390,19 +1482,32 @@ impl InstrumentApp {
             }
         }
 
-        // 2. Metadata line: intent → bridge → trace (mirrors deck top→bottom)
+        // 2. Metadata line: temporal facts + progress bar + counts (single line)
         if lines.len() < max_lines {
+            let mut spans: Vec<Span> = Vec::new();
+            spans.push(Span::styled(indent_str.clone(), self.styles.dim));
+
+            // Progress bar (if children exist) comes first
+            if detail.child_count > 0 {
+                let done = detail.child_resolved + detail.child_released;
+                let ratio = done as f64 / detail.child_count as f64;
+                let bar_width = 11;
+                let filled = (ratio * bar_width as f64).round() as usize;
+                let bar = format!("{}{}", "\u{2588}".repeat(filled), "\u{2591}".repeat(bar_width - filled));
+                spans.push(Span::styled(format!("{} ", bar), self.styles.green));
+
+                let mut count_parts: Vec<String> = Vec::new();
+                count_parts.push(format!("{}/{}", done, detail.child_count));
+                if detail.child_held > 0 {
+                    count_parts.push(format!("{} held", detail.child_held));
+                }
+                spans.push(Span::styled(format!("{} \u{00b7} ", count_parts.join(" \u{00b7} ")), self.styles.dim));
+            }
+
+            // Temporal facts
             let mut parts: Vec<String> = Vec::new();
             if let Some(ref dl) = detail.deadline_label {
                 parts.push(dl.clone());
-            }
-            if detail.child_count > 0 {
-                let done = detail.child_resolved + detail.child_released;
-                let mut child_part = format!("{}/{}", done, detail.child_count);
-                if detail.child_held > 0 {
-                    child_part.push_str(&format!(" {} held", detail.child_held));
-                }
-                parts.push(child_part);
             }
             parts.push(format!("born {}", detail.created_age));
             if detail.last_desire_age != detail.created_age {
@@ -1411,9 +1516,25 @@ impl InstrumentApp {
             if detail.last_reality_age != detail.created_age {
                 parts.push(format!("\u{25c7} {}", detail.last_reality_age));
             }
+            spans.push(Span::styled(parts.join(" \u{00b7} "), self.styles.dim));
+
+            lines.push(Line::from_spans(spans));
+        }
+
+        // 2b. Next committed step (own line, only when children exist and there's a next step)
+        if detail.child_count > 0 && detail.next_step_desired.is_some() && lines.len() < max_lines {
+            let next = detail.next_step_desired.as_ref().unwrap();
+            let prefix = "next: ";
+            let avail = text_w.saturating_sub(prefix.len());
+            let truncated = if next.chars().count() > avail {
+                let t: String = next.chars().take(avail.saturating_sub(1)).collect();
+                format!("{}\u{2026}", t)
+            } else {
+                next.clone()
+            };
             lines.push(Line::from_spans([
                 Span::styled(indent_str.clone(), self.styles.dim),
-                Span::styled(parts.join(" \u{00b7} "), self.styles.dim),
+                Span::styled(format!("{}{}", prefix, truncated), self.styles.dim),
             ]));
         }
 

@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-06T18:59:04Z",
+  "flushed_at": "2026-04-07T08:31:46Z",
   "summary": {
     "active": 63,
     "released": 21,
-    "resolved": 96,
-    "total": 180
+    "resolved": 97,
+    "total": 181
   },
   "tensions": [
     {
@@ -1985,6 +1985,17 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 185,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Progress pulse implemented — text-based bar (█░ chars) as Spans in existing Paragraph. FocusedDetail extended with next_step_desired, populated from lowest-position active child. Height measurement updated. All tests pass.",
+      "created_at": "2026-04-07T08:07:53.937040+00:00",
+      "desired": "Inline focus detail shows progress pulse — mini progress bar, done/total, held count, next committed step desire",
+      "horizon": null,
+      "id": "01KNKFQNTHD38Z10DJWFBM9FXC",
+      "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
+      "position": null,
+      "short_code": 186,
       "status": "Resolved"
     }
   ]

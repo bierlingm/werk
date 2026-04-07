@@ -347,6 +347,123 @@ pub fn build_route_list<'a>(
     (list, state)
 }
 
+/// Build a route list segment: items from `route_start` to `route_start + route_count`,
+/// with optional summary appended for remaining items beyond `shown_route`.
+pub fn build_route_list_segment<'a>(
+    frontier: &Frontier,
+    siblings: &[FieldEntry],
+    route_start: usize,
+    route_count: usize,
+    shown_route: usize,
+    include_summary: bool,
+    active_target: CursorTarget,
+    cols: &ColumnLayout,
+    w: usize,
+    styles: &InstrumentStyles,
+) -> (List<'a>, ListState) {
+    let mut items: Vec<ListItem<'a>> = Vec::new();
+    let mut selected: Option<usize> = None;
+    let route_end = (route_start + route_count).min(frontier.route.len());
+
+    for i in route_start..route_end {
+        let sibling_idx = frontier.route[i];
+        let entry = &siblings[sibling_idx];
+        let is_sel = active_target == CursorTarget::Route(sibling_idx);
+        if is_sel { selected = Some(items.len()); }
+        let glyph = status_glyph(entry.status);
+        let line = build_child_line(entry, glyph, is_sel, false, 0, Some(styles.cyan), cols, w, styles);
+        items.push(ListItem::new(line));
+    }
+
+    if include_summary {
+        let route_remaining = frontier.route.len() - shown_route;
+        if route_remaining == 1 {
+            let sibling_idx = frontier.route[shown_route];
+            let entry = &siblings[sibling_idx];
+            let is_sel = active_target == CursorTarget::RouteSummary;
+            if is_sel { selected = Some(items.len()); }
+            let glyph = status_glyph(entry.status);
+            let line = build_child_line(entry, glyph, is_sel, false, 0, Some(styles.cyan), cols, w, styles);
+            items.push(ListItem::new(line));
+        } else if route_remaining > 1 {
+            let is_sel = active_target == CursorTarget::RouteSummary;
+            if is_sel { selected = Some(items.len()); }
+            let count = if shown_route == 0 { frontier.route.len() } else { route_remaining };
+            let next_deadline = frontier.route[shown_route..]
+                .iter()
+                .filter_map(|&idx| siblings[idx].horizon_label.as_deref())
+                .next();
+            let label = if shown_route > 0 { "more" } else { "route steps" };
+            let text = match next_deadline {
+                Some(dl) => format!("\u{25B8} {} {} \u{00B7} next {}", count, label, dl),
+                None => format!("\u{25B8} {} {}", count, label),
+            };
+            let line = build_indicator_line(&text, is_sel, 0, cols, w, styles);
+            items.push(ListItem::new(line));
+        }
+    }
+
+    let list = List::new(items).highlight_style(styles.selected);
+    let mut state = ListState::default();
+    state.select(selected);
+    (list, state)
+}
+
+/// Build a held list segment: items from `held_start` to `held_start + held_count`,
+/// with optional summary appended for remaining items beyond `shown_held`.
+pub fn build_held_list_segment<'a>(
+    frontier: &Frontier,
+    siblings: &[FieldEntry],
+    held_start: usize,
+    held_count: usize,
+    shown_held: usize,
+    include_summary: bool,
+    active_target: CursorTarget,
+    cols: &ColumnLayout,
+    w: usize,
+    styles: &InstrumentStyles,
+) -> (List<'a>, ListState) {
+    let mut items: Vec<ListItem<'a>> = Vec::new();
+    let mut selected: Option<usize> = None;
+    let held_end = (held_start + held_count).min(frontier.held.len());
+
+    for i in held_start..held_end {
+        let sibling_idx = frontier.held[i];
+        let entry = &siblings[sibling_idx];
+        let is_sel = active_target == CursorTarget::HeldItem(sibling_idx);
+        if is_sel { selected = Some(items.len()); }
+        let line = build_child_line(entry, "\u{2727}", is_sel, false, HELD_INDENT, Some(styles.subdued), cols, w, styles);
+        items.push(ListItem::new(line));
+    }
+
+    if include_summary {
+        let held_remaining = frontier.held.len() - shown_held;
+        if held_remaining == 1 {
+            let sibling_idx = frontier.held[shown_held];
+            let entry = &siblings[sibling_idx];
+            let is_sel = active_target == CursorTarget::Held;
+            if is_sel { selected = Some(items.len()); }
+            let line = build_child_line(entry, "\u{2727}", is_sel, false, HELD_INDENT, Some(styles.subdued), cols, w, styles);
+            items.push(ListItem::new(line));
+        } else if held_remaining > 1 {
+            let is_sel = active_target == CursorTarget::Held;
+            if is_sel { selected = Some(items.len()); }
+            let text = if shown_held == 0 {
+                format!("\u{2727} {} held", frontier.held.len())
+            } else {
+                format!("\u{2727} {} more held", held_remaining)
+            };
+            let line = build_indicator_line(&text, is_sel, HELD_INDENT, cols, w, styles);
+            items.push(ListItem::new(line));
+        }
+    }
+
+    let list = List::new(items).highlight_style(styles.selected);
+    let mut state = ListState::default();
+    state.select(selected);
+    (list, state)
+}
+
 /// Build a List widget for the overdue zone.
 pub fn build_overdue_list<'a>(
     frontier: &Frontier,

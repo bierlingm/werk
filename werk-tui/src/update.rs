@@ -2098,6 +2098,12 @@ impl InstrumentApp {
         let child_released = children.iter().filter(|c| c.status == sd_core::TensionStatus::Released).count();
         let child_held = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_none()).count();
 
+        // Next committed step: active child with the lowest non-null position
+        let next_step_desired = children.iter()
+            .filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_some())
+            .min_by_key(|c| c.position.unwrap())
+            .map(|c| c.desired.clone());
+
         crate::deck::FocusedDetail {
             sibling_index: self.deck_selected_sibling_index().unwrap_or(0),
             desired: entry.desired.clone(),
@@ -2113,6 +2119,7 @@ impl InstrumentApp {
             child_resolved,
             child_released,
             child_held,
+            next_step_desired,
             recent_notes,
         }
     }
