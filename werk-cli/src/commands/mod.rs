@@ -611,6 +611,10 @@ Examples:
         /// Show changes since (e.g., "today", "yesterday", "3 days ago", "2026-03-10", "monday")
         #[arg(long, default_value = "today")]
         since: String,
+
+        /// Show full mutation details per tension (default is compact stat-line)
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     /// List tensions with filtering and sorting.
@@ -928,10 +932,10 @@ pub enum NoteCommand {
 /// Config subcommands.
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
-    /// Get a configuration value.
+    /// Get a configuration value (omit key to list all).
     Get {
-        /// Configuration key (dot notation, e.g., "agent.command").
-        key: String,
+        /// Configuration key (dot notation, e.g., "agent.command"). Omit to list all.
+        key: Option<String>,
     },
 
     /// Set a configuration value.
@@ -942,4 +946,7 @@ pub enum ConfigCommand {
         /// Configuration value.
         value: String,
     },
+
+    /// Show config file path(s).
+    Path,
 }

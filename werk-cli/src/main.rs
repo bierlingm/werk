@@ -195,7 +195,7 @@ fn main() {
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
         Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
         Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),
-        Commands::Diff { since } => werk::commands::diff::cmd_diff(&output, since),
+        Commands::Diff { since, verbose } => werk::commands::diff::cmd_diff(&output, since, verbose),
         Commands::Stats {
             temporal,
             attention,

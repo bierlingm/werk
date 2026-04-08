@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-07T08:31:46Z",
+  "flushed_at": "2026-04-08T15:57:34Z",
   "summary": {
-    "active": 63,
-    "released": 21,
-    "resolved": 97,
-    "total": 181
+    "active": 47,
+    "released": 41,
+    "resolved": 101,
+    "total": 189
   },
   "tensions": [
     {
@@ -44,7 +44,7 @@
       "actual": "course is scheduled for end of April 2026; no direct input yet from the structural consulting methodology on cooperative dynamics",
       "created_at": "2026-03-24T17:52:25.973793+00:00",
       "desired": "the Foundations for Structural Thinking course has been completed and its insights on collective structure are integrated into the cooperative model",
-      "horizon": "2026-06",
+      "horizon": "2026-05-01",
       "id": "01KMGFKXVNA0AQ2F8DTTGFX0FF",
       "parent_id": "01KMGFKXTZYXZJ6ZQQXB632771",
       "position": null,
@@ -511,7 +511,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": 1,
       "short_code": 48,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "werk split and werk merge commands complete. Split: 1→N with split_from edges, cross-tension epochs (split_source/split_target), child assignment (--assign, --children-to-parent, --children-to=N), source disposition (resolve/--keep/--release/--hold), --dry-run. Merge: asymmetric (--into) and symmetric (--as), merged_into edges, cross-tension epochs (merge_source/merge_target), child reparenting, --dry-run. Both commands are gesture-wrapped.",
@@ -877,7 +877,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Live interactive web UI at werk serve. Create tension, evolve desire, update reality, resolve, reopen, decompose (add child) — all via API calls, no terminal needed. Search with auto-expand, filter by status. SSE auto-refreshes on any mutation. Missing: step-level actions (resolve/edit individual children from the UI), horizon management, position/reorder, release, notes. Not yet at parity with the core practice loop.",
+      "actual": "Audit complete (2026-04-07). Web GUI has: create, desire, reality, resolve, reopen, decompose (add child), tree navigation, detail view. CLI/MCP gestures missing from TUI: split (decompose into N), merge, compose (create parent), snooze, recur, rm, epoch creation, explicit position number. Of these, split/merge/snooze/rm are core practice gestures. Compose, recur, epoch are secondary. Batch is agent-only.",
       "created_at": "2026-03-25T20:15:35.801566+00:00",
       "desired": "the GUI reaches feature parity with the core practice loop — create tension, see the structure, gesture through it, track dynamics",
       "horizon": null,
@@ -896,7 +896,7 @@
       "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
       "position": null,
       "short_code": 85,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, pathway palettes operational, primary experience functional with known architectural debt being addressed), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
@@ -973,7 +973,7 @@
       "parent_id": "01KMGFKYZMWQAH7SFJR09A9DTR",
       "position": null,
       "short_code": 93,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Detail card implemented: Focus (Enter) shows reality text in subdued weight, metadata line (intent→bridge→trace: ⏱ deadline, child count, born/◆ desire/◇ reality ages), recent notes. Peek (Space) shows lighter card. Focus/Peek switch between densities. Diamond glyph vocabulary: ◆ cyan route, ◆ green next, ✧ subdued held, ◇ subdued reality, ⏱ deadlines everywhere. Reconciliation protects focused items. Root suppresses accumulated. Reorder keeps held separate. e edits anchors, Enter reserved for focus.",
@@ -995,15 +995,15 @@
       "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
       "position": null,
       "short_code": 95,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "unspoken intent since the beginning. werk -g currently just means a workspace at ~/.werk. The deeper vision: global workspace knows about all registered local workspaces. Cross-field patterns (where is energy going, which fields are stagnant). If root level of a single workspace is a command center for that field, global is the command center for all fields. Connects to logbase (cross-workspace query), survey view (cross-field temporal overview), and the mobile app (which field am I looking at right now).",
       "created_at": "2026-03-26T11:36:55.312911+00:00",
-      "desired": "the global workspace is a meta-command-center across all workspaces — register, view, filter, flit between fields, query the logbase across all of them",
+      "desired": "a global workspace exists — view and act across all local werk workspaces from one place",
       "horizon": null,
       "id": "01KMMYXS8G84H2XTF189R4ZQZB",
-      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "parent_id": null,
       "position": null,
       "short_code": 96,
       "status": "Active"
@@ -1270,7 +1270,7 @@
       "parent_id": "01KMGFM08BTSSN3GH8VZ218ZFA",
       "position": null,
       "short_code": 120,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "The CLI output design principles are now captured in CLAUDE.md under 'CLI Output Design Principles' — the canonical location that every session reads first. The 7 principles (first-principles thinking, information hierarchy, no redundancy, most-recent-first, honest attribution, compact layout, shared conventions) are durable instructions that future agents will follow. A separate designs/ document isn't needed — CLAUDE.md is the right home for operational principles that guide implementation.",
@@ -1490,7 +1490,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 140,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Phase 1 complete: Forest wraps DiGraph (option 3a), four structural signals computed (centrality, waves, longest path, descendants), surfaced in CLI show (◉ HUB / ┃ SPINE / ◎ REACH glyphs), MCP show (JSON), TUI survey (glyphs). 503 tests pass. Phase 2 design doc written (designs/structural-graph-overlay.md) covering typed edges, link/unlink gestures, combined graph signals.",
@@ -1512,7 +1512,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": null,
       "short_code": 142,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Core delivered across all three surfaces. TUI: FrankenSearch-backed / search, active-only, ~62μs per keystroke, zero DB reads. CLI: --search flag on list, ranks by relevance. MCP: search tool for agents. In-memory index with cached metadata, rebuilt on mutation. Decomposed into 6 children: #156 search gestures, #157 inline filters, #158 hybrid BM25 upgrade, #159 logbase indexing, #160 relevance context, #161 quality embedder.",
@@ -1523,7 +1523,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 3,
       "short_code": 143,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "MVCC concurrent writers implemented. PRAGMA fsqlite.concurrent_mode=ON set on all connections. BEGIN CONCURRENT replaces BEGIN at all 6 transaction sites. Commit-with-retry (exponential backoff, 10 attempts) replaces advisory file lock. WriteLockGuard, acquire_lock(), write_lock(), fs4 dependency all removed. 503 tests pass. CLAUDE.md updated. Backup logic retained (RaptorQ not in v0.1.2).",
@@ -1545,7 +1545,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": 5,
       "short_code": 145,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "stats are hand-computed aggregation; projection engine uses simple trend lines; export is basic JSON/text; no DataFrame capability",
@@ -1556,7 +1556,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": null,
       "short_code": 146,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "hooks are shell commands via event bus; batch mutations are YAML replay; no sandboxing, no deterministic replay, no provenance tracking; cross-workspace sync does not exist",
@@ -1567,7 +1567,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": null,
       "short_code": 147,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "no audio input on any surface; all mutation input is typed text; mobile app (#95) not started; coaching workflow (#80) is manual",
@@ -1578,7 +1578,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": null,
       "short_code": 148,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "fnx-classes, fnx-algorithms, fnx-runtime added as git deps from github.com/Dicklesworthstone/franken_networkx — compiles clean, pulls mwmatching transitively",
@@ -1641,7 +1641,7 @@
       "desired": "Generic user-configurable typed edges — practitioners define their own relationship types between tensions. The edges table infrastructure exists (shipped with #89/#49: contains, split_from, merged_into). link/unlink commands expose this to users. The instrument computes from user-supplied edge types without prescribing enables/competes/informs — those are examples, not the vocabulary.",
       "horizon": "2026-07",
       "id": "01KN1KH238279JN5STC577157H",
-      "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": 7,
       "short_code": 154,
       "status": "Active"
@@ -1666,7 +1666,7 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 156,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Partially addressed by #168: #N prefix filters by short code. Pure digits also trigger short code search. status: and parent: filters not implemented — would need query parsing in build_combined_items(). Could be added incrementally.",
@@ -1677,7 +1677,7 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 157,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Hash embedder only (features=[\"hash\"]). Upgrade path: change to features=[\"hybrid\"] in Cargo.toml. FrankenSearch's TwoTierSearcher activates BM25+RRF automatically. Disk index needed (persist_disk_index).",
@@ -1688,7 +1688,7 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 158,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Only tension desired+actual text is indexed. Notes, mutations, epochs, design docs are not searchable. Depends on logbase (#89) existing as a content store.",
@@ -1699,7 +1699,7 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 159,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Partially addressed by #168: palette now shows status glyph (◇/✓/∼ in category badge), short code (#N in title), and parent reference (← #P Parent in description). Bayesian scorer highlights matched characters in yellow. FrankenSearch score not displayed. Match explanation not available without widget changes (frankentui#58 filed). Snippet context not shown — title is the full desire text, truncated by widget.",
@@ -1710,7 +1710,7 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 160,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Hash embedder captures lexical overlap (bag-of-words via FNV-1a). Upgrade: features=[\"semantic\"] adds model2vec/fastembed. PhaseGate learns per-corpus when quality tier helps. Zero code changes.",
@@ -1721,7 +1721,7 @@
       "parent_id": "01KN0AE5D7XM5JXTS20ZZR8GPJ",
       "position": null,
       "short_code": 161,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "AdaptiveColor theme complete. 19 semantic slots with dark/light variants. All 188+ old refs replaced. Bold adapts (white-on-dark, black-on-light). 3 theme tests. Bayesian diff: root cause confirmed (ftui reset_for_frame fills WHITE cells + mark_all_dirty = oscillation), stays disabled pending ftui upstream fix. Noted on #127.",
@@ -1820,7 +1820,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 3,
       "short_code": 170,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Held — no scale problem at 64 tensions. Survey rewrite (#180) established per-band List architecture that makes future virtualization straightforward. Revisit when scale actually bites.",
@@ -1831,7 +1831,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 171,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Not started. Notes collected: scroll indicator wants remaining count (#180 session), tick-driven epoch boundaries (#175 cross-tension). Sparklines, badges, transitions deferred — no evidence practitioners need them over current text/glyph approach.",
@@ -1842,7 +1842,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": 5,
       "short_code": 172,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Held — imperative state model is simple and correct. Reactive lift (Observable/Computed) adds Rc<RefCell<>> complexity for unclear benefit. Asciicast/macros orthogonal. Revisit only if imperative approach becomes a bottleneck.",
@@ -1853,7 +1853,7 @@
       "parent_id": "01KN0AEQH1HMC2AKM4GRTSZH5G",
       "position": null,
       "short_code": 173,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Session telemetry exists (session_log.rs). Mutation timestamps exist. FeedbackCollector pattern exists for exponential-decay tracking. Graph analysis exists in sd-core. None of these are connected — no attention computation, no practice signals, no blind spot detection. No CLI or MCP exposure of practice patterns.",
@@ -1864,7 +1864,7 @@
       "parent_id": "01KN0AD8A3JTV246SXRNJJW2XW",
       "position": null,
       "short_code": 174,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Phase 1 released. Logbase view with fisheye epoch expansion, j/k event nav, J/K epoch nav with directional entry (K enters at bottom, J at top), Enter toggles focus on boundaries or expands detail on events. Inline date column with sticky overlay via buffer writes. Batch collapsing (5+ same-type, Enter expands). No-op epoch guard prevents phantom epochs. Palette #42~e3 navigates to specific epoch. Compression counts in status bar (focused-epoch-scoped, excludes boundaries). Survey items load on restore. / opens palette from all three views (deck, survey, logbase). Remaining for Phase 2: text wrapping, in-view event filtering.",
@@ -1886,7 +1886,7 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 176,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Done. Dep bumped to git rev d73c9f47. Palette builder chains with_fill_area(true).with_title(\"Search\"). Workaround comments in palette.rs and update.rs updated. Also fixed 7 Line lifetime annotations in deck_zones.rs and survey.rs required by the new ftui version. All 7 TUI tests pass. Switch back to crates.io version when 0.2.2 is published.",
@@ -1997,6 +1997,94 @@
       "position": null,
       "short_code": 186,
       "status": "Resolved"
+    },
+    {
+      "actual": "TUI has: add, desire, reality, resolve, reopen, release, hold, move, note, undo/redo, position toggle. Missing: split, merge, snooze, rm, recur, compose, explicit position number.",
+      "created_at": "2026-04-08T15:38:21.423416+00:00",
+      "desired": "every practice gesture is available in the TUI — split, merge, snooze, rm, recur, compose, explicit position — without leaving the session",
+      "horizon": null,
+      "id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 187,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Palette supports single-input actions only. Split requires: confirm source tension, enter N desires sequentially, preview before commit. No multi-step palette pattern exists.",
+      "created_at": "2026-04-08T15:38:31.378714+00:00",
+      "desired": "TUI split — decompose focused tension into N new tensions via command palette. Multi-input flow: palette action 'split', then sequential desire prompts for each child. Provenance edges created automatically. Hardest UX of the set — needs a multi-step input pattern the palette doesn't yet have.",
+      "horizon": null,
+      "id": "01KNPVXGJJSHBKSV5VZ4NN3BTM",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 188,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. No two-target selection exists in palette. Merge requires: focused tension as first, palette search for second, mode choice, optional new desire for symmetric. Could reuse palette search for second-target selection.",
+      "created_at": "2026-04-08T15:38:34.347026+00:00",
+      "desired": "TUI merge — combine two tensions via command palette. Two-tension selection flow: palette action 'merge', select second tension from palette search, choose mode (asymmetric --into or symmetric --as new desire). Second hardest UX — needs a two-target selection pattern.",
+      "horizon": null,
+      "id": "01KNPVXKFBP41C2BTX9RNCVYSC",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 189,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Simple single-input palette action. Snooze command exists in sd-core. Just needs palette registration and input prompt.",
+      "created_at": "2026-04-08T15:38:37.078378+00:00",
+      "desired": "TUI snooze — hide focused tension until a date via command palette. Single-input flow: palette action 'snooze', enter duration (+3d, +2w, +1m) or date (2026-04-15). Snoozed tensions vanish from view until wake date.",
+      "horizon": null,
+      "id": "01KNPVXP4P7C869KE6MQQ7N237",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 190,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Simple palette action with confirmation step. rm command exists in sd-core. Needs confirmation UX — could reuse the feedback/toast pattern for 'deleted #42, undo with Ctrl+Z'.",
+      "created_at": "2026-04-08T15:38:40.464848+00:00",
+      "desired": "TUI rm — delete focused tension via command palette with confirmation. Palette action 'delete' or 'rm', shows tension desire, requires explicit confirmation before destruction. Undo-able via gesture history.",
+      "horizon": null,
+      "id": "01KNPVXSEGSQ91ARXR92F0B6PA",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 191,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Simple single-input palette action. Recur command exists in sd-core. Same pattern as snooze — register palette action, prompt for interval.",
+      "created_at": "2026-04-08T15:38:42.702277+00:00",
+      "desired": "TUI recur — set recurrence interval on focused tension via command palette. Single-input flow: palette action 'recur', enter interval (+1w, +2w, +1m) or 'clear'. Recurrence means tension auto-reopens on schedule after resolution.",
+      "horizon": null,
+      "id": "01KNPVXVME9JZF89SZK96MZ027",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 192,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Simple single-input palette action. Compose command exists in CLI (werk compose). Needs palette registration and desire prompt.",
+      "created_at": "2026-04-08T15:38:44.828419+00:00",
+      "desired": "TUI compose — create parent from focused tension via command palette. Palette action 'compose', enter desire for new parent. Focused tension becomes child of the newly created tension. Inverse of decompose.",
+      "horizon": null,
+      "id": "01KNPVXXPWCDTD1HK03FTD1HP7",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 193,
+      "status": "Active"
+    },
+    {
+      "actual": "Not started. Options: (A) palette action 'position' with number input, (B) press p then type a digit, (C) press p to enter position mode then use j/k to reorder visually. Option C is richest but most complex.",
+      "created_at": "2026-04-08T15:38:46.933219+00:00",
+      "desired": "TUI explicit position — set a specific sequence number on focused tension via command palette or enhanced p key. Current p key only toggles held/positioned. Practitioner needs: 'position 3' to place a tension third in sequence among siblings.",
+      "horizon": null,
+      "id": "01KNPVXZRNPM3D8FMATDSFCC30",
+      "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
+      "position": null,
+      "short_code": 194,
+      "status": "Active"
     }
   ]
 }

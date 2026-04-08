@@ -248,6 +248,11 @@ fn print_survey_item(item: &SurveyItem) {
         None => item.id[..8.min(item.id.len())].to_string(),
     };
 
+    let urgency_display = match item.urgency {
+        Some(u) => format!("{:>3}%", (u * 100.0).round() as i32),
+        None => "\u{2014}".to_string(),
+    };
+
     let deadline_display = item
         .deadline
         .as_deref()
@@ -259,8 +264,9 @@ fn print_survey_item(item: &SurveyItem) {
     };
 
     println!(
-        "  {:<6} {:<40} {:>10}{}",
+        "  {:<6} {:>4}  {:<40} {:>10}{}",
         id_display,
+        urgency_display,
         truncate(&item.desired, 40),
         deadline_display,
         parent_annotation

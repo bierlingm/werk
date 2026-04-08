@@ -269,34 +269,46 @@ fn cmd_log_tension(
             .get_epochs(tension_id)
             .map_err(WerkError::StoreError)?;
 
-        for epoch in epochs.iter().rev() {
+        let rev_epochs: Vec<_> = epochs.iter().rev().collect();
+        let total = rev_epochs.len();
+        for (i, epoch) in rev_epochs.iter().enumerate() {
             let epoch_idx = all_epochs.iter().position(|ae| ae.id == epoch.id).unwrap_or(0);
             let age = format_age(epoch.timestamp);
             let mutation_count = count_mutations_in_epoch(store, tension_id, &all_epochs, epoch_idx);
+            let is_last = i == total - 1;
 
             let type_label = match &epoch.epoch_type {
                 Some(t) => format!(" [{}]", t),
                 None => String::new(),
             };
 
+            let (connector, rail) = if is_last {
+                ("\u{2514}", " ")
+            } else {
+                ("\u{251c}", "\u{2502}")
+            };
+
             println!(
-                "  Epoch {} ({}){}",
+                "  {} Epoch {} ({}){}",
+                connector,
                 epoch_idx + 1,
                 age,
                 type_label,
             );
             println!(
-                "    Desire:  {}",
+                "  {}   \u{25c6} {}",
+                rail,
                 truncate(&epoch.desire_snapshot, 72)
             );
             println!(
-                "    Reality: {}",
+                "  {}   \u{25c7} {}",
+                rail,
                 truncate(&epoch.reality_snapshot, 72)
             );
             if mutation_count > 0 {
-                println!("    {} mutation{}", mutation_count, if mutation_count == 1 { "" } else { "s" });
+                println!("  {}   {} mutation{}", rail, mutation_count, if mutation_count == 1 { "" } else { "s" });
             }
-            println!();
+            println!("  {}", rail);
         }
     }
 
@@ -468,26 +480,31 @@ fn cmd_log_compare(
         );
         println!();
 
-        // Render desire-reality evolution bars
+        // Render desire-reality evolution with left-rail
+        let total = epochs.len();
         for (i, epoch) in epochs.iter().enumerate() {
             let age = format_age(epoch.timestamp);
-            let desire_len = epoch.desire_snapshot.len().min(40);
-            let reality_len = epoch.reality_snapshot.len().min(40);
+            let is_last = i == total - 1;
+            let (connector, rail) = if is_last {
+                ("\u{2514}", " ")
+            } else {
+                ("\u{251c}", "\u{2502}")
+            };
 
             println!(
-                "  epoch {} ({:>12})  ◆ {:.<desire_w$} ◇ {:.<reality_w$}",
+                "  {} epoch {} ({:>12})  \u{25c6} {} \u{25c7} {}",
+                connector,
                 i + 1,
                 age,
-                truncate(&epoch.desire_snapshot, desire_len),
-                truncate(&epoch.reality_snapshot, reality_len),
-                desire_w = desire_len,
-                reality_w = reality_len,
+                truncate(&epoch.desire_snapshot, 35),
+                truncate(&epoch.reality_snapshot, 35),
             );
+            let _ = rail; // rail available for multi-line expansion
         }
 
         // Current state
         println!();
-        println!("  current               ◆ {} ◇ {}", truncate(&tension.desired, 40), truncate(&tension.actual, 40));
+        println!("  current               \u{25c6} {} \u{25c7} {}", truncate(&tension.desired, 40), truncate(&tension.actual, 40));
     }
 
     Ok(())

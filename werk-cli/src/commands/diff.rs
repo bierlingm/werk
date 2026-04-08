@@ -133,7 +133,7 @@ struct DiffSummary {
 
 // ── Command implementation ──────────────────────────────────────
 
-pub fn cmd_diff(output: &Output, since: String) -> Result<(), WerkError> {
+pub fn cmd_diff(output: &Output, since: String, verbose: bool) -> Result<(), WerkError> {
     let now = Utc::now();
     let since_dt = parse_since(&since, now)?;
 
@@ -259,66 +259,127 @@ pub fn cmd_diff(output: &Output, since: String) -> Result<(), WerkError> {
         println!("Changes since {}:", since_label);
         println!();
 
-        for change in &changes {
-            let tension_sc = tension_map.get(&change.tension_id).and_then(|t| t.short_code);
-            let id_display = display_id(tension_sc, &change.tension_id);
-            println!("  {} {}", id_display, truncate(&change.tension_desired, 60));
+        if verbose {
+            // Verbose: full mutation details per tension
+            for change in &changes {
+                let tension_sc = tension_map.get(&change.tension_id).and_then(|t| t.short_code);
+                let id_display = display_id(tension_sc, &change.tension_id);
+                println!("  {} {}", id_display, truncate(&change.tension_desired, 60));
 
-            // Collapse consecutive position/hold mutations into summary lines
-            let mut i = 0;
-            while i < change.mutations.len() {
-                let m = &change.mutations[i];
-                let is_position = m.field == "position";
+                // Collapse consecutive position/hold mutations into summary lines
+                let mut i = 0;
+                while i < change.mutations.len() {
+                    let m = &change.mutations[i];
+                    let is_position = m.field == "position";
 
-                if is_position {
-                    // Count consecutive position mutations
-                    let run_start = i;
-                    while i < change.mutations.len() && change.mutations[i].field == "position" {
+                    if is_position {
+                        // Count consecutive position mutations
+                        let run_start = i;
+                        while i < change.mutations.len() && change.mutations[i].field == "position" {
+                            i += 1;
+                        }
+                        let run_len = i - run_start;
+
+                        if run_len > 2 {
+                            let first = &change.mutations[run_start];
+                            let last = &change.mutations[i - 1];
+                            let first_ts = chrono::DateTime::parse_from_rfc3339(&first.timestamp)
+                                .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                                .unwrap_or_else(|_| first.timestamp[..19].replace('T', " "));
+                            let last_summary = super::show::format_mutation_summary(
+                                &last.field, last.old_value.as_deref(), &last.new_value
+                            );
+                            println!("    {:>12}  {} ({} position changes)", first_ts, last_summary, run_len);
+                        } else {
+                            for j in run_start..i {
+                                let pm = &change.mutations[j];
+                                let ts = chrono::DateTime::parse_from_rfc3339(&pm.timestamp)
+                                    .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                                    .unwrap_or_else(|_| pm.timestamp[..19].replace('T', " "));
+                                let summary = super::show::format_mutation_summary(
+                                    &pm.field, pm.old_value.as_deref(), &pm.new_value
+                                );
+                                println!("    {:>12}  {}", ts, summary);
+                            }
+                        }
+                    } else {
+                        let ts = chrono::DateTime::parse_from_rfc3339(&m.timestamp)
+                            .map(|dt| relative_time(dt.with_timezone(&Utc), now))
+                            .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
+                        let summary = super::show::format_mutation_summary(
+                            &m.field, m.old_value.as_deref(), &m.new_value
+                        );
+                        println!("    {:>12}  {}", ts, summary);
                         i += 1;
                     }
-                    let run_len = i - run_start;
-
-                    if run_len > 2 {
-                        // Collapse: show first, summary, last
-                        let first = &change.mutations[run_start];
-                        let last = &change.mutations[i - 1];
-                        let first_ts = chrono::DateTime::parse_from_rfc3339(&first.timestamp)
-                            .map(|dt| relative_time(dt.with_timezone(&Utc), now))
-                            .unwrap_or_else(|_| first.timestamp[..19].replace('T', " "));
-                        let last_summary = super::show::format_mutation_summary(
-                            &last.field, last.old_value.as_deref(), &last.new_value
-                        );
-                        println!("    {:>12}  {} ({} position changes)", first_ts, last_summary, run_len);
-                    } else {
-                        // 1-2 position mutations: show normally
-                        for j in run_start..i {
-                            let pm = &change.mutations[j];
-                            let ts = chrono::DateTime::parse_from_rfc3339(&pm.timestamp)
-                                .map(|dt| relative_time(dt.with_timezone(&Utc), now))
-                                .unwrap_or_else(|_| pm.timestamp[..19].replace('T', " "));
-                            let summary = super::show::format_mutation_summary(
-                                &pm.field, pm.old_value.as_deref(), &pm.new_value
-                            );
-                            println!("    {:>12}  {}", ts, summary);
-                        }
-                    }
-                } else {
-                    let ts = chrono::DateTime::parse_from_rfc3339(&m.timestamp)
-                        .map(|dt| relative_time(dt.with_timezone(&Utc), now))
-                        .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
-                    let summary = super::show::format_mutation_summary(
-                        &m.field, m.old_value.as_deref(), &m.new_value
-                    );
-                    println!("    {:>12}  {}", ts, summary);
-                    i += 1;
                 }
+                println!();
+            }
+        } else {
+            // Compact: one stat-line per tension (default)
+            for change in &changes {
+                let tension_sc = tension_map.get(&change.tension_id).and_then(|t| t.short_code);
+                let id_display = display_id(tension_sc, &change.tension_id);
+                let count = change.mutations.len();
+
+                // Build field frequency summary: "reality ×3, note ×2, resolved"
+                let mut field_counts: Vec<(String, usize)> = Vec::new();
+                for m in &change.mutations {
+                    let key = match m.field.as_str() {
+                        "actual" => "reality".to_string(),
+                        "desired" => "desired".to_string(),
+                        "status" => {
+                            // Use the specific status verb
+                            if m.new_value == "Resolved" { "resolved".to_string() }
+                            else if m.new_value == "Released" { "released".to_string() }
+                            else { "reopened".to_string() }
+                        }
+                        "position" => {
+                            if m.new_value == "(none)" || m.new_value == "null" { "held".to_string() }
+                            else { "positioned".to_string() }
+                        }
+                        "horizon" => "deadline".to_string(),
+                        "note" => "note".to_string(),
+                        "parent_id" | "parent" => "parent_id".to_string(),
+                        "snoozed_until" => "snoozed".to_string(),
+                        "release_reason" | "reopen_reason" => m.field.clone(),
+                        "created" => "created".to_string(),
+                        "deleted" => "deleted".to_string(),
+                        "note_retracted" => "note_retracted".to_string(),
+                        other => other.to_string(),
+                    };
+                    if let Some(entry) = field_counts.iter_mut().find(|(k, _)| *k == key) {
+                        entry.1 += 1;
+                    } else {
+                        field_counts.push((key, 1));
+                    }
+                }
+                let stat: String = field_counts
+                    .iter()
+                    .map(|(k, c)| {
+                        if *c > 1 {
+                            format!("{} \u{00d7}{}", k, c)
+                        } else {
+                            k.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                println!(
+                    "  {:<6} {:<50} {:>3}  {}",
+                    id_display,
+                    truncate(&change.tension_desired, 50),
+                    count,
+                    stat,
+                );
             }
             println!();
         }
 
         println!(
-            "Summary: {} tensions updated, {} created, {} resolved",
-            summary.updated, summary.created, summary.resolved
+            "{} tensions  |  {} created  {} resolved  {} updated",
+            changes.len(), summary.created, summary.resolved, summary.updated
         );
     }
 
