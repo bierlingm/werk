@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-08T15:57:34Z",
+  "flushed_at": "2026-04-09T05:43:34Z",
   "summary": {
-    "active": 47,
-    "released": 41,
-    "resolved": 101,
+    "active": 33,
+    "released": 54,
+    "resolved": 102,
     "total": 189
   },
   "tensions": [
@@ -401,7 +401,7 @@
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
       "short_code": 38,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "six revenue streams identified and reasoned through; none activated; practitioner license is first candidate",
@@ -412,7 +412,7 @@
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
       "short_code": 39,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "integration points mapped in business foundation doc; no implementation; Statecraft website already lists werk as a tool",
@@ -423,10 +423,10 @@
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
       "short_code": 40,
-      "status": "Active"
+      "status": "Released"
     },
     {
-      "actual": "post drafted; video script drafted; neither published",
+      "actual": "Remotion video not started. No public post exists. Next action: write one X post showing what werk does with a screen recording.",
       "created_at": "2026-03-24T17:52:27.484361+00:00",
       "desired": "first public post about werk published — X post with Remotion video addressed to Jeffrey Emanuel and the agentic coding community",
       "horizon": null,
@@ -687,7 +687,7 @@
       "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX",
       "position": null,
       "short_code": 66,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "no definition; MM operates but werk isn't part of that workflow yet",
@@ -698,7 +698,7 @@
       "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX",
       "position": null,
       "short_code": 67,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "no definition; Spikes exists as a concept but no signal pathway to werk is designed",
@@ -709,7 +709,7 @@
       "parent_id": "01KMGFKZ84CCZYFSN7XX0539AX",
       "position": null,
       "short_code": 68,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "three candidate paths identified: setup calls (service), donations (requires public presence first), build something obviously valuable (product). No validation on any path yet.",
@@ -723,7 +723,7 @@
       "status": "Active"
     },
     {
-      "actual": "no offering exists; would need a price, a booking mechanism, and at least one person to pitch it to",
+      "actual": "No booking page exists. No public way to find or schedule a call. Next action: create a landing page with Calendly link.",
       "created_at": "2026-03-25T15:52:51.667490+00:00",
       "desired": "setup calls offered — install werk, walk through structural dynamics, configure a tension tree for someone's real project",
       "horizon": null,
@@ -734,7 +734,7 @@
       "status": "Active"
     },
     {
-      "actual": "candidates: werk-as-claude-skill (zero install SD practice), hosted structural audit, productized tension tree session. Nothing built or validated.",
+      "actual": "Claude Code skill ecosystem exists. werk MCP surface has 35 tools. A packaged skill that sets up structural dynamics practice in any workspace is buildable today. Next action: publish the skill, free tier to seed adoption.",
       "created_at": "2026-03-25T15:52:53.277041+00:00",
       "desired": "something obviously valuable is built and priced — a packaged product or skill that people encounter and want to pay for",
       "horizon": null,
@@ -753,7 +753,7 @@
       "parent_id": "01KMJV5AKKY3H468YCS52WD640",
       "position": null,
       "short_code": 72,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Conceptual foundation implemented and operational. Three interface surfaces: TUI (V1-V8 complete, Console V2 Phase 1 landed, primary experience functional), CLI (30+ commands with foundation vocabulary, JSON on all commands, pathway palettes), MCP (30 tools via rmcp/stdio). Data model: gestures, sessions, epochs, temporal calculus, frontier projection, hook infrastructure, advisory locking, pathway palettes. No-op mutation guard and health --repair added. Cooperative dynamics remain unexplored (pending Foundations course April 2026). Business model in exploration (first $1000 target set, three paths identified, no revenue).",
@@ -819,7 +819,7 @@
       "parent_id": "01KMGFKZ232H55DEMZKX2A4VCJ",
       "position": null,
       "short_code": 78,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "CreatorTools.net (Ivan Fritz, Robert's son) still operates at $130/month — offers 'structural tension charts' that are essentially goal-tracking forms (desired outcome, current reality, 12 action steps with checkboxes). No hierarchy, no dynamics, no temporal logic. LifeStudio iPad app preceded it (~2015), discontinued ~2019. A PDF chart template also exists. The tool is weak, not gone — which is better for us: the market is paying for something werk already surpasses",
@@ -830,7 +830,7 @@
       "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
       "position": null,
       "short_code": 79,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "no practitioner outside Moritz has seen werk; Nicholas Catton is Fritz-influenced but not confirmed formally certified — runs coaching in San Diego; the two certified Fritz instructors are Katharina Schutze (Berlin, since 2004) and Kira Higgs (Portland, since 2019); Fritz Japan practice also exists; no outreach attempted yet",
@@ -841,7 +841,7 @@
       "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
       "position": null,
       "short_code": 80,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "CreatorTools.net pricing: $130/month, $428/3-months, $1,300/year — for a course + simple charting tool. FST training: 4-day live online (price unlisted). SCCP: $125/quarter workshops + $150/critique. This establishes a price anchor — practitioners already pay $130/month for far less than what werk offers structurally",
@@ -852,7 +852,7 @@
       "parent_id": "01KMKA5DP7EVQV8CZY93WY9636",
       "position": null,
       "short_code": 81,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Tauri 2.0 desktop app exists and opens natively on macOS. werk-app/src-tauri/ has the Rust backend (store actor, 8 commands), werk-app/src-web/ has the adapted HTML frontend. Full tension tree loads, all CRUD gestures work through native IPC. werk-web Axum server also works (werk serve). Two GUI paths operational: native Tauri app and browser via Axum. Not yet a practice tool — needs polish, deeper SD feel, step-level actions, proper icon/bundling.",
@@ -863,7 +863,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 82,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Tauri selected. Research documented. Architecture validated: werk-web's store-thread channel pattern maps directly to Tauri commands. Ready to resolve once Tauri scaffold exists and proves the pattern.",
@@ -885,7 +885,7 @@
       "parent_id": "01KMKA69QXJW7VC2YYS6TFZ1AB",
       "position": null,
       "short_code": 84,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "Spatial law enforced: desire at top, theory of closure as vertical bridge, reality at bottom. Warm palette, generous spacing, no terminal aesthetic. Structural dynamics vocabulary in the UI (evolve desire, update reality, decompose, theory of closure). Bridge line connects children visually from desire toward reality. But still feels more like a list than a structure you inhabit. Needs: better gap feel, step-level interaction, descended view that makes the theory of closure a reasoning surface not just indented items.",
@@ -1218,7 +1218,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Four polish items identified in CLI output audit: (1) diff needs --compact or per-tension limit for multi-day windows, (2) epoch show nesting uses flat indentation — box-drawing would improve readability, (3) survey has no urgency column unlike list, (4) config get/set doesn't show which file was modified",
+      "actual": "All four items shipped: (1) diff compact stat-line default with --verbose, (2) survey urgency % column, (3) epoch left-rail box-drawing, (4) config path + config get list-all. Tests pass.",
       "created_at": "2026-03-27T18:29:29.655438+00:00",
       "desired": "CLI polish pass — diff compact mode, epoch box-drawing, survey urgency column, config file path display",
       "horizon": null,
@@ -1226,7 +1226,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 116,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "CLAUDE.md updated with two new sections: CLI Conventions (--json, --help with examples, framework grouping, non-interactive mode, --dry-run, note shorthand, short codes) and CLI Output Design Principles (7 principles from show redesign: first-principles thinking, information hierarchy, no redundancy, most-recent-first, honest attribution, compact layout, shared conventions). Future sessions will reference these.",
