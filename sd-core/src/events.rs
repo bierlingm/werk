@@ -116,6 +116,20 @@ pub enum Event {
         timestamp: DateTime<Utc>,
     },
 
+    /// A note was taken (observational testimony).
+    NoteTaken {
+        tension_id: String,
+        text: String,
+        timestamp: DateTime<Utc>,
+    },
+
+    /// A note was retracted.
+    NoteRetracted {
+        tension_id: String,
+        text: String,
+        timestamp: DateTime<Utc>,
+    },
+
     /// A gesture was undone (all its mutations reversed).
     GestureUndone {
         gesture_id: String,
@@ -139,6 +153,8 @@ impl Event {
             Event::HorizonChanged { tension_id, .. } => Some(tension_id),
             Event::UrgencyThresholdCrossed { tension_id, .. } => Some(tension_id),
             Event::HorizonDriftDetected { tension_id, .. } => Some(tension_id),
+            Event::NoteTaken { tension_id, .. } => Some(tension_id),
+            Event::NoteRetracted { tension_id, .. } => Some(tension_id),
             Event::GestureUndone { .. } => None, // gesture-level, not tension-level
         }
     }
@@ -159,6 +175,8 @@ impl Event {
             Event::HorizonChanged { .. } => "horizon_changed",
             Event::UrgencyThresholdCrossed { .. } => "urgency_threshold_crossed",
             Event::HorizonDriftDetected { .. } => "horizon_drift_detected",
+            Event::NoteTaken { .. } => "note_taken",
+            Event::NoteRetracted { .. } => "note_retracted",
             Event::GestureUndone { .. } => "gesture_undone",
         }
     }
@@ -170,7 +188,8 @@ impl Event {
     pub fn is_commandable(&self) -> bool {
         !matches!(
             self,
-            Event::UrgencyThresholdCrossed { .. } | Event::HorizonDriftDetected { .. }
+            Event::UrgencyThresholdCrossed { .. }
+                | Event::HorizonDriftDetected { .. }
         )
     }
 
@@ -184,6 +203,7 @@ impl Event {
             Event::TensionCreated { .. } => "create",
             Event::TensionResolved { .. } | Event::TensionReleased { .. } => "status_change",
             Event::TensionDeleted { .. } => "delete",
+            Event::NoteTaken { .. } | Event::NoteRetracted { .. } => "note",
             Event::GestureUndone { .. } => "undo",
             _ => "mutation",
         }
@@ -202,6 +222,8 @@ impl Event {
             Event::HorizonChanged { timestamp, .. } => *timestamp,
             Event::UrgencyThresholdCrossed { timestamp, .. } => *timestamp,
             Event::HorizonDriftDetected { timestamp, .. } => *timestamp,
+            Event::NoteTaken { timestamp, .. } => *timestamp,
+            Event::NoteRetracted { timestamp, .. } => *timestamp,
             Event::GestureUndone { timestamp, .. } => *timestamp,
         }
     }
@@ -411,6 +433,20 @@ impl EventBuilder {
     ) -> Event {
         Event::UrgencyThresholdCrossed {
             tension_id, old_urgency, new_urgency, threshold, crossed_above,
+            timestamp: Utc::now(),
+        }
+    }
+
+    pub fn note_taken(tension_id: String, text: String) -> Event {
+        Event::NoteTaken {
+            tension_id, text,
+            timestamp: Utc::now(),
+        }
+    }
+
+    pub fn note_retracted(tension_id: String, text: String) -> Event {
+        Event::NoteRetracted {
+            tension_id, text,
             timestamp: Utc::now(),
         }
     }

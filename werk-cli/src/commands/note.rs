@@ -85,15 +85,7 @@ pub fn cmd_note_add(
             }
 
             let _ = store.begin_gesture(Some(&format!("note {}", &tension.id)));
-            store
-                .record_mutation(&Mutation::new(
-                    tension.id.clone(),
-                    Utc::now(),
-                    "note".to_owned(),
-                    None,
-                    text.clone(),
-                ))
-                .map_err(WerkError::SdError)?;
+            store.record_note(&tension.id, &text).map_err(WerkError::SdError)?;
             store.end_gesture();
 
             NoteAddResult {
@@ -119,15 +111,7 @@ pub fn cmd_note_add(
             }
 
             let _ = store.begin_gesture(Some("note workspace"));
-            store
-                .record_mutation(&Mutation::new(
-                    WORKSPACE_NOTE_TENSION_ID.to_owned(),
-                    Utc::now(),
-                    "note".to_owned(),
-                    None,
-                    text.clone(),
-                ))
-                .map_err(WerkError::SdError)?;
+            store.record_note(WORKSPACE_NOTE_TENSION_ID, &text).map_err(WerkError::SdError)?;
             store.end_gesture();
 
             NoteAddResult {
@@ -254,16 +238,10 @@ pub fn cmd_note_rm(
         ));
     }
 
-    // Record retraction: old_value = note text (audit trail), new_value = note timestamp (identifier)
+    // Record retraction
     let _ = store.begin_gesture(Some(&format!("retract note {}", &resolved_tension_id)));
     store
-        .record_mutation(&Mutation::new(
-            resolved_tension_id.clone(),
-            Utc::now(),
-            "note_retracted".to_owned(),
-            Some(note_text.clone()),
-            note_timestamp,
-        ))
+        .retract_note(&resolved_tension_id, &note_text, &note_timestamp)
         .map_err(WerkError::SdError)?;
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge

@@ -978,6 +978,38 @@ impl Store {
         Ok(())
     }
 
+    /// Record a note on a tension and emit NoteTaken event.
+    pub fn record_note(&self, tension_id: &str, text: &str) -> Result<(), SdError> {
+        self.record_mutation(&Mutation::new(
+            tension_id.to_owned(),
+            Utc::now(),
+            "note".to_owned(),
+            None,
+            text.to_owned(),
+        ))?;
+        self.emit_event(&EventBuilder::note_taken(
+            tension_id.to_owned(),
+            text.to_owned(),
+        ));
+        Ok(())
+    }
+
+    /// Record a note retraction on a tension and emit NoteRetracted event.
+    pub fn retract_note(&self, tension_id: &str, note_text: &str, note_timestamp: &str) -> Result<(), SdError> {
+        self.record_mutation(&Mutation::new(
+            tension_id.to_owned(),
+            Utc::now(),
+            "note_retracted".to_owned(),
+            Some(note_text.to_owned()),
+            note_timestamp.to_owned(),
+        ))?;
+        self.emit_event(&EventBuilder::note_retracted(
+            tension_id.to_owned(),
+            note_text.to_owned(),
+        ));
+        Ok(())
+    }
+
     /// Count no-op position mutations where old_value equals new_value.
     /// Use this to preview before purging.
     pub fn count_noop_mutations(&self) -> Result<usize, SdError> {

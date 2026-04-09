@@ -842,9 +842,7 @@ fn apply_batch_mutation(engine: &mut Engine, mutation: &werk_shared::BatchMutati
                 .map_err(|e| err(e.to_string()))?;
         }
         BatchMutation::AddNote { tension_id, text, .. } => {
-            engine.store().record_mutation(&Mutation::new(
-                tension_id.clone(), Utc::now(), "note".to_owned(), None, text.clone(),
-            )).map_err(|e| err(e.to_string()))?;
+            engine.store().record_note(tension_id, text).map_err(|e| err(e.to_string()))?;
         }
         BatchMutation::UpdateStatus { tension_id, new_status, .. } => {
             let status = match new_status.to_lowercase().as_str() {
@@ -2752,17 +2750,8 @@ impl WerkServer {
         }
 
         let _ = store.begin_gesture(Some(&format!("note {}", &tension_id)));
-        store
-            .record_mutation(&Mutation::new(
-                tension_id.clone(),
-                Utc::now(),
-                "note".to_owned(),
-                None,
-                p.text.clone(),
-            ))
-            .map_err(|e| err(e.to_string()))?;
+        store.record_note(&tension_id, &p.text).map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2833,17 +2822,8 @@ impl WerkServer {
         }
 
         let _ = store.begin_gesture(Some(&format!("retract note {}", &tension_id)));
-        store
-            .record_mutation(&Mutation::new(
-                tension_id.clone(),
-                Utc::now(),
-                "note_retracted".to_owned(),
-                Some(note_text.clone()),
-                note_ts,
-            ))
-            .map_err(|e| err(e.to_string()))?;
+        store.retract_note(&tension_id, &note_text, &note_ts).map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({

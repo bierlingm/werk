@@ -1859,15 +1859,7 @@ impl InstrumentApp {
                 if !buf.is_empty() {
                     if let InputMode::Annotating { ref tension_id } = self.input_mode.clone() {
                         self.begin_gesture(&format!("add note {}", &tension_id[..8.min(tension_id.len())]));
-                        let _ = self.engine.store().record_mutation(
-                            &sd_core::Mutation::new(
-                                tension_id.clone(),
-                                chrono::Utc::now(),
-                                "note".to_owned(),
-                                None,
-                                buf,
-                            ),
-                        );
+                        let _ = self.engine.store().record_note(tension_id, &buf);
                         self.end_gesture();
                         self.set_transient("note added");
                         self.load_siblings();

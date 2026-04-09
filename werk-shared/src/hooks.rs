@@ -216,6 +216,38 @@ impl HookEvent {
                 old_value: None,
                 new_value: Some(format!("{:?}:{}", drift_type, change_count)),
             },
+            Event::NoteTaken {
+                tension_id,
+                text,
+                ..
+            } => Self {
+                event: hook_name,
+                category,
+                timestamp,
+                tension_id: Some(tension_id.clone()),
+                tension_desired: None,
+                current_reality: None,
+                parent_id: None,
+                field: Some("note".to_string()),
+                old_value: None,
+                new_value: Some(text.clone()),
+            },
+            Event::NoteRetracted {
+                tension_id,
+                text,
+                ..
+            } => Self {
+                event: hook_name,
+                category,
+                timestamp,
+                tension_id: Some(tension_id.clone()),
+                tension_desired: None,
+                current_reality: None,
+                parent_id: None,
+                field: Some("note".to_string()),
+                old_value: Some(text.clone()),
+                new_value: None,
+            },
             Event::GestureUndone {
                 gesture_id,
                 undo_gesture_id,
