@@ -15,7 +15,7 @@ use crate::workspace::Workspace;
 use chrono::{Duration, NaiveDate, Utc};
 use sd_core::Mutation;
 use serde::Serialize;
-use werk_shared::{Config, HookEvent, HookRunner};
+use werk_shared::HookEvent;
 
 /// JSON output structure for snooze command.
 #[derive(Serialize)]
@@ -74,7 +74,7 @@ pub fn cmd_snooze(
 ) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let (store, hook_handle) = workspace.open_store_with_hooks()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -82,11 +82,6 @@ pub fn cmd_snooze(
 
     // Resolve the ID/prefix
     let tension = resolver.resolve(&id)?;
-
-    // Hook infrastructure
-    let hooks = Config::load(&workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop());
 
     if clear {
         let event = HookEvent::mutation(
@@ -98,7 +93,7 @@ pub fn cmd_snooze(
             None,
             "cleared",
         );
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(WerkError::InvalidInput(
                 "Blocked by pre_mutation hook".to_string(),
             ));
@@ -113,8 +108,6 @@ pub fn cmd_snooze(
                 "cleared".to_owned(),
             ))
             .map_err(WerkError::SdError)?;
-
-        hooks.post_mutation(&event);
 
         let result = SnoozeResult {
             id: tension.id.clone(),
@@ -146,7 +139,7 @@ pub fn cmd_snooze(
             None,
             &formatted,
         );
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(WerkError::InvalidInput(
                 "Blocked by pre_mutation hook".to_string(),
             ));
@@ -161,8 +154,6 @@ pub fn cmd_snooze(
                 formatted.clone(),
             ))
             .map_err(WerkError::SdError)?;
-
-        hooks.post_mutation(&event);
 
         let result = SnoozeResult {
             id: tension.id.clone(),

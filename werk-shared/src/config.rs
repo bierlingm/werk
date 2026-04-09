@@ -100,6 +100,11 @@ impl Config {
         self.values.insert(key.to_string(), value);
     }
 
+    /// Remove a config key.
+    pub fn remove(&mut self, key: &str) {
+        self.values.remove(key);
+    }
+
     /// Save the config to disk.
     ///
     /// Creates parent directories if needed.

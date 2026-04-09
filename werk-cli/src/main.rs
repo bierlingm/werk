@@ -216,6 +216,22 @@ fn main() {
         }
         Commands::Context { id, all, urgent } => werk::commands::context::cmd_context(&output, id, all, urgent),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
+        Commands::Hooks { command } => {
+            use werk::commands::hooks::*;
+            use werk::commands::HooksCommand;
+            match command {
+                HooksCommand::List { verbose } => cmd_hooks_list(&output, verbose),
+                HooksCommand::Add { event, command, filter, global } => {
+                    cmd_hooks_add(&output, event, command, filter, global)
+                }
+                HooksCommand::Rm { event, command, global } => {
+                    cmd_hooks_rm(&output, event, command, global)
+                }
+                HooksCommand::Test { event, tension } => cmd_hooks_test(&output, event, tension),
+                HooksCommand::Log { tail } => cmd_hooks_log(&output, tail),
+                HooksCommand::Install { git, hooks } => cmd_hooks_install(&output, git, hooks),
+            }
+        }
         Commands::Mcp => {
             let rt = tokio::runtime::Runtime::new()
                 .map_err(|e| werk::error::WerkError::IoError(format!("failed to create runtime: {}", e)));

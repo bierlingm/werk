@@ -7,7 +7,6 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use sd_core::Horizon;
 use serde::Serialize;
-use werk_shared::{Config, HookEvent, HookRunner};
 
 /// JSON output structure for add command.
 #[derive(Serialize)]
@@ -65,7 +64,7 @@ pub fn cmd_add(
 
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
+    let (mut store, _hook_handle) = workspace.open_store_with_hooks()?;
 
     // Resolve parent if provided
     let parent_id = if let Some(parent_prefix) = parent {
@@ -83,12 +82,7 @@ pub fn cmd_add(
         store.create_tension_full(&desired, &actual, parent_id.clone(), horizon_parsed.clone())?;
     store.end_gesture();
 
-    // Hook infrastructure (post_create — tension must exist first)
-    let hooks = Config::load(&workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop());
-    let event = HookEvent::create(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref());
-    hooks.post_create(&event);
+    // Post-hooks fire automatically via the HookBridge (TensionCreated event)
 
     // Human-readable output before palette (matches horizon/position pattern)
     if !output.is_structured() {

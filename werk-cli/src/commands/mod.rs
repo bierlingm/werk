@@ -15,6 +15,7 @@ pub mod flush;
 pub mod ground;
 pub mod health;
 pub mod hold;
+pub mod hooks;
 pub mod horizon;
 pub mod init;
 pub mod insights;
@@ -852,6 +853,26 @@ Examples:
         port: u16,
     },
 
+    /// Manage lifecycle hooks.
+    ///
+    /// Hooks execute shell commands when structural events occur.
+    /// The EventBus bridge fires post-hooks automatically; pre-hooks
+    /// are checked at command level before mutations.
+    #[command(after_help = "\
+Examples:
+  werk hooks list                          Show configured hooks
+  werk hooks add post_tension_resolved ./notify.sh
+  werk hooks add post_* ./log-all.sh
+  werk hooks rm post_tension_resolved
+  werk hooks test post_tension_resolved --tension 42
+  werk hooks log --tail 20
+  werk hooks install flush auto-stage      Install shipped defaults
+  werk hooks install --git                 Set up git pre-commit hook")]
+    Hooks {
+        #[command(subcommand)]
+        command: HooksCommand,
+    },
+
     /// Destroy the current workspace (deletes the .werk/ directory).
     #[command(after_help = "\
 Examples:
@@ -949,4 +970,73 @@ pub enum ConfigCommand {
 
     /// Show config file path(s).
     Path,
+}
+
+/// Hooks subcommands.
+#[derive(Debug, Subcommand)]
+pub enum HooksCommand {
+    /// List configured hooks.
+    List {
+        /// Show scope and filter details.
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Add a hook for an event.
+    Add {
+        /// Event name (e.g., post_tension_resolved, post_mutation, post_*, pre_delete).
+        event: String,
+
+        /// Shell command to execute.
+        command: String,
+
+        /// Optional filter (e.g., "parent:42", "status:active").
+        #[arg(short, long)]
+        filter: Option<String>,
+
+        /// Add to global config (~/.werk/config.toml) instead of workspace.
+        #[arg(short, long)]
+        global: bool,
+    },
+
+    /// Remove a hook (or a specific command from a chain).
+    Rm {
+        /// Event name (e.g., post_tension_resolved).
+        event: String,
+
+        /// Specific command to remove (omit to remove all commands for this event).
+        command: Option<String>,
+
+        /// Remove from global config.
+        #[arg(short, long)]
+        global: bool,
+    },
+
+    /// Test a hook by firing it with a synthetic or real event.
+    Test {
+        /// Event name to test (e.g., post_tension_resolved).
+        event: String,
+
+        /// Use a real tension for the test payload.
+        #[arg(short, long)]
+        tension: Option<String>,
+    },
+
+    /// Show hook execution log (from .werk/audit.jsonl).
+    Log {
+        /// Number of recent entries to show.
+        #[arg(short, long, default_value = "20")]
+        tail: usize,
+    },
+
+    /// Install shipped default hooks or git integration.
+    Install {
+        /// Install git pre-commit hook (.githooks/pre-commit + core.hooksPath).
+        #[arg(long)]
+        git: bool,
+
+        /// Names of shipped hooks to install (omit to list available).
+        #[arg(num_args = 0..)]
+        hooks: Vec<String>,
+    },
 }

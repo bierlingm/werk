@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-09T05:43:34Z",
+  "flushed_at": "2026-04-09T12:36:04Z",
   "summary": {
-    "active": 33,
-    "released": 54,
-    "resolved": 102,
-    "total": 189
+    "active": 34,
+    "released": 56,
+    "resolved": 108,
+    "total": 198
   },
   "tensions": [
     {
@@ -932,9 +932,9 @@
       "status": "Resolved"
     },
     {
-      "actual": "Design inquiry complete. Three design docs produced. Key decisions: 2D lattice with stream/survey/frontier presets, three temporal axes (taxis/chronos/kairos), NOW zone as command center in survey, Tab as binary stream/field-wide toggle. Survey V1 implemented and functional. Logbase Phase 1 operational in TUI (#175): fisheye epoch expansion, j/k event navigation, J/K epoch navigation, Enter toggles focus, L key entry from deck. CLI logbase query surface complete (werk log, 6 modes). #89 resolved. Frontier/kairos view designed but not built. Three held children: #175 (TUI logbase deeper), #176 (cass integration), #181 (cross-tension timeline in TUI).",
+      "actual": "Survey V1 works. Logbase Phase 1 operational (per-tension). CLI cross-tension timeline exists (werk log). Tab toggles deck/survey. Root level currently shows the same deck as any other level — no vitals, no attention signals, no recent activity zone. Three-zone design captured in notes with interaction model.",
       "created_at": "2026-03-25T22:44:54.475353+00:00",
-      "desired": "the root level is a command center — structural overview, temporal vitals, logbase access, mission preparation — where stream (deck) and survey (time-first) orientations collapse into one surface",
+      "desired": "the root level is a command center with three zones — Vitals (field stats), Attention (signaled/drifting/stale/overdue tensions, navigable), Recent (cross-tension timeline, navigable) — above the normal deck. Shift+J/K cycles zones, j/k within zone, Enter descends. Zones only appear at root.",
       "horizon": "2026-05",
       "id": "01KMKJR62B2HDAKYKPR3V190YS",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
@@ -1328,15 +1328,15 @@
       "status": "Resolved"
     },
     {
-      "actual": "Hooks exist in .githooks/ and .claude/ but must be manually copied. Need: werk init --hooks or werk hooks install that sets up git hooks (pre-commit flush + README update) and Claude Code hooks (UBS scan) for the current repo, plus a --global flag for user-wide Claude settings.",
+      "actual": "All five children resolved. HookBridge subscribes to EventBus — every Event variant is hookable with zero wiring. Config supports chains, categories, wildcards, filters, dual scope. CLI has full CRUD + test + install. Five shipped hooks. Git integration automated. All 899 tests pass. CLI and MCP both migrated from manual hook firing to automatic bridge.",
       "created_at": "2026-03-27T18:34:06.332672+00:00",
-      "desired": "CLI command to install werk hooks into a repo",
+      "desired": "werk has a world-class hook system — lifecycle events bridge the EventBus automatically, hooks are managed via CLI, shipped defaults cover common workflows, git integration is automated",
       "horizon": null,
       "id": "01KMR96CKWD1S3QXYV66FEQ2RP",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
-      "position": null,
+      "position": 1,
       "short_code": 126,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Persistent intermittent issue across multiple sessions. Mitigations applied: bold removed from selected style, per-line rendering, clear_area_styled with TRANSPARENT bg, all Cell::default() paths eliminated, Bayesian diff strategy disabled for deterministic full diff. Reduced but not eliminated. Root cause is interaction between ftui diff engine strategy selection and terminal state drift. Nuclear option (force FullRedraw every frame) not yet tried.",
@@ -1941,7 +1941,7 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 181,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "7 modules + witnesses all typechecking. systemInvariant passes 10k traces (514/sec). 14/14 witnesses reachable. Specs now model: (1) gesture undo with GestureEffect snapshots and conflict detection, (2) auto-resolve/release cascade to all active descendants, (3) undoneSubsetOfCompleted invariant, (4) undo-of-undo chains correctly via reversed effects. Out of scope: deletion undo, split/merge undo, edge cleanup, epoch cleanup.",
@@ -1974,7 +1974,7 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 184,
-      "status": "Active"
+      "status": "Released"
     },
     {
       "actual": "deck.rs rewritten: render_line helper eliminated (was 10 callsites), deck bar uses ftui StatusLine, console vitals uses ftui Rule with centered title, desire zone uses Flex+Paragraph+Rule(Heavy), reality zone uses Rule, inline focus detail uses single Paragraph. Net -41 lines. All tests pass, zero warnings.",
@@ -2084,6 +2084,105 @@
       "parent_id": "01KNPVX6VF9YCN24JQ48RYY92Q",
       "position": null,
       "short_code": 194,
+      "status": "Active"
+    },
+    {
+      "actual": "HookBridge implemented — Event enum has hook_name(), is_commandable(), category(). HookBridge subscribes to EventBus, fires post-hooks automatically. HookRunner supports chains, categories (pre_mutation/post_mutation), wildcards (post_*), filters (parent:N, status:X), global+workspace merge. All CLI and MCP commands migrated from manual hook wiring to HookBridge. Pre-hooks remain at command level via hook_handle.runner. Legacy hook names backward compatible.",
+      "created_at": "2026-04-09T11:28:05.721456+00:00",
+      "desired": "HookBridge — hook system reads Event enum variants and automatically derives pre_/post_ hook names. Every new Event variant is hookable without manual wiring. Pre-hooks block (commandable events only), post-hooks fire-and-forget. Replaces current per-command hook firing with per-event firing from Store.",
+      "horizon": null,
+      "id": "01KNRZZP2SSDP5CJ8JNP33TNF5",
+      "parent_id": "01KMR96CKWD1S3QXYV66FEQ2RP",
+      "position": null,
+      "short_code": 198,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Config schema supports TOML arrays for chains (post_tension_resolved = [\"./a.sh\", \"./b.sh\"]), category hooks (pre_mutation, post_mutation), wildcards (post_*), filters (parent:N, status:X via hooks.X.filter), global (~/.werk/config.toml) + workspace merge (global fires first). HookRunner::from_configs() handles dual-scope loading. Config::remove() added for clean hook deletion.",
+      "created_at": "2026-04-09T11:28:08.023928+00:00",
+      "desired": "hook configuration schema supports chains, filters, wildcards, and settings — multiple commands per event (ordered chain), tension filters (parent:N, status:active), post_* wildcard, timeout/parallel/logging settings. Workspace-local (.werk/config.toml) and global (~/.werk/config.toml) scopes, both fire (global first).",
+      "horizon": null,
+      "id": "01KNRZZRAQ5QGCRWQA99F0RB3C",
+      "parent_id": "01KMR96CKWD1S3QXYV66FEQ2RP",
+      "position": null,
+      "short_code": 199,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Full hook management CLI: werk hooks list [--verbose], add <event> <command> [--filter] [--global], rm <event> [command] [--global], test <event> [--tension ID], log [--tail N], install [--git] [hook-names...]. All commands support --json. Wired into CLI command enum and main dispatch.",
+      "created_at": "2026-04-09T11:28:10.263771+00:00",
+      "desired": "hook management CLI — werk hooks list [--verbose], werk hooks add <event> <command> [--filter], werk hooks rm <event> [command], werk hooks test <event> [--tension ID], werk hooks log [--tail N], werk hooks run <name> [--tension ID]. Full CRUD plus test and debug.",
+      "horizon": null,
+      "id": "01KNRZZTGQGBWRJW80KW5DEKPV",
+      "parent_id": "01KMR96CKWD1S3QXYV66FEQ2RP",
+      "position": null,
+      "short_code": 200,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Five shipped hooks defined: flush (post_*), readme-tree (post_*), auto-stage (post_*), guard-delete (pre_delete), audit-log (post_*). ShippedHooks struct with content(), available(), default_event(), install(). werk hooks install <names> writes scripts to .werk/hooks/, makes executable, registers in config. Not auto-enabled.",
+      "created_at": "2026-04-09T11:28:12.725596+00:00",
+      "desired": "shipped default hooks — flush (post_* writes tensions.json), readme-tree (post_* updates README), auto-stage (post_* stages for git), guard-delete (pre_tension_deleted blocks if has children), log-to-file (post_* appends to .werk/audit.jsonl). Activated by werk hooks install, not auto-enabled.",
+      "horizon": null,
+      "id": "01KNRZZWXNYGCJR8C2C1WZJQM7",
+      "parent_id": "01KMR96CKWD1S3QXYV66FEQ2RP",
+      "position": null,
+      "short_code": 201,
+      "status": "Resolved"
+    },
+    {
+      "actual": "GitHooks struct with install(), is_installed(), PRE_COMMIT constant. werk hooks install --git sets core.hooksPath=.githooks, writes .githooks/pre-commit (flush + stage + readme-tree). Idempotent — reports already installed if configured.",
+      "created_at": "2026-04-09T11:28:14.999717+00:00",
+      "desired": "git integration — werk hooks install --git sets core.hooksPath, creates .githooks/pre-commit (calls werk flush + stages tensions.json), ensures executability. Separate from werk lifecycle hooks. One-time setup, idempotent.",
+      "horizon": null,
+      "id": "01KNRZZZ4QNRHTJAADTJG2ARG0",
+      "parent_id": "01KMR96CKWD1S3QXYV66FEQ2RP",
+      "position": null,
+      "short_code": 202,
+      "status": "Resolved"
+    },
+    {
+      "actual": "werk stats CLI command computes all these values. No TUI surface for field-level stats. Root deck looks identical to any other deck level.",
+      "created_at": "2026-04-09T11:28:57.153451+00:00",
+      "desired": "Vitals zone — read-only field stats rendered at root level above the deck. Active/resolved/released counts, positioned/held/overdue/stale counts, activity rate (mutations/day over 7d), last activity timestamp. Compact single-zone widget. Only visible at root.",
+      "horizon": null,
+      "id": "01KNS018A1T162SBN7AHG80WKM",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 203,
+      "status": "Active"
+    },
+    {
+      "actual": "Signals are computed (drift, hub, spine, stale, overdue) and shown in werk show output and survey. No aggregated attention surface in TUI. Practitioner must manually scan the survey or tree for signals.",
+      "created_at": "2026-04-09T11:29:02.039370+00:00",
+      "desired": "Attention zone — navigable list of tensions needing attention at root level. Ordered by severity: overdue first, then drifting, then signaled hubs/spines, then stale. j/k navigates, Enter descends. Empty sections omitted. Same gestures available as deck (resolve, hold, etc. via palette). Only visible at root.",
+      "horizon": null,
+      "id": "01KNS01D2Q1N602CJ1RWMRRHKN",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 204,
+      "status": "Active"
+    },
+    {
+      "actual": "CLI has werk log (no ID) producing cross-tension timeline. TUI logbase (L key) is per-tension only. No cross-tension timeline surface in TUI.",
+      "created_at": "2026-04-09T11:29:05.255153+00:00",
+      "desired": "Recent zone — navigable cross-tension timeline at root level. Most recent mutations first. Shows timestamp, tension short code, and mutation summary (created, resolved, reality updated, etc.). j/k navigates, Enter descends to that tension. Only visible at root. Sourced from the same logbase data as werk log (no ID).",
+      "horizon": null,
+      "id": "01KNS01G77D78FPJBJEGTB4BPN",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 205,
+      "status": "Active"
+    },
+    {
+      "actual": "No zone navigation exists. Root level is a single deck. Shift+J/K are unused keybindings. J/K (epoch nav) are logbase-context only, no conflict.",
+      "created_at": "2026-04-09T11:29:08.926674+00:00",
+      "desired": "zone navigation — Shift+J/Shift+K cycles focus between zones (Vitals → Attention → Deck → Recent). Tab remains deck/survey yaw. Zone focus is a root-level concept only — descending into any tension returns to normal single-zone deck navigation.",
+      "horizon": null,
+      "id": "01KNS01KSYBA2B9H9AM48637CZ",
+      "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
+      "position": null,
+      "short_code": 206,
       "status": "Active"
     }
   ]

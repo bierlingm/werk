@@ -16,7 +16,7 @@ use sd_core::{
     TensionStatus,
 };
 use serde::{Deserialize, Serialize};
-use werk_shared::{Config, HookEvent, HookRunner, PrefixResolver, WerkError, Workspace};
+use werk_shared::{Config, HookEvent, PrefixResolver, WerkError, Workspace};
 
 // ── Server ──────────────────────────────────────────────────────────
 
@@ -471,6 +471,12 @@ fn open_store() -> Result<(Workspace, sd_core::Store), McpError> {
     Ok((workspace, store))
 }
 
+fn open_store_with_hooks() -> Result<(Workspace, sd_core::Store, werk_shared::HookBridgeHandle), McpError> {
+    let workspace = Workspace::discover().map_err(werk_err)?;
+    let (store, handle) = workspace.open_store_with_hooks().map_err(werk_err)?;
+    Ok((workspace, store, handle))
+}
+
 fn load_projection_thresholds(workspace: &Workspace) -> ProjectionThresholds {
     let analysis = Config::load(workspace)
         .ok()
@@ -663,11 +669,6 @@ fn build_mcp_provenance(
     })
 }
 
-fn load_hooks(workspace: &Workspace) -> HookRunner {
-    Config::load(workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop())
-}
 
 /// Detect containment palettes after a horizon change, optionally applying a pre-selected response.
 ///
@@ -2103,7 +2104,7 @@ impl WerkServer {
             .map(|h| Horizon::parse(h).map_err(|e| err(format!("invalid horizon '{}': {}", h, e))))
             .transpose()?;
 
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hook_handle) = open_store_with_hooks()?;
 
         let parent_id = if let Some(ref parent_prefix) = p.parent {
             let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
@@ -2118,11 +2119,7 @@ impl WerkServer {
             .create_tension_full(&p.desired, &p.actual, parent_id.clone(), horizon_parsed.clone())
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-
-        // Fire post_create hook
-        let hooks = load_hooks(&workspace);
-        let create_event = HookEvent::create(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref());
-        hooks.post_create(&create_event);
+        // Post-hooks fire automatically via the HookBridge
 
         // Detect containment palettes if child created with horizon under a parent
         let (signals, applied) = if horizon_parsed.is_some() && tension.parent_id.is_some() {
@@ -2221,16 +2218,15 @@ impl WerkServer {
             return Err(err("actual state cannot be empty"));
         }
 
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let old_actual = tension.actual.clone();
         let tension_id = tension.id.clone();
 
-        let hooks = load_hooks(&workspace);
         let event =
             HookEvent::mutation(&tension_id, &tension.desired, Some(&old_actual), tension.parent_id.as_deref(), "actual", Some(&old_actual), &p.value);
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2272,8 +2268,7 @@ impl WerkServer {
             .update_actual(&tension_id, &p.value)
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-
-        hooks.post_mutation(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2293,13 +2288,12 @@ impl WerkServer {
             return Err(err("desired state cannot be empty"));
         }
 
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let old_desired = tension.desired.clone();
         let tension_id = tension.id.clone();
 
-        let hooks = load_hooks(&workspace);
         let event = HookEvent::mutation(
             &tension_id,
             &old_desired,
@@ -2309,7 +2303,7 @@ impl WerkServer {
             Some(&old_desired),
             &p.value,
         );
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2351,8 +2345,7 @@ impl WerkServer {
             .update_desired(&tension_id, &p.value)
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-
-        hooks.post_mutation(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2368,7 +2361,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<ResolveParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2380,9 +2373,8 @@ impl WerkServer {
             )));
         }
 
-        let hooks = load_hooks(&workspace);
         let event = HookEvent::status_change(&tension_id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Resolved");
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2399,9 +2391,7 @@ impl WerkServer {
 
         store.clear_actual_at();
         store.end_gesture();
-
-        hooks.post_mutation(&event);
-        hooks.post_resolve(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2416,7 +2406,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<ReleaseParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2428,9 +2418,8 @@ impl WerkServer {
             )));
         }
 
-        let hooks = load_hooks(&workspace);
         let event = HookEvent::status_change(&tension_id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Released");
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2451,9 +2440,7 @@ impl WerkServer {
             .update_status(&tension_id, TensionStatus::Released)
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-
-        hooks.post_mutation(&event);
-        hooks.post_release(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2468,7 +2455,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<ReopenParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2478,9 +2465,8 @@ impl WerkServer {
             return Err(err("tension is already Active"));
         }
 
-        let hooks = load_hooks(&workspace);
         let event = HookEvent::status_change(&tension_id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Active");
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2501,8 +2487,7 @@ impl WerkServer {
                 .map_err(|e| err(e.to_string()))?;
         }
         store.end_gesture();
-
-        hooks.post_mutation(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2743,8 +2728,7 @@ impl WerkServer {
             return Err(err("note text cannot be empty"));
         }
 
-        let (workspace, mut store) = open_store()?;
-        let hooks = load_hooks(&workspace);
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
 
         let (tension_id, display, t_actual, t_parent) = if let Some(ref id_prefix) = p.id {
             let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
@@ -2763,7 +2747,7 @@ impl WerkServer {
             None,
             &p.text,
         );
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2778,8 +2762,7 @@ impl WerkServer {
             ))
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-
-        hooks.post_mutation(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2797,8 +2780,7 @@ impl WerkServer {
             return Err(err("note number must be 1 or greater"));
         }
 
-        let (workspace, mut store) = open_store()?;
-        let hooks = load_hooks(&workspace);
+        let (workspace, mut store, hook_handle) = open_store_with_hooks()?;
 
         let (tension_id, t_actual, t_parent) = if let Some(ref id_prefix) = p.id {
             let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
@@ -2846,7 +2828,7 @@ impl WerkServer {
             Some(&note_text),
             &note_ts,
         );
-        if !hooks.pre_mutation(&event) {
+        if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
 
@@ -2861,8 +2843,7 @@ impl WerkServer {
             ))
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
-
-        hooks.post_mutation(&event);
+        // Post-hooks fire automatically via the HookBridge
         autoflush(&workspace);
 
         json_result(&serde_json::json!({

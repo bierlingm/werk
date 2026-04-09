@@ -143,6 +143,52 @@ impl Event {
         }
     }
 
+    /// The hook name for this event, matching the serde tag (snake_case variant name).
+    ///
+    /// Used by the HookBridge to derive `pre_` and `post_` hook names automatically.
+    /// Adding a new Event variant here makes it hookable with zero additional wiring.
+    pub fn hook_name(&self) -> &'static str {
+        match self {
+            Event::TensionCreated { .. } => "tension_created",
+            Event::RealityConfronted { .. } => "reality_confronted",
+            Event::DesireRevised { .. } => "desire_revised",
+            Event::TensionResolved { .. } => "tension_resolved",
+            Event::TensionReleased { .. } => "tension_released",
+            Event::TensionDeleted { .. } => "tension_deleted",
+            Event::StructureChanged { .. } => "structure_changed",
+            Event::HorizonChanged { .. } => "horizon_changed",
+            Event::UrgencyThresholdCrossed { .. } => "urgency_threshold_crossed",
+            Event::HorizonDriftDetected { .. } => "horizon_drift_detected",
+            Event::GestureUndone { .. } => "gesture_undone",
+        }
+    }
+
+    /// Whether this event represents a commandable mutation (user-initiated).
+    ///
+    /// Commandable events get both `pre_` and `post_` hooks.
+    /// Non-commandable events (computed signals) get only `post_` hooks.
+    pub fn is_commandable(&self) -> bool {
+        !matches!(
+            self,
+            Event::UrgencyThresholdCrossed { .. } | Event::HorizonDriftDetected { .. }
+        )
+    }
+
+    /// The category for this event, used for category-level hooks.
+    ///
+    /// Categories are convenience abstractions: `pre_mutation` fires for any
+    /// commandable mutation, `post_mutation` fires for any post-event.
+    /// `post_create` and `post_status_change` are lifecycle categories.
+    pub fn category(&self) -> &'static str {
+        match self {
+            Event::TensionCreated { .. } => "create",
+            Event::TensionResolved { .. } | Event::TensionReleased { .. } => "status_change",
+            Event::TensionDeleted { .. } => "delete",
+            Event::GestureUndone { .. } => "undo",
+            _ => "mutation",
+        }
+    }
+
     /// Get the timestamp for this event.
     pub fn timestamp(&self) -> DateTime<Utc> {
         match self {

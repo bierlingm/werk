@@ -8,7 +8,7 @@ use crate::workspace::Workspace;
 use chrono::Utc;
 use sd_core::{compute_urgency, Horizon, HorizonKind, TensionStatus};
 use serde::Serialize;
-use werk_shared::{Config, HookEvent, HookRunner};
+use werk_shared::HookEvent;
 
 /// JSON output structure for horizon set.
 #[derive(Serialize)]
@@ -32,7 +32,7 @@ struct HorizonDisplayResult {
 pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
+    let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -66,10 +66,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             // Record old horizon
             let old_horizon = tension.horizon.as_ref().map(|h| h.to_string());
 
-            // Hook infrastructure
-            let hooks = Config::load(&workspace)
-                .map(|c| HookRunner::from_config(&c))
-                .unwrap_or_else(|_| HookRunner::noop());
+            // Pre-hook check
             let new_horizon_str = horizon_parsed.as_ref().map(|h| h.to_string()).unwrap_or_else(|| "none".to_string());
             let event = HookEvent::mutation(
                 &tension.id,
@@ -80,7 +77,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                 old_horizon.as_deref(),
                 &new_horizon_str,
             );
-            if !hooks.pre_mutation(&event) {
+            if !hook_handle.runner.pre_mutation(&event) {
                 return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
             }
 
@@ -90,8 +87,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                 .update_horizon(&tension.id, horizon_parsed.clone())
                 .map_err(WerkError::SdError)?;
             store.end_gesture();
-
-            hooks.post_mutation(&event);
+            // Post-hooks fire automatically via the HookBridge
 
             // Print success message before palette (human mode)
             if !output.is_structured() {

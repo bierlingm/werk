@@ -11,7 +11,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
-use werk_shared::{Config, HookEvent, HookRunner};
+use werk_shared::HookEvent;
 
 /// JSON output structure for reality command.
 #[derive(Serialize)]
@@ -30,7 +30,7 @@ pub fn cmd_reality(
     no_epoch: bool,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
+    let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
 
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(tensions);
@@ -78,9 +78,6 @@ pub fn cmd_reality(
 
     let old_actual = tension.actual.clone();
 
-    let hooks = Config::load(&workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop());
     let event = HookEvent::mutation(
         &tension.id,
         &tension.desired,
@@ -90,7 +87,7 @@ pub fn cmd_reality(
         Some(&old_actual),
         &new_value,
     );
-    if !hooks.pre_mutation(&event) {
+    if !hook_handle.runner.pre_mutation(&event) {
         return Err(WerkError::InvalidInput(
             "Blocked by pre_mutation hook".to_string(),
         ));
@@ -138,8 +135,7 @@ pub fn cmd_reality(
         .update_actual(&tension.id, &new_value)
         .map_err(WerkError::SdError)?;
     store.end_gesture();
-
-    hooks.post_mutation(&event);
+    // Post-hooks fire automatically via the HookBridge
 
     let tension_display =
         werk_shared::display_id(tension.short_code, &tension.id);

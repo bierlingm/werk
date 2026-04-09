@@ -6,7 +6,7 @@ use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
-use werk_shared::{Config, HookEvent, HookRunner};
+use werk_shared::HookEvent;
 
 /// JSON output structure for resolve command.
 #[derive(Serialize)]
@@ -27,7 +27,7 @@ pub fn cmd_resolve(
 ) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
+    let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
 
     // Get all tensions for prefix resolution
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -74,12 +74,9 @@ pub fn cmd_resolve(
         return Ok(());
     }
 
-    // Hook infrastructure
-    let hooks = Config::load(&workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop());
+    // Pre-hook check
     let event = HookEvent::status_change(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Resolved");
-    if !hooks.pre_mutation(&event) {
+    if !hook_handle.runner.pre_mutation(&event) {
         return Err(WerkError::InvalidInput(
             "Blocked by pre_mutation hook".to_string(),
         ));
@@ -100,9 +97,7 @@ pub fn cmd_resolve(
 
     store.clear_actual_at();
     store.end_gesture();
-
-    hooks.post_mutation(&event);
-    hooks.post_resolve(&event);
+    // Post-hooks fire automatically via the HookBridge
 
     let result = ResolveResult {
         id: tension.id.clone(),

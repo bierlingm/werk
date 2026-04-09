@@ -145,6 +145,28 @@ impl Workspace {
         let store = sd_core::Store::init(self.root()).map_err(WerkError::StoreError)?;
         Ok(store)
     }
+
+    /// Open the store with EventBus + HookBridge attached.
+    ///
+    /// Post-hooks fire automatically via the bridge when the Store emits events.
+    /// Returns (Store, HookBridgeHandle) — the handle must be kept alive for the
+    /// bridge to remain subscribed. Drop it when the command completes.
+    ///
+    /// This is the preferred entry point for CLI/MCP commands that mutate state.
+    pub fn open_store_with_hooks(&self) -> Result<(sd_core::Store, crate::hooks::HookBridgeHandle)> {
+        let mut store = sd_core::Store::init(self.root()).map_err(WerkError::StoreError)?;
+        let bus = sd_core::events::EventBus::new();
+        store.set_event_bus(bus.clone());
+
+        let config = crate::config::Config::load(self).unwrap_or_default();
+        let global_config = crate::config::Config::load_global().ok();
+        let runner = std::sync::Arc::new(
+            crate::hooks::HookRunner::from_configs(global_config.as_ref(), &config),
+        );
+        let bridge = crate::hooks::HookBridge::new(&bus, runner.clone());
+
+        Ok((store, crate::hooks::HookBridgeHandle { _bridge: bridge, runner }))
+    }
 }
 
 #[cfg(test)]

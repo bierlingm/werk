@@ -14,7 +14,7 @@ use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
 use sd_core::Mutation;
 use serde::Serialize;
-use werk_shared::{format_timestamp, Config, HookEvent, HookRunner};
+use werk_shared::{format_timestamp, HookEvent};
 
 const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
 
@@ -68,11 +68,7 @@ pub fn cmd_note_add(
     };
 
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
-
-    let hooks = Config::load(&workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop());
+    let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
 
     let result = match id {
         Some(id_prefix) => {
@@ -82,7 +78,7 @@ pub fn cmd_note_add(
 
             let event =
                 HookEvent::mutation(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "note", None, &text);
-            if !hooks.pre_mutation(&event) {
+            if !hook_handle.runner.pre_mutation(&event) {
                 return Err(WerkError::InvalidInput(
                     "Blocked by pre_mutation hook".to_string(),
                 ));
@@ -100,8 +96,6 @@ pub fn cmd_note_add(
                 .map_err(WerkError::SdError)?;
             store.end_gesture();
 
-            hooks.post_mutation(&event);
-
             NoteAddResult {
                 id: Some(tension.id.clone()),
                 display_id: Some(werk_shared::display_id(tension.short_code, &tension.id)),
@@ -118,7 +112,7 @@ pub fn cmd_note_add(
                 None,
                 &text,
             );
-            if !hooks.pre_mutation(&event) {
+            if !hook_handle.runner.pre_mutation(&event) {
                 return Err(WerkError::InvalidInput(
                     "Blocked by pre_mutation hook".to_string(),
                 ));
@@ -135,8 +129,6 @@ pub fn cmd_note_add(
                 ))
                 .map_err(WerkError::SdError)?;
             store.end_gesture();
-
-            hooks.post_mutation(&event);
 
             NoteAddResult {
                 id: None,
@@ -199,11 +191,7 @@ pub fn cmd_note_rm(
     }
 
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
-
-    let hooks = Config::load(&workspace)
-        .map(|c| HookRunner::from_config(&c))
-        .unwrap_or_else(|_| HookRunner::noop());
+    let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
 
     let (resolved_tension_id, display_label, tension_actual, tension_parent_id) = match tension_id_prefix {
         Some(id_prefix) => {
@@ -250,7 +238,7 @@ pub fn cmd_note_rm(
     let note_text = target_note.new_value().to_owned();
     let note_timestamp = target_note.timestamp().to_rfc3339();
 
-    // Hook
+    // Pre-hook check
     let event = HookEvent::mutation(
         &resolved_tension_id,
         &display_label,
@@ -260,7 +248,7 @@ pub fn cmd_note_rm(
         Some(&note_text),
         &note_timestamp,
     );
-    if !hooks.pre_mutation(&event) {
+    if !hook_handle.runner.pre_mutation(&event) {
         return Err(WerkError::InvalidInput(
             "Blocked by pre_mutation hook".to_string(),
         ));
@@ -278,8 +266,7 @@ pub fn cmd_note_rm(
         ))
         .map_err(WerkError::SdError)?;
     store.end_gesture();
-
-    hooks.post_mutation(&event);
+    // Post-hooks fire automatically via the HookBridge
 
     let result = NoteRmResult {
         id: if resolved_tension_id == WORKSPACE_NOTE_TENSION_ID {

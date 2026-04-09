@@ -15,7 +15,7 @@ pub mod workspace;
 
 pub use batch_mutation::BatchMutation;
 pub use config::{AnalysisThresholds, Config, SignalThresholds};
-pub use hooks::{HookEvent, HookRunner};
+pub use hooks::{GitHooks, HookBridge, HookBridgeHandle, HookEvent, HookFilter, HookLogEntry, HookRunner, ShippedHooks};
 pub use error::{ErrorCode, Result, WerkError};
 pub use palette::{
     Palette, PaletteChoice, PaletteContext, PaletteOption,
