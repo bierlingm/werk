@@ -415,6 +415,17 @@ impl EventBuilder {
         }
     }
 
+    pub fn gesture_undone(
+        gesture_id: String,
+        undo_gesture_id: String,
+        reversed_mutation_count: usize,
+    ) -> Event {
+        Event::GestureUndone {
+            gesture_id, undo_gesture_id, reversed_mutation_count,
+            timestamp: Utc::now(),
+        }
+    }
+
     pub fn horizon_drift_detected(
         tension_id: String,
         drift_type: HorizonDriftType,

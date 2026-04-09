@@ -27,7 +27,7 @@ pub fn cmd_undo(
     dry_run: bool,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
-    let store = workspace.open_store()?;
+    let (store, _hook_handle) = workspace.open_store_with_hooks()?;
 
     // Resolve the gesture ID
     let gid = if last {

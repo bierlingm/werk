@@ -21,7 +21,7 @@ struct MoveResult {
 pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bool) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
+    let (mut store, _hook_handle) = workspace.open_store_with_hooks()?;
 
     // Get all tensions for prefix resolution and forest building
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;

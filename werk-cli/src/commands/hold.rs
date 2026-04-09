@@ -14,7 +14,7 @@ struct HoldResult {
 
 pub fn cmd_hold(output: &Output, id: String) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
-    let mut store = workspace.open_store()?;
+    let (mut store, _hook_handle) = workspace.open_store_with_hooks()?;
 
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(tensions);

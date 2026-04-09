@@ -2946,6 +2946,13 @@ impl Store {
             }
         }
 
+        // Emit GestureUndone event
+        self.emit_event(&EventBuilder::gesture_undone(
+            gesture_id.to_owned(),
+            undo_gesture_id.clone(),
+            mutations.len(),
+        ));
+
         Ok(undo_gesture_id)
     }
 

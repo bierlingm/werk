@@ -25,8 +25,9 @@ impl Engine {
     }
 
     /// Create an engine with an existing store.
-    pub fn with_store(store: Store) -> Self {
+    pub fn with_store(mut store: Store) -> Self {
         let bus = EventBus::new();
+        store.set_event_bus(bus.clone());
         Self { store, bus }
     }
 

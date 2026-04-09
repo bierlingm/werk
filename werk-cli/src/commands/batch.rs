@@ -2,13 +2,14 @@
 //!
 //! Apply or validate mutations in bulk from a YAML file or stdin.
 
-use werk_shared::BatchMutation;
+use werk_shared::{BatchMutation, Config, HookBridge, HookRunner};
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use clap::Subcommand;
 use sd_core::{Engine, Mutation, TensionStatus};
+use std::sync::Arc;
 
 /// Batch subcommands.
 #[derive(Debug, Subcommand)]
@@ -69,10 +70,16 @@ fn cmd_batch_apply(output: &Output, file: &str, dry_run: bool) -> Result<(), Wer
         return Ok(());
     }
 
-    // Discover workspace and open store
+    // Discover workspace and open store with hooks
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
     let mut engine = Engine::with_store(store);
+
+    // Wire the HookBridge to the Engine's EventBus
+    let config = Config::load(&workspace).unwrap_or_default();
+    let global_config = Config::load_global().ok();
+    let runner = Arc::new(HookRunner::from_configs(global_config.as_ref(), &config));
+    let _hook_bridge = HookBridge::new(engine.event_bus(), runner);
 
     // Begin a single gesture for the entire batch — a batch IS one gesture
     if !dry_run {

@@ -2157,7 +2157,7 @@ impl WerkServer {
             return Err(err("at least one child ID is required"));
         }
 
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
 
         // Resolve all child IDs
@@ -2503,7 +2503,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<MoveParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2549,7 +2549,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<IdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2573,7 +2573,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<PositionParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2613,7 +2613,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<HorizonParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2679,7 +2679,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<IdParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2906,7 +2906,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<SnoozeParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -2959,7 +2959,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<RecurParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -3014,7 +3014,7 @@ impl WerkServer {
         &self,
         Parameters(p): Parameters<EpochParam>,
     ) -> Result<CallToolResult, McpError> {
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
         let tension_id = tension.id.clone();
@@ -3258,7 +3258,7 @@ impl WerkServer {
             return Err(err("split requires at least 2 desires"));
         }
 
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let resolver = PrefixResolver::new(tensions.clone());
         let source = resolver.resolve(&p.id).map_err(|e| err(e.to_string()))?;
@@ -3352,7 +3352,7 @@ impl WerkServer {
             return Err(err("merge requires either 'into' (asymmetric) or 'as_desire' (symmetric)"));
         }
 
-        let (workspace, mut store) = open_store()?;
+        let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let resolver = PrefixResolver::new(tensions.clone());
 
