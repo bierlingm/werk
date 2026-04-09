@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-09T13:07:06Z",
+  "flushed_at": "2026-04-09T22:15:38Z",
   "summary": {
-    "active": 34,
+    "active": 35,
     "released": 56,
     "resolved": 108,
-    "total": 198
+    "total": 199
   },
   "tensions": [
     {
@@ -2183,6 +2183,17 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 206,
+      "status": "Active"
+    },
+    {
+      "actual": "conceptual design explored in session on #126. Doolittle's wayfinding ladder maps onto the instrument: notes are disambiguation output, the narrative signal layer is salience computation on activity, theory of closure is prediction, positioning is selection, epochs are correction. No implementation yet.",
+      "created_at": "2026-04-09T14:32:15.684890+00:00",
+      "desired": "the instrument surfaces activity-derived signals — reality pressure, testimony accumulation, closure momentum, desire drift, epoch density — that tell the practitioner when their formulation of reality or desire is stale relative to what has actually happened in the structure",
+      "horizon": null,
+      "id": "01KNSAGX240XNBTX1F5KBZD3EP",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 207,
       "status": "Active"
     }
   ]
