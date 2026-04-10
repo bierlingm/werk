@@ -76,6 +76,21 @@ Guideline: `.claude/guidelines/quint-constraints.md` for Quint language limitati
 
 MCP: The `quint-lsp` MCP server provides LSP diagnostics for `.qnt` files via `.mcp.json`.
 
+## Version Control (GitButler)
+
+We use **GitButler** (`but`) instead of raw git for all write operations. The workspace is on `gitbutler/workspace`.
+
+- **Never use `git add`, `git commit`, `git push`, `git checkout`, `git merge`, `git rebase`.** Use the equivalent `but` commands.
+- **Read-only git is fine.** `git log`, `git blame`, `git diff`, `git show --stat` are allowed for inspection.
+- **Committing:** `but commit <branch> -m "<msg>" --status-after`. Use `-c` to create a new branch inline.
+- **Pushing:** `but push` (pushes all branches with unpushed commits).
+- **PRs:** `but pr new -m "<msg>"` or `but pr new -t` (auto-message from single commit).
+- **Always use `--status-after`** on mutation commands to get post-mutation state in one round-trip.
+- **Always use `--json`** when scripting or in agent context.
+- **Pre-commit hooks** live in `.githooks/pre-commit-user` (GitButler wraps them). They flush `tensions.json` and update README automatically.
+
+See `.claude/skills/gitbutler/` for the full GitButler skill reference.
+
 ## Code Quality
 
 - **UBS (Ultimate Bug Scanner)** runs automatically on every file write/edit via Claude Code hook. Critical findings are surfaced inline.
