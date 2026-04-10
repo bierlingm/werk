@@ -512,93 +512,10 @@ fn autoflush(workspace: &Workspace) {
     if config.get("flush.auto").map(|v| v.as_str()) != Some("true") {
         return;
     }
-    // Silently flush — same as CLI autoflush
-    let Ok(store) = workspace.open_store() else {
-        return;
-    };
-    let Ok(tensions) = store.list_tensions() else {
-        return;
-    };
-    let now = Utc::now();
-    let mut sorted = tensions;
-    sorted.sort_by(|a, b| match (a.short_code, b.short_code) {
-        (Some(sa), Some(sb)) => sa.cmp(&sb),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => a.id.cmp(&b.id),
-    });
-
-    #[derive(Serialize)]
-    struct FlushTension {
-        actual: String,
-        created_at: String,
-        desired: String,
-        horizon: Option<String>,
-        id: String,
-        parent_id: Option<String>,
-        position: Option<i32>,
-        short_code: Option<i32>,
-        status: String,
-    }
-
-    #[derive(Serialize)]
-    struct FlushSummary {
-        active: usize,
-        released: usize,
-        resolved: usize,
-        total: usize,
-    }
-
-    #[derive(Serialize)]
-    struct FlushState {
-        flushed_at: String,
-        summary: FlushSummary,
-        tensions: Vec<FlushTension>,
-    }
-
-    let active = sorted
-        .iter()
-        .filter(|t| t.status == TensionStatus::Active)
-        .count();
-    let resolved = sorted
-        .iter()
-        .filter(|t| t.status == TensionStatus::Resolved)
-        .count();
-    let released = sorted
-        .iter()
-        .filter(|t| t.status == TensionStatus::Released)
-        .count();
-
-    let flush_tensions: Vec<FlushTension> = sorted
-        .iter()
-        .map(|t| FlushTension {
-            actual: t.actual.clone(),
-            created_at: t.created_at.to_rfc3339(),
-            desired: t.desired.clone(),
-            horizon: t.horizon.as_ref().map(|h| h.to_string()),
-            id: t.id.clone(),
-            parent_id: t.parent_id.clone(),
-            position: t.position,
-            short_code: t.short_code,
-            status: t.status.to_string(),
-        })
-        .collect();
-
-    let state = FlushState {
-        flushed_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        summary: FlushSummary {
-            active,
-            released,
-            resolved,
-            total: sorted.len(),
-        },
-        tensions: flush_tensions,
-    };
-
-    if let Ok(json) = serde_json::to_string_pretty(&state) {
-        let path = workspace.root().join("tensions.json");
-        let _ = std::fs::write(&path, format!("{}\n", json));
-    }
+    // Delegate to the shared flush helper so CLI and MCP stay byte-identical
+    // and share the idempotency contract. Errors are silently ignored —
+    // autoflush should never break a mutation tool call.
+    let _ = werk_shared::flush::flush_to_file(workspace);
 }
 
 fn parse_mcp_timespec(s: &str) -> Result<DateTime<Utc>, String> {

@@ -7,6 +7,7 @@
 pub mod batch_mutation;
 pub mod config;
 pub mod error;
+pub mod flush;
 pub mod hooks;
 pub mod palette;
 pub mod prefix;
@@ -15,6 +16,7 @@ pub mod workspace;
 
 pub use batch_mutation::BatchMutation;
 pub use config::{AnalysisThresholds, Config, SignalThresholds};
+pub use flush::{flush_to_file, content_equivalent as flush_content_equivalent, FlushOutcome, FLUSH_FILENAME};
 pub use hooks::{GitHooks, HookBridge, HookBridgeHandle, HookEvent, HookFilter, HookLogEntry, HookRunner, ShippedHooks};
 pub use error::{ErrorCode, Result, WerkError};
 pub use palette::{
