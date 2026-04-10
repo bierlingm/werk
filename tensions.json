@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-09T22:15:38Z",
+  "flushed_at": "2026-04-10T12:02:11Z",
   "summary": {
-    "active": 35,
+    "active": 48,
     "released": 56,
     "resolved": 108,
-    "total": 199
+    "total": 212
   },
   "tensions": [
     {
@@ -2194,6 +2194,149 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 207,
+      "status": "Active"
+    },
+    {
+      "actual": "GitButler CLI studied in depth. Nine design patterns identified. None implemented yet.",
+      "created_at": "2026-04-09T22:38:37.614976+00:00",
+      "desired": "the werk CLI absorbs the best UX patterns from GitButler — round-trip feedback, session focus, preview safety, contextual discovery, and visual information design",
+      "horizon": null,
+      "id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 208,
+      "status": "Active"
+    },
+    {
+      "actual": "werk mutations return minimal confirmation. GitButler's --status-after pattern shows: one command, complete state.",
+      "created_at": "2026-04-09T22:38:46.588594+00:00",
+      "desired": "mutations echo back the affected tension — --show-after on every write command gives complete feedback in one round-trip",
+      "horizon": null,
+      "id": "01KNT6BQSWM3ZSF862MPR9BFM9",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 209,
+      "status": "Active"
+    },
+    {
+      "actual": "GitButler's mark system lets you say 'everything goes here'. werk has no CLI equivalent — every command needs an explicit ID.",
+      "created_at": "2026-04-09T22:38:48.943892+00:00",
+      "desired": "werk focus sets a session context — declare your working tension once, then gestures target it implicitly",
+      "horizon": null,
+      "id": "01KNT6BT3FAAE935S6Y0Z8RT9V",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 210,
+      "status": "Active"
+    },
+    {
+      "actual": "resolve, rm, move, split, merge have --dry-run. position and batch do not.",
+      "created_at": "2026-04-09T22:38:57.054583+00:00",
+      "desired": "--dry-run covers all destructive and reordering gestures — position and batch get preview mode",
+      "horizon": null,
+      "id": "01KNT6C20YWCYBGT677AWR14R7",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 211,
+      "status": "Active"
+    },
+    {
+      "actual": "GitButler's rub matrix determines operations from types. werk has no CLI affordance that says 'here is what you can do with this tension right now'.",
+      "created_at": "2026-04-09T22:38:59.532395+00:00",
+      "desired": "werk do shows available actions for a tension — context-aware action menu in the CLI",
+      "horizon": null,
+      "id": "01KNT6C4ECEY66EEX1ENNWNW8H",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 212,
+      "status": "Active"
+    },
+    {
+      "actual": "GitButler's oplog snapshot lets you name a point in time. werk has gesture undo but no named restore points.",
+      "created_at": "2026-04-09T22:39:01.880001+00:00",
+      "desired": "named checkpoints before restructuring — werk checkpoint saves a restorable snapshot with a message",
+      "horizon": null,
+      "id": "01KNT6C6QQ4N32KA4J6VKQZ7GM",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 213,
+      "status": "Active"
+    },
+    {
+      "actual": "Design document written (designs/cli-visual-display.md). Complete visual language defined: 7-role color palette, glyph registry, zone boundaries, depth-sensitive tree rendering, two-line root tensions, signal lines, column alignment, footer hints, shared cli_display module. Five implementation phases identified. Current state: color only in tree.rs, no centralized glyphs, no zone boundaries, no breathing room, show/list/log are plain text.",
+      "created_at": "2026-04-09T22:39:10.829810+00:00",
+      "desired": "the werk CLI has a world-class visual display — a coherent visual language where color, glyphs, line weight, zone boundaries, and breathing room turn terminal output into an instrument surface as precise as musical notation",
+      "horizon": null,
+      "id": "01KNT6CFFDCHTST64W13G5B855",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 214,
+      "status": "Active"
+    },
+    {
+      "actual": "GitButler's --json --status-after returns {result, status} in one blob. werk --json returns minimal confirmation, requiring a second call.",
+      "created_at": "2026-04-09T22:39:13.206274+00:00",
+      "desired": "JSON mutation responses include the updated tension view — one round-trip for agents via combined result+show payload",
+      "horizon": null,
+      "id": "01KNT6CHSP8PXF7SGWHCGPKX8N",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 215,
+      "status": "Active"
+    },
+    {
+      "actual": "glyphs defined inline in tree.rs, show.rs, list.rs with no central registry. Color only in tree.rs via ad-hoc owo_colors. Two conflicting truncation strategies.",
+      "created_at": "2026-04-09T22:50:19.368029+00:00",
+      "desired": "Phase 1: shared cli_display module — glyph registry, color palette, Palette struct with NO_COLOR/non-TTY detection, all constants centralized in werk-shared",
+      "horizon": null,
+      "id": "01KNT70WB8FZJANRHPZN88B485",
+      "parent_id": "01KNT6CFFDCHTST64W13G5B855",
+      "position": 1,
+      "short_code": 216,
+      "status": "Active"
+    },
+    {
+      "actual": "only tree.rs has color. show, list, stats, log, survey output plain text with no ANSI.",
+      "created_at": "2026-04-09T22:50:21.808871+00:00",
+      "desired": "Phase 2: universal color — every command that outputs human text goes through the shared palette. show, list, stats, log, survey all get semantic color",
+      "horizon": null,
+      "id": "01KNT70YQGTD644HWCTJQDHBEW",
+      "parent_id": "01KNT6CFFDCHTST64W13G5B855",
+      "position": 2,
+      "short_code": 217,
+      "status": "Active"
+    },
+    {
+      "actual": "tree is single-line per tension with everything crammed on one line. no zone boundaries, no breathing room, signals lost off right edge.",
+      "created_at": "2026-04-09T22:50:26.197587+00:00",
+      "desired": "Phase 3: tree redesign — zone boundaries on roots, two-line root layout (desire first, metadata below), signal lines, depth-sensitive breathing room, dimmed chrome",
+      "horizon": null,
+      "id": "01KNT7130NJS79Z5JZ64BDYNKZ",
+      "parent_id": "01KNT6CFFDCHTST64W13G5B855",
+      "position": 3,
+      "short_code": 218,
+      "status": "Active"
+    },
+    {
+      "actual": "show has structured sections but no color. list has basic columns but no alignment, no color, no hints. no mutation echo after writes.",
+      "created_at": "2026-04-09T22:50:34.994136+00:00",
+      "desired": "Phase 4: show and list polish — section headers colored, signal severity colors, column-aligned list, band separators for signal grouping, actionable footer hints",
+      "horizon": null,
+      "id": "01KNT71BKJRYEH59MZXJE9ZCGT",
+      "parent_id": "01KNT6CFFDCHTST64W13G5B855",
+      "position": 4,
+      "short_code": 219,
+      "status": "Active"
+    },
+    {
+      "actual": "log renders plain text lines. stats has basic block chars but no color. no epoch zone boundaries.",
+      "created_at": "2026-04-09T22:50:37.435374+00:00",
+      "desired": "Phase 5: log and stats rendering — epoch boundaries as visual zones, bar charts with block elements, temporal color gradient in activity logs",
+      "horizon": null,
+      "id": "01KNT71DZV8R3VZ14DZQHRHSG2",
+      "parent_id": "01KNT6CFFDCHTST64W13G5B855",
+      "position": 5,
+      "short_code": 220,
       "status": "Active"
     }
   ]
