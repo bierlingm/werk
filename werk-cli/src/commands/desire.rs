@@ -7,6 +7,7 @@
 //! Use --no-epoch for minor corrections that don't warrant a new delta.
 
 use crate::error::WerkError;
+use crate::mutation_echo;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
@@ -28,6 +29,7 @@ pub fn cmd_desire(
     id: String,
     value: Option<String>,
     no_epoch: bool,
+    show_after: bool,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
@@ -147,9 +149,14 @@ pub fn cmd_desire(
     };
 
     if output.is_structured() {
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
+        let mut val = serde_json::to_value(&result)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        if show_after {
+            val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
+        }
+        let json = serde_json::to_string_pretty(&val)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!("{}", json);
     } else {
         output
             .success(&format!(
@@ -166,6 +173,7 @@ pub fn cmd_desire(
                 .len();
             println!("  Epoch {} recorded (epoch boundary)", epoch_count);
         }
+        mutation_echo::print_human_echo(&store, &output.palette(), &tension.id)?;
     }
 
     Ok(())

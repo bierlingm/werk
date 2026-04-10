@@ -812,5 +812,27 @@ pub fn cmd_tree(
         );
     }
 
+    // Footer hint — contextual suggestion based on what's visible.
+    // The hint helper is a no-op when the palette is disabled, so this
+    // line never appears in piped or test output.
+    let overdue_count = filtered_tensions
+        .iter()
+        .filter(|t| {
+            t.status == TensionStatus::Active
+                && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
+        })
+        .count();
+    let hint = if overdue_count > 0 {
+        format!(
+            "{} overdue — `werk list --overdue` for details, `werk show <id>` to inspect",
+            overdue_count
+        )
+    } else if filter == Filter::Active {
+        "`werk show <id>` for one tension, `werk tree --all` to include resolved/released".to_string()
+    } else {
+        "`werk tree` for active only, `werk show <id>` for one tension".to_string()
+    };
+    crate::hints::print_hint(&palette, &hint);
+
     Ok(())
 }

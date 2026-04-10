@@ -568,6 +568,23 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
         } else {
             println!("{}", palette.chrome(&format!("{} tension(s)", rows.len())));
         }
+
+        // Contextual hint based on which filter was active and what
+        // signals showed up. Renders dim only in interactive terminals.
+        let overdue_count = rows.iter().filter(|r| r.overdue).count();
+        let hint = if overdue_count > 0 {
+            format!(
+                "{} overdue — `werk show <id>` to inspect, `werk reality <id> ...` to update",
+                overdue_count
+            )
+        } else if params.tree {
+            "`werk show <id>` for one tension, `werk list --signals` for signal columns".to_string()
+        } else if params.long {
+            "`werk show <id>` for the full picture, `werk list` for compact rows".to_string()
+        } else {
+            "`werk show <id>` for one tension, `werk list --long` for more detail per row".to_string()
+        };
+        crate::hints::print_hint(&palette, &hint);
     }
 
     Ok(())

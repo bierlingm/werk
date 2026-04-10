@@ -1,6 +1,7 @@
 //! Release command handler.
 
 use crate::error::WerkError;
+use crate::mutation_echo;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
@@ -17,7 +18,12 @@ struct ReleaseResult {
     reason: String,
 }
 
-pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), WerkError> {
+pub fn cmd_release(
+    output: &Output,
+    id: String,
+    reason: String,
+    show_after: bool,
+) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
     let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
@@ -78,9 +84,14 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
         .count();
 
     if output.is_structured() {
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
+        let mut val = serde_json::to_value(&result)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        if show_after {
+            val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
+        }
+        let json = serde_json::to_string_pretty(&val)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!("{}", json);
     } else {
         output
             .success(&format!("Released tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
@@ -91,6 +102,7 @@ pub fn cmd_release(output: &Output, id: String, reason: String) -> Result<(), We
             let noun = if active_children == 1 { "child" } else { "children" };
             println!("  ({} active {} still open)", active_children, noun);
         }
+        mutation_echo::print_human_echo(&store, &output.palette(), &tension.id)?;
     }
 
     Ok(())

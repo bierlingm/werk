@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-10T13:49:16Z",
+  "flushed_at": "2026-04-10T14:02:42Z",
   "summary": {
     "active": 48,
     "released": 56,
@@ -2318,7 +2318,7 @@
       "status": "Active"
     },
     {
-      "actual": "show has structured sections but no color. list has basic columns but no alignment, no color, no hints. no mutation echo after writes.",
+      "actual": "show section headers now bold + cyan (Signals:, Frontier:, Children:, Activity:, Epochs:, Ancestors:, Siblings:, Engagement:). New mutation_echo helper renders compact 3-line post-mutation summary; reality/desire/resolve/release commands gained --show-after flag — human mode echoes by default, JSON mode opts in via flag (additive show key, no shape change). New hints helper prints contextual one-line footer suggestions on tree/show/list, dim only in interactive terminals (no-op when palette disabled). All 298 werk tests pass; existing JSON consumers see no breaking change. List column alignment, --signals band separators, and move/position/snooze echo deferred.",
       "created_at": "2026-04-09T22:50:34.994136+00:00",
       "desired": "Phase 4: show and list polish — section headers colored, signal severity colors, column-aligned list, band separators for signal grouping, actionable footer hints",
       "horizon": null,

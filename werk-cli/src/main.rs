@@ -103,11 +103,11 @@ fn main() {
         Commands::Epoch { id, list, show } => werk::commands::epoch::cmd_epoch(&output, id, list, show),
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
         Commands::Show { id, full } => werk::commands::show::cmd_show(&output, id, full),
-        Commands::Reality { id, value, no_epoch } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch),
-        Commands::Desire { id, value, no_epoch } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch),
-        Commands::Resolve { id, actual_at, dry_run } => werk::commands::resolve::cmd_resolve(&output, id, actual_at, dry_run),
-        Commands::Release { id, reason } => {
-            werk::commands::release::cmd_release(&output, id, reason)
+        Commands::Reality { id, value, no_epoch, show_after } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch, show_after),
+        Commands::Desire { id, value, no_epoch, show_after } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch, show_after),
+        Commands::Resolve { id, actual_at, dry_run, show_after } => werk::commands::resolve::cmd_resolve(&output, id, actual_at, dry_run, show_after),
+        Commands::Release { id, reason, show_after } => {
+            werk::commands::release::cmd_release(&output, id, reason, show_after)
         }
         Commands::Reopen { id, reason } => werk::commands::reopen::cmd_reopen(&output, id, reason),
         Commands::Undo { gesture_id, last, dry_run } => {

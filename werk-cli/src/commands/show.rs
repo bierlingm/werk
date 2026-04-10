@@ -409,7 +409,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
         if has_signals {
             println!();
-            println!("{}", palette.structure("Signals:"));
+            println!("{}", palette.bold(&palette.structure("Signals:")));
 
             // Label colors mirror the palette semantics:
             //   CRITICAL / HUB / SPINE / REACH  → structure (cyan)
@@ -542,7 +542,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
             if has_frontier_signals {
                 println!();
-                println!("{}", palette.structure("Frontier:"));
+                println!("{}", palette.bold(&palette.structure("Frontier:")));
 
                 if let Some(ref ns) = frontier.next_step {
                     let ns_display = display_id(ns.short_code, &ns.tension_id);
@@ -594,7 +594,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         // === Children ===
         if !result.children.is_empty() {
             println!();
-            println!("{}", palette.structure("Children:"));
+            println!("{}", palette.bold(&palette.structure("Children:")));
             for child in &result.children {
                 let child_id = display_id(child.short_code, &child.id);
                 let status_marker = match child.status.as_str() {
@@ -612,7 +612,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         // === Activity (last 10, most recent first, concise summaries) ===
         if !result.mutations.is_empty() {
             println!();
-            println!("{}", palette.structure("Activity:"));
+            println!("{}", palette.bold(&palette.structure("Activity:")));
             // Reverse to show most recent first
             for m in result.mutations.iter().rev() {
                 let ts = DateTime::parse_from_rfc3339(&m.timestamp)
@@ -630,7 +630,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             let latest = &epochs[epochs.len() - 1];
             let age = relative_time(latest.timestamp, now);
             if full {
-                println!("{}", palette.structure(&format!("Epochs ({}):", epochs.len())));
+                println!("{}", palette.bold(&palette.structure(&format!("Epochs ({}):", epochs.len()))));
                 for (i, e) in epochs.iter().enumerate().rev() {
                     let e_age = relative_time(e.timestamp, now);
                     println!(
@@ -654,7 +654,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             if let Some(ref ancestors) = result.ancestors {
                 if !ancestors.is_empty() {
                     println!();
-                    println!("{}", palette.structure("Ancestors:"));
+                    println!("{}", palette.bold(&palette.structure("Ancestors:")));
                     for a in ancestors {
                         let sc = a.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| a.id[..8.min(a.id.len())].to_string());
                         println!("  {:<6} {}", sc, truncate(&a.desired, 55));
@@ -664,7 +664,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             if let Some(ref siblings) = result.siblings {
                 if !siblings.is_empty() {
                     println!();
-                    println!("{}", palette.structure("Siblings:"));
+                    println!("{}", palette.bold(&palette.structure("Siblings:")));
                     for s in siblings {
                         let sc = s.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| s.id[..8.min(s.id.len())].to_string());
                         let status_marker = match s.status.as_str() {
@@ -678,7 +678,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             }
             if let Some(ref eng) = result.engagement {
                 println!();
-                println!("{}", palette.structure("Engagement:"));
+                println!("{}", palette.bold(&palette.structure("Engagement:")));
                 if let Some(freq) = eng.get("frequency_per_day").and_then(|v| v.as_f64()) {
                     println!("  Frequency: {:.1}/day", freq);
                 }
@@ -691,6 +691,44 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 }
             }
         }
+
+        // Footer hint — actionable suggestions tuned to what's on screen.
+        // We pass the bare addressable form (short code without `#`, or
+        // ULID prefix) into the example commands, since `werk show`
+        // accepts both forms.
+        let hint_id: String = match tension.short_code {
+            Some(c) => c.to_string(),
+            None => tension.id[..8.min(tension.id.len())].to_string(),
+        };
+        let hint = if overdue {
+            format!(
+                "overdue — `werk reality {} ...` to update, `werk horizon {} <new>` to reschedule",
+                hint_id, hint_id
+            )
+        } else if tension.status == TensionStatus::Active {
+            if !result.children.is_empty() {
+                format!(
+                    "`werk reality {} ...` to log progress, `werk resolve {}` when done",
+                    hint_id, hint_id
+                )
+            } else if !full {
+                format!(
+                    "`werk show {} --full` for ancestors, siblings, engagement",
+                    hint_id
+                )
+            } else {
+                format!(
+                    "`werk reality {} ...` to log progress, `werk resolve {}` when done",
+                    hint_id, hint_id
+                )
+            }
+        } else {
+            format!(
+                "`werk reopen {}` to reactivate, `werk log {}` for full history",
+                hint_id, hint_id
+            )
+        };
+        crate::hints::print_hint(&palette, &hint);
     }
 
     Ok(())

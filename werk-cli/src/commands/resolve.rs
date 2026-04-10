@@ -1,6 +1,7 @@
 //! Resolve command handler.
 
 use crate::error::WerkError;
+use crate::mutation_echo;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
@@ -24,6 +25,7 @@ pub fn cmd_resolve(
     id: String,
     actual_at: Option<String>,
     dry_run: bool,
+    show_after: bool,
 ) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
@@ -107,9 +109,14 @@ pub fn cmd_resolve(
     };
 
     if output.is_structured() {
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
+        let mut val = serde_json::to_value(&result)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        if show_after && !dry_run {
+            val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
+        }
+        let json = serde_json::to_string_pretty(&val)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!("{}", json);
     } else {
         output
             .success(&format!("Resolved tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
@@ -117,6 +124,11 @@ pub fn cmd_resolve(
         println!("  Status: {} -> Resolved", old_status);
         if let Some(at) = &actual_at {
             println!("  Actually done: {}", at);
+        }
+        // Dry-run never mutates the store, so skip the echo path —
+        // there's nothing new to show.
+        if !dry_run {
+            mutation_echo::print_human_echo(&store, &output.palette(), &tension.id)?;
         }
     }
 

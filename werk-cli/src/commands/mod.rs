@@ -259,6 +259,11 @@ Examples:
         /// Skip epoch creation (for minor corrections).
         #[arg(long)]
         no_epoch: bool,
+
+        /// Include a compact post-mutation view in JSON output.
+        /// (Human output always shows the echo.)
+        #[arg(long)]
+        show_after: bool,
     },
 
     /// Update the desired state of a tension.
@@ -285,6 +290,11 @@ Examples:
         /// Skip epoch creation (for minor corrections).
         #[arg(long)]
         no_epoch: bool,
+
+        /// Include a compact post-mutation view in JSON output.
+        /// (Human output always shows the echo.)
+        #[arg(long)]
+        show_after: bool,
     },
 
     /// Mark a tension as resolved.
@@ -306,6 +316,11 @@ Examples:
         /// Preview what would happen without making changes.
         #[arg(long)]
         dry_run: bool,
+
+        /// Include a compact post-mutation view in JSON output.
+        /// (Human output always shows the echo.)
+        #[arg(long)]
+        show_after: bool,
     },
 
     /// Release a tension (abandon desired state).
@@ -320,6 +335,11 @@ Examples:
         /// Reason for releasing (required).
         #[arg(short, long)]
         reason: String,
+
+        /// Include a compact post-mutation view in JSON output.
+        /// (Human output always shows the echo.)
+        #[arg(long)]
+        show_after: bool,
     },
 
     /// Reopen a resolved or released tension (set status back to Active).

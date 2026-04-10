@@ -7,6 +7,7 @@
 //! Use --no-epoch for minor corrections that don't warrant a new delta.
 
 use crate::error::WerkError;
+use crate::mutation_echo;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
@@ -28,6 +29,7 @@ pub fn cmd_reality(
     id: String,
     value: Option<String>,
     no_epoch: bool,
+    show_after: bool,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
@@ -148,9 +150,18 @@ pub fn cmd_reality(
     };
 
     if output.is_structured() {
-        output
-            .print_structured(&result)
-            .map_err(WerkError::IoError)?;
+        // Additive JSON shape: always carry the pre-Phase-4 fields at
+        // the top level. When --show-after is passed, merge a `show`
+        // key with a compact post-mutation view. Existing consumers
+        // keep working; callers that want the echo opt in.
+        let mut val = serde_json::to_value(&result)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        if show_after {
+            val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
+        }
+        let json = serde_json::to_string_pretty(&val)
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        println!("{}", json);
     } else {
         output
             .success(&format!("Updated reality for tension {}", tension_display))
@@ -164,6 +175,10 @@ pub fn cmd_reality(
                 .len();
             println!("  Epoch {} recorded (epoch boundary)", epoch_count);
         }
+        // Human mode: the echo is always on. It's a three-line
+        // reminder of the post-mutation state so the user doesn't
+        // have to run `werk show` to verify their edit.
+        mutation_echo::print_human_echo(&store, &output.palette(), &tension.id)?;
     }
 
     Ok(())
