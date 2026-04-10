@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-10T14:10:35Z",
+  "flushed_at": "2026-04-10T14:11:33Z",
   "summary": {
-    "active": 48,
+    "active": 42,
     "released": 56,
-    "resolved": 108,
+    "resolved": 114,
     "total": 212
   },
   "tensions": [
@@ -2263,7 +2263,7 @@
       "status": "Active"
     },
     {
-      "actual": "Design document written, GitButler workflow fully verified: flush is idempotent, pre-commit hook is GitButler-aware, both CLI and MCP share the flush logic, end-to-end round-trip leaves the repo clean. Five implementation phases remain (#216-#220).",
+      "actual": "All five phases shipped. werk-shared::cli_display module owns the visual vocabulary (20-glyph registry + 7-role Palette). Universal color via output.palette() in tree, show, list, log, stats, insights. Tree has rich two-line root layout with ╭─/╰─ zones in interactive ≥80-col terminals; v1.5 compact path on pipes/NO_COLOR/--compact (byte-identical to baseline). Show has bold-cyan section headers, signal lines with semantic color. List dims completed rows, colors signal glyphs by category. Log epochs render as cyan zones with magenta testimony desire snapshots. Stats has bold headers, resolved-green vitals, danger-red overdue. Insights bar charts colored. Mutation echo (--show-after) on reality/desire/resolve/release: human mode default-on, JSON additive. Contextual footer hints on tree/show/list/log/stats. All 298 werk integration tests still pass, plus 4 new Palette unit tests.",
       "created_at": "2026-04-09T22:39:10.829810+00:00",
       "desired": "the werk CLI has a world-class visual display — a coherent visual language where color, glyphs, line weight, zone boundaries, and breathing room turn terminal output into an instrument surface as precise as musical notation",
       "horizon": null,
@@ -2271,7 +2271,7 @@
       "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
       "position": null,
       "short_code": 214,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "GitButler's --json --status-after returns {result, status} in one blob. werk --json returns minimal confirmation, requiring a second call.",
@@ -2293,7 +2293,7 @@
       "parent_id": "01KNT6CFFDCHTST64W13G5B855",
       "position": 1,
       "short_code": 216,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Output struct owns the shared Palette; TTY/NO_COLOR/JSON detection centralized at construction. tree.rs, show.rs, list.rs, and output.rs all route color through output.palette(). Inline glyph literals deleted from show.rs (signal section) and list.rs (signal computation + footer legend). Completed rows in list dim via body_colorize. OVERDUE is palette.bold(palette.danger). Non-TTY output byte-identical for tree; show and list visually identical in non-TTY (label spacing preserved). log, stats, survey deferred to Phase 5 alongside their full redesign. All 298 werk tests pass.",
@@ -2304,7 +2304,7 @@
       "parent_id": "01KNT6CFFDCHTST64W13G5B855",
       "position": 2,
       "short_code": 217,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Rich two-line root layout with ╭─/╰─ zone boundaries, signal lines below tensions with warnings (OVERDUE, EXCEEDS_PARENT, PRESSURE on their own indented bold-red line), empty rail lines between depth-1 siblings that have children (breathing room), empty line between root zones. --compact flag forces v1.5 layout; auto-fallback under 80 cols, non-TTY, NO_COLOR, or --json. Dispatch is palette.is_enabled() && term_width >= 80 && !compact. Compact path byte-identical to baseline. All 298 werk tests pass.",
@@ -2315,7 +2315,7 @@
       "parent_id": "01KNT6CFFDCHTST64W13G5B855",
       "position": 3,
       "short_code": 218,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "show section headers now bold + cyan (Signals:, Frontier:, Children:, Activity:, Epochs:, Ancestors:, Siblings:, Engagement:). New mutation_echo helper renders compact 3-line post-mutation summary; reality/desire/resolve/release commands gained --show-after flag — human mode echoes by default, JSON mode opts in via flag (additive show key, no shape change). New hints helper prints contextual one-line footer suggestions on tree/show/list, dim only in interactive terminals (no-op when palette disabled). All 298 werk tests pass; existing JSON consumers see no breaking change. List column alignment, --signals band separators, and move/position/snooze echo deferred.",
@@ -2326,7 +2326,7 @@
       "parent_id": "01KNT6CFFDCHTST64W13G5B855",
       "position": 4,
       "short_code": 219,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "log epochs render as zones (╭─ Epoch N (age) … │ ◆ desire │ ◇ reality │ N mutations … ╰─) with cyan boundaries, bold epoch numbers, magenta testimony desire snapshots, chrome reality. stats vitals/temporal/attention have bold-cyan section headers, resolved counts in green, overdue in bold danger, footer hints. insights bar charts use BAR_FULL/BAR_EMPTY from registry with resolved-green filled and chrome empty segments. show.rs Activity colors note mutations testimony magenta. All 298 werk tests still pass.",
@@ -2337,7 +2337,7 @@
       "parent_id": "01KNT6CFFDCHTST64W13G5B855",
       "position": 5,
       "short_code": 220,
-      "status": "Active"
+      "status": "Resolved"
     }
   ]
 }
