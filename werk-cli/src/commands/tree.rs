@@ -63,6 +63,7 @@ pub fn cmd_tree(
     resolved: bool,
     released: bool,
     stats: bool,
+    compact: bool,
 ) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
@@ -309,7 +310,119 @@ pub fn cmd_tree(
         palette: Palette,
     }
 
-    fn render_tree(
+    /// Per-node structural facts assembled once and reused by both
+    /// the compact and rich renderers.
+    struct NodeMeta<'a> {
+        id_str: String,
+        pos_str: String,
+        horizon_str: String,
+        warnings: Vec<String>,
+        closure_str: String,
+        glyphs: Vec<&'a str>,
+        child_ids: Vec<String>,
+    }
+
+    fn compute_node_meta<'a>(
+        ctx: &'a RenderCtx<'_>,
+        node: &sd_core::Node,
+        now: chrono::DateTime<Utc>,
+    ) -> NodeMeta<'a> {
+        let id_str = werk_shared::display_id(node.tension.short_code, node.id());
+        let pos_str = if node.tension.status == TensionStatus::Active {
+            node.tension
+                .position
+                .map(|p| format!("{}{}", glyphs::STATUS_POSITION, p))
+                .unwrap_or_default()
+        } else {
+            match node.tension.status {
+                TensionStatus::Resolved => glyphs::STATUS_RESOLVED.to_string(),
+                TensionStatus::Released => glyphs::STATUS_RELEASED.to_string(),
+                _ => String::new(),
+            }
+        };
+
+        let horizon_str = node
+            .tension
+            .horizon
+            .as_ref()
+            .map(|h| format!("[{}]", h))
+            .unwrap_or_default();
+
+        // Warning signals are shown by exception. The strings are exactly
+        // those the compact renderer has always produced so assertions
+        // like `stdout.contains("OVERDUE")` keep working.
+        let mut warnings: Vec<String> = Vec::new();
+        if node.tension.status == TensionStatus::Active {
+            if let Some(h) = &node.tension.horizon {
+                if h.is_past(now) {
+                    warnings.push("OVERDUE".to_string());
+                }
+            }
+            if let Some(ref parent_id) = node.tension.parent_id {
+                if detect_containment_violations(ctx.forest, parent_id)
+                    .iter()
+                    .any(|v| v.tension_id == node.id())
+                {
+                    warnings.push("EXCEEDS_PARENT".to_string());
+                }
+                if detect_sequencing_pressure(ctx.forest, parent_id)
+                    .iter()
+                    .any(|p| p.tension_id == node.id())
+                {
+                    warnings.push("PRESSURE".to_string());
+                }
+            }
+        }
+
+        let all_children = ctx.forest.children(node.id()).unwrap_or_default();
+        let closure_str = if !all_children.is_empty() {
+            let resolved_count = all_children
+                .iter()
+                .filter(|c| c.tension.status == TensionStatus::Resolved)
+                .count();
+            let released_count = all_children
+                .iter()
+                .filter(|c| c.tension.status == TensionStatus::Released)
+                .count();
+            let active_count = all_children.len() - released_count;
+            if released_count > 0 {
+                format!("[{}/{}] ({} released)", resolved_count, active_count, released_count)
+            } else {
+                format!("[{}/{}]", resolved_count, active_count)
+            }
+        } else {
+            String::new()
+        };
+
+        let sig_glyphs = signal_glyphs(node.id(), ctx.structural, ctx.critical_path_set, ctx.sig);
+
+        let child_ids: Vec<_> = node
+            .children
+            .iter()
+            .filter(|id| ctx.filtered_ids.contains(id.as_str()))
+            .cloned()
+            .collect();
+
+        NodeMeta {
+            id_str,
+            pos_str,
+            horizon_str,
+            warnings,
+            closure_str,
+            glyphs: sig_glyphs,
+            child_ids,
+        }
+    }
+
+    /// Compact single-line renderer — the v1.5 layout.
+    ///
+    /// All zones on one line. Used when `--compact` is set, under 80
+    /// columns, when the terminal is not interactive (piped output,
+    /// test harness), or when the palette is disabled (e.g. NO_COLOR).
+    /// Tests run under `assert_cmd` with no TTY, so they always hit
+    /// this path — which means test assertions stay pinned against
+    /// the stable v1.5 output.
+    fn render_tree_compact(
         ctx: &RenderCtx<'_>,
         root_ids: &[String],
         now: chrono::DateTime<Utc>,
@@ -328,101 +441,36 @@ pub fn cmd_tree(
             let is_last = i == roots.len() - 1;
             let connector = if is_last { glyphs::TREE_LAST } else { glyphs::TREE_BRANCH };
 
-            // --- Zone 1: Identity (id + position) ---
-            let id_str = werk_shared::display_id(node.tension.short_code, node.id());
-            let pos_str = if node.tension.status == TensionStatus::Active {
-                node.tension
-                    .position
-                    .map(|p| format!("{}{}", glyphs::STATUS_POSITION, p))
-                    .unwrap_or_default()
-            } else {
-                match node.tension.status {
-                    TensionStatus::Resolved => glyphs::STATUS_RESOLVED.to_string(),
-                    TensionStatus::Released => glyphs::STATUS_RELEASED.to_string(),
-                    _ => String::new(),
-                }
-            };
-
-            // --- Zone 2: Horizon ---
-            let horizon_str = node.tension.horizon.as_ref().map(|h| format!("[{}]", h)).unwrap_or_default();
-
-            // --- Zone 3: Warning signals (by exception) ---
-            let mut warnings: Vec<String> = Vec::new();
-            if node.tension.status == TensionStatus::Active {
-                if let Some(h) = &node.tension.horizon {
-                    if h.is_past(now) {
-                        warnings.push("OVERDUE".to_string());
-                    }
-                }
-                if let Some(ref parent_id) = node.tension.parent_id {
-                    if detect_containment_violations(ctx.forest, parent_id)
-                        .iter()
-                        .any(|v| v.tension_id == node.id())
-                    {
-                        warnings.push("EXCEEDS_PARENT".to_string());
-                    }
-                    if detect_sequencing_pressure(ctx.forest, parent_id)
-                        .iter()
-                        .any(|p| p.tension_id == node.id())
-                    {
-                        warnings.push("PRESSURE".to_string());
-                    }
-                }
-            }
-
-            // --- Zone 4: Closure progress ---
-            let all_children = ctx.forest.children(node.id()).unwrap_or_default();
-            let closure_str = if !all_children.is_empty() {
-                let resolved_count = all_children
-                    .iter()
-                    .filter(|c| c.tension.status == TensionStatus::Resolved)
-                    .count();
-                let released_count = all_children
-                    .iter()
-                    .filter(|c| c.tension.status == TensionStatus::Released)
-                    .count();
-                let active_count = all_children.len() - released_count;
-                if released_count > 0 {
-                    format!("[{}/{}] ({} released)", resolved_count, active_count, released_count)
-                } else {
-                    format!("[{}/{}]", resolved_count, active_count)
-                }
-            } else {
-                String::new()
-            };
-
-            // --- Zone 5: Structural glyphs ---
-            let glyphs = signal_glyphs(node.id(), ctx.structural, ctx.critical_path_set, ctx.sig);
+            let meta = compute_node_meta(ctx, node, now);
 
             // --- Compute available width for desire text ---
             let prefix_chars = prefix.chars().count() + connector.chars().count();
 
             // Build the meta prefix: "#42 ▸3 [2026-06] "
-            let mut meta_plain = id_str.clone();
-            if !pos_str.is_empty() {
+            let mut meta_plain = meta.id_str.clone();
+            if !meta.pos_str.is_empty() {
                 meta_plain.push(' ');
-                meta_plain.push_str(&pos_str);
+                meta_plain.push_str(&meta.pos_str);
             }
-            if !horizon_str.is_empty() {
+            if !meta.horizon_str.is_empty() {
                 meta_plain.push(' ');
-                meta_plain.push_str(&horizon_str);
+                meta_plain.push_str(&meta.horizon_str);
             }
-            for w in &warnings {
+            for w in &meta.warnings {
                 meta_plain.push(' ');
                 meta_plain.push_str(w);
             }
             meta_plain.push(' ');
 
-            // Suffix: "  [9/15]  ‡◉"
             let suffix_plain = {
                 let mut s = String::new();
-                if !closure_str.is_empty() {
+                if !meta.closure_str.is_empty() {
                     s.push_str("  ");
-                    s.push_str(&closure_str);
+                    s.push_str(&meta.closure_str);
                 }
-                if !glyphs.is_empty() {
+                if !meta.glyphs.is_empty() {
                     s.push_str("  ");
-                    for g in &glyphs {
+                    for g in &meta.glyphs {
                         s.push_str(g);
                     }
                 }
@@ -438,34 +486,204 @@ pub fn cmd_tree(
 
             let desired_text = smart_truncate(&node.tension.desired, available);
 
-            // --- Assemble line through the palette ---
-            // When the palette is disabled the output is byte-identical to
-            // the plain-text branch because every palette method is a no-op.
             let line = format!(
                 "{}{}{}{}{}",
                 prefix,
                 ctx.palette.chrome(connector),
-                format_meta(&ctx.palette, &id_str, &pos_str, &horizon_str, &warnings),
+                format_meta(&ctx.palette, &meta.id_str, &meta.pos_str, &meta.horizon_str, &meta.warnings),
                 desired_text,
-                format_suffix(&ctx.palette, &closure_str, &glyphs),
+                format_suffix(&ctx.palette, &meta.closure_str, &meta.glyphs),
             );
             lines.push(line);
 
-            // Recurse
-            let child_ids: Vec<_> = node
-                .children
-                .iter()
-                .filter(|id| ctx.filtered_ids.contains(id.as_str()))
-                .cloned()
-                .collect();
-
-            if !child_ids.is_empty() {
+            if !meta.child_ids.is_empty() {
                 let new_prefix = if is_last {
                     format!("{}    ", prefix)
                 } else {
                     format!("{}{}", prefix, glyphs::TREE_VERTICAL)
                 };
-                render_tree(ctx, &child_ids, now, &new_prefix, lines);
+                render_tree_compact(ctx, &meta.child_ids, now, &new_prefix, lines);
+            }
+        }
+    }
+
+    /// Rich renderer — the Phase 3 layout.
+    ///
+    /// * **Depth 0 roots** render as a two-line zone: line 1 is
+    ///   `╭─ #ID ▸pos  desire`, line 2 is `╰─ horizon · closure · glyphs`.
+    ///   Children live at a 3-space indent (the column after the zone
+    ///   edge) and an empty line is inserted between roots.
+    /// * **Depth 1 siblings with children** get an empty rail line after
+    ///   their subtree so long branches have breathing room.
+    /// * **Warning signals** (OVERDUE, EXCEEDS_PARENT, PRESSURE) move to
+    ///   their own danger-colored line below the tension rather than
+    ///   getting jammed into the single-line layout where they would
+    ///   fall off the right edge.
+    /// * **Depth 2+** nodes render as dense single-line entries, same
+    ///   shape as the compact renderer.
+    fn render_tree_rich(
+        ctx: &RenderCtx<'_>,
+        root_ids: &[String],
+        now: chrono::DateTime<Utc>,
+        prefix: &str,
+        depth: usize,
+        lines: &mut Vec<String>,
+    ) {
+        let mut roots: Vec<_> = root_ids
+            .iter()
+            .filter(|id| ctx.filtered_ids.contains(id.as_str()))
+            .filter_map(|id| ctx.forest.find(id))
+            .collect();
+
+        canonical_sort(&mut roots);
+
+        for (i, node) in roots.iter().enumerate() {
+            let is_last = i == roots.len() - 1;
+            let meta = compute_node_meta(ctx, node, now);
+
+            if depth == 0 {
+                // --- Root: two-line zone ---
+                let indent_chars = 3; // `╭─ ` is 3 columns
+                let head_chars = indent_chars + meta.id_str.chars().count()
+                    + if meta.pos_str.is_empty() { 0 } else { meta.pos_str.chars().count() + 1 };
+                let available = ctx.term_width.saturating_sub(head_chars + 2).max(40);
+                let desired_text = smart_truncate(&node.tension.desired, available);
+
+                // Line 1: identity
+                let mut line1 = ctx.palette.structure(glyphs::TREE_ZONE_OPEN);
+                line1.push(' ');
+                line1.push_str(&ctx.palette.bold(&meta.id_str));
+                if !meta.pos_str.is_empty() {
+                    line1.push(' ');
+                    line1.push_str(&ctx.palette.chrome(&meta.pos_str));
+                }
+                line1.push(' ');
+                line1.push(' ');
+                line1.push_str(&desired_text);
+                lines.push(line1);
+
+                // Line 2: metadata
+                let mut meta_parts: Vec<String> = Vec::new();
+                if !meta.horizon_str.is_empty() {
+                    meta_parts.push(ctx.palette.chrome(&meta.horizon_str));
+                }
+                if !meta.closure_str.is_empty() {
+                    meta_parts.push(ctx.palette.chrome(&meta.closure_str));
+                }
+                if !meta.glyphs.is_empty() {
+                    meta_parts.push(ctx.palette.structure(&meta.glyphs.join("")));
+                }
+                let mut line2 = ctx.palette.structure(glyphs::TREE_ZONE_CLOSE);
+                if !meta_parts.is_empty() {
+                    line2.push(' ');
+                    line2.push_str(&meta_parts.join(&ctx.palette.chrome(" · ")));
+                }
+                lines.push(line2);
+
+                // Signal lines: show warnings below the zone (rich mode
+                // never puts warnings on the identity line, so they
+                // can't be truncated off the right edge).
+                for w in &meta.warnings {
+                    let mut signal_line = String::from("   ");
+                    signal_line.push_str(&ctx.palette.bold(&ctx.palette.danger("! ")));
+                    signal_line.push_str(&ctx.palette.danger(w));
+                    lines.push(signal_line);
+                }
+
+                // Children under a root use a 3-column indent — the
+                // column immediately after the zone edge. Roots do not
+                // grow a vertical rail.
+                if !meta.child_ids.is_empty() {
+                    render_tree_rich(ctx, &meta.child_ids, now, "   ", 1, lines);
+                }
+
+                // Breathing room between roots.
+                if !is_last {
+                    lines.push(String::new());
+                }
+            } else {
+                // --- Non-root: single-line like compact, plus signal lines ---
+                let connector = if is_last { glyphs::TREE_LAST } else { glyphs::TREE_BRANCH };
+
+                // Width calculation mirrors the compact renderer so the
+                // truncation behavior matches.
+                let prefix_chars = prefix.chars().count() + connector.chars().count();
+                let mut meta_plain = meta.id_str.clone();
+                if !meta.pos_str.is_empty() {
+                    meta_plain.push(' ');
+                    meta_plain.push_str(&meta.pos_str);
+                }
+                if !meta.horizon_str.is_empty() {
+                    meta_plain.push(' ');
+                    meta_plain.push_str(&meta.horizon_str);
+                }
+                meta_plain.push(' ');
+                let mut suffix_plain = String::new();
+                if !meta.closure_str.is_empty() {
+                    suffix_plain.push_str("  ");
+                    suffix_plain.push_str(&meta.closure_str);
+                }
+                if !meta.glyphs.is_empty() {
+                    suffix_plain.push_str("  ");
+                    for g in &meta.glyphs {
+                        suffix_plain.push_str(g);
+                    }
+                }
+                let chrome_width =
+                    prefix_chars + meta_plain.chars().count() + suffix_plain.chars().count();
+                let available = if ctx.term_width > chrome_width + 12 {
+                    ctx.term_width - chrome_width
+                } else {
+                    40
+                };
+                let desired_text = smart_truncate(&node.tension.desired, available);
+
+                // Warnings live on their own lines in rich mode, so the
+                // identity line itself carries only the id/pos/horizon
+                // metadata (no inline OVERDUE / EXCEEDS_PARENT).
+                let empty_warnings: Vec<String> = Vec::new();
+                let line = format!(
+                    "{}{}{}{}{}",
+                    prefix,
+                    ctx.palette.chrome(connector),
+                    format_meta(&ctx.palette, &meta.id_str, &meta.pos_str, &meta.horizon_str, &empty_warnings),
+                    desired_text,
+                    format_suffix(&ctx.palette, &meta.closure_str, &meta.glyphs),
+                );
+                lines.push(line);
+
+                // Signal lines under the node, indented to match the
+                // child rail position.
+                if !meta.warnings.is_empty() {
+                    let signal_prefix = if is_last {
+                        format!("{}    ", prefix)
+                    } else {
+                        format!("{}{}", prefix, glyphs::TREE_VERTICAL)
+                    };
+                    for w in &meta.warnings {
+                        let mut signal_line = signal_prefix.clone();
+                        signal_line.push_str(&ctx.palette.bold(&ctx.palette.danger("! ")));
+                        signal_line.push_str(&ctx.palette.danger(w));
+                        lines.push(signal_line);
+                    }
+                }
+
+                if !meta.child_ids.is_empty() {
+                    let new_prefix = if is_last {
+                        format!("{}    ", prefix)
+                    } else {
+                        format!("{}{}", prefix, glyphs::TREE_VERTICAL)
+                    };
+                    render_tree_rich(ctx, &meta.child_ids, now, &new_prefix, depth + 1, lines);
+
+                    // Depth-1 siblings with children get breathing room:
+                    // an empty rail line between this sibling's subtree
+                    // and the next sibling. The last sibling gets no
+                    // trailing blank.
+                    if depth == 1 && !is_last {
+                        lines.push(prefix.trim_end().to_string());
+                    }
+                }
             }
         }
     }
@@ -526,8 +744,20 @@ pub fn cmd_tree(
         palette,
     };
 
+    // Dispatch: rich layout only when the palette is enabled (which
+    // already bundles interactive stdout + no NO_COLOR + not --json),
+    // the terminal is wide enough for two-line roots, and the caller
+    // has not forced --compact. Everything else — pipes, tests,
+    // narrow terminals, NO_COLOR, explicit --compact — gets the
+    // stable v1.5 single-line layout.
+    let rich_mode = palette.is_enabled() && term_width >= 80 && !compact;
+
     let mut lines = Vec::new();
-    render_tree(&ctx, forest.root_ids(), now, "", &mut lines);
+    if rich_mode {
+        render_tree_rich(&ctx, forest.root_ids(), now, "", 0, &mut lines);
+    } else {
+        render_tree_compact(&ctx, forest.root_ids(), now, "", &mut lines);
+    }
 
     for line in &lines {
         println!("{}", line);

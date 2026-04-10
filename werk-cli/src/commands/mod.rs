@@ -738,6 +738,12 @@ Examples:
         /// Append field vitals summary.
         #[arg(long)]
         stats: bool,
+
+        /// Force the compact single-line layout (v1.5). The rich
+        /// two-line-root layout is the default in interactive
+        /// terminals wider than 80 columns.
+        #[arg(long)]
+        compact: bool,
     },
 
     /// Field-level summaries, aggregates, and analysis.

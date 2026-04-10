@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-10T12:54:34Z",
+  "flushed_at": "2026-04-10T13:49:16Z",
   "summary": {
     "active": 48,
     "released": 56,
@@ -2307,7 +2307,7 @@
       "status": "Active"
     },
     {
-      "actual": "tree is single-line per tension with everything crammed on one line. no zone boundaries, no breathing room, signals lost off right edge.",
+      "actual": "Rich two-line root layout with ╭─/╰─ zone boundaries, signal lines below tensions with warnings (OVERDUE, EXCEEDS_PARENT, PRESSURE on their own indented bold-red line), empty rail lines between depth-1 siblings that have children (breathing room), empty line between root zones. --compact flag forces v1.5 layout; auto-fallback under 80 cols, non-TTY, NO_COLOR, or --json. Dispatch is palette.is_enabled() && term_width >= 80 && !compact. Compact path byte-identical to baseline. All 298 werk tests pass.",
       "created_at": "2026-04-09T22:50:26.197587+00:00",
       "desired": "Phase 3: tree redesign — zone boundaries on roots, two-line root layout (desire first, metadata below), signal lines, depth-sensitive breathing room, dimmed chrome",
       "horizon": null,
