@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-10T12:22:46Z",
+  "flushed_at": "2026-04-10T12:32:28Z",
   "summary": {
     "active": 48,
     "released": 56,
@@ -2285,7 +2285,7 @@
       "status": "Active"
     },
     {
-      "actual": "glyphs defined inline in tree.rs, show.rs, list.rs with no central registry. Color only in tree.rs via ad-hoc owo_colors. Two conflicting truncation strategies.",
+      "actual": "cli_display module landed with glyph registry (20 canonical glyphs) and Palette struct (7 color roles + bold). tree.rs imports glyph constants from the registry and constructs a Palette at entry. Output is byte-identical to pre-refactor baseline. All 298 werk integration tests pass, plus 4 new Palette unit tests.",
       "created_at": "2026-04-09T22:50:19.368029+00:00",
       "desired": "Phase 1: shared cli_display module — glyph registry, color palette, Palette struct with NO_COLOR/non-TTY detection, all constants centralized in werk-shared",
       "horizon": null,

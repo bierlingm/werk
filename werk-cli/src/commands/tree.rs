@@ -13,6 +13,7 @@ use sd_core::{
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::IsTerminal;
+use werk_shared::cli_display::{Palette, glyphs};
 
 /// JSON output structure for a tension in tree.
 #[derive(Serialize)]
@@ -218,6 +219,12 @@ pub fn cmd_tree(
     let use_color = std::io::stdout().is_terminal()
         && std::env::var("NO_COLOR").is_err();
 
+    // Construct the shared palette once. Phase 1 only introduces the
+    // infrastructure; tree.rs still uses its ad-hoc owo_colors helpers
+    // below so the output remains byte-identical. Phase 2 will route
+    // every color call in this file through `_palette`.
+    let _palette = Palette::new(use_color);
+
     // Compute structural signals once for the whole forest
     let structural_signals = compute_structural_signals(&forest);
 
@@ -263,13 +270,13 @@ pub fn cmd_tree(
         });
     }
 
-    /// Truncate to max chars, appending … if cut.
+    /// Truncate to max chars, appending the canonical Unicode ellipsis if cut.
     fn smart_truncate(s: &str, max: usize) -> String {
         if s.chars().count() <= max {
             s.to_string()
         } else {
             let truncated: String = s.chars().take(max.saturating_sub(1)).collect();
-            format!("{}\u{2026}", truncated)
+            format!("{}{}", truncated, glyphs::TRUNCATE_ELLIPSIS)
         }
     }
 
@@ -280,23 +287,23 @@ pub fn cmd_tree(
         critical_path_set: &HashMap<String, bool>,
         sig: &werk_shared::SignalThresholds,
     ) -> Vec<&'static str> {
-        let mut glyphs = Vec::new();
+        let mut out = Vec::new();
 
         if *critical_path_set.get(node_id).unwrap_or(&false) {
-            glyphs.push("\u{2021}"); // ‡ critical path
+            out.push(glyphs::SIGNAL_CRITICAL_PATH);
         }
         if let Some(ss) = structural.signals.get(node_id) {
             if ss.on_longest_path {
-                glyphs.push("\u{2503}"); // ┃ spine
+                out.push(glyphs::SIGNAL_SPINE);
             }
             if ss.centrality.map(|c| c > sig.hub_centrality).unwrap_or(false) {
-                glyphs.push("\u{25c9}"); // ◉ hub
+                out.push(glyphs::SIGNAL_HUB);
             }
             if ss.descendant_count.map(|c| c > sig.reach_descendants as usize).unwrap_or(false) {
-                glyphs.push("\u{25ce}"); // ◎ reach
+                out.push(glyphs::SIGNAL_REACH);
             }
         }
-        glyphs
+        out
     }
 
     struct RenderCtx<'a> {
@@ -326,16 +333,19 @@ pub fn cmd_tree(
 
         for (i, node) in roots.iter().enumerate() {
             let is_last = i == roots.len() - 1;
-            let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251c}\u{2500}\u{2500} " };
+            let connector = if is_last { glyphs::TREE_LAST } else { glyphs::TREE_BRANCH };
 
             // --- Zone 1: Identity (id + position) ---
             let id_str = werk_shared::display_id(node.tension.short_code, node.id());
             let pos_str = if node.tension.status == TensionStatus::Active {
-                node.tension.position.map(|p| format!("\u{25b8}{}", p)).unwrap_or_default()
+                node.tension
+                    .position
+                    .map(|p| format!("{}{}", glyphs::STATUS_POSITION, p))
+                    .unwrap_or_default()
             } else {
                 match node.tension.status {
-                    TensionStatus::Resolved => "\u{2713}".to_string(),
-                    TensionStatus::Released => "~".to_string(),
+                    TensionStatus::Resolved => glyphs::STATUS_RESOLVED.to_string(),
+                    TensionStatus::Released => glyphs::STATUS_RELEASED.to_string(),
                     _ => String::new(),
                 }
             };
@@ -466,7 +476,7 @@ pub fn cmd_tree(
                 let new_prefix = if is_last {
                     format!("{}    ", prefix)
                 } else {
-                    format!("{}\u{2502}   ", prefix)
+                    format!("{}{}", prefix, glyphs::TREE_VERTICAL)
                 };
                 render_tree(ctx, &child_ids, now, &new_prefix, lines);
             }
