@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
 # Pre-commit hook: flushes tensions.json and updates README.md
-# Works with both GitButler (but) and plain git
+#
+# GitButler-aware: when running on gitbutler/workspace, we skip the
+# `git add` calls and let GitButler pick up the flushed files naturally
+# via `--changes` on `but commit`. This prevents the hook from silently
+# pulling tensions.json into unrelated commits when `--changes` is not
+# used. On plain git, we stage normally so the flushed file lands in
+# the in-flight commit.
 set -euo pipefail
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Detect GitButler workspace
+IS_GITBUTLER=0
+if [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = "gitbutler/workspace" ]; then
+    IS_GITBUTLER=1
+fi
 
 # Flush tensions.json to capture current tree state
 if command -v werk &>/dev/null; then
@@ -11,8 +23,12 @@ if command -v werk &>/dev/null; then
 elif [ -f target/debug/werk ]; then
     target/debug/werk flush 2>/dev/null || true
 fi
-git add tensions.json 2>/dev/null || true
+if [ "$IS_GITBUTLER" = "0" ]; then
+    git add tensions.json 2>/dev/null || true
+fi
 
 # Update README with file tree and tension tree
 python3 "$HOOK_DIR/update-readme-tree.py"
-git add README.md 2>/dev/null || true
+if [ "$IS_GITBUTLER" = "0" ]; then
+    git add README.md 2>/dev/null || true
+fi
