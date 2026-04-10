@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-10T12:02:11Z",
+  "flushed_at": "2026-04-10T12:22:46Z",
   "summary": {
     "active": 48,
     "released": 56,
@@ -2263,7 +2263,7 @@
       "status": "Active"
     },
     {
-      "actual": "Design document written (designs/cli-visual-display.md). Complete visual language defined: 7-role color palette, glyph registry, zone boundaries, depth-sensitive tree rendering, two-line root tensions, signal lines, column alignment, footer hints, shared cli_display module. Five implementation phases identified. Current state: color only in tree.rs, no centralized glyphs, no zone boundaries, no breathing room, show/list/log are plain text.",
+      "actual": "Design document written, GitButler workflow fully verified: flush is idempotent, pre-commit hook is GitButler-aware, both CLI and MCP share the flush logic, end-to-end round-trip leaves the repo clean. Five implementation phases remain (#216-#220).",
       "created_at": "2026-04-09T22:39:10.829810+00:00",
       "desired": "the werk CLI has a world-class visual display — a coherent visual language where color, glyphs, line weight, zone boundaries, and breathing room turn terminal output into an instrument surface as precise as musical notation",
       "horizon": null,
