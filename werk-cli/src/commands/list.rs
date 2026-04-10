@@ -536,15 +536,21 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
         }
 
         let palette = output.palette();
+        // Allocate the desire column to whatever terminal width is
+        // available. A reasonable fallback of 100 cols keeps things
+        // readable when stdout isn't a real terminal.
+        let term_width = terminal_size::terminal_size()
+            .map(|(w, _)| w.0 as usize)
+            .unwrap_or(100);
 
         if params.tree {
-            print_tree_rows(&rows, &palette);
+            print_tree_rows(&rows, &palette, term_width);
         } else if params.long {
-            print_long_rows(&rows, now, &palette);
+            print_long_rows(&rows, now, &palette, term_width);
         } else if params.changed.is_some() {
-            print_changed_rows(&rows, now, &palette);
+            print_changed_rows(&rows, now, &palette, term_width);
         } else {
-            print_default_rows(&rows, &palette);
+            print_default_rows(&rows, &palette, term_width);
         }
 
         // Legend: show glyph key if any signals are present in the output.
@@ -627,7 +633,21 @@ fn body_colorize(palette: &Palette, row: &TensionRow, s: &str) -> String {
     }
 }
 
-fn print_default_rows(rows: &[TensionRow], palette: &Palette) {
+fn print_default_rows(rows: &[TensionRow], palette: &Palette, term_width: usize) {
+    // Column layout:
+    //   id (6) + gap (2) + desire (variable) + gap (2) + horizon (8)
+    //   + overdue suffix (up to 8) + gap (2) + urgency (4) + signals (variable)
+    //
+    // Fixed chrome is 24 cols. The desire column takes whatever's left
+    // after reserving roughly 14 more cols for overdue marker and
+    // signals. If the terminal is very narrow we still guarantee at
+    // least 30 cols of desire — the previous hardcoded minimum.
+    const FIXED_CHROME: usize = 6 + 2 + 2 + 8 + 2 + 4; // 24
+    const SUFFIX_RESERVE: usize = 14;
+    let desired_col = term_width
+        .saturating_sub(FIXED_CHROME + SUFFIX_RESERVE)
+        .max(30);
+
     for row in rows {
         let id_display = match row.short_code {
             Some(c) => format!("#{:<4}", c),
@@ -648,12 +668,15 @@ fn print_default_rows(rows: &[TensionRow], palette: &Palette) {
         // Assemble the body (id + desire + horizon) at full weight first,
         // then dim the whole thing for completed tensions. The overdue
         // marker is always danger regardless of status so it remains
-        // readable in the dim band.
+        // readable in the dim band. The desire column is padded with
+        // spaces to `desired_col` so horizon and urgency stay aligned
+        // even when titles are short.
         let body = format!(
-            "{}  {:<30}  {:>8}",
+            "{}  {:<width$}  {:>8}",
             id_display,
-            truncate(&row.desired, 30),
+            truncate(&row.desired, desired_col),
             row.horizon_display,
+            width = desired_col,
         );
         let overdue_marker = if row.overdue {
             format!(" {}", palette.bold(&palette.danger("OVERDUE")))
@@ -671,7 +694,13 @@ fn print_default_rows(rows: &[TensionRow], palette: &Palette) {
     }
 }
 
-fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette) {
+fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, term_width: usize) {
+    // Long mode truncates desire/reality to fit the terminal. The
+    // "#ID [status] " prefix is ~18 chars; give the rest to the title.
+    // Reality lives on its own line with a 10-char label indent.
+    let title_col = term_width.saturating_sub(18).max(60);
+    let reality_col = term_width.saturating_sub(12).max(60);
+
     for (i, row) in rows.iter().enumerate() {
         if i > 0 {
             println!();
@@ -687,12 +716,12 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette) 
             TensionStatus::Released => "released",
         };
 
-        let header = format!("{} [{}] {}", id_display, status, truncate(&row.desired, 60));
+        let header = format!("{} [{}] {}", id_display, status, truncate(&row.desired, title_col));
         println!("{}", body_colorize(palette, row, &header));
         println!(
             "  {} {}",
             palette.chrome("Reality:"),
-            truncate(&row.actual, 60),
+            truncate(&row.actual, reality_col),
         );
         if let Some(ref h) = row.horizon_raw {
             let overdue_marker = if row.overdue {
@@ -721,7 +750,14 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette) 
     }
 }
 
-fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette) {
+fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, term_width: usize) {
+    // id (6) + gap (2) + desire (variable) + gap (2) + [fields] (up to ~25)
+    const FIXED_CHROME: usize = 6 + 2 + 2;
+    const FIELDS_RESERVE: usize = 25;
+    let desired_col = term_width
+        .saturating_sub(FIXED_CHROME + FIELDS_RESERVE)
+        .max(35);
+
     for row in rows {
         let id_display = match row.short_code {
             Some(c) => format!("#{:<4}", c),
@@ -735,16 +771,17 @@ fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palett
             .unwrap_or_default();
 
         let body = format!(
-            "{}  {:<35}  [{}]",
+            "{}  {:<width$}  [{}]",
             id_display,
-            truncate(&row.desired, 35),
+            truncate(&row.desired, desired_col),
             fields,
+            width = desired_col,
         );
         println!("{}", body_colorize(palette, row, &body));
     }
 }
 
-fn print_tree_rows(rows: &[TensionRow], palette: &Palette) {
+fn print_tree_rows(rows: &[TensionRow], palette: &Palette, term_width: usize) {
     for row in rows {
         let id_display = match row.short_code {
             Some(c) => format!("#{}", c),
@@ -759,11 +796,16 @@ fn print_tree_rows(rows: &[TensionRow], palette: &Palette) {
             format!(" [{}]", deadline)
         };
 
+        // Indent (depth*2) + id (~6) + space (1) + desire + deadline (~16) + overdue (~8)
+        // Desire gets the remainder, with a 40-char floor so deep nodes stay readable.
+        let reserved = (row.depth * 2) + 6 + 1 + 16 + 8;
+        let desired_col = term_width.saturating_sub(reserved).max(40);
+
         let body = format!(
             "{}{} {}{}",
             indent,
             id_display,
-            truncate(&row.desired, 50 - (row.depth * 2).min(40)),
+            truncate(&row.desired, desired_col),
             deadline_display,
         );
         let overdue_marker = if row.overdue {
