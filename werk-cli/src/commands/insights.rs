@@ -10,6 +10,7 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use sd_core::{detect_horizon_drift, HorizonDriftType, TensionStatus};
+use werk_shared::cli_display::{Palette, glyphs};
 
 /// JSON output for insights.
 #[derive(Serialize)]
@@ -29,17 +30,21 @@ struct AttentionEntry {
     mutation_count: usize,
 }
 
-fn bar_inline(count: usize, max: usize, width: usize) -> String {
+fn bar_inline(count: usize, max: usize, width: usize, palette: &Palette) -> String {
+    // Glyphs come from the shared registry. Filled segments are
+    // resolved-green to read as "completed activity"; empty segments
+    // are chrome (dim) so the eye sees the height difference rather
+    // than counting individual blocks.
     if max == 0 {
-        return "\u{2591}".repeat(width);
+        return palette.chrome(&glyphs::BAR_EMPTY.repeat(width));
     }
     let filled = (count as f64 / max as f64 * width as f64).round() as usize;
     let filled = filled.min(width);
     let empty = width - filled;
     format!(
         "{}{}",
-        "\u{2588}".repeat(filled),
-        "\u{2591}".repeat(empty),
+        palette.resolved(&glyphs::BAR_FULL.repeat(filled)),
+        palette.chrome(&glyphs::BAR_EMPTY.repeat(empty)),
     )
 }
 
@@ -142,13 +147,14 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
-        println!("Behavioral Insights (last {} days)", days);
+        let palette = output.palette();
+        println!("{}", palette.bold(&palette.structure(&format!("Behavioral Insights (last {} days)", days))));
         println!();
 
         if attention.is_empty() {
             println!("  No mutations recorded in this period.");
         } else {
-            println!("Attention:");
+            println!("{}", palette.bold(&palette.structure("Attention:")));
             if let Some((id, count)) = attention.first() {
                 let desired = tension_map
                     .get(id)
@@ -185,7 +191,7 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
             }
             println!();
 
-            println!("Patterns:");
+            println!("{}", palette.bold(&palette.structure("Patterns:")));
             if postponed_count > 0 {
                 println!(
                     "  {} horizon(s) postponed",
@@ -205,12 +211,12 @@ pub fn cmd_insights(output: &Output, days: i64) -> Result<(), WerkError> {
 
             // Activity by day
             let max_day = *day_counts.iter().max().unwrap_or(&0);
-            println!("Activity by day:");
+            println!("{}", palette.bold(&palette.structure("Activity by day:")));
             let parts: Vec<String> = day_names
                 .iter()
                 .enumerate()
                 .map(|(i, name)| {
-                    format!("{} {}", name, bar_inline(day_counts[i], max_day, 5))
+                    format!("{} {}", palette.chrome(name), bar_inline(day_counts[i], max_day, 5, &palette))
                 })
                 .collect();
             println!("  {}", parts.join("  "));

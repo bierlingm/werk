@@ -16,6 +16,7 @@ use crate::workspace::Workspace;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sd_core::address::{Address, parse_address};
 use serde::Serialize;
+use werk_shared::cli_display::glyphs;
 
 // ── JSON output structs ───────────────────────────────────────────
 
@@ -247,6 +248,8 @@ fn cmd_log_tension(
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
+        let palette = output.palette();
+
         if epochs.is_empty() {
             println!("No epochs for {}", display);
             if let Some(term) = search {
@@ -258,7 +261,12 @@ fn cmd_log_tension(
             return Ok(());
         }
 
-        println!("Log for {} — {}", display, truncate(&tension.desired, 60));
+        println!(
+            "{} {} — {}",
+            palette.bold(&palette.structure("Log for")),
+            palette.bold(&display),
+            truncate(&tension.desired, 60),
+        );
 
         // Show provenance if any
         print_provenance(&provenance);
@@ -269,47 +277,72 @@ fn cmd_log_tension(
             .get_epochs(tension_id)
             .map_err(WerkError::StoreError)?;
 
+        // Render each epoch as a small zone with a left-edge rail.
+        // Most-recent first. The rail is `╭` at the top, `│` between
+        // lines, `╰` at the bottom — wrapping the epoch in a visual
+        // container distinct from tree connectors.
         let rev_epochs: Vec<_> = epochs.iter().rev().collect();
-        let total = rev_epochs.len();
-        for (i, epoch) in rev_epochs.iter().enumerate() {
+        for epoch in rev_epochs.iter() {
             let epoch_idx = all_epochs.iter().position(|ae| ae.id == epoch.id).unwrap_or(0);
             let age = format_age(epoch.timestamp);
             let mutation_count = count_mutations_in_epoch(store, tension_id, &all_epochs, epoch_idx);
-            let is_last = i == total - 1;
 
             let type_label = match &epoch.epoch_type {
-                Some(t) => format!(" [{}]", t),
+                Some(t) => palette.chrome(&format!(" [{}]", t)),
                 None => String::new(),
             };
 
-            let (connector, rail) = if is_last {
-                ("\u{2514}", " ")
-            } else {
-                ("\u{251c}", "\u{2502}")
-            };
-
+            // Top edge — epoch identity
             println!(
-                "  {} Epoch {} ({}){}",
-                connector,
-                epoch_idx + 1,
-                age,
+                "  {} {} {}{}",
+                palette.structure(glyphs::TREE_ZONE_OPEN),
+                palette.bold(&format!("Epoch {}", epoch_idx + 1)),
+                palette.chrome(&format!("({})", age)),
                 type_label,
             );
+            // Desire snapshot — testimony color (this IS the desire as
+            // it stood at this point in the past, a kind of testimony).
             println!(
-                "  {}   \u{25c6} {}",
-                rail,
-                truncate(&epoch.desire_snapshot, 72)
+                "  {}   {} {}",
+                palette.chrome("│"),
+                palette.testimony("◆"),
+                truncate(&epoch.desire_snapshot, 72),
             );
+            // Reality snapshot — chrome (the past reality is metadata
+            // relative to the desire that defined the gap).
             println!(
-                "  {}   \u{25c7} {}",
-                rail,
-                truncate(&epoch.reality_snapshot, 72)
+                "  {}   {} {}",
+                palette.chrome("│"),
+                palette.chrome("◇"),
+                palette.chrome(&truncate(&epoch.reality_snapshot, 72)),
             );
             if mutation_count > 0 {
-                println!("  {}   {} mutation{}", rail, mutation_count, if mutation_count == 1 { "" } else { "s" });
+                println!(
+                    "  {}   {}",
+                    palette.chrome("│"),
+                    palette.chrome(&format!(
+                        "{} mutation{}",
+                        mutation_count,
+                        if mutation_count == 1 { "" } else { "s" }
+                    )),
+                );
             }
-            println!("  {}", rail);
+            // Bottom edge
+            println!("  {}", palette.structure(glyphs::TREE_ZONE_CLOSE));
         }
+
+        // Footer hint
+        let hint_id: String = match tension.short_code {
+            Some(c) => c.to_string(),
+            None => tension.id[..8.min(tension.id.len())].to_string(),
+        };
+        crate::hints::print_hint(
+            &palette,
+            &format!(
+                "`werk log {}~e<N>` for one epoch, `werk show {}` for the live state",
+                hint_id, hint_id
+            ),
+        );
     }
 
     Ok(())

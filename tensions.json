@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-10T14:02:42Z",
+  "flushed_at": "2026-04-10T14:10:35Z",
   "summary": {
     "active": 48,
     "released": 56,
@@ -2329,7 +2329,7 @@
       "status": "Active"
     },
     {
-      "actual": "log renders plain text lines. stats has basic block chars but no color. no epoch zone boundaries.",
+      "actual": "log epochs render as zones (╭─ Epoch N (age) … │ ◆ desire │ ◇ reality │ N mutations … ╰─) with cyan boundaries, bold epoch numbers, magenta testimony desire snapshots, chrome reality. stats vitals/temporal/attention have bold-cyan section headers, resolved counts in green, overdue in bold danger, footer hints. insights bar charts use BAR_FULL/BAR_EMPTY from registry with resolved-green filled and chrome empty segments. show.rs Activity colors note mutations testimony magenta. All 298 werk tests still pass.",
       "created_at": "2026-04-09T22:50:37.435374+00:00",
       "desired": "Phase 5: log and stats rendering — epoch boundaries as visual zones, bar charts with block elements, temporal color gradient in activity logs",
       "horizon": null,

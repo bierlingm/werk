@@ -613,14 +613,22 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         if !result.mutations.is_empty() {
             println!();
             println!("{}", palette.bold(&palette.structure("Activity:")));
-            // Reverse to show most recent first
+            // Reverse to show most recent first.
+            // Notes are first-person testimony (#175 made notes
+            // first-class gestures), so they get the testimony color.
+            // Other mutation summaries stay at default weight.
             for m in result.mutations.iter().rev() {
                 let ts = DateTime::parse_from_rfc3339(&m.timestamp)
                     .map(|dt| relative_time(dt.with_timezone(&Utc), now))
                     .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
 
                 let summary = format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
-                println!("  {}  {}", palette.chrome(&format!("{:>12}", ts)), summary);
+                let summary_styled = if m.field == "note" {
+                    palette.testimony(&summary)
+                } else {
+                    summary
+                };
+                println!("  {}  {}", palette.chrome(&format!("{:>12}", ts)), summary_styled);
             }
         }
 

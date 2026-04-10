@@ -15,6 +15,7 @@ use sd_core::{
     detect_horizon_drift, detect_sequencing_pressure, project_field, Forest,
     TensionStatus,
 };
+use werk_shared::cli_display::Palette;
 use werk_shared::truncate;
 
 // ── JSON output ────────────────────────────────────────────────────
@@ -263,13 +264,14 @@ pub fn cmd_stats(
         output.print_structured(&result).map_err(WerkError::IoError)?;
     } else {
         // Text output
-        print_vitals(&vitals);
+        let palette = output.palette();
+        print_vitals(&vitals, &palette);
 
         if show_temporal {
-            print_temporal(&compute_temporal(&tensions, &store, now, &sig)?, &tensions);
+            print_temporal(&compute_temporal(&tensions, &store, now, &sig)?, &tensions, &palette);
         }
         if show_attention {
-            print_attention(&compute_attention(&tensions, &store, cutoff)?, days);
+            print_attention(&compute_attention(&tensions, &store, cutoff)?, days, &palette);
         }
         if show_changes {
             print_changes(&compute_changes(&tensions, &store, cutoff, now)?, days);
@@ -286,6 +288,17 @@ pub fn cmd_stats(
         if show_health {
             print_health(&compute_health(&store, repair, yes)?);
         }
+
+        // Footer hint — point users at the most useful next gestures.
+        let hint = if vitals.overdue > 0 {
+            format!(
+                "{} overdue — `werk list --overdue` to triage, `werk show <id>` to inspect",
+                vitals.overdue
+            )
+        } else {
+            "`werk stats --temporal` for deadlines, `werk stats --all` for everything".to_string()
+        };
+        crate::hints::print_hint(&palette, &hint);
     }
 
     Ok(())
@@ -348,19 +361,33 @@ fn compute_vitals(
     }
 }
 
-fn print_vitals(v: &VitalsJson) {
-    println!("Field");
+fn print_vitals(v: &VitalsJson, palette: &Palette) {
+    println!("{}", palette.bold(&palette.structure("Field")));
+    // Number/role coloring: active stays at identity weight, resolved
+    // is green to mirror the resolved status glyph elsewhere, released
+    // is dimmed because completed-and-let-go is metadata. Overdue is
+    // bold danger so it pops even in a dense vitals row.
     println!(
         "  {} active  {} resolved  {} released",
-        v.active, v.resolved, v.released
+        v.active,
+        palette.resolved(&v.resolved.to_string()),
+        palette.chrome(&v.released.to_string()),
     );
+    let overdue_display = if v.overdue > 0 {
+        palette.bold(&palette.danger(&v.overdue.to_string()))
+    } else {
+        v.overdue.to_string()
+    };
     println!(
         "  {} deadlined  {} overdue  {} positioned  {} held",
-        v.deadlined, v.overdue, v.positioned, v.held
+        v.deadlined, overdue_display, v.positioned, v.held,
     );
     println!(
-        "  Activity ({}d): {} mutations across {} tensions ({}/day)",
-        v.period_days, v.mutations, v.tensions_touched, v.avg_per_day
+        "  {}",
+        palette.chrome(&format!(
+            "Activity ({}d): {} mutations across {} tensions ({}/day)",
+            v.period_days, v.mutations, v.tensions_touched, v.avg_per_day
+        )),
     );
 }
 
@@ -464,7 +491,7 @@ fn compute_temporal(
     })
 }
 
-fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension]) {
+fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension], palette: &Palette) {
     if t.approaching.is_empty()
         && t.critical_path.is_empty()
         && t.sequencing_pressure.is_empty()
@@ -474,7 +501,7 @@ fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension]) {
     }
 
     println!();
-    println!("Temporal situation");
+    println!("{}", palette.bold(&palette.structure("Temporal situation")));
 
     if !t.approaching.is_empty() {
         println!("  Approaching (next 14 days)");
@@ -629,13 +656,13 @@ fn compute_attention(
     })
 }
 
-fn print_attention(a: &AttentionJson, days: i64) {
+fn print_attention(a: &AttentionJson, days: i64, palette: &Palette) {
     if a.roots.is_empty() {
         return;
     }
 
     println!();
-    println!("Attention (last {} days)", days);
+    println!("{}", palette.bold(&palette.structure(&format!("Attention (last {} days)", days))));
 
     for root in &a.roots {
         let sc = root.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
