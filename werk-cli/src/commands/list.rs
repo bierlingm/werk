@@ -11,6 +11,7 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use sd_core::{compute_temporal_signals, compute_urgency, detect_horizon_drift, Forest, HorizonDriftType, Tension, TensionStatus};
+use werk_shared::cli_display::glyphs;
 use werk_shared::truncate;
 
 /// JSON output structure for a tension in list.
@@ -256,7 +257,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
 
             // Overdue (already computed, just add glyph)
             if row.overdue {
-                row.signal_glyphs.push("!");
+                row.signal_glyphs.push(glyphs::SIGNAL_OVERDUE);
                 row.signal_labels.push("overdue".to_string());
             }
 
@@ -264,24 +265,24 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             let temporal = compute_temporal_signals(&forest, &row.id, now);
 
             if temporal.on_critical_path {
-                row.signal_glyphs.push("\u{2021}");
+                row.signal_glyphs.push(glyphs::SIGNAL_CRITICAL_PATH);
                 row.signal_labels.push("critical_path".to_string());
             }
             if temporal.has_containment_violation {
-                row.signal_glyphs.push("\u{21a5}");
+                row.signal_glyphs.push(glyphs::SIGNAL_CONTAINMENT);
                 row.signal_labels.push("containment_violation".to_string());
             }
             if !temporal.sequencing_pressures.is_empty() {
-                row.signal_glyphs.push("\u{21c5}");
+                row.signal_glyphs.push(glyphs::SIGNAL_SEQUENCING);
                 row.signal_labels.push("sequencing_pressure".to_string());
             }
             // Children signals (critical path and containment on children)
             if !temporal.critical_path.is_empty() && !temporal.on_critical_path {
-                row.signal_glyphs.push("\u{2021}");
+                row.signal_glyphs.push(glyphs::SIGNAL_CRITICAL_PATH);
                 row.signal_labels.push("critical_path_parent".to_string());
             }
             if !temporal.containment_violations.is_empty() && !temporal.has_containment_violation {
-                row.signal_glyphs.push("\u{21a5}");
+                row.signal_glyphs.push(glyphs::SIGNAL_CONTAINMENT);
                 row.signal_labels.push("containment_violation_parent".to_string());
             }
 
@@ -292,7 +293,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
                 let drift = detect_horizon_drift(&row.id, &mutations);
                 match drift.drift_type {
                     HorizonDriftType::RepeatedPostponement | HorizonDriftType::Oscillating => {
-                        row.signal_glyphs.push("\u{219d}");
+                        row.signal_glyphs.push(glyphs::SIGNAL_DRIFT);
                         row.signal_labels.push(format!("drift:{:?}", drift.drift_type));
                     }
                     _ => {}
@@ -534,23 +535,38 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             return Ok(());
         }
 
+        let palette = output.palette();
+
         if params.tree {
-            print_tree_rows(&rows);
+            print_tree_rows(&rows, &palette);
         } else if params.long {
-            print_long_rows(&rows, now);
+            print_long_rows(&rows, now, &palette);
         } else if params.changed.is_some() {
-            print_changed_rows(&rows, now);
+            print_changed_rows(&rows, now, &palette);
         } else {
-            print_default_rows(&rows);
+            print_default_rows(&rows, &palette);
         }
 
-        // Legend: show glyph key if any signals are present in the output
+        // Legend: show glyph key if any signals are present in the output.
+        // The legend lives in chrome weight — it's a reference aid, not a
+        // signal in its own right.
         let has_any_signals = rows.iter().any(|r| !r.signal_glyphs.is_empty());
         println!();
         if has_any_signals {
-            println!("{} tension(s)  ! overdue  \u{2021} critical path  \u{21a5} containment  \u{21c5} sequencing  \u{219d} drift", rows.len());
+            println!(
+                "{}",
+                palette.chrome(&format!(
+                    "{} tension(s)  {} overdue  {} critical path  {} containment  {} sequencing  {} drift",
+                    rows.len(),
+                    glyphs::SIGNAL_OVERDUE,
+                    glyphs::SIGNAL_CRITICAL_PATH,
+                    glyphs::SIGNAL_CONTAINMENT,
+                    glyphs::SIGNAL_SEQUENCING,
+                    glyphs::SIGNAL_DRIFT,
+                ))
+            );
         } else {
-            println!("{} tension(s)", rows.len());
+            println!("{}", palette.chrome(&format!("{} tension(s)", rows.len())));
         }
     }
 
@@ -559,14 +575,47 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
 
 // ── Display functions ──────────────────────────────────────────────
 
-fn print_default_rows(rows: &[TensionRow]) {
+use werk_shared::cli_display::Palette;
+
+/// Classify a row's signal glyph to decide palette routing.
+///
+/// Signal colors here mirror the show command's semantics:
+///   - `!` / `↥`    → danger (red): overdue, containment violation
+///   - `⇅` / `↝`   → warning (yellow): sequencing pressure, drift
+///   - `‡`         → structure (cyan): critical path
+fn colorize_signal(palette: &Palette, g: &'static str) -> String {
+    if g == glyphs::SIGNAL_OVERDUE || g == glyphs::SIGNAL_CONTAINMENT {
+        palette.danger(g)
+    } else if g == glyphs::SIGNAL_SEQUENCING || g == glyphs::SIGNAL_DRIFT {
+        palette.warning(g)
+    } else {
+        palette.structure(g)
+    }
+}
+
+fn join_signals(palette: &Palette, row: &TensionRow) -> String {
+    row.signal_glyphs
+        .iter()
+        .map(|g| colorize_signal(palette, g))
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+/// Dim completed rows — resolved and released tensions shouldn't
+/// compete for attention with active ones.
+fn body_colorize(palette: &Palette, row: &TensionRow, s: &str) -> String {
+    match row.status {
+        TensionStatus::Active => s.to_string(),
+        TensionStatus::Resolved | TensionStatus::Released => palette.chrome(s),
+    }
+}
+
+fn print_default_rows(rows: &[TensionRow], palette: &Palette) {
     for row in rows {
         let id_display = match row.short_code {
             Some(c) => format!("#{:<4}", c),
             None => format!("{:<8}", &row.id[..8.min(row.id.len())]),
         };
-
-        let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
 
         let urgency_display = match row.urgency {
             Some(u) => format!("{:>3.0}%", u * 100.0),
@@ -576,22 +625,36 @@ fn print_default_rows(rows: &[TensionRow]) {
         let signal_display = if row.signal_glyphs.is_empty() {
             String::new()
         } else {
-            format!(" {}", row.signal_glyphs.join(""))
+            format!(" {}", join_signals(palette, row))
         };
 
-        println!(
-            "{}  {:<30}  {:>8}{}  {}{}",
+        // Assemble the body (id + desire + horizon) at full weight first,
+        // then dim the whole thing for completed tensions. The overdue
+        // marker is always danger regardless of status so it remains
+        // readable in the dim band.
+        let body = format!(
+            "{}  {:<30}  {:>8}",
             id_display,
             truncate(&row.desired, 30),
             row.horizon_display,
+        );
+        let overdue_marker = if row.overdue {
+            format!(" {}", palette.bold(&palette.danger("OVERDUE")))
+        } else {
+            String::new()
+        };
+
+        println!(
+            "{}{}  {}{}",
+            body_colorize(palette, row, &body),
             overdue_marker,
-            urgency_display,
+            body_colorize(palette, row, &urgency_display),
             signal_display,
         );
     }
 }
 
-fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
+fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette) {
     for (i, row) in rows.iter().enumerate() {
         if i > 0 {
             println!();
@@ -607,30 +670,41 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
             TensionStatus::Released => "released",
         };
 
-        println!("{} [{}] {}", id_display, status, truncate(&row.desired, 60));
-        println!("  Reality: {}", truncate(&row.actual, 60));
+        let header = format!("{} [{}] {}", id_display, status, truncate(&row.desired, 60));
+        println!("{}", body_colorize(palette, row, &header));
+        println!(
+            "  {} {}",
+            palette.chrome("Reality:"),
+            truncate(&row.actual, 60),
+        );
         if let Some(ref h) = row.horizon_raw {
-            let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
-            println!("  Deadline: {}{}", h, overdue_marker);
+            let overdue_marker = if row.overdue {
+                format!(" {}", palette.bold(&palette.danger("OVERDUE")))
+            } else {
+                String::new()
+            };
+            println!("  {} {}{}", palette.chrome("Deadline:"), h, overdue_marker);
         }
         if let Some(u) = row.urgency {
-            println!("  Urgency: {:.0}%", u * 100.0);
+            println!("  {} {:.0}%", palette.chrome("Urgency:"), u * 100.0);
         }
         if !row.signal_glyphs.is_empty() {
-            let signal_str: Vec<String> = row.signal_glyphs.iter()
+            let signal_str: Vec<String> = row
+                .signal_glyphs
+                .iter()
                 .zip(row.signal_labels.iter())
-                .map(|(g, l)| format!("{} {}", g, l))
+                .map(|(g, l)| format!("{} {}", colorize_signal(palette, g), l))
                 .collect();
-            println!("  Signals: {}", signal_str.join(", "));
+            println!("  {} {}", palette.chrome("Signals:"), signal_str.join(", "));
         }
         if let Some(ref pd) = row.parent_desired {
             let psc = row.parent_id.as_ref().map(|_| "parent").unwrap_or("");
-            println!("  {}: {}", psc, truncate(pd, 50));
+            println!("  {}: {}", palette.chrome(psc), truncate(pd, 50));
         }
     }
 }
 
-fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
+fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette) {
     for row in rows {
         let id_display = match row.short_code {
             Some(c) => format!("#{:<4}", c),
@@ -643,16 +717,17 @@ fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>) {
             .map(|f| f.join(", "))
             .unwrap_or_default();
 
-        println!(
+        let body = format!(
             "{}  {:<35}  [{}]",
             id_display,
             truncate(&row.desired, 35),
             fields,
         );
+        println!("{}", body_colorize(palette, row, &body));
     }
 }
 
-fn print_tree_rows(rows: &[TensionRow]) {
+fn print_tree_rows(rows: &[TensionRow], palette: &Palette) {
     for row in rows {
         let id_display = match row.short_code {
             Some(c) => format!("#{}", c),
@@ -660,7 +735,6 @@ fn print_tree_rows(rows: &[TensionRow]) {
         };
 
         let indent = "  ".repeat(row.depth);
-        let overdue_marker = if row.overdue { " OVERDUE" } else { "" };
         let deadline = row.horizon_raw.as_deref().unwrap_or("");
         let deadline_display = if deadline.is_empty() {
             String::new()
@@ -668,14 +742,20 @@ fn print_tree_rows(rows: &[TensionRow]) {
             format!(" [{}]", deadline)
         };
 
-        println!(
-            "{}{} {}{}{}",
+        let body = format!(
+            "{}{} {}{}",
             indent,
             id_display,
             truncate(&row.desired, 50 - (row.depth * 2).min(40)),
             deadline_display,
-            overdue_marker,
         );
+        let overdue_marker = if row.overdue {
+            format!(" {}", palette.bold(&palette.danger("OVERDUE")))
+        } else {
+            String::new()
+        };
+
+        println!("{}{}", body_colorize(palette, row, &body), overdue_marker);
     }
 }
 

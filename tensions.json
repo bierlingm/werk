@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-10T12:32:28Z",
+  "flushed_at": "2026-04-10T12:54:34Z",
   "summary": {
     "active": 48,
     "released": 56,
@@ -2296,7 +2296,7 @@
       "status": "Active"
     },
     {
-      "actual": "only tree.rs has color. show, list, stats, log, survey output plain text with no ANSI.",
+      "actual": "Output struct owns the shared Palette; TTY/NO_COLOR/JSON detection centralized at construction. tree.rs, show.rs, list.rs, and output.rs all route color through output.palette(). Inline glyph literals deleted from show.rs (signal section) and list.rs (signal computation + footer legend). Completed rows in list dim via body_colorize. OVERDUE is palette.bold(palette.danger). Non-TTY output byte-identical for tree; show and list visually identical in non-TTY (label spacing preserved). log, stats, survey deferred to Phase 5 alongside their full redesign. All 298 werk tests pass.",
       "created_at": "2026-04-09T22:50:21.808871+00:00",
       "desired": "Phase 2: universal color — every command that outputs human text goes through the shared palette. show, list, stats, log, survey all get semantic color",
       "horizon": null,

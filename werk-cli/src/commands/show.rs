@@ -8,6 +8,7 @@ use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
 use sd_core::{compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, TensionStatus};
 use serde::Serialize;
+use werk_shared::cli_display::glyphs;
 use werk_shared::{display_id, relative_time, truncate};
 
 /// JSON output structure for show command.
@@ -287,10 +288,15 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             .print_structured(&result)
             .map_err(WerkError::IoError)?;
     } else {
+        let palette = output.palette();
+
         // === Identity: the tension IS the gap ===
-        println!("Tension {}", werk_shared::display_id(tension.short_code, &tension.id));
-        println!("  Desired:  {}", &tension.desired);
-        println!("  Reality:  {}", &tension.actual);
+        println!(
+            "Tension {}",
+            palette.bold(&werk_shared::display_id(tension.short_code, &tension.id))
+        );
+        println!("  {}  {}", palette.chrome("Desired:"), &tension.desired);
+        println!("  {}  {}", palette.chrome("Reality:"), &tension.actual);
 
         // === Structural position ===
         println!();
@@ -374,7 +380,11 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             let pct = (urg.value * 100.0).min(999.0);
             if overdue {
                 let days_past = (-urg.time_remaining as f64 / 86400.0).ceil() as i64;
-                println!("  Urgency:  OVERDUE ({} days past deadline)", days_past);
+                println!(
+                    "  Urgency:  {} ({} days past deadline)",
+                    palette.bold(&palette.danger("OVERDUE")),
+                    days_past,
+                );
             } else {
                 let days_left = (urg.time_remaining as f64 / 86400.0).floor() as i64;
                 println!(
@@ -399,20 +409,37 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
         if has_signals {
             println!();
-            println!("Signals:");
+            println!("{}", palette.structure("Signals:"));
 
+            // Label colors mirror the palette semantics:
+            //   CRITICAL / HUB / SPINE / REACH  → structure (cyan)
+            //   VIOLATION                        → danger (red)
+            //   PRESSURE / DRIFT / WINDOW        → warning (yellow)
+            // Whitespace inside the strings is preserved exactly so that
+            // non-TTY output is byte-identical to the pre-Phase-2 baseline.
             if temporal.on_critical_path {
-                println!("  \u{2021} CRITICAL   on parent's critical path");
+                println!(
+                    "  {} {}   on parent's critical path",
+                    palette.structure(glyphs::SIGNAL_CRITICAL_PATH),
+                    palette.structure("CRITICAL"),
+                );
             }
             if temporal.has_containment_violation {
-                println!("  \u{21a5} VIOLATION  deadline exceeds parent's deadline");
+                println!(
+                    "  {} {}  deadline exceeds parent's deadline",
+                    palette.danger(glyphs::SIGNAL_CONTAINMENT),
+                    palette.danger("VIOLATION"),
+                );
             }
             for sp in &temporal.sequencing_pressures {
                 let pred_display = display_id(sp.predecessor_short_code, &sp.predecessor_id);
                 let days = sp.gap_seconds as f64 / 86400.0;
                 println!(
-                    "  \u{21c5} PRESSURE   deadline is {:.0} days before {} (ordered after)",
-                    days, pred_display
+                    "  {} {}   deadline is {:.0} days before {} (ordered after)",
+                    palette.warning(glyphs::SIGNAL_SEQUENCING),
+                    palette.warning("PRESSURE"),
+                    days,
+                    pred_display,
                 );
             }
             for cpath in &temporal.critical_path {
@@ -420,9 +447,20 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 let child_display = display_id(child_sc, &cpath.tension_id);
                 let slack_days = cpath.slack_seconds as f64 / 86400.0;
                 if slack_days <= 0.0 {
-                    println!("  \u{2021} CRITICAL   {} matches or exceeds deadline", child_display);
+                    println!(
+                        "  {} {}   {} matches or exceeds deadline",
+                        palette.structure(glyphs::SIGNAL_CRITICAL_PATH),
+                        palette.structure("CRITICAL"),
+                        child_display,
+                    );
                 } else {
-                    println!("  \u{2021} CRITICAL   {} has only {:.0} days slack", child_display, slack_days);
+                    println!(
+                        "  {} {}   {} has only {:.0} days slack",
+                        palette.structure(glyphs::SIGNAL_CRITICAL_PATH),
+                        palette.structure("CRITICAL"),
+                        child_display,
+                        slack_days,
+                    );
                 }
             }
             for cv in &temporal.containment_violations {
@@ -430,14 +468,21 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 let child_display = display_id(child_sc, &cv.tension_id);
                 let excess_days = cv.excess_seconds as f64 / 86400.0;
                 println!(
-                    "  \u{21a5} VIOLATION  {} deadline exceeds by {:.0} days",
-                    child_display, excess_days
+                    "  {} {}  {} deadline exceeds by {:.0} days",
+                    palette.danger(glyphs::SIGNAL_CONTAINMENT),
+                    palette.danger("VIOLATION"),
+                    child_display,
+                    excess_days,
                 );
             }
             if let Some(ref iw) = temporal.implied_window {
                 let days = iw.duration_seconds as f64 / 86400.0;
                 if days < 0.0 {
-                    println!("  WINDOW      negative ({:.0} days past)", -days);
+                    println!(
+                        "  {}      negative ({:.0} days past)",
+                        palette.warning("WINDOW"),
+                        -days,
+                    );
                 }
             }
             if let Some(ref drift) = horizon_drift {
@@ -454,17 +499,37 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     HorizonDriftType::Oscillating => format!("oscillating{} ({} shifts, net {}{}d)", since, drift.change_count, direction, net_days),
                     HorizonDriftType::Stable => unreachable!(),
                 };
-                println!("  \u{219d} DRIFT      {}", desc);
+                println!(
+                    "  {} {}      {}",
+                    palette.warning(glyphs::SIGNAL_DRIFT),
+                    palette.warning("DRIFT"),
+                    desc,
+                );
             }
             if has_hub {
-                println!("  \u{25c9} HUB        centrality {:.4} (structural routing point)", structural.centrality.unwrap_or(0.0));
+                println!(
+                    "  {} {}        centrality {:.4} (structural routing point)",
+                    palette.structure(glyphs::SIGNAL_HUB),
+                    palette.structure("HUB"),
+                    structural.centrality.unwrap_or(0.0),
+                );
             }
             if has_spine {
                 let depth = field_structural.longest_path.len();
-                println!("  \u{2503} SPINE      on longest structural path (depth {})", depth);
+                println!(
+                    "  {} {}      on longest structural path (depth {})",
+                    palette.structure(glyphs::SIGNAL_SPINE),
+                    palette.structure("SPINE"),
+                    depth,
+                );
             }
             if has_reach {
-                println!("  \u{25ce} REACH      {} transitive descendants", structural.descendant_count.unwrap_or(0));
+                println!(
+                    "  {} {}      {} transitive descendants",
+                    palette.structure(glyphs::SIGNAL_REACH),
+                    palette.structure("REACH"),
+                    structural.descendant_count.unwrap_or(0),
+                );
             }
         }
 
@@ -477,11 +542,15 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
             if has_frontier_signals {
                 println!();
-                println!("Frontier:");
+                println!("{}", palette.structure("Frontier:"));
 
                 if let Some(ref ns) = frontier.next_step {
                     let ns_display = display_id(ns.short_code, &ns.tension_id);
-                    let overdue_marker = if ns.is_overdue { " OVERDUE" } else { "" };
+                    let overdue_marker = if ns.is_overdue {
+                        format!(" {}", palette.bold(&palette.danger("OVERDUE")))
+                    } else {
+                        String::new()
+                    };
                     println!(
                         "  Next:     {}{} {}",
                         ns_display, overdue_marker, truncate(&ns.desired, 40)
@@ -525,13 +594,13 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         // === Children ===
         if !result.children.is_empty() {
             println!();
-            println!("Children:");
+            println!("{}", palette.structure("Children:"));
             for child in &result.children {
                 let child_id = display_id(child.short_code, &child.id);
                 let status_marker = match child.status.as_str() {
-                    "Resolved" => " ✓",
-                    "Released" => " ~",
-                    _ => "",
+                    "Resolved" => format!(" {}", palette.resolved(glyphs::STATUS_RESOLVED)),
+                    "Released" => format!(" {}", palette.chrome(glyphs::STATUS_RELEASED)),
+                    _ => String::new(),
                 };
                 println!(
                     "  {}{} {}",
@@ -543,7 +612,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         // === Activity (last 10, most recent first, concise summaries) ===
         if !result.mutations.is_empty() {
             println!();
-            println!("Activity:");
+            println!("{}", palette.structure("Activity:"));
             // Reverse to show most recent first
             for m in result.mutations.iter().rev() {
                 let ts = DateTime::parse_from_rfc3339(&m.timestamp)
@@ -551,7 +620,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
 
                 let summary = format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
-                println!("  {:>12}  {}", ts, summary);
+                println!("  {}  {}", palette.chrome(&format!("{:>12}", ts)), summary);
             }
         }
 
@@ -561,7 +630,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             let latest = &epochs[epochs.len() - 1];
             let age = relative_time(latest.timestamp, now);
             if full {
-                println!("Epochs ({}):", epochs.len());
+                println!("{}", palette.structure(&format!("Epochs ({}):", epochs.len())));
                 for (i, e) in epochs.iter().enumerate().rev() {
                     let e_age = relative_time(e.timestamp, now);
                     println!(
@@ -585,7 +654,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             if let Some(ref ancestors) = result.ancestors {
                 if !ancestors.is_empty() {
                     println!();
-                    println!("Ancestors:");
+                    println!("{}", palette.structure("Ancestors:"));
                     for a in ancestors {
                         let sc = a.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| a.id[..8.min(a.id.len())].to_string());
                         println!("  {:<6} {}", sc, truncate(&a.desired, 55));
@@ -595,13 +664,13 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             if let Some(ref siblings) = result.siblings {
                 if !siblings.is_empty() {
                     println!();
-                    println!("Siblings:");
+                    println!("{}", palette.structure("Siblings:"));
                     for s in siblings {
                         let sc = s.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| s.id[..8.min(s.id.len())].to_string());
                         let status_marker = match s.status.as_str() {
-                            "Resolved" => " ✓",
-                            "Released" => " ~",
-                            _ => "",
+                            "Resolved" => format!(" {}", palette.resolved(glyphs::STATUS_RESOLVED)),
+                            "Released" => format!(" {}", palette.chrome(glyphs::STATUS_RELEASED)),
+                            _ => String::new(),
                         };
                         println!("  {}{} {}", sc, status_marker, truncate(&s.desired, 50));
                     }
@@ -609,7 +678,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             }
             if let Some(ref eng) = result.engagement {
                 println!();
-                println!("Engagement:");
+                println!("{}", palette.structure("Engagement:"));
                 if let Some(freq) = eng.get("frequency_per_day").and_then(|v| v.as_f64()) {
                     println!("  Frequency: {:.1}/day", freq);
                 }

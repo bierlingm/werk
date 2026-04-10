@@ -5,14 +5,12 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use owo_colors::OwoColorize;
 use sd_core::{
     Forest, TensionStatus, compute_structural_signals, compute_temporal_signals,
     detect_containment_violations, detect_sequencing_pressure, FieldStructuralSignals,
 };
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::IsTerminal;
 use werk_shared::cli_display::{Palette, glyphs};
 
 /// JSON output structure for a tension in tree.
@@ -216,14 +214,9 @@ pub fn cmd_tree(
     let filtered_ids: std::collections::HashSet<_> =
         filtered_tensions.iter().map(|t| t.id.as_str()).collect();
 
-    let use_color = std::io::stdout().is_terminal()
-        && std::env::var("NO_COLOR").is_err();
-
-    // Construct the shared palette once. Phase 1 only introduces the
-    // infrastructure; tree.rs still uses its ad-hoc owo_colors helpers
-    // below so the output remains byte-identical. Phase 2 will route
-    // every color call in this file through `_palette`.
-    let _palette = Palette::new(use_color);
+    // The Output owns the shared palette; tree.rs used to build its own,
+    // but Phase 2 centralizes TTY/NO_COLOR detection there.
+    let palette = output.palette();
 
     // Compute structural signals once for the whole forest
     let structural_signals = compute_structural_signals(&forest);
@@ -313,7 +306,7 @@ pub fn cmd_tree(
         critical_path_set: &'a HashMap<String, bool>,
         sig: &'a werk_shared::SignalThresholds,
         term_width: usize,
-        use_color: bool,
+        palette: Palette,
     }
 
     fn render_tree(
@@ -445,24 +438,18 @@ pub fn cmd_tree(
 
             let desired_text = smart_truncate(&node.tension.desired, available);
 
-            // --- Assemble with color ---
-            if ctx.use_color {
-                let line = format!(
-                    "{}{}{}{}{}",
-                    prefix,
-                    connector.dimmed(),
-                    format_meta_colored(&id_str, &pos_str, &horizon_str, &warnings),
-                    desired_text,
-                    format_suffix_colored(&closure_str, &glyphs),
-                );
-                lines.push(line);
-            } else {
-                let line = format!(
-                    "{}{}{}{}{}",
-                    prefix, connector, meta_plain, desired_text, suffix_plain
-                );
-                lines.push(line);
-            }
+            // --- Assemble line through the palette ---
+            // When the palette is disabled the output is byte-identical to
+            // the plain-text branch because every palette method is a no-op.
+            let line = format!(
+                "{}{}{}{}{}",
+                prefix,
+                ctx.palette.chrome(connector),
+                format_meta(&ctx.palette, &id_str, &pos_str, &horizon_str, &warnings),
+                desired_text,
+                format_suffix(&ctx.palette, &closure_str, &glyphs),
+            );
+            lines.push(line);
 
             // Recurse
             let child_ids: Vec<_> = node
@@ -483,33 +470,43 @@ pub fn cmd_tree(
         }
     }
 
-    fn format_meta_colored(
+    fn format_meta(
+        palette: &Palette,
         id_str: &str,
         pos_str: &str,
         horizon_str: &str,
         warnings: &[String],
     ) -> String {
-        let mut s = format!("{}", id_str.bold());
+        // ID is always bold — identity emphasis, earned by the primacy of
+        // the short-code as an addressing scheme.
+        let mut s = palette.bold(id_str);
         if !pos_str.is_empty() {
-            s.push_str(&format!(" {}", pos_str.dimmed()));
+            s.push(' ');
+            s.push_str(&palette.chrome(pos_str));
         }
         if !horizon_str.is_empty() {
-            s.push_str(&format!(" {}", horizon_str.dimmed()));
+            s.push(' ');
+            s.push_str(&palette.chrome(horizon_str));
         }
         for w in warnings {
-            s.push_str(&format!(" {}", w.yellow().bold()));
+            // Warnings are bold danger — they demand attention and break
+            // the signal-by-exception silence.
+            s.push(' ');
+            s.push_str(&palette.bold(&palette.danger(w)));
         }
         s.push(' ');
         s
     }
 
-    fn format_suffix_colored(closure_str: &str, glyphs: &[&str]) -> String {
+    fn format_suffix(palette: &Palette, closure_str: &str, glyphs: &[&str]) -> String {
         let mut s = String::new();
         if !closure_str.is_empty() {
-            s.push_str(&format!("  {}", closure_str.dimmed()));
+            s.push_str("  ");
+            s.push_str(&palette.chrome(closure_str));
         }
         if !glyphs.is_empty() {
-            s.push_str(&format!("  {}", glyphs.join("").cyan()));
+            s.push_str("  ");
+            s.push_str(&palette.structure(&glyphs.join("")));
         }
         s
     }
@@ -526,7 +523,7 @@ pub fn cmd_tree(
         critical_path_set: &critical_path_set,
         sig: &sig,
         term_width,
-        use_color,
+        palette,
     };
 
     let mut lines = Vec::new();
@@ -551,20 +548,13 @@ pub fn cmd_tree(
         .count();
 
     println!();
-    if use_color {
-        println!(
-            "{}",
-            format!(
-                "Total: {}  Active: {}  Resolved: {}  Released: {}",
-                tensions.len(), active_count, resolved_count, released_count
-            ).dimmed()
-        );
-    } else {
-        println!(
+    println!(
+        "{}",
+        palette.chrome(&format!(
             "Total: {}  Active: {}  Resolved: {}  Released: {}",
             tensions.len(), active_count, resolved_count, released_count
-        );
-    }
+        ))
+    );
 
     if stats {
         let deadlined = tensions.iter().filter(|t| t.horizon.is_some()).count();
@@ -583,20 +573,13 @@ pub fn cmd_tree(
             .iter()
             .filter(|t| t.status == TensionStatus::Active && t.position.is_none())
             .count();
-        if use_color {
-            println!(
-                "{}",
-                format!(
-                    "Deadlined: {}  Overdue: {}  Positioned: {}  Held: {}",
-                    deadlined, overdue, positioned, held
-                ).dimmed()
-            );
-        } else {
-            println!(
+        println!(
+            "{}",
+            palette.chrome(&format!(
                 "Deadlined: {}  Overdue: {}  Positioned: {}  Held: {}",
                 deadlined, overdue, positioned, held
-            );
-        }
+            ))
+        );
     }
 
     Ok(())

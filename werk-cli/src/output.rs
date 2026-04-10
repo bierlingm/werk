@@ -3,9 +3,11 @@
 //! Handles:
 //! - Human-readable plain text output
 //! - JSON output (machine-readable)
+//! - Semantic color via the shared [`Palette`]
 
 use serde::Serialize;
-use std::io;
+use std::io::{self, IsTerminal};
+use werk_shared::cli_display::{Palette, glyphs};
 
 /// Output format selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +23,9 @@ pub enum OutputFormat {
 pub struct Output {
     /// Output format (Human or Json).
     format: OutputFormat,
+    /// Semantic color palette. Disabled when output is JSON, NO_COLOR is
+    /// set, or stdout is not a TTY.
+    palette: Palette,
 }
 
 impl Output {
@@ -28,6 +33,15 @@ impl Output {
     ///
     /// Args:
     /// - `json`: If true, use JSON output format.
+    ///
+    /// The palette is enabled only when:
+    /// - the caller is not asking for JSON, AND
+    /// - stdout is a TTY, AND
+    /// - the `NO_COLOR` environment variable is unset.
+    ///
+    /// This single check centralizes TTY/NO_COLOR detection for the entire
+    /// CLI — individual commands should read [`Output::palette`] rather
+    /// than probing the terminal themselves.
     pub fn new(json: bool) -> Self {
         let format = if json {
             OutputFormat::Json
@@ -35,7 +49,22 @@ impl Output {
             OutputFormat::Human
         };
 
-        Self { format }
+        let color_enabled = !json
+            && std::io::stdout().is_terminal()
+            && std::env::var("NO_COLOR").is_err();
+        let palette = Palette::new(color_enabled);
+
+        Self { format, palette }
+    }
+
+    /// Access the shared semantic color palette.
+    ///
+    /// Always safe to call; returns a disabled palette when the output is
+    /// going to JSON, a pipe, a file, or a terminal that requested no
+    /// color. Commands that need color should read this rather than
+    /// constructing their own palette.
+    pub fn palette(&self) -> Palette {
+        self.palette
     }
 
     /// Get the output format.
@@ -95,14 +124,14 @@ impl Output {
             });
             self.print_structured(&output).map_err(io::Error::other)?;
         } else {
-            println!("✓ {}", message);
+            println!("{} {}", self.palette.resolved(glyphs::STATUS_RESOLVED), message);
         }
         Ok(())
     }
 
     /// Print an error message to stderr.
     pub fn error(&self, message: &str) -> io::Result<()> {
-        eprintln!("error: {}", message);
+        eprintln!("{} {}", self.palette.danger("error:"), message);
         Ok(())
     }
 
@@ -127,7 +156,7 @@ impl Output {
             });
             self.print_structured(&output).map_err(io::Error::other)?;
         } else {
-            println!("i {}", message);
+            println!("{} {}", self.palette.chrome("i"), message);
         }
         Ok(())
     }
