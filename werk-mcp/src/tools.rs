@@ -11,7 +11,7 @@ use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
 use sd_core::{
     compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency,
-    detect_horizon_drift, extract_mutation_pattern, gap_magnitude, project_field, project_tension,
+    detect_horizon_drift, extract_mutation_pattern, gap_magnitude, project_field,
     Engine, Forest, Horizon, HorizonDriftType, Mutation, ProjectionHorizon, ProjectionThresholds,
     TensionStatus,
 };
@@ -137,13 +137,6 @@ pub struct ContextParam {
     /// Mode: "single" (default if id given), "all", or "urgent".
     #[serde(default)]
     pub mode: Option<String>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct TrajectoryParam {
-    /// Tension ID or prefix (omit for field-wide).
-    #[serde(default)]
-    pub id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1480,89 +1473,6 @@ impl WerkServer {
                     .collect::<Result<_, _>>()?;
                 json_result(&results)
             }
-        }
-    }
-
-    #[tool(description = "Practice-layer analysis: trajectory classification, gap projections, and risk flags. These use instrument-originated thresholds — they are interpretive readings of the engagement metrics, not facts anchored to user-supplied standards. Use for study, debrief, or triage — not as authoritative signals. Field-wide funnel or per-tension. Optionally show urgency collision windows.")]
-    async fn trajectory(
-        &self,
-        Parameters(p): Parameters<TrajectoryParam>,
-    ) -> Result<CallToolResult, McpError> {
-        let (ws, store) = open_store()?;
-        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let now = Utc::now();
-        let thresholds = load_projection_thresholds(&ws);
-
-        if let Some(ref id) = p.id {
-            // Per-tension projection
-            let tension = resolve_id(&tensions, id)?;
-            let mutations = store.get_mutations(&tension.id).map_err(|e| err(e.to_string()))?;
-            let projections = project_tension(&tension, &mutations, &thresholds, now);
-
-            let find_gap = |h: ProjectionHorizon| -> f64 {
-                projections.iter().find(|p| p.horizon == h).map(|p| p.projected_gap).unwrap_or(0.0)
-            };
-            let current_gap = projections.first().map(|p| p.current_gap).unwrap_or(0.0);
-            let trajectory = projections.first().map(|p| format!("{:?}", p.trajectory)).unwrap_or_else(|| "Stalling".to_string());
-            let ttr = projections.first().and_then(|p| p.time_to_resolution);
-
-            let pattern = extract_mutation_pattern(&tension, &mutations, thresholds.pattern_window_seconds, now);
-            let engagement = if pattern.frequency_trend > 0.1 { "accelerating" }
-                else if pattern.frequency_trend < -0.1 { "declining" }
-                else { "steady" };
-
-            let mut risks = Vec::new();
-            for proj in &projections {
-                if proj.oscillation_risk && !risks.contains(&"oscillation") { risks.push("oscillation"); }
-                if proj.neglect_risk && !risks.contains(&"neglect") { risks.push("neglect"); }
-            }
-
-            json_result(&serde_json::json!({
-                "tension_id": tension.id,
-                "desired": tension.desired,
-                "trajectory": trajectory,
-                "current_gap": current_gap,
-                "gap_1w": find_gap(ProjectionHorizon::OneWeek),
-                "gap_1m": find_gap(ProjectionHorizon::OneMonth),
-                "gap_3m": find_gap(ProjectionHorizon::ThreeMonths),
-                "time_to_resolution": ttr,
-                "engagement": engagement,
-                "risks": risks,
-            }))
-        } else {
-            // Field-wide projection
-            let mut all_mutations = Vec::new();
-            for t in &tensions {
-                let muts = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
-                all_mutations.extend(muts);
-            }
-            let field = project_field(&tensions, &all_mutations, &thresholds, now);
-
-            let get_buckets = |h: ProjectionHorizon| -> serde_json::Value {
-                field.funnel.get(&h).map(|b| serde_json::json!({
-                    "resolving": b.resolving, "stalling": b.stalling,
-                    "drifting": b.drifting, "oscillating": b.oscillating, "total": b.total,
-                })).unwrap_or(serde_json::json!({}))
-            };
-
-            let collisions: Vec<serde_json::Value> = field.urgency_collisions.iter().map(|c| {
-                serde_json::json!({
-                    "window_start": c.window_start.to_rfc3339(),
-                    "window_end": c.window_end.to_rfc3339(),
-                    "tension_ids": c.tension_ids,
-                    "peak_combined_urgency": c.peak_combined_urgency,
-                })
-            }).collect();
-
-            json_result(&serde_json::json!({
-                "computed_at": now.to_rfc3339(),
-                "funnel": {
-                    "week_1": get_buckets(ProjectionHorizon::OneWeek),
-                    "month_1": get_buckets(ProjectionHorizon::OneMonth),
-                    "month_3": get_buckets(ProjectionHorizon::ThreeMonths),
-                },
-                "collisions": collisions,
-            }))
         }
     }
 

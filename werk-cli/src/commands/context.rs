@@ -194,8 +194,7 @@ fn cmd_context_bulk(output: &Output, urgent_only: bool) -> Result<(), WerkError>
 /// Standard of Measurement: these are facts computed from what the user did —
 /// mutation frequency, gap direction, engagement trend. No classification,
 /// no thresholds, no instrument-originated standards.
-/// Classification (trajectory enum) and projection live in analytical surfaces
-/// (trajectory command, ground mode).
+/// Classification (trajectory enum) and projection live in `stats --trajectory`.
 fn build_engagement_json(
     tension: &sd_core::Tension,
     mutations: &[sd_core::Mutation],

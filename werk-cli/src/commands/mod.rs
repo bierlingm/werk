@@ -36,7 +36,6 @@ pub mod show;
 pub mod snooze;
 pub mod split;
 pub mod stats;
-pub mod trajectory;
 pub mod tree;
 pub mod undo;
 
@@ -815,19 +814,6 @@ Examples:
         /// Skip confirmation prompt (for --repair).
         #[arg(long)]
         yes: bool,
-    },
-
-    /// Trajectory projections (superseded by stats --trajectory).
-    ///
-    /// Per-tension mode (with ID) still unique to this command.
-    #[command(hide = true)]
-    Trajectory {
-        /// Tension ID or prefix (omit for field-wide projection).
-        id: Option<String>,
-
-        /// Show urgency collision windows.
-        #[arg(long)]
-        collisions: bool,
     },
 
     /// Structural context JSON (superseded by show --json / list --json).

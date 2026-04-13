@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-13T16:34:05Z",
+  "flushed_at": "2026-04-13T16:40:14Z",
   "summary": {
-    "active": 51,
+    "active": 50,
     "released": 57,
-    "resolved": 115,
+    "resolved": 116,
     "total": 223
   },
   "tensions": [
@@ -2368,9 +2368,9 @@
       "horizon": null,
       "id": "01KP3SQ0PBRZ3XHEPJ7CGH1XWN",
       "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
-      "position": null,
+      "position": 1,
       "short_code": 223,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "ground has zero cli_display imports. Its role (tell me where a tension sits) is already answered by show (parent context, children, signals) and tree (zoom, zone boundaries).",

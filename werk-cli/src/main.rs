@@ -211,9 +211,6 @@ fn main() {
         } => werk::commands::stats::cmd_stats(
             &output, temporal, attention, changes, traj, engagement, drift, health, all, days, repair, yes,
         ),
-        Commands::Trajectory { id, collisions } => {
-            werk::commands::trajectory::cmd_trajectory(&output, id, collisions)
-        }
         Commands::Context { id, all, urgent } => werk::commands::context::cmd_context(&output, id, all, urgent),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
         Commands::Hooks { command } => {
