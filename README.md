@@ -74,17 +74,13 @@ werk snooze <id> "+3d"                         # hide until a future date
 werk recur <id> "+1w"                          # auto-reopen on an interval
 werk rm <id>                                   # delete (children move to grandparent)
 
-# Reading
+# Reading (five-command surface)
 werk show <id>                                 # full detail — state, children, signals, history
+werk show <id> --full                          # also include ancestors, siblings, engagement
 werk tree                                      # all active tensions as a hierarchy
-werk list [--all|--urgent|--neglected]          # flat list with filtering and sorting
-werk survey                                    # temporal view across all tensions
-werk diff                                      # what changed recently
-werk health                                    # structural statistics and alerts
-werk ground                                    # field-wide debrief — engagement, epochs, gestures
-werk insights                                  # behavioral facts — attention, postponement, activity
-werk context <id>                              # structural context as JSON (for scripts/agents)
-werk trajectory                                # projected completion and urgency collisions
+werk list [--all|--overdue|--held|--changed today]  # flat list with rich filtering
+werk stats [--temporal|--attention|--changes|--trajectory|--engagement|--drift|--health|--all]
+werk log                                       # cross-tension gesture and epoch timeline
 
 # Epochs (structural snapshots)
 werk epoch <id>                                # mark an epoch boundary (snapshots desire + reality)
@@ -101,11 +97,12 @@ werk mcp
 Protocol surface for AI agents. Starts an [MCP](https://modelcontextprotocol.io/) server on stdio transport, exposing every gesture as a typed tool. Direct library calls — no subprocess overhead.
 
 31 tools organized as:
-- **Read** (5 primary) — show (with full context), tree, list (rich filtering), stats (field aggregates), survey
-- **Read** (6 legacy) — health, ground, diff, context, trajectory, insights — still functional, superseded by show/list/stats
-- **Gesture** (14) — add, compose, reality, desire, resolve, release, reopen, move, hold, position, horizon, rm, snooze, recur
+- **Read** (4) — show (pass `full=true` for ancestors/siblings/engagement), tree, list (rich filtering), stats (field aggregates — temporal, attention, changes, trajectory, engagement, drift, health)
+- **Search** (2) — search, query_logbase
+- **Gesture** (17) — add, compose, reality, desire, resolve, release, reopen, move_tension, hold, position, horizon, rm, snooze, recur, split, merge, undo_gesture
 - **Note** (3) — note_add, note_rm, note_list
 - **Epoch** (3) — epoch, epoch_list, epoch_show
+- **Edges** (1) — inspect structural edges (split/merge provenance)
 - **Batch** (1) — apply mutations from YAML
 
 #### Connecting from Claude Code

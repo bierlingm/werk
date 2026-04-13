@@ -49,7 +49,7 @@ When modifying command output, follow these principles:
 4. **Most recent first** for temporal data. What just happened matters most.
 5. **Inherited context with honest attribution** — show parent's deadline but label it clearly ("none (parent #10 due 2026-05)").
 6. **Compact layout** — multiple co-read facts on one line (Status + Created, Position + Last act).
-7. **Shared conventions** — use `display_id_named()` for parent context, `format_timestamp()` for consistent times, `format_mutation_summary()` for concise mutation display. All in `werk-shared`.
+7. **Shared conventions** — use `display_id_named()` and `format_timestamp()` from `werk-shared` for parent context and consistent times. Mutation-display concerns (e.g. `format_mutation_summary`) live privately in `werk-cli/src/commands/show.rs` since `show` is the only reader that renders mutation history.
 
 ## Structural Invariants
 
