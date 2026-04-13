@@ -12,7 +12,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler
 use sd_core::{
     compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency,
     detect_horizon_drift, extract_mutation_pattern, gap_magnitude, project_field,
-    Engine, Forest, Horizon, HorizonDriftType, Mutation, ProjectionHorizon, ProjectionThresholds,
+    Engine, Forest, Horizon, Mutation, ProjectionHorizon, ProjectionThresholds,
     TensionStatus,
 };
 use serde::{Deserialize, Serialize};
@@ -109,17 +109,6 @@ pub struct SearchParam {
 
 fn default_7() -> i64 {
     7
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct InsightsParam {
-    /// Analysis window in days (default: 30).
-    #[serde(default = "default_30")]
-    pub days: i64,
-}
-
-fn default_30() -> i64 {
-    30
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1073,84 +1062,8 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Show behavioral pattern insights from mutation history.")]
-    async fn insights(
-        &self,
-        Parameters(p): Parameters<InsightsParam>,
-    ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
-        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let now = Utc::now();
-        let since = now - chrono::Duration::days(p.days);
 
-        let all_mutations = store.all_mutations().map_err(|e| err(e.to_string()))?;
-        let recent: Vec<_> = all_mutations.iter().filter(|m| m.timestamp() >= since).collect();
-        let recent_count = recent.len();
-
-        let mut per_tension: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        let day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        let mut day_counts = [0usize; 7];
-
-        for m in &recent {
-            *per_tension.entry(m.tension_id().to_string()).or_insert(0) += 1;
-            let wd = m.timestamp().weekday().num_days_from_monday() as usize;
-            day_counts[wd] += 1;
-        }
-
-        let tension_map: std::collections::HashMap<&str, &sd_core::Tension> =
-            tensions.iter().map(|t| (t.id.as_str(), t)).collect();
-
-        let mut attention: Vec<serde_json::Value> = per_tension
-            .iter()
-            .map(|(id, &count)| {
-                let desired = tension_map
-                    .get(id.as_str())
-                    .map(|t| t.desired.clone())
-                    .unwrap_or_else(|| id.clone());
-                serde_json::json!({
-                    "tension_id": id,
-                    "desired": desired,
-                    "mutation_count": count,
-                })
-            })
-            .collect();
-        attention.sort_by(|a, b| {
-            b["mutation_count"].as_u64().unwrap_or(0).cmp(&a["mutation_count"].as_u64().unwrap_or(0))
-        });
-
-        let mut postponed_count = 0usize;
-        let mut overdue_count = 0usize;
-        for t in &tensions {
-            if t.status != TensionStatus::Active { continue; }
-            let t_mutations = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
-            let drift = detect_horizon_drift(&t.id, &t_mutations);
-            match drift.drift_type {
-                HorizonDriftType::Postponement | HorizonDriftType::RepeatedPostponement => {
-                    postponed_count += 1;
-                }
-                _ => {}
-            }
-            if let Some(h) = &t.horizon {
-                if h.is_past(now) { overdue_count += 1; }
-            }
-        }
-
-        let mut activity: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for (i, &count) in day_counts.iter().enumerate() {
-            activity.insert(day_names[i].to_string(), count);
-        }
-
-        json_result(&serde_json::json!({
-            "days": p.days,
-            "mutation_count": recent_count,
-            "attention": attention,
-            "postponed_count": postponed_count,
-            "overdue_count": overdue_count,
-            "activity_by_day": activity,
-        }))
-    }
-
-    #[tool(description = "Field-level summaries, aggregates, and analysis. Default: vitals only. Pass sections array to include: temporal, attention, changes, trajectory, engagement, drift, health, or 'all'. Replaces ground, health, insights, trajectory for field-wide queries.")]
+    #[tool(description = "Field-level summaries, aggregates, and analysis. Default: vitals only. Pass sections array to include: temporal, attention, changes, trajectory, engagement (with activity-by-weekday), drift, health, or 'all'. The sole analysis surface for field-wide queries.")]
     async fn stats(
         &self,
         Parameters(p): Parameters<StatsParam>,
@@ -1307,7 +1220,12 @@ impl WerkServer {
 
         if has("engagement") {
             let mut per_tension: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-            for m in &recent { *per_tension.entry(m.tension_id().to_string()).or_default() += 1; }
+            let mut activity_by_weekday = [0usize; 7];
+            for m in &recent {
+                *per_tension.entry(m.tension_id().to_string()).or_default() += 1;
+                let wd = m.timestamp().weekday().num_days_from_monday() as usize;
+                activity_by_weekday[wd] += 1;
+            }
             let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
             let most = per_tension.iter().max_by_key(|(_, c)| *c);
@@ -1327,6 +1245,12 @@ impl WerkServer {
                         "frequency": per_tension.get(&t.id).copied().unwrap_or(0) as f64 / p.days.max(1) as f64,
                         "deadline": t.horizon.as_ref().map(|h| h.to_string()),
                     })),
+                    "activity_by_weekday": {
+                        "Mon": activity_by_weekday[0], "Tue": activity_by_weekday[1],
+                        "Wed": activity_by_weekday[2], "Thu": activity_by_weekday[3],
+                        "Fri": activity_by_weekday[4], "Sat": activity_by_weekday[5],
+                        "Sun": activity_by_weekday[6],
+                    },
                 }));
             }
         }

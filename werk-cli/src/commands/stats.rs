@@ -1,9 +1,9 @@
 //! Stats command handler — field-level summaries, aggregates, and analysis.
 //!
-//! Replaces ground, health, insights, and trajectory as separate commands.
-//! Default output: field vitals. Use flags to add sections.
+//! The sole analysis surface. Default output: field vitals. Use flags to add
+//! sections (temporal, attention, changes, trajectory, engagement, drift, health).
 
-use chrono::{DateTime, Utc};
+use chrono::{Datelike, DateTime, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -15,7 +15,7 @@ use sd_core::{
     detect_horizon_drift, detect_sequencing_pressure, project_field, Forest,
     TensionStatus,
 };
-use werk_shared::cli_display::Palette;
+use werk_shared::cli_display::{glyphs, Palette};
 use werk_shared::truncate;
 
 // ── JSON output ────────────────────────────────────────────────────
@@ -161,6 +161,8 @@ struct EngagementJson {
     field_trend: String,
     most_engaged: Option<EngagedTensionJson>,
     least_engaged_with_deadline: Option<EngagedTensionJson>,
+    /// Mutations per day of week, Monday-first (length 7).
+    activity_by_weekday: [usize; 7],
 }
 
 #[derive(Serialize)]
@@ -280,7 +282,7 @@ pub fn cmd_stats(
             print_trajectory(&compute_trajectory(&tensions, &all_mutations, now, &analysis)?);
         }
         if show_engagement {
-            print_engagement(&compute_engagement(&tensions, &all_mutations, days, now)?, days);
+            print_engagement(&compute_engagement(&tensions, &all_mutations, days, now)?, days, &palette);
         }
         if show_drift {
             print_drift(&compute_drift(&tensions, &store)?);
@@ -970,15 +972,22 @@ fn compute_engagement(
         "steady".to_string()
     };
 
+    let mut activity_by_weekday = [0usize; 7];
+    for m in &recent {
+        let wd = m.timestamp().weekday().num_days_from_monday() as usize;
+        activity_by_weekday[wd] += 1;
+    }
+
     Ok(EngagementJson {
         field_frequency: (field_freq * 10.0).round() / 10.0,
         field_trend: trend,
         most_engaged,
         least_engaged_with_deadline: least_engaged,
+        activity_by_weekday,
     })
 }
 
-fn print_engagement(e: &EngagementJson, _days: i64) {
+fn print_engagement(e: &EngagementJson, _days: i64, palette: &Palette) {
     println!("  Field frequency: {}/day ({})", e.field_frequency, e.field_trend);
     if let Some(ref me) = e.most_engaged {
         let sc = me.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
@@ -1000,6 +1009,33 @@ fn print_engagement(e: &EngagementJson, _days: i64) {
             dl
         );
     }
+
+    if e.activity_by_weekday.iter().any(|&c| c > 0) {
+        let max = *e.activity_by_weekday.iter().max().unwrap_or(&0);
+        let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        let parts: Vec<String> = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                format!("{} {}", palette.chrome(name), bar_inline(e.activity_by_weekday[i], max, 5, palette))
+            })
+            .collect();
+        println!("  Activity by day: {}", parts.join("  "));
+    }
+}
+
+fn bar_inline(count: usize, max: usize, width: usize, palette: &Palette) -> String {
+    if max == 0 {
+        return palette.chrome(&glyphs::BAR_EMPTY.repeat(width));
+    }
+    let filled = ((count as f64 / max as f64) * width as f64).round() as usize;
+    let filled = filled.min(width);
+    let empty = width - filled;
+    format!(
+        "{}{}",
+        palette.resolved(&glyphs::BAR_FULL.repeat(filled)),
+        palette.chrome(&glyphs::BAR_EMPTY.repeat(empty)),
+    )
 }
 
 // ── Drift ──────────────────────────────────────────────────────────

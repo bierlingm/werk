@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-13T17:07:45Z",
+  "flushed_at": "2026-04-13T17:16:24Z",
   "summary": {
-    "active": 46,
+    "active": 45,
     "released": 57,
-    "resolved": 120,
+    "resolved": 121,
     "total": 223
   },
   "tensions": [
@@ -2423,9 +2423,9 @@
       "horizon": null,
       "id": "01KP3SQVDM93Q5V5ZWFG06K4FT",
       "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
-      "position": null,
+      "position": 1,
       "short_code": 230,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "horizon predates the Phase 1-5 redesign. Determine whether it joins the reading surface (likely folding into list --horizon or tree --zoom) or stays as an operative gesture with modernized output.",

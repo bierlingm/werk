@@ -14,7 +14,6 @@ pub mod hold;
 pub mod hooks;
 pub mod horizon;
 pub mod init;
-pub mod insights;
 pub mod list;
 pub mod log;
 pub mod merge;
@@ -571,14 +570,6 @@ Examples:
         command: NoteCommand,
     },
 
-    /// Behavioral pattern insights (superseded by stats --attention --engagement).
-    #[command(hide = true)]
-    Insights {
-        /// Analysis window in days.
-        #[arg(long, default_value = "30")]
-        days: i64,
-    },
-
     /// List tensions with filtering and sorting.
     ///
     /// The general-purpose query engine. Use flags to filter, sort, and
@@ -710,7 +701,7 @@ Examples:
     /// Field-level summaries, aggregates, and analysis.
     ///
     /// Default: field vitals. Use flags to add sections.
-    /// Replaces ground, health, insights, and trajectory as separate commands.
+    /// The sole analysis surface for the field.
     #[command(after_help = "\
 Examples:
   werk stats                         Field vitals (compact summary)

@@ -192,7 +192,6 @@ fn main() {
             stats,
             compact,
         } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released, stats, compact),
-        Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
         Commands::Stats {
             temporal,
             attention,
