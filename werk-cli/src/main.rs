@@ -193,7 +193,6 @@ fn main() {
             compact,
         } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released, stats, compact),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
-        Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),
         Commands::Diff { since, verbose } => werk::commands::diff::cmd_diff(&output, since, verbose),
         Commands::Stats {
             temporal,

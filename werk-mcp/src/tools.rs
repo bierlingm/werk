@@ -107,13 +107,6 @@ pub struct SearchParam {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct GroundParam {
-    /// Lookback window in days (default: 7).
-    #[serde(default = "default_7")]
-    pub days: i64,
-}
-
 fn default_7() -> i64 {
     7
 }
@@ -1125,98 +1118,6 @@ impl WerkServer {
             "query": p.query,
             "results": results,
             "count": results.len(),
-        }))
-    }
-
-    #[tool(description = "Ground mode — debrief and study surface. Field statistics, epoch history, recent gestures.")]
-    async fn ground(
-        &self,
-        Parameters(p): Parameters<GroundParam>,
-    ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
-        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let now = Utc::now();
-        let cutoff = now - chrono::Duration::days(p.days);
-
-        let active = tensions.iter().filter(|t| t.status == TensionStatus::Active).count();
-        let resolved = tensions.iter().filter(|t| t.status == TensionStatus::Resolved).count();
-        let released = tensions.iter().filter(|t| t.status == TensionStatus::Released).count();
-        let with_deadlines = tensions.iter().filter(|t| t.horizon.is_some()).count();
-        let overdue_count = tensions.iter().filter(|t| {
-            t.status == TensionStatus::Active
-                && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
-        }).count();
-        let held_count = tensions.iter().filter(|t| t.status == TensionStatus::Active && t.position.is_none()).count();
-        let positioned_count = tensions.iter().filter(|t| t.status == TensionStatus::Active && t.position.is_some()).count();
-
-        let mut total_mutations = 0usize;
-        let mut recent_mutations = 0usize;
-        let mut recent_gestures: Vec<serde_json::Value> = Vec::new();
-        let mut epochs: Vec<serde_json::Value> = Vec::new();
-
-        for t in &tensions {
-            let mutations = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
-            total_mutations += mutations.len();
-
-            for m in &mutations {
-                if m.timestamp() >= cutoff {
-                    recent_mutations += 1;
-                    let field = m.field();
-                    if field == "actual" || field == "desired" || field == "status" || field == "note" {
-                        let diff = now - m.timestamp();
-                        let minutes = diff.num_minutes();
-                        let age = if minutes < 60 {
-                            format!("{} min ago", minutes)
-                        } else if minutes < 1440 {
-                            format!("{} hr ago", minutes / 60)
-                        } else {
-                            format!("{} days ago", minutes / 1440)
-                        };
-                        recent_gestures.push(serde_json::json!({
-                            "tension_id": t.id,
-                            "tension_short_code": t.short_code,
-                            "field": field,
-                            "timestamp": m.timestamp().to_rfc3339(),
-                            "age": age,
-                        }));
-                    }
-                }
-            }
-
-            let epoch_list = store.get_epochs(&t.id).map_err(|e| err(e.to_string()))?;
-            if !epoch_list.is_empty() {
-                epochs.push(serde_json::json!({
-                    "tension_id": t.id,
-                    "tension_short_code": t.short_code,
-                    "tension_desired": t.desired,
-                    "epoch_count": epoch_list.len(),
-                }));
-            }
-        }
-
-        recent_gestures.sort_by(|a, b| {
-            b["timestamp"].as_str().unwrap_or("").cmp(a["timestamp"].as_str().unwrap_or(""))
-        });
-        recent_gestures.truncate(15);
-        epochs.sort_by(|a, b| {
-            b["epoch_count"].as_u64().unwrap_or(0).cmp(&a["epoch_count"].as_u64().unwrap_or(0))
-        });
-
-        json_result(&serde_json::json!({
-            "stats": {
-                "total_tensions": tensions.len(),
-                "active": active,
-                "resolved": resolved,
-                "released": released,
-                "with_deadlines": with_deadlines,
-                "overdue": overdue_count,
-                "held": held_count,
-                "positioned": positioned_count,
-                "total_mutations": total_mutations,
-                "recent_mutations": recent_mutations,
-            },
-            "epochs": epochs,
-            "recent_gestures": recent_gestures,
         }))
     }
 

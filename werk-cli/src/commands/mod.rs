@@ -11,7 +11,6 @@ pub mod desire;
 pub mod diff;
 pub mod epoch;
 pub mod flush;
-pub mod ground;
 pub mod hold;
 pub mod hooks;
 pub mod horizon;
@@ -578,16 +577,6 @@ Examples:
     Insights {
         /// Analysis window in days.
         #[arg(long, default_value = "30")]
-        days: i64,
-    },
-
-    /// Field overview (superseded by stats --all).
-    ///
-    /// Equivalent to: stats --all --days <days>
-    #[command(hide = true)]
-    Ground {
-        /// Lookback window in days (default: 7).
-        #[arg(long, default_value = "7")]
         days: i64,
     },
 
