@@ -13,7 +13,6 @@ pub mod diff;
 pub mod epoch;
 pub mod flush;
 pub mod ground;
-pub mod health;
 pub mod hold;
 pub mod hooks;
 pub mod horizon;
@@ -573,22 +572,6 @@ Examples:
     Note {
         #[command(subcommand)]
         command: NoteCommand,
-    },
-
-    /// System health (superseded by stats --health).
-    #[command(hide = true, after_help = "\
-Examples:
-  werk health                        Show health summary
-  werk health --repair               Find and optionally purge no-op mutations
-  werk health --repair --yes         Purge without confirmation (agent-safe)")]
-    Health {
-        /// Repair: purge no-op mutations where old_value equals new_value.
-        #[arg(long)]
-        repair: bool,
-
-        /// Skip confirmation prompt (for non-interactive / agent use).
-        #[arg(long)]
-        yes: bool,
     },
 
     /// Behavioral pattern insights (superseded by stats --attention --engagement).

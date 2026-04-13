@@ -1138,64 +1138,6 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Show system health summary — structural statistics, temporal alerts, and field-wide signals.")]
-    async fn health(&self) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
-        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let now = Utc::now();
-
-        let active: Vec<_> = tensions
-            .iter()
-            .filter(|t| t.status == TensionStatus::Active)
-            .collect();
-        let total = active.len();
-
-        let mut with_children = 0usize;
-        let mut leaf_count = 0usize;
-        let mut total_children = 0usize;
-        let mut resolved_children = 0usize;
-
-        for t in &active {
-            let children: Vec<_> = tensions
-                .iter()
-                .filter(|c| c.parent_id.as_deref() == Some(&t.id))
-                .collect();
-            if children.is_empty() {
-                leaf_count += 1;
-            } else {
-                with_children += 1;
-                total_children += children.len();
-                resolved_children += children
-                    .iter()
-                    .filter(|c| c.status == TensionStatus::Resolved)
-                    .count();
-            }
-        }
-
-        let mut urgent = 0usize;
-        let mut overdue = 0usize;
-        for t in &active {
-            if let Some(u) = compute_urgency(t, now) {
-                if u.value > 1.0 {
-                    overdue += 1;
-                } else if u.value > 0.75 {
-                    urgent += 1;
-                }
-            }
-        }
-
-        json_result(&serde_json::json!({
-            "active_count": total,
-            "with_children": with_children,
-            "leaf_count": leaf_count,
-            "closure": {
-                "total_children": total_children,
-                "resolved_children": resolved_children,
-            },
-            "alerts": { "urgent": urgent, "overdue": overdue },
-        }))
-    }
-
     #[tool(description = "Ground mode — debrief and study surface. Field statistics, epoch history, recent gestures.")]
     async fn ground(
         &self,
