@@ -3,7 +3,7 @@
 //! Flat or tree listing of tensions with rich filtering, sorting, and
 //! time-windowed change detection.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc, Weekday};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
@@ -13,6 +13,80 @@ use crate::workspace::Workspace;
 use sd_core::{compute_temporal_signals, compute_urgency, detect_horizon_drift, Forest, HorizonDriftType, Tension, TensionStatus};
 use werk_shared::cli_display::glyphs;
 use werk_shared::truncate;
+
+/// Parse a human-friendly `--changed` value into a `DateTime<Utc>`.
+///
+/// Supported formats:
+///   - "today"             -> start of today (midnight UTC)
+///   - "yesterday"         -> start of yesterday
+///   - "N days ago"        -> N days before now at midnight UTC
+///   - "2026-03-10"        -> ISO date at midnight UTC
+///   - "monday" … "sunday" -> most recent occurrence of that weekday
+fn parse_since(value: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, WerkError> {
+    let v = value.trim().to_lowercase();
+
+    if v == "today" {
+        return Ok(start_of_day(now));
+    }
+    if v == "yesterday" {
+        return Ok(start_of_day(now - chrono::Duration::days(1)));
+    }
+    if let Some(rest) = v.strip_suffix(" days ago") {
+        let n: i64 = rest
+            .trim()
+            .parse()
+            .map_err(|_| WerkError::InvalidInput(format!("invalid number in '{}'", value)))?;
+        return Ok(start_of_day(now - chrono::Duration::days(n)));
+    }
+    if v == "1 day ago" {
+        return Ok(start_of_day(now - chrono::Duration::days(1)));
+    }
+    if let Some(target_weekday) = parse_weekday(&v) {
+        let days_back = days_since_weekday(now.weekday(), target_weekday);
+        return Ok(start_of_day(now - chrono::Duration::days(days_back as i64)));
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
+        let dt = date
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| WerkError::InvalidInput(format!("invalid date: {}", value)))?;
+        return Ok(dt.and_utc());
+    }
+
+    Err(WerkError::InvalidInput(format!(
+        "unrecognized --changed value: '{}'. Try 'today', 'yesterday', '3 days ago', '2026-03-10', or a weekday name.",
+        value
+    )))
+}
+
+fn start_of_day(dt: DateTime<Utc>) -> DateTime<Utc> {
+    dt.date_naive()
+        .and_hms_opt(0, 0, 0)
+        .map(|naive| naive.and_utc())
+        .unwrap_or(dt)
+}
+
+fn parse_weekday(s: &str) -> Option<Weekday> {
+    match s {
+        "monday" | "mon" => Some(Weekday::Mon),
+        "tuesday" | "tue" => Some(Weekday::Tue),
+        "wednesday" | "wed" => Some(Weekday::Wed),
+        "thursday" | "thu" => Some(Weekday::Thu),
+        "friday" | "fri" => Some(Weekday::Fri),
+        "saturday" | "sat" => Some(Weekday::Sat),
+        "sunday" | "sun" => Some(Weekday::Sun),
+        _ => None,
+    }
+}
+
+fn days_since_weekday(from: Weekday, target: Weekday) -> u32 {
+    let from_num = from.num_days_from_monday();
+    let target_num = target.num_days_from_monday();
+    if from_num >= target_num {
+        from_num - target_num
+    } else {
+        7 - (target_num - from_num)
+    }
+}
 
 /// JSON output structure for a tension in list.
 #[derive(Serialize)]
@@ -139,7 +213,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
 
     // If --changed, parse the since value and find changed tension IDs
     let (since_dt, changed_tension_fields) = if let Some(ref since_str) = params.changed {
-        let dt = crate::commands::diff::parse_since(since_str, now)?;
+        let dt = parse_since(since_str, now)?;
         let mutations = store.mutations_between(dt, now).map_err(WerkError::StoreError)?;
         let mut changed: HashMap<String, Vec<String>> = HashMap::new();
         for m in &mutations {
@@ -837,4 +911,67 @@ fn build_tree_path(row: &TensionRow, tension_map: &HashMap<String, &Tension>) ->
 
     path.reverse();
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_since_today() {
+        let now = Utc::now();
+        assert_eq!(parse_since("today", now).unwrap(), start_of_day(now));
+    }
+
+    #[test]
+    fn test_parse_since_yesterday() {
+        let now = Utc::now();
+        let expected = start_of_day(now - chrono::Duration::days(1));
+        assert_eq!(parse_since("yesterday", now).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_since_n_days_ago() {
+        let now = Utc::now();
+        let expected = start_of_day(now - chrono::Duration::days(3));
+        assert_eq!(parse_since("3 days ago", now).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_since_iso_date() {
+        let now = Utc::now();
+        let expected = NaiveDate::from_ymd_opt(2026, 3, 10)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .map(|naive| naive.and_utc())
+            .unwrap();
+        assert_eq!(parse_since("2026-03-10", now).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_parse_since_weekday() {
+        let now = Utc::now();
+        assert!(parse_since("monday", now).is_ok());
+    }
+
+    #[test]
+    fn test_parse_since_invalid() {
+        let now = Utc::now();
+        assert!(parse_since("not-a-date", now).is_err());
+    }
+
+    #[test]
+    fn test_days_since_weekday_same_day() {
+        assert_eq!(days_since_weekday(Weekday::Mon, Weekday::Mon), 0);
+    }
+
+    #[test]
+    fn test_days_since_weekday_yesterday() {
+        assert_eq!(days_since_weekday(Weekday::Tue, Weekday::Mon), 1);
+    }
+
+    #[test]
+    fn test_days_since_weekday_wrap() {
+        assert_eq!(days_since_weekday(Weekday::Mon, Weekday::Sat), 2);
+    }
 }

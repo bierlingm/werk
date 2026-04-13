@@ -781,7 +781,7 @@ fn print_horizon(h: &sd_core::Horizon, now: DateTime<Utc>, inherited_from: Optio
 
 /// Format a mutation into a concise human-readable summary.
 ///
-/// Used by `show` (Activity section) and `diff` for consistent mutation display.
+/// Used by `show` (Activity section) for consistent mutation display.
 ///
 /// Instead of dumping full old→new text, produce a short description
 /// of what changed. The desired/actual text is already shown at the top

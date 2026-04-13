@@ -112,17 +112,6 @@ fn default_7() -> i64 {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct DiffParam {
-    /// Show changes since date (e.g., "today", "yesterday", "2026-03-10").
-    #[serde(default = "default_today")]
-    pub since: String,
-}
-
-fn default_today() -> String {
-    "today".to_string()
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InsightsParam {
     /// Analysis window in days (default: 30).
     #[serde(default = "default_30")]
@@ -643,43 +632,6 @@ fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, McpError> {
     )))
 }
 
-fn parse_since(value: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>, McpError> {
-    let v = value.trim().to_lowercase();
-
-    if v == "today" {
-        return Ok(start_of_day(now));
-    }
-    if v == "yesterday" || v == "1 day ago" {
-        return Ok(start_of_day(now - chrono::Duration::days(1)));
-    }
-    if let Some(rest) = v.strip_suffix(" days ago") {
-        let n: i64 = rest.trim().parse().map_err(|_| err(format!("invalid number in '{}'", value)))?;
-        return Ok(start_of_day(now - chrono::Duration::days(n)));
-    }
-    // Weekday names
-    let weekdays = [
-        ("monday", 0), ("mon", 0), ("tuesday", 1), ("tue", 1),
-        ("wednesday", 2), ("wed", 2), ("thursday", 3), ("thu", 3),
-        ("friday", 4), ("fri", 4), ("saturday", 5), ("sat", 5),
-        ("sunday", 6), ("sun", 6),
-    ];
-    for (name, target) in &weekdays {
-        if v == *name {
-            let from = now.weekday().num_days_from_monday();
-            let days_back = if from >= *target { from - target } else { 7 - (target - from) };
-            return Ok(start_of_day(now - chrono::Duration::days(days_back as i64)));
-        }
-    }
-    if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
-        return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc()); // ubs:ignore 00:00:00 is always valid
-    }
-    Err(err(format!("unrecognized date: '{}'. Try 'today', 'yesterday', '3 days ago', or 'YYYY-MM-DD'.", value)))
-}
-
-fn start_of_day(dt: DateTime<Utc>) -> DateTime<Utc> {
-    dt.date_naive().and_hms_opt(0, 0, 0).map(|n| n.and_utc()).unwrap_or(dt)
-}
-
 fn validate_batch_mutation(engine: &Engine, mutation: &werk_shared::BatchMutation) -> Result<(), McpError> {
     use werk_shared::BatchMutation;
     let tensions = engine.store().list_tensions().map_err(|e| err(e.to_string()))?;
@@ -1118,81 +1070,6 @@ impl WerkServer {
             "query": p.query,
             "results": results,
             "count": results.len(),
-        }))
-    }
-
-    #[tool(description = "Show what changed in a time window. Accepts 'today', 'yesterday', 'N days ago', or 'YYYY-MM-DD'.")]
-    async fn diff(
-        &self,
-        Parameters(p): Parameters<DiffParam>,
-    ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
-        let now = Utc::now();
-        let since_dt = parse_since(&p.since, now)?;
-
-        let mutations = store
-            .mutations_between(since_dt, now)
-            .map_err(|e| err(e.to_string()))?;
-
-        let all_tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let tension_map: std::collections::HashMap<String, &sd_core::Tension> = all_tensions
-            .iter()
-            .map(|t| (t.id.clone(), t))
-            .collect();
-
-        let mut grouped: std::collections::BTreeMap<String, Vec<&sd_core::Mutation>> =
-            std::collections::BTreeMap::new();
-        for m in &mutations {
-            grouped.entry(m.tension_id().to_owned()).or_default().push(m);
-        }
-
-        let mut changes: Vec<serde_json::Value> = Vec::new();
-        let mut created_count = 0usize;
-        let mut resolved_count = 0usize;
-        let mut updated_count = 0usize;
-
-        for (tid, muts) in &grouped {
-            let desired = tension_map
-                .get(tid)
-                .map(|t| t.desired.clone())
-                .unwrap_or_else(|| "(deleted)".to_string());
-
-            let mut is_created = false;
-            let mut is_resolved = false;
-
-            let mutation_infos: Vec<serde_json::Value> = muts
-                .iter()
-                .map(|m| {
-                    if m.field() == "created" { is_created = true; }
-                    if m.field() == "status" && m.new_value() == "Resolved" { is_resolved = true; }
-                    serde_json::json!({
-                        "timestamp": m.timestamp().to_rfc3339(),
-                        "field": m.field(),
-                        "old_value": m.old_value(),
-                        "new_value": m.new_value(),
-                    })
-                })
-                .collect();
-
-            if is_created { created_count += 1; }
-            else if is_resolved { resolved_count += 1; }
-            else { updated_count += 1; }
-
-            changes.push(serde_json::json!({
-                "tension_id": tid,
-                "tension_desired": desired,
-                "mutations": mutation_infos,
-            }));
-        }
-
-        json_result(&serde_json::json!({
-            "since": since_dt.to_rfc3339(),
-            "changes": changes,
-            "summary": {
-                "updated": updated_count,
-                "created": created_count,
-                "resolved": resolved_count,
-            },
         }))
     }
 

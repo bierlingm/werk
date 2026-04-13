@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-13T16:58:19Z",
+  "flushed_at": "2026-04-13T17:07:45Z",
   "summary": {
-    "active": 47,
+    "active": 46,
     "released": 57,
-    "resolved": 119,
+    "resolved": 120,
     "total": 223
   },
   "tensions": [
@@ -2390,9 +2390,9 @@
       "horizon": null,
       "id": "01KP3SQ9JKY8RH8PYZMVR50XRY",
       "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
-      "position": null,
+      "position": 1,
       "short_code": 225,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "health.rs has no cli_display imports. stats --health is already the consolidated home per CLAUDE.md.",

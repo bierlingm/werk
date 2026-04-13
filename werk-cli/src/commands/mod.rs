@@ -8,7 +8,6 @@ pub mod batch;
 pub mod compose_up;
 pub mod config;
 pub mod desire;
-pub mod diff;
 pub mod epoch;
 pub mod flush;
 pub mod hold;
@@ -578,23 +577,6 @@ Examples:
         /// Analysis window in days.
         #[arg(long, default_value = "30")]
         days: i64,
-    },
-
-    /// Show what changed (superseded by list --changed).
-    #[command(hide = true, after_help = "\
-Examples:
-  werk diff                          Changes since today (default)
-  werk diff --since yesterday        Changes since yesterday
-  werk diff --since \"3 days ago\"     Changes in last 3 days
-  werk diff --since monday           Changes since Monday")]
-    Diff {
-        /// Show changes since (e.g., "today", "yesterday", "3 days ago", "2026-03-10", "monday")
-        #[arg(long, default_value = "today")]
-        since: String,
-
-        /// Show full mutation details per tension (default is compact stat-line)
-        #[arg(short, long)]
-        verbose: bool,
     },
 
     /// List tensions with filtering and sorting.
