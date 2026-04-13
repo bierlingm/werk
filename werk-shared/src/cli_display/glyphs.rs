@@ -91,8 +91,6 @@ pub const BAR_FULL: &str = "\u{2588}"; // █
 /// Light shade — empty bar-chart segment.
 pub const BAR_EMPTY: &str = "\u{2591}"; // ░
 
-/// Unicode horizontal ellipsis — the canonical display truncation mark
-/// for new rendering paths. Older shared helpers (`util::truncate`) still
-/// emit three ASCII dots for backwards compatibility with callers that
-/// depend on a fixed character count; new code should prefer this.
+/// Unicode horizontal ellipsis — the canonical display truncation mark.
+/// Used by [`crate::util::truncate`] and every direct truncation site.
 pub const TRUNCATE_ELLIPSIS: &str = "\u{2026}"; // …

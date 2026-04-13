@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-13T17:16:24Z",
+  "flushed_at": "2026-04-13T17:26:10Z",
   "summary": {
-    "active": 45,
+    "active": 43,
     "released": 57,
-    "resolved": 121,
+    "resolved": 123,
     "total": 223
   },
   "tensions": [
@@ -2434,9 +2434,9 @@
       "horizon": null,
       "id": "01KP3SR6E666DHZHY1XNY07GK0",
       "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
-      "position": null,
+      "position": 1,
       "short_code": 231,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "werk-cli still has a local palette.rs parallel to the shared Palette. list, tree, log don't import the shared one. Single source of truth required.",
@@ -2458,7 +2458,7 @@
       "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
       "position": null,
       "short_code": 233,
-      "status": "Active"
+      "status": "Resolved"
     }
   ]
 }

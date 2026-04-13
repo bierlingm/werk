@@ -210,6 +210,6 @@ mod tests {
 
     #[test]
     fn test_truncate_long_string() {
-        assert_eq!(truncate("hello world this is long", 10), "hello w...");
+        assert_eq!(truncate("hello world this is long", 10), "hello wor…");
     }
 }

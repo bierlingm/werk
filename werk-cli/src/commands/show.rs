@@ -779,14 +779,11 @@ fn print_horizon(h: &sd_core::Horizon, now: DateTime<Utc>, inherited_from: Optio
     }
 }
 
-/// Format a mutation into a concise human-readable summary.
-///
-/// Used by `show` (Activity section) for consistent mutation display.
-///
-/// Instead of dumping full old→new text, produce a short description
-/// of what changed. The desired/actual text is already shown at the top
-/// of the display — no need to repeat it in the activity log.
-pub fn format_mutation_summary(field: &str, old_value: Option<&str>, new_value: &str) -> String {
+/// Format a mutation into a concise human-readable summary for the
+/// Activity section. Produces a short description of what changed
+/// instead of dumping full old→new text; the desired/actual is already
+/// shown at the top of the display.
+fn format_mutation_summary(field: &str, old_value: Option<&str>, new_value: &str) -> String {
     match field {
         "created" => {
             // Creation mutation — don't repeat the desired/actual

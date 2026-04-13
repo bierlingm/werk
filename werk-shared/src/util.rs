@@ -2,13 +2,16 @@
 
 use chrono::{DateTime, Utc};
 
-/// Truncate a string to max length, adding ellipsis if needed (Unicode-safe).
+use crate::cli_display::glyphs::TRUNCATE_ELLIPSIS;
+
+/// Truncate a string to max length, adding the canonical ellipsis glyph
+/// (`…`) if needed. Unicode-safe.
 pub fn truncate(s: &str, max_len: usize) -> String {
     if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
-        format!("{}...", truncated)
+        let truncated: String = s.chars().take(max_len.saturating_sub(1)).collect();
+        format!("{}{}", truncated, TRUNCATE_ELLIPSIS)
     }
 }
 
@@ -81,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_truncate_long_string() {
-        assert_eq!(truncate("hello world this is long", 10), "hello w...");
+        assert_eq!(truncate("hello world this is long", 10), "hello wor…");
     }
 
     #[test]
@@ -94,7 +97,7 @@ mod tests {
         // Unicode characters should be counted by char, not byte
         assert_eq!(truncate("abcde", 5), "abcde");
         let result = truncate("abcdefghij", 5);
-        assert_eq!(result, "ab...");
+        assert_eq!(result, "abcd…");
     }
 
     // === relative_time tests ===
