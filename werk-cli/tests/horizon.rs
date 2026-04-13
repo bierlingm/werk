@@ -724,12 +724,12 @@ fn test_tree_horizon_annotations() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Context with horizon
+// Show with horizon — show --json is the agent surface for horizon data
 // ─────────────────────────────────────────────────────────────────────────────
 
-// VAL-HCLI-014: Context JSON with horizon
+// VAL-HCLI-014: Show JSON with horizon
 #[test]
-fn test_context_with_horizon() {
+fn test_show_json_with_horizon() {
     let dir = TempDir::new().unwrap();
     cargo_bin_cmd!("werk")
         .arg("init")
@@ -737,7 +737,6 @@ fn test_context_with_horizon() {
         .assert()
         .success();
 
-    // Create tension with horizon
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
@@ -755,9 +754,9 @@ fn test_context_with_horizon() {
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     let id = json["id"].as_str().unwrap();
 
-    // Get context
     let output = cargo_bin_cmd!("werk")
-        .arg("context")
+        .arg("--json")
+        .arg("show")
         .arg(id)
         .current_dir(dir.path())
         .assert()
@@ -767,17 +766,16 @@ fn test_context_with_horizon() {
         .clone();
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
-    // Check horizon fields per spec 7.5
-    assert_eq!(json["tension"]["horizon"], "2026-05");
-    assert!(json["tension"]["horizon_range"].is_object());
-    assert!(json["tension"]["horizon_range"]["start"].is_string());
-    assert!(json["tension"]["horizon_range"]["end"].is_string());
-    assert!(json["tension"]["urgency"].is_number());
+    assert_eq!(json["horizon"], "2026-05");
+    assert!(json["horizon_range"].is_object());
+    assert!(json["horizon_range"]["start"].is_string());
+    assert!(json["horizon_range"]["end"].is_string());
+    assert!(json["urgency"].is_number());
 }
 
-// VAL-HCLI-015: Context JSON without horizon
+// VAL-HCLI-015: Show JSON without horizon
 #[test]
-fn test_context_without_horizon() {
+fn test_show_json_without_horizon() {
     let dir = TempDir::new().unwrap();
     cargo_bin_cmd!("werk")
         .arg("init")
@@ -785,7 +783,6 @@ fn test_context_without_horizon() {
         .assert()
         .success();
 
-    // Create tension without horizon
     let output = cargo_bin_cmd!("werk")
         .arg("--json")
         .arg("add")
@@ -801,9 +798,9 @@ fn test_context_without_horizon() {
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     let id = json["id"].as_str().unwrap();
 
-    // Get context
     let output = cargo_bin_cmd!("werk")
-        .arg("context")
+        .arg("--json")
+        .arg("show")
         .arg(id)
         .current_dir(dir.path())
         .assert()
@@ -813,8 +810,6 @@ fn test_context_without_horizon() {
         .clone();
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
-    // Horizon-dependent fields should be null
-    assert!(json["tension"]["horizon"].is_null());
-    assert!(json["tension"]["urgency"].is_null());
-    assert!(json["tension"]["pressure"].is_null());
+    assert!(json["horizon"].is_null());
+    assert!(json["urgency"].is_null());
 }

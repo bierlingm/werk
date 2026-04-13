@@ -7,7 +7,6 @@ pub mod add;
 pub mod batch;
 pub mod compose_up;
 pub mod config;
-pub mod context;
 pub mod desire;
 pub mod diff;
 pub mod epoch;
@@ -797,25 +796,6 @@ Examples:
         /// Skip confirmation prompt (for --repair).
         #[arg(long)]
         yes: bool,
-    },
-
-    /// Structural context JSON (superseded by show --json / list --json).
-    #[command(hide = true, after_help = "\
-Examples:
-  werk context 42                    Full context for one tension
-  werk context --all                 Context for all active tensions
-  werk context --urgent              Context for urgent tensions only")]
-    Context {
-        /// Tension ID or prefix (omit for bulk modes).
-        id: Option<String>,
-
-        /// Output context for all active tensions.
-        #[arg(long)]
-        all: bool,
-
-        /// Output context for urgent tensions only.
-        #[arg(long)]
-        urgent: bool,
     },
 
     /// Batch operations (apply/validate mutations from YAML).

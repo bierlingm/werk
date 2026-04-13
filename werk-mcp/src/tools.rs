@@ -130,16 +130,6 @@ fn default_today() -> String {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ContextParam {
-    /// Tension ID or prefix (omit for all active).
-    #[serde(default)]
-    pub id: Option<String>,
-    /// Mode: "single" (default if id given), "all", or "urgent".
-    #[serde(default)]
-    pub mode: Option<String>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InsightsParam {
     /// Analysis window in days (default: 30).
     #[serde(default = "default_30")]
@@ -786,7 +776,7 @@ impl WerkServer {
 
     // ── Read tools ──────────────────────────────────────────────
 
-    #[tool(description = "Show tension details including desired/actual state, status, frontier, temporal signals, children, and recent mutations. Pass full=true to include ancestors, siblings, and engagement metrics (replaces context tool).")]
+    #[tool(description = "Show tension details including desired/actual state, status, frontier, temporal signals, children, and recent mutations. Pass full=true to include ancestors, siblings, and engagement metrics.")]
     async fn show(
         &self,
         Parameters(p): Parameters<ShowParam>,
@@ -1303,119 +1293,6 @@ impl WerkServer {
                 "resolved": resolved_count,
             },
         }))
-    }
-
-    #[tool(description = "Output structural context (JSON) for a tension, all active tensions, or urgent tensions. Rich context for agent consumption.")]
-    async fn context(
-        &self,
-        Parameters(p): Parameters<ContextParam>,
-    ) -> Result<CallToolResult, McpError> {
-        let (ws, store) = open_store()?;
-        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let forest = Forest::from_tensions(tensions.clone()).map_err(|e| err(e.to_string()))?;
-        let now = Utc::now();
-        let thresholds = load_projection_thresholds(&ws);
-
-        let build_context = |t: &sd_core::Tension| -> Result<serde_json::Value, McpError> {
-            let mutations = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
-            let urgency = compute_urgency(t, now);
-
-            let ancestors: Vec<serde_json::Value> = forest
-                .ancestors(&t.id)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|n| serde_json::json!({
-                    "id": n.id(), "short_code": n.tension.short_code,
-                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
-                }))
-                .collect();
-
-            let siblings: Vec<serde_json::Value> = forest
-                .siblings(&t.id)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|n| serde_json::json!({
-                    "id": n.id(), "short_code": n.tension.short_code,
-                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
-                }))
-                .collect();
-
-            let children: Vec<serde_json::Value> = forest
-                .children(&t.id)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|n| serde_json::json!({
-                    "id": n.id(), "short_code": n.tension.short_code,
-                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
-                    "position": n.tension.position,
-                }))
-                .collect();
-
-            // Engagement metrics: raw facts anchored to user actions.
-            // Standard of Measurement: no classification, no instrument-originated thresholds.
-            // Classification lives in the trajectory tool (analytical/practice layer).
-            let pattern = extract_mutation_pattern(t, &mutations, thresholds.pattern_window_seconds, now);
-            let engagement = serde_json::json!({
-                "current_gap": gap_magnitude(&t.desired, &t.actual),
-                "mutation_count": pattern.mutation_count,
-                "frequency_per_day": pattern.frequency_per_day,
-                "frequency_trend": pattern.frequency_trend,
-                "gap_trend": pattern.gap_trend,
-                "gap_samples": pattern.gap_samples,
-                "mean_interval_seconds": pattern.mean_interval_seconds,
-            });
-
-            let mutation_infos: Vec<serde_json::Value> = mutations.iter().map(|m| {
-                serde_json::json!({
-                    "timestamp": m.timestamp().to_rfc3339(),
-                    "field": m.field(),
-                    "old_value": m.old_value(),
-                    "new_value": m.new_value(),
-                })
-            }).collect();
-
-            Ok(serde_json::json!({
-                "tension": {
-                    "id": t.id, "short_code": t.short_code,
-                    "desired": t.desired, "actual": t.actual,
-                    "status": t.status.to_string(), "parent_id": t.parent_id,
-                    "horizon": t.horizon.as_ref().map(|h| h.to_string()),
-                    "urgency": urgency.as_ref().map(|u| u.value),
-                },
-                "ancestors": ancestors,
-                "siblings": siblings,
-                "children": children,
-                "mutations": mutation_infos,
-                "engagement": engagement,
-            }))
-        };
-
-        match (p.id, p.mode.as_deref()) {
-            (Some(id), _) => {
-                let t = resolve_id(&tensions, &id)?;
-                let result = build_context(&t)?;
-                json_result(&result)
-            }
-            (None, Some("urgent")) => {
-                let results: Vec<serde_json::Value> = tensions
-                    .iter()
-                    .filter(|t| {
-                        t.status == TensionStatus::Active
-                            && compute_urgency(t, now).map(|u| u.value > 0.75).unwrap_or(false)
-                    })
-                    .map(|t| build_context(t))
-                    .collect::<Result<_, _>>()?;
-                json_result(&results)
-            }
-            _ => {
-                let results: Vec<serde_json::Value> = tensions
-                    .iter()
-                    .filter(|t| t.status == TensionStatus::Active)
-                    .map(|t| build_context(t))
-                    .collect::<Result<_, _>>()?;
-                json_result(&results)
-            }
-        }
     }
 
     #[tool(description = "Show behavioral pattern insights from mutation history.")]

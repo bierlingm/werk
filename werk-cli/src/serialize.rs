@@ -1,7 +1,7 @@
 //! JSON serialization types for CLI output.
 //!
 //! Provides serializable types for tension info, mutation info,
-//! and horizon data used by show, context, and run commands.
+//! and horizon data used by the show command.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -18,7 +18,7 @@ pub struct HorizonRangeJson {
     pub end: String,
 }
 
-/// Tension information with horizon data (used by context and run commands).
+/// Tension information with horizon data.
 #[derive(Serialize, Clone, Debug)]
 pub struct TensionInfo {
     pub id: String,
