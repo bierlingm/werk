@@ -108,17 +108,6 @@ pub struct SearchParam {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SurveyParam {
-    /// Temporal frame in days (default: 14).
-    #[serde(default = "default_14")]
-    pub days: i64,
-}
-
-fn default_14() -> i64 {
-    14
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GroundParam {
     /// Lookback window in days (default: 7).
     #[serde(default = "default_7")]
@@ -1211,102 +1200,6 @@ impl WerkServer {
                 "resolved_children": resolved_children,
             },
             "alerts": { "urgent": urgent, "overdue": overdue },
-        }))
-    }
-
-    #[tool(description = "The Napoleonic field survey — all tensions organized by temporal urgency across the entire field.")]
-    async fn survey(
-        &self,
-        Parameters(p): Parameters<SurveyParam>,
-    ) -> Result<CallToolResult, McpError> {
-        let (_ws, store) = open_store()?;
-        let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
-        let now = Utc::now();
-        let frame_end = now + chrono::Duration::days(p.days);
-
-        let parent_lookup: std::collections::HashMap<String, (Option<i32>, String)> = tensions
-            .iter()
-            .map(|t| (t.id.clone(), (t.short_code, t.desired.clone())))
-            .collect();
-
-        let mut overdue_items = Vec::new();
-        let mut due_soon = Vec::new();
-        let mut active_items = Vec::new();
-        let mut held_items = Vec::new();
-        let mut recently_resolved = Vec::new();
-
-        for t in &tensions {
-            let urgency_val = compute_urgency(t, now).map(|u| u.value);
-            let (parent_sc, parent_desired) = t
-                .parent_id
-                .as_ref()
-                .and_then(|pid| parent_lookup.get(pid))
-                .map(|(sc, d)| (*sc, Some(d.clone())))
-                .unwrap_or((None, None));
-
-            let item = serde_json::json!({
-                "id": t.id,
-                "short_code": t.short_code,
-                "desired": t.desired,
-                "parent_id": t.parent_id,
-                "parent_short_code": parent_sc,
-                "parent_desired": parent_desired,
-                "deadline": t.horizon.as_ref().map(|h| h.to_string()),
-                "urgency": urgency_val,
-                "position": t.position,
-            });
-
-            match t.status {
-                TensionStatus::Resolved | TensionStatus::Released => {
-                    let mutations = store
-                        .get_mutations(&t.id)
-                        .map_err(|e| err(e.to_string()))?;
-                    let resolved_recently = mutations.iter().any(|m| {
-                        m.field() == "status"
-                            && m.new_value().contains("Resolved")
-                            && (now - m.timestamp()).num_days() <= p.days
-                    });
-                    if resolved_recently {
-                        recently_resolved.push(item);
-                    }
-                }
-                TensionStatus::Active => {
-                    let is_overdue = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
-                    let is_due_soon = !is_overdue
-                        && t.horizon
-                            .as_ref()
-                            .map(|h| h.range_end() <= frame_end)
-                            .unwrap_or(false);
-                    let is_held = t.position.is_none();
-
-                    if is_overdue {
-                        overdue_items.push(item);
-                    } else if is_due_soon {
-                        due_soon.push(item);
-                    } else if is_held {
-                        held_items.push(item);
-                    } else {
-                        active_items.push(item);
-                    }
-                }
-            }
-        }
-
-        // Sort overdue/due_soon by urgency descending
-        let sort_by_urgency = |a: &serde_json::Value, b: &serde_json::Value| {
-            let ua = a["urgency"].as_f64().unwrap_or(-1.0);
-            let ub = b["urgency"].as_f64().unwrap_or(-1.0);
-            ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
-        };
-        overdue_items.sort_by(sort_by_urgency);
-        due_soon.sort_by(sort_by_urgency);
-
-        json_result(&serde_json::json!({
-            "overdue": overdue_items,
-            "due_soon": due_soon,
-            "active": active_items,
-            "held": held_items,
-            "recently_resolved": recently_resolved,
         }))
     }
 
@@ -3503,7 +3396,7 @@ impl ServerHandler for WerkServer {
             .with_instructions(
                 "werk is an operative instrument for structural dynamics practice. \
                  It manages tensions (desire-reality pairs) organized in a tree structure. \
-                 Use read tools (show, tree, list, survey, health) to understand the current state, \
+                 Use read tools (show, tree, list, stats) to understand the current state, \
                  and gesture tools (add, resolve, reality, desire, etc.) to mutate it."
                     .to_string(),
             )

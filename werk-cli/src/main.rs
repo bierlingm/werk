@@ -36,7 +36,7 @@ Commands by framework:
     horizon, snooze, recur, epoch
 
   Framing (Logic of Framing)
-    list, tree, stats, survey
+    list, tree, stats
 
   System
     init, config, flush, batch, nuke, mcp, serve")]
@@ -194,7 +194,6 @@ fn main() {
         } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released, stats, compact),
         Commands::Health { repair, yes } => werk::commands::health::cmd_health(&output, repair, yes),
         Commands::Insights { days } => werk::commands::insights::cmd_insights(&output, days),
-        Commands::Survey { days } => werk::commands::survey::cmd_survey(&output, days),
         Commands::Ground { days } => werk::commands::ground::cmd_ground(&output, days),
         Commands::Diff { since, verbose } => werk::commands::diff::cmd_diff(&output, since, verbose),
         Commands::Stats {

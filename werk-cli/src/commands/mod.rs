@@ -36,7 +36,6 @@ pub mod show;
 pub mod snooze;
 pub mod split;
 pub mod stats;
-pub mod survey;
 pub mod trajectory;
 pub mod tree;
 pub mod undo;
@@ -601,16 +600,6 @@ Examples:
         days: i64,
     },
 
-    /// The Napoleonic field survey — all tensions organized by temporal urgency.
-    ///
-    /// Equivalent to: list --approaching <days> --overdue --sort urgency
-    /// Kept as a named perspective for vocabulary continuity.
-    Survey {
-        /// Temporal frame in days (default: 14).
-        #[arg(long, default_value = "14")]
-        days: i64,
-    },
-
     /// Field overview (superseded by stats --all).
     ///
     /// Equivalent to: stats --all --days <days>
@@ -641,7 +630,7 @@ Examples:
     /// List tensions with filtering and sorting.
     ///
     /// The general-purpose query engine. Use flags to filter, sort, and
-    /// format. Absorbs what survey and diff used to do separately.
+    /// format. The sole query surface for the field.
     #[command(after_help = "\
 Examples:
   werk list                          Active tensions sorted by urgency

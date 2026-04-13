@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-10T14:11:33Z",
+  "flushed_at": "2026-04-13T16:34:05Z",
   "summary": {
-    "active": 42,
-    "released": 56,
-    "resolved": 114,
-    "total": 212
+    "active": 51,
+    "released": 57,
+    "resolved": 115,
+    "total": 223
   },
   "tensions": [
     {
@@ -2338,6 +2338,127 @@
       "position": 5,
       "short_code": 220,
       "status": "Resolved"
+    },
+    {
+      "actual": "Post-#214, five reading commands (show, list, tree, stats, log) ship the new display. Six legacy reading commands (survey, diff, ground, trajectory, health, context) still emit old-style output; insights is a hybrid to fold into stats; horizon predates redesign. Color palette is already unified — all five reading commands import werk_shared::cli_display::Palette. Remaining shared-formatter gap: format_mutation_summary lives in show.rs and is reached via super::show by diff; util::truncate emits three ASCII dots instead of the canonical TRUNCATE_ELLIPSIS glyph. Most of the ellipsis call sites live in commands slated for deletion.",
+      "created_at": "2026-04-13T16:09:37.744165+00:00",
+      "desired": "Every CLI command output conforms to the new visual display approach",
+      "horizon": null,
+      "id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 221,
+      "status": "Active"
+    },
+    {
+      "actual": "survey emits old-style em-dash rows with truncated parenthesized parents and a plain categorical footer. list already renders a superior version of the same query with terminal-width-aware columns and signal glyphs.",
+      "created_at": "2026-04-13T16:09:58.951834+00:00",
+      "desired": "Delete survey — list subsumes it via --held / --overdue / --signals filters",
+      "horizon": null,
+      "id": "01KP3SPPX796EXJA6J3GH2N3RK",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": 1,
+      "short_code": 222,
+      "status": "Resolved"
+    },
+    {
+      "actual": "trajectory has no cli_display imports. log already shows cross-tension sequencing with provenance and typed edges.",
+      "created_at": "2026-04-13T16:10:08.971710+00:00",
+      "desired": "Delete trajectory — log cross-tension timeline supersedes it",
+      "horizon": null,
+      "id": "01KP3SQ0PBRZ3XHEPJ7CGH1XWN",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 223,
+      "status": "Active"
+    },
+    {
+      "actual": "ground has zero cli_display imports. Its role (tell me where a tension sits) is already answered by show (parent context, children, signals) and tree (zoom, zone boundaries).",
+      "created_at": "2026-04-13T16:10:09.627971+00:00",
+      "desired": "Delete ground — show --full and tree --stats cover structural situation",
+      "horizon": null,
+      "id": "01KP3SQ1AVRRSM25FSKZDRQM13",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 224,
+      "status": "Active"
+    },
+    {
+      "actual": "diff borrows format_mutation_summary but wraps it in plain headers with no signal glyphs. log already renders full cross-tension mutation history with epoch/ghost geometry and proper typography.",
+      "created_at": "2026-04-13T16:10:18.067117+00:00",
+      "desired": "Delete diff — log --since renders mutation timelines with schema",
+      "horizon": null,
+      "id": "01KP3SQ9JKY8RH8PYZMVR50XRY",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 225,
+      "status": "Active"
+    },
+    {
+      "actual": "health.rs has no cli_display imports. stats --health is already the consolidated home per CLAUDE.md.",
+      "created_at": "2026-04-13T16:10:31.515901+00:00",
+      "desired": "Delete health — stats --health already exists",
+      "horizon": null,
+      "id": "01KP3SQPPVM67CQV6X3XVHEE3D",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 228,
+      "status": "Active"
+    },
+    {
+      "actual": "context has no cli_display imports. show already renders the full situational envelope.",
+      "created_at": "2026-04-13T16:10:33.998379+00:00",
+      "desired": "Delete context — show --full shows parent, siblings, deadline context",
+      "horizon": null,
+      "id": "01KP3SQS4EV8QFXD65RVYVA5AJ",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 229,
+      "status": "Active"
+    },
+    {
+      "actual": "insights is partially modernized (uses Palette and bar glyphs) but duplicates what stats does. Move its bar rendering and aggregate logic into stats and delete the standalone command.",
+      "created_at": "2026-04-13T16:10:36.340711+00:00",
+      "desired": "Fold insights into stats — hybrid command should be absorbed",
+      "horizon": null,
+      "id": "01KP3SQVDM93Q5V5ZWFG06K4FT",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 230,
+      "status": "Active"
+    },
+    {
+      "actual": "horizon predates the Phase 1-5 redesign. Determine whether it joins the reading surface (likely folding into list --horizon or tree --zoom) or stays as an operative gesture with modernized output.",
+      "created_at": "2026-04-13T16:10:47.622970+00:00",
+      "desired": "Audit horizon for visual display conformance",
+      "horizon": null,
+      "id": "01KP3SR6E666DHZHY1XNY07GK0",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 231,
+      "status": "Active"
+    },
+    {
+      "actual": "werk-cli still has a local palette.rs parallel to the shared Palette. list, tree, log don't import the shared one. Single source of truth required.",
+      "created_at": "2026-04-13T16:10:50.272676+00:00",
+      "desired": "Unify palette — werk-cli/src/palette.rs folds into werk-shared cli_display::Palette",
+      "horizon": null,
+      "id": "01KP3SR910J39543WQ624C68RW",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": 1,
+      "short_code": 232,
+      "status": "Released"
+    },
+    {
+      "actual": "TRUNCATE_ELLIPSIS glyph exists in the registry but old commands still emit three ASCII dots. format_mutation_summary is only local to show.rs — diff reaches across modules for it. Move to werk-shared::cli_display::formatters and adopt registry glyphs everywhere.",
+      "created_at": "2026-04-13T16:10:52.876922+00:00",
+      "desired": "Canonicalize ellipsis and mutation summary formatters",
+      "horizon": null,
+      "id": "01KP3SRBJCYKHHTCBBVSCH5HSW",
+      "parent_id": "01KP3SP26GNS1M7B8CK6F1ABSS",
+      "position": null,
+      "short_code": 233,
+      "status": "Active"
     }
   ]
 }

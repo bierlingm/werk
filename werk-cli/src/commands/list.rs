@@ -1,7 +1,7 @@
 //! List command handler — the general-purpose query engine.
 //!
 //! Flat or tree listing of tensions with rich filtering, sorting, and
-//! time-windowed change detection. Absorbs survey and diff functionality.
+//! time-windowed change detection.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -204,7 +204,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             .map(|(sc, d)| (*sc, Some(d.clone())))
             .unwrap_or((None, None));
 
-        // Category for survey-style output
+        // Category label for grouped output
         let category = if tension.status == TensionStatus::Resolved
             || tension.status == TensionStatus::Released
         {
