@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-13T17:26:10Z",
+  "flushed_at": "2026-04-13T17:27:04Z",
   "summary": {
-    "active": 43,
+    "active": 42,
     "released": 57,
-    "resolved": 123,
+    "resolved": 124,
     "total": 223
   },
   "tensions": [
@@ -2340,7 +2340,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Post-#214, five reading commands (show, list, tree, stats, log) ship the new display. Six legacy reading commands (survey, diff, ground, trajectory, health, context) still emit old-style output; insights is a hybrid to fold into stats; horizon predates redesign. Color palette is already unified — all five reading commands import werk_shared::cli_display::Palette. Remaining shared-formatter gap: format_mutation_summary lives in show.rs and is reached via super::show by diff; util::truncate emits three ASCII dots instead of the canonical TRUNCATE_ELLIPSIS glyph. Most of the ellipsis call sites live in commands slated for deletion.",
+      "actual": "All ten children accounted for. Deleted six legacy reading commands (survey, diff, ground, trajectory, health, context) — ~1500 lines of CLI code + MCP tools removed across eight commits. Insights folded into stats --engagement with activity-by-weekday bar chart preserving the one unique feature. Horizon audited and kept as an operative gesture. Formatter canonicalized: truncate emits the canonical ellipsis glyph (…), format_mutation_summary is private. The one false premise (#232 palette unification) was released with reason. werk --help now shows exactly the five-command reading surface per CLAUDE.md: show, list, tree, stats, log.",
       "created_at": "2026-04-13T16:09:37.744165+00:00",
       "desired": "Every CLI command output conforms to the new visual display approach",
       "horizon": null,
@@ -2348,7 +2348,7 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 221,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "survey emits old-style em-dash rows with truncated parenthesized parents and a plain categorical footer. list already renders a superior version of the same query with terminal-width-aware columns and signal glyphs.",
