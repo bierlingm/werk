@@ -1,10 +1,10 @@
 //! Natural language horizon parsing.
 //!
-//! Wraps `sd_core::Horizon::parse()` with additional support for relative dates
+//! Wraps `werk_core::Horizon::parse()` with additional support for relative dates
 //! and human-friendly expressions like "tomorrow", "in 3 days", "eom", etc.
 
 use chrono::{Datelike, Duration, NaiveDate, Utc, Weekday};
-use sd_core::Horizon;
+use werk_core::Horizon;
 
 /// Parse a horizon string, trying ISO formats first, then natural language.
 ///

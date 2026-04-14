@@ -11,7 +11,7 @@
 
 use crate::error::{Result, WerkError};
 use crate::util::truncate;
-use sd_core::Tension;
+use werk_core::Tension;
 
 /// The minimum prefix length required.
 pub const MIN_PREFIX_LEN: usize = 4;
@@ -106,7 +106,7 @@ impl PrefixResolver {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use sd_core::TensionStatus;
+    use werk_core::TensionStatus;
 
     fn make_tension(id: &str, desired: &str) -> Tension {
         Tension {

@@ -26,12 +26,12 @@ pub fn cmd_init(output: &Output, global: bool) -> Result<(), WerkError> {
 
     // Check if workspace already exists
     let werk_dir = target_path.join(".werk");
-    let db_path = werk_dir.join("sd.db");
+    let db_path = werk_dir.join("werk.db");
     let already_exists = db_path.exists();
 
-    // Initialize the store (this creates .werk/ and sd.db)
+    // Initialize the store (this creates .werk/ and werk.db)
     // Store::init is idempotent - it won't overwrite existing data
-    let _store = sd_core::Store::init(&target_path)?;
+    let _store = werk_core::Store::init(&target_path)?;
 
     let result = InitResult {
         path: werk_dir.to_string_lossy().to_string(),

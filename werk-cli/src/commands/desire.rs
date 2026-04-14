@@ -134,7 +134,7 @@ pub fn cmd_desire(
     // Apply the desire update
     store
         .update_desired(&tension.id, &new_value)
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge
 

@@ -5,7 +5,7 @@ use crate::output::Output;
 use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use sd_core::Horizon;
+use werk_core::Horizon;
 use serde::Serialize;
 
 /// JSON output structure for add command.

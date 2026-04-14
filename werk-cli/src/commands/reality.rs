@@ -135,7 +135,7 @@ pub fn cmd_reality(
     // Apply the reality update
     store
         .update_actual(&tension.id, &new_value)
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge
 

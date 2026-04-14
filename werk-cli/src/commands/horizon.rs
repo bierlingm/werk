@@ -6,7 +6,7 @@ use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::{compute_urgency, Horizon, HorizonKind, TensionStatus};
+use werk_core::{compute_urgency, Horizon, HorizonKind, TensionStatus};
 use serde::Serialize;
 use werk_shared::HookEvent;
 
@@ -85,7 +85,7 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             let _ = store.begin_gesture(Some(&format!("update horizon {}", &tension.id)));
             store
                 .update_horizon(&tension.id, horizon_parsed.clone())
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
             store.end_gesture();
             // Post-hooks fire automatically via the HookBridge
 

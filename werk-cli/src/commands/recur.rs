@@ -13,7 +13,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::Mutation;
+use werk_core::Mutation;
 use serde::Serialize;
 use werk_shared::HookEvent;
 
@@ -105,7 +105,7 @@ pub fn cmd_recur(
                 None,
                 "none".to_owned(),
             ))
-            .map_err(WerkError::SdError)?;
+            .map_err(WerkError::CoreError)?;
 
         let result = RecurResult {
             id: tension.id.clone(),
@@ -154,7 +154,7 @@ pub fn cmd_recur(
                 None,
                 validated.clone(),
             ))
-            .map_err(WerkError::SdError)?;
+            .map_err(WerkError::CoreError)?;
 
         let result = RecurResult {
             id: tension.id.clone(),

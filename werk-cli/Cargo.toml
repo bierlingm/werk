@@ -9,7 +9,7 @@ name = "werk"
 path = "src/main.rs"
 
 [dependencies]
-sd-core = { path = "../sd-core" }
+werk-core = { path = "../werk-core" }
 werk-shared = { path = "../werk-shared" }
 werk-mcp = { path = "../werk-mcp" }
 werk-tui = { path = "../werk-tui" }

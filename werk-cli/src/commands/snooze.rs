@@ -13,7 +13,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{Duration, NaiveDate, Utc};
-use sd_core::Mutation;
+use werk_core::Mutation;
 use serde::Serialize;
 use werk_shared::HookEvent;
 
@@ -107,7 +107,7 @@ pub fn cmd_snooze(
                 None,
                 "cleared".to_owned(),
             ))
-            .map_err(WerkError::SdError)?;
+            .map_err(WerkError::CoreError)?;
 
         let result = SnoozeResult {
             id: tension.id.clone(),
@@ -153,7 +153,7 @@ pub fn cmd_snooze(
                 None,
                 formatted.clone(),
             ))
-            .map_err(WerkError::SdError)?;
+            .map_err(WerkError::CoreError)?;
 
         let result = SnoozeResult {
             id: tension.id.clone(),

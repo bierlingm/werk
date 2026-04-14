@@ -42,7 +42,7 @@ pub fn cmd_resolve(
     let old_status = tension.status;
 
     // Check if already resolved
-    if old_status != sd_core::TensionStatus::Active {
+    if old_status != werk_core::TensionStatus::Active {
         return Err(WerkError::InvalidInput(format!(
             "cannot resolve tension with status {} (must be Active)",
             old_status
@@ -94,8 +94,8 @@ pub fn cmd_resolve(
 
     // Update status via store (handles validation and mutation recording)
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
-        .map_err(WerkError::SdError)?;
+        .update_status(&tension.id, werk_core::TensionStatus::Resolved)
+        .map_err(WerkError::CoreError)?;
 
     store.clear_actual_at();
     store.end_gesture();

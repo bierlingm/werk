@@ -5,7 +5,7 @@ use crate::output::Output;
 use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use sd_core::Forest;
+use werk_core::Forest;
 use serde::Serialize;
 
 /// JSON output structure for move command.
@@ -93,7 +93,7 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bo
     let _ = store.begin_gesture(Some(&format!("move {}", &tension_id)));
     store
         .update_parent(&tension_id, new_parent_id.as_deref())
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
 
     // Human-readable output before palette

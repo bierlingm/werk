@@ -74,7 +74,7 @@ pub fn cmd_rm(output: &Output, id: String, dry_run: bool) -> Result<(), WerkErro
     let _ = store.begin_gesture(Some(&format!("delete {}", &tension_id)));
     store
         .delete_tension(&tension_id)
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge
 

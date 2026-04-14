@@ -53,17 +53,17 @@ pub enum WerkError {
     #[error("config error: {0}")]
     ConfigError(String),
 
-    /// An error from sd-core.
+    /// An error from werk-core.
     #[error("{0}")]
-    SdError(#[from] sd_core::SdError),
+    CoreError(#[from] werk_core::CoreError),
 
     /// An error from the store.
     #[error("{0}")]
-    StoreError(#[from] sd_core::StoreError),
+    StoreError(#[from] werk_core::StoreError),
 
     /// An error from the tree module.
     #[error("{0}")]
-    TreeError(#[from] sd_core::TreeError),
+    TreeError(#[from] werk_core::TreeError),
 }
 
 /// Error codes for JSON error output.
@@ -107,7 +107,7 @@ impl WerkError {
             // Internal errors: unexpected failures
             WerkError::PermissionDenied(_) => 2,
             WerkError::IoError(_) => 2,
-            WerkError::SdError(_) => 2,
+            WerkError::CoreError(_) => 2,
             WerkError::StoreError(_) => 2,
             WerkError::TreeError(_) => 2,
         }
@@ -124,7 +124,7 @@ impl WerkError {
             WerkError::ConfigError(_) => ErrorCode::CONFIG_ERROR,
             WerkError::PermissionDenied(_) => ErrorCode::PERMISSION_DENIED,
             WerkError::IoError(_) => ErrorCode::IO_ERROR,
-            WerkError::SdError(_) => ErrorCode::INTERNAL_ERROR,
+            WerkError::CoreError(_) => ErrorCode::INTERNAL_ERROR,
             WerkError::StoreError(_) => ErrorCode::INTERNAL_ERROR,
             WerkError::TreeError(_) => ErrorCode::INTERNAL_ERROR,
         }

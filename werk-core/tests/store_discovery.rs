@@ -15,7 +15,7 @@ use tempfile::TempDir;
 /// Structure:
 ///   temp_root/
 ///     .werk/         <- .werk/ here
-///       sd.db
+///       werk.db
 ///     a/
 ///       b/
 ///         c/
@@ -32,11 +32,11 @@ fn test_store_discovery_finds_ancestor_werk_dir() {
     std::fs::create_dir_all(&deep_dir).unwrap();
 
     // Initialize the store at the root
-    let store = sd_core::Store::init(temp_root.path()).unwrap();
+    let store = werk_core::Store::init(temp_root.path()).unwrap();
     let _tension = store.create_tension("test goal", "test reality").unwrap();
 
     // Verify the path is under temp_root/.werk/
-    let expected_db = temp_root.path().join(".werk/sd.db");
+    let expected_db = temp_root.path().join(".werk/werk.db");
     assert_eq!(store.path(), Some(expected_db.as_path()));
 
     // Now we need to test that open() from a subdirectory finds the ancestor .werk/
@@ -45,10 +45,10 @@ fn test_store_discovery_finds_ancestor_werk_dir() {
     //
     // For a proper integration test, we would need to change the current directory,
     // but that's not safe in parallel tests. Instead, we document the expected behavior
-    // and rely on the fact that Store::init at temp_root creates .werk/sd.db.
+    // and rely on the fact that Store::init at temp_root creates .werk/werk.db.
     //
     // The key assertion: store was created at the correct location
-    assert!(store.path().unwrap().ends_with("sd.db"));
+    assert!(store.path().unwrap().ends_with("werk.db"));
     assert!(store.path().unwrap().parent().unwrap().ends_with(".werk"));
 }
 
@@ -58,7 +58,7 @@ fn test_store_at_ancestor_is_functional() {
     let temp_root = TempDir::new().unwrap();
 
     // Initialize store at root
-    let store = sd_core::Store::init(temp_root.path()).unwrap();
+    let store = werk_core::Store::init(temp_root.path()).unwrap();
 
     // Create data
     let t1 = store.create_tension("goal1", "reality1").unwrap();
@@ -93,7 +93,7 @@ fn test_store_global_fallback_path_resolution() {
     );
 
     // The expected global path
-    let expected_global = home.unwrap().join(".werk/sd.db");
+    let expected_global = home.unwrap().join(".werk/werk.db");
 
     // This test verifies the path resolution logic exists.
     // The actual fallback behavior is tested by creating a store
@@ -132,7 +132,7 @@ fn test_store_init_read_only_directory_returns_error() {
     std::fs::set_permissions(&read_only_dir, perms).unwrap();
 
     // Attempt to init a store in the read-only directory
-    let result = sd_core::Store::init(&read_only_dir);
+    let result = werk_core::Store::init(&read_only_dir);
 
     // Should fail with a descriptive error
     assert!(result.is_err());
@@ -157,7 +157,7 @@ fn test_store_init_read_only_directory_returns_error() {
 fn test_store_init_nonexistent_parent_returns_error() {
     let non_existent = PathBuf::from("/nonexistent/path/to/project");
 
-    let result = sd_core::Store::init(&non_existent);
+    let result = werk_core::Store::init(&non_existent);
 
     // Should fail with an error about the path not existing or permission denied
     assert!(result.is_err());
@@ -175,12 +175,12 @@ fn test_store_init_nonexistent_parent_returns_error() {
 #[test]
 fn test_store_error_is_descriptive() {
     let errors = [
-        sd_core::StoreError::DatabaseError("test db error".to_string()),
-        sd_core::StoreError::DiscoveryError,
-        sd_core::StoreError::TensionNotFound("abc123".to_string()),
-        sd_core::StoreError::PermissionDenied("/test/path".to_string()),
-        sd_core::StoreError::IoError("test io error".to_string()),
-        sd_core::StoreError::TransactionRolledBack("test rollback".to_string()),
+        werk_core::StoreError::DatabaseError("test db error".to_string()),
+        werk_core::StoreError::DiscoveryError,
+        werk_core::StoreError::TensionNotFound("abc123".to_string()),
+        werk_core::StoreError::PermissionDenied("/test/path".to_string()),
+        werk_core::StoreError::IoError("test io error".to_string()),
+        werk_core::StoreError::TransactionRolledBack("test rollback".to_string()),
     ];
 
     for error in errors {
@@ -202,8 +202,8 @@ fn test_multiple_stores_in_different_directories() {
     let temp1 = TempDir::new().unwrap();
     let temp2 = TempDir::new().unwrap();
 
-    let store1 = sd_core::Store::init(temp1.path()).unwrap();
-    let store2 = sd_core::Store::init(temp2.path()).unwrap();
+    let store1 = werk_core::Store::init(temp1.path()).unwrap();
+    let store2 = werk_core::Store::init(temp2.path()).unwrap();
 
     // Create different data in each store
     let t1 = store1
@@ -225,7 +225,7 @@ fn test_store_persists_across_reopen() {
 
     // Create and populate store
     {
-        let store = sd_core::Store::init(temp.path()).unwrap();
+        let store = werk_core::Store::init(temp.path()).unwrap();
         let _t = store
             .create_tension("persistent goal", "persistent reality")
             .unwrap();
@@ -233,7 +233,7 @@ fn test_store_persists_across_reopen() {
 
     // Reopen and verify
     {
-        let store = sd_core::Store::init(temp.path()).unwrap();
+        let store = werk_core::Store::init(temp.path()).unwrap();
         let tensions = store.list_tensions().unwrap();
         assert_eq!(tensions.len(), 1);
         assert_eq!(tensions[0].desired, "persistent goal");
@@ -247,13 +247,13 @@ fn test_nested_werk_directories_isolated() {
     let nested = temp_root.path().join("nested");
 
     // Create store at root
-    let store_root = sd_core::Store::init(temp_root.path()).unwrap();
+    let store_root = werk_core::Store::init(temp_root.path()).unwrap();
     let t_root = store_root
         .create_tension("root goal", "root reality")
         .unwrap();
 
     // Create store at nested location
-    let store_nested = sd_core::Store::init(&nested).unwrap();
+    let store_nested = werk_core::Store::init(&nested).unwrap();
     let t_nested = store_nested
         .create_tension("nested goal", "nested reality")
         .unwrap();

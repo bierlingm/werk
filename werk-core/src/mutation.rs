@@ -71,8 +71,8 @@ impl ReconstructedTension {
 /// # Example
 ///
 /// ```
-/// # use sd_core::mutation::{Mutation, replay_mutations};
-/// # use sd_core::store::Store;
+/// # use werk_core::mutation::{Mutation, replay_mutations};
+/// # use werk_core::store::Store;
 /// let store = Store::new_in_memory().unwrap();
 /// let t = store.create_tension("goal", "reality").unwrap();
 /// store.update_desired(&t.id, "new goal").unwrap();
