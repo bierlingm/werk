@@ -25,8 +25,11 @@ pub fn edit_content(original: &str) -> Result<Option<String>> {
     fs::write(&file_path, original)
         .map_err(|e| WerkError::IoError(format!("failed to write temp file: {}", e)))?;
 
-    // Get editor from $EDITOR, fall back to defaults
-    let editor = env::var("EDITOR").unwrap_or_else(|_| default_editor());
+    // Editor resolution: config `editor.command` > $EDITOR > platform default.
+    let editor = crate::commands::config_default_string(
+        "editor.command",
+        &env::var("EDITOR").unwrap_or_else(|_| default_editor()),
+    );
 
     // Open the editor
     let exit_status = Command::new(&editor)

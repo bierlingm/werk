@@ -331,6 +331,8 @@ pub struct SignalThresholds {
     pub hub_centrality: f64,
     /// Descendant count above which REACH glyph fires (default: 5).
     pub reach_descendants: u32,
+    /// Desire-reality gap above which DRIFT fires (default: 0.3).
+    pub drift_threshold: f64,
 }
 
 impl Default for SignalThresholds {
@@ -341,35 +343,40 @@ impl Default for SignalThresholds {
             stale_days: 14,
             hub_centrality: 0.0001,
             reach_descendants: 5,
+            drift_threshold: 0.3,
         }
     }
 }
 
 impl SignalThresholds {
-    /// Load from config, falling back to defaults for missing keys.
+    /// Load from config, falling back to defaults for missing keys. Level
+    /// labels (e.g. `signals.stale.days = "two weeks"`) are resolved to
+    /// their underlying numeric value before parsing.
     pub fn load(config: &Config) -> Self {
+        use crate::config_registry::resolve_value;
         let defaults = Self::default();
+        let read = |key: &str| -> Option<String> {
+            config.get(key).map(|v| resolve_value(key, v))
+        };
         Self {
-            approaching_days: config
-                .get("signals.approaching.days")
+            approaching_days: read("signals.approaching.days")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(defaults.approaching_days),
-            approaching_urgency: config
-                .get("signals.approaching.urgency")
+            approaching_urgency: read("signals.approaching.urgency")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(defaults.approaching_urgency),
-            stale_days: config
-                .get("signals.stale.days")
+            stale_days: read("signals.stale.days")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(defaults.stale_days),
-            hub_centrality: config
-                .get("signals.hub.centrality")
+            hub_centrality: read("signals.hub.centrality")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(defaults.hub_centrality),
-            reach_descendants: config
-                .get("signals.reach.descendants")
+            reach_descendants: read("signals.reach.descendants")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(defaults.reach_descendants),
+            drift_threshold: read("signals.drift.threshold")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(defaults.drift_threshold),
         }
     }
 }

@@ -1,0 +1,278 @@
+:root {
+  --bg: #0f0f0f;
+  --fg: #e9e6df;
+  --fg-dim: #8a857a;
+  --fg-dimmer: #5a564e;
+  --rule: #24221e;
+  --overdue: #d06a5b;
+  --next: #d4b85c;
+  --held: #6a8fa8;
+  --silent: #4a4740;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  min-height: 100vh;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12vh 32px 32px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 28px;
+  position: relative;
+}
+
+.stamp-group {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  position: relative;
+}
+
+.stamp {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.workspace-button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.08s ease, border-color 0.08s ease;
+}
+
+.workspace-button:hover,
+.workspace-button[aria-expanded="true"] {
+  background: #161614;
+  border-color: var(--rule);
+}
+
+.workspace-name {
+  color: var(--fg);
+}
+
+.workspace-caret {
+  color: var(--fg-dimmer);
+  font-size: 10px;
+}
+
+.workspace-menu {
+  position: absolute;
+  top: 100%;
+  left: 60px;
+  margin: 6px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: #161614;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  min-width: 280px;
+  max-width: 480px;
+  z-index: 10;
+  font-family: var(--mono);
+  font-size: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.workspace-menu li {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.workspace-menu li:hover {
+  background: #1f1d1a;
+}
+
+.workspace-menu li.is-current::after {
+  content: "active";
+  font-size: 10px;
+  color: var(--next);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.workspace-menu .ws-name {
+  color: var(--fg);
+}
+
+.workspace-menu .ws-path {
+  color: var(--fg-dimmer);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg-dimmer);
+}
+
+.band {
+  margin-bottom: 28px;
+}
+
+.band h2 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin: 0 0 10px;
+  font-weight: 500;
+}
+
+.band-overdue h2 {
+  color: var(--overdue);
+}
+.band-next h2 {
+  color: var(--next);
+}
+.band-held h2 {
+  color: var(--held);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tension {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rule);
+  cursor: pointer;
+  transition: background 0.08s ease;
+}
+
+.tension:hover {
+  background: #161614;
+}
+
+.tension:first-child {
+  border-top: none;
+}
+
+.id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg-dimmer);
+  padding-top: 2px;
+}
+
+.is-overdue .id {
+  color: var(--overdue);
+}
+
+.body {
+  min-width: 0;
+}
+
+.desired {
+  font-weight: 500;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actual {
+  color: var(--fg-dim);
+  font-size: 13px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dimmer);
+  margin-top: 4px;
+  letter-spacing: 0.04em;
+}
+
+.silent-msg,
+.offline-msg,
+.offline-hint {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--silent);
+  margin: 0;
+  padding: 18px 0;
+}
+
+.offline-hint {
+  padding-top: 4px;
+  color: var(--fg-dimmer);
+  font-size: 12px;
+}
+
+.offline-msg code {
+  background: var(--rule);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--fg);
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 40px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dimmer);
+}
+
+.link {
+  color: var(--fg-dim);
+  text-decoration: none;
+}
+.link:hover {
+  color: var(--fg);
+}

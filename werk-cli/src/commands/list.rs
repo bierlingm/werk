@@ -826,7 +826,12 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, 
             println!("  {} {}{}", palette.chrome("Deadline:"), h, overdue_marker);
         }
         if let Some(u) = row.urgency {
-            println!("  {} {:.0}%", palette.chrome("Urgency:"), u * 100.0);
+            println!(
+                "  {} {} ({:.0}%)",
+                palette.chrome("Urgency:"),
+                werk_shared::value_labels::urgency_label(u),
+                u * 100.0,
+            );
         }
         if !row.signal_glyphs.is_empty() {
             let signal_str: Vec<String> = row

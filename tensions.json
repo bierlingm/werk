@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-14T17:09:37Z",
+  "flushed_at": "2026-04-15T11:21:44Z",
   "summary": {
-    "active": 48,
+    "active": 64,
     "released": 63,
-    "resolved": 131,
-    "total": 242
+    "resolved": 148,
+    "total": 275
   },
   "tensions": [
     {
@@ -1048,7 +1048,7 @@
       "horizon": null,
       "id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
-      "position": null,
+      "position": 5,
       "short_code": 100,
       "status": "Active"
     },
@@ -2555,7 +2555,7 @@
       "horizon": null,
       "id": "01KP5VAGTT6MMRGFNTSND9GDS3",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
-      "position": null,
+      "position": 4,
       "short_code": 242,
       "status": "Active"
     },
@@ -2643,9 +2643,9 @@
       "horizon": null,
       "id": "01KP67QE5RJ9RZJBTMF974GW5G",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
-      "position": null,
+      "position": 3,
       "short_code": 250,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "no spaces subcommand. no registration mechanism. no pure (non-directory-bound) spaces. the global workspace at ~/.werk/ has no [workspaces] config section.",
@@ -2654,9 +2654,9 @@
       "horizon": null,
       "id": "01KP67QQAEXREDZ3B1WKNTYHD8",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
-      "position": null,
+      "position": 2,
       "short_code": 251,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "config.toml exists per workspace but has no [workspaces] section. no concept of a space registry. the Workspace struct in workspace.rs has root and werk_dir but no name or registry awareness.",
@@ -2665,9 +2665,372 @@
       "horizon": null,
       "id": "01KP67QZ4G27JTZ1BNV33YDPBC",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
-      "position": null,
+      "position": 1,
       "short_code": 252,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Config CLI design vision established (session 2026-04-14): Four-Framework grouping, noun-verb surface, gesture sessions in scrollback, typographic polish (· gutter, [default X], — for unset), --json parity, editor escape hatch. Principles to apply to all surfaces not yet documented. Config CLI not yet built.",
+      "created_at": "2026-04-14T21:35:36.935127+00:00",
+      "desired": "Every werk surface feels world-class — each gesture beautiful, composable, and honest",
+      "horizon": null,
+      "id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 253,
       "status": "Active"
+    },
+    {
+      "actual": "Shipped 2026-04-14 (6/6 children): #256 registry (13 keys, 5 groups, typed validation); #257 grouped display (Four-Framework headings, · dirty gutter, ghost defaults, [default X] annotations, hooks + other sections, NO_COLOR path); #258 unset/reset/reset <group> with typed Set validation and transition lines; #259 edit (TTY-gated $EDITOR on config.toml with post-diff) + diff (vs defaults); #260 export/import presets with FNV-1a hash and validate-on-import; #261 lightweight sessions (begin/status/commit/abort with audit log at .werk/config-sessions.jsonl, snapshot-based atomic abort). Deeper integration with werk's tension mutation log + werk undo is noted as future work on #261. Tests: 106 passing in werk-shared, 16 in werk-cli.",
+      "created_at": "2026-04-14T21:35:48.852013+00:00",
+      "desired": "werk config is a world-class CLI surface — bare command tells the story at a glance; noun-verb subcommands; gesture sessions; agents and humans on equal footing",
+      "horizon": null,
+      "id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 254,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Only config has design vision so far. Other surfaces inherited their output design ad-hoc — many are already strong (log, tree, list --changed) but have not been systematically checked against the principles extracted from the config session.",
+      "created_at": "2026-04-14T21:35:48.999434+00:00",
+      "desired": "Every werk surface audited and elevated against the world-class design principles (config, list, show, tree, stats, log, add, reality, desire, resolve, release, note, hooks, batch, mcp, serve)",
+      "horizon": null,
+      "id": "01KP6YR1R7497PW8KVAY7M46ET",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 255,
+      "status": "Active"
+    },
+    {
+      "actual": "No registry exists. Defaults live scattered in SignalThresholds::default() and AnalysisThresholds::default(). No metadata for framework group, gloss, or type. flush.auto and agent.* have no canonical default structure.",
+      "created_at": "2026-04-14T21:37:31.927376+00:00",
+      "desired": "Key registry — single source of truth for every config key: name, default, framework group, one-line gloss, type",
+      "horizon": null,
+      "id": "01KP6YV68QNYC9DRFKTHX040CP",
+      "parent_id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "position": null,
+      "short_code": 256,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Current output: flat '# path' header, alphabetical '# key = value' dump, no grouping, no defaults shown, no gloss. Does not match the design principles on #254.",
+      "created_at": "2026-04-14T21:37:32.089618+00:00",
+      "desired": "Bare werk config renders grouped by Four Frameworks with dirty gutter, defaults as ghosts, typographic polish",
+      "horizon": null,
+      "id": "01KP6YV6DS0ZFGZJH727S2EZ0A",
+      "parent_id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "position": null,
+      "short_code": 257,
+      "status": "Resolved"
+    },
+    {
+      "actual": "No unset or reset exists. Only get/set/path. Users must manually delete lines from config.toml to revert to defaults.",
+      "created_at": "2026-04-14T21:37:32.249927+00:00",
+      "desired": "werk config unset + reset + reset <group> subcommands",
+      "horizon": null,
+      "id": "01KP6YV6JSHBTC2GBRGMS9GKW1",
+      "parent_id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "position": null,
+      "short_code": 258,
+      "status": "Resolved"
+    },
+    {
+      "actual": "No edit escape hatch (should open $EDITOR on config.toml with gesture-wrap, matching reality/desire pattern). No diff against defaults or against a preset.",
+      "created_at": "2026-04-14T21:37:32.401950+00:00",
+      "desired": "werk config edit + werk config diff subcommands",
+      "horizon": null,
+      "id": "01KP6YV6QH0M8CYJ1C0WGA18XA",
+      "parent_id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "position": null,
+      "short_code": 259,
+      "status": "Resolved"
+    },
+    {
+      "actual": "No preset infrastructure. frankentui Config Persistence principles (serde snapshots, named presets, hash for regression detection, validate-on-import) not applied.",
+      "created_at": "2026-04-14T21:37:32.550687+00:00",
+      "desired": "werk config export + import preset roundtrip with FNV-1a hash and validate-on-import",
+      "horizon": null,
+      "id": "01KP6YV6W6T1AAWRHJ5H618663",
+      "parent_id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "position": null,
+      "short_code": 260,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Individual 'werk config set' calls are not wrapped in a gesture. No session model for batching multiple config changes atomically. Config mutations are invisible to werk log and werk undo.",
+      "created_at": "2026-04-14T21:37:32.703577+00:00",
+      "desired": "werk config begin/status/commit/abort gesture sessions — config mutations as first-class gestures in scrollback",
+      "horizon": null,
+      "id": "01KP6YV70Z69ET7GG63SPD8FA5",
+      "parent_id": "01KP6YR1KM44D9C9PQ9KTHF55Q",
+      "position": null,
+      "short_code": 261,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Shipped 2026-04-15: Kind-based grouping (Bool/Int/Float/String) replaces Four-Logics grouping. 8 new keys wired: flush.include_released (threaded through werk-shared/src/flush.rs filter); stats.default_window_days (Commands::Stats); hooks.log_tail (HooksCommand::Log); serve.port + serve.host (Commands::Serve, werk_web::serve signature extended); signals.drift.threshold (SignalThresholds struct); list.default_sort (Commands::List); editor.command (editor.rs + config Edit). time.week_starts_on dropped as ghost-config (no consumer) — tracked as held #268. Reset command switched from group-name matching to prefix matching (reset signals → all signals.*). Registry: 22 keys across 4 Kind groups. Tests: 107 passing in werk-shared (1 new prefix test), 25 in werk-cli.",
+      "created_at": "2026-04-14T22:26:51.797789+00:00",
+      "desired": "Second round of config registry additions — 11 new keys covering CLI-flag defaults, drift threshold, editor override, release filter, server host/port; regrouped by Kind (Bool/Int/Float/String) instead of Four Logics",
+      "horizon": null,
+      "id": "01KP71NGRNPNYJR5GJC1GFFN10",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": 1,
+      "short_code": 262,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Skip-for-now: multi-space support (#96) is held. Once a user has multiple named spaces, these metadata keys become real. Right now there's one space per workspace, so the keys have nothing to distinguish.",
+      "created_at": "2026-04-14T22:27:13.017896+00:00",
+      "desired": "Multi-space metadata (space.name / space.color / space.description) registered as config keys per space",
+      "horizon": null,
+      "id": "01KP71P5FSR705HJ9DCQPGMWNW",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 263,
+      "status": "Active"
+    },
+    {
+      "actual": "Skip-for-now: no user has hit friction with current search ranking. Premature to expose tunables before anyone complains about false positives or missed matches.",
+      "created_at": "2026-04-14T22:27:13.197667+00:00",
+      "desired": "Search tuning config keys (search.fuzzy_threshold, search.default_limit, search.rerank_weights) for FrankenSearch",
+      "horizon": null,
+      "id": "01KP71P5NDJTJJ5BA1KBMGKZ4X",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 264,
+      "status": "Active"
+    },
+    {
+      "actual": "Skip-for-now: speculative. No one has asked for auto-generated gesture descriptions or session-level squashing of repeated same-key mutations.",
+      "created_at": "2026-04-14T22:27:13.369794+00:00",
+      "desired": "Gesture template/automation config keys (gesture.auto_description, gesture.squash_same_key_within_session)",
+      "horizon": null,
+      "id": "01KP71P5TSMTPN8Q1TFBTS1RRP",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 265,
+      "status": "Active"
+    },
+    {
+      "actual": "Skip-for-now: CLI flags already cover these per-invocation. Persistent user defaults are a real but low-urgency want; revisit when someone reports friction from re-typing the same flag.",
+      "created_at": "2026-04-14T22:27:13.540834+00:00",
+      "desired": "Display defaults config keys (display.short_codes_only, display.compact_tree, display.date_format, display.width_clamp)",
+      "horizon": null,
+      "id": "01KP71P604AZVFW4Y6B47NW8ZS",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 266,
+      "status": "Active"
+    },
+    {
+      "actual": "Skip-for-now: no demand yet. MCP tools get called by agents with explicit arguments; durable agent preferences aren't pressing until a user wants them.",
+      "created_at": "2026-04-14T22:27:13.713610+00:00",
+      "desired": "MCP behavior config keys (mcp.auto_epoch, mcp.confirm_destructive, mcp.default_parent)",
+      "horizon": null,
+      "id": "01KP71P65H9YNGXXX4W6QQYY4Q",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 267,
+      "status": "Active"
+    },
+    {
+      "actual": "Skip-for-now (2026-04-15): werk does not currently have \"this week\" boundary parsing — address.rs:218 has a 'last-week' timespec and snooze.rs uses Duration::weeks(n) arithmetic, neither of which needs a Monday/Sunday anchor. Registry entry was dropped from #262 to avoid ghost-config (a key that parses but has no consumer). Revisit when any command grows week-boundary semantics.",
+      "created_at": "2026-04-14T22:31:59.585201+00:00",
+      "desired": "time.week_starts_on config key with real \"this week\" boundary parsing",
+      "horizon": null,
+      "id": "01KP71YXB16YNVNRRS87EABEG7",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 268,
+      "status": "Active"
+    },
+    {
+      "actual": "werk-tab extension renders the frontier correctly, but only when werk serve is running manually in the right workspace; nothing supervises the server, nothing targets the global space explicitly, and the extension hardcodes port 3749",
+      "created_at": "2026-04-15T08:24:25.504704+00:00",
+      "desired": "the browser new-tab surface shows the werk frontier with zero per-session setup — after one-time install, opening a tab always reflects the current global space",
+      "horizon": "2026-05",
+      "id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 269,
+      "status": "Active"
+    },
+    {
+      "actual": "serve discovers store by walking up from CWD only; no way to pin the global space explicitly (partial down-payment on #250)",
+      "created_at": "2026-04-15T08:24:35.198831+00:00",
+      "desired": "werk serve accepts -g/--global flag that forces the ~/.werk/ global store regardless of CWD",
+      "horizon": null,
+      "id": "01KP83VZKY67AE3P7AKC4YYR8Z",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 1,
+      "short_code": 270,
+      "status": "Active"
+    },
+    {
+      "actual": "no daemon command; serve must be invoked and supervised by hand each session",
+      "created_at": "2026-04-15T08:24:49.295093+00:00",
+      "desired": "werk daemon subcommand group exists — install, uninstall, status, logs subcommands manage a background werk serve process targeting the global space",
+      "horizon": null,
+      "id": "01KP83WDCF3TJ1VJ6X5E6PQRJQ",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 2,
+      "short_code": 271,
+      "status": "Active"
+    },
+    {
+      "actual": "serve fails hard on port conflict with no fallback; extension hardcodes 3749",
+      "created_at": "2026-04-15T08:24:49.504641+00:00",
+      "desired": "daemon picks a free port from a range (default 3749-3759) when the default is taken, and records the chosen port where the extension can find it",
+      "horizon": null,
+      "id": "01KP83WDK0WQA94RVPKY60A6H8",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 3,
+      "short_code": 272,
+      "status": "Active"
+    },
+    {
+      "actual": "no OS-level supervision on macOS",
+      "created_at": "2026-04-15T08:24:49.701249+00:00",
+      "desired": "daemon install on macOS writes ~/Library/LaunchAgents/dev.werk.daemon.plist and bootstraps via launchctl — survives reboot, auto-respawns on crash",
+      "horizon": null,
+      "id": "01KP83WDS5NMJQ4NF8TMAC22CC",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 4,
+      "short_code": 273,
+      "status": "Active"
+    },
+    {
+      "actual": "no OS-level supervision on Linux",
+      "created_at": "2026-04-15T08:24:49.894885+00:00",
+      "desired": "daemon install on Linux writes ~/.config/systemd/user/werk-daemon.service and enables via systemctl --user — survives reboot, auto-respawns on crash",
+      "horizon": null,
+      "id": "01KP83WDZ691JFEZQD0G44KSQZ",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 5,
+      "short_code": 274,
+      "status": "Active"
+    },
+    {
+      "actual": "extension hardcodes http://localhost:3749; fails opaquely if daemon is on a different port",
+      "created_at": "2026-04-15T08:24:50.116209+00:00",
+      "desired": "werk-tab extension probes the daemon port range on load and uses the responding port, showing offline only when nothing responds",
+      "horizon": null,
+      "id": "01KP83WE64G4TPN7T86CW8E704",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 6,
+      "short_code": 275,
+      "status": "Active"
+    },
+    {
+      "actual": "the daemon hardcodes the global workspace (~/.werk/); no way to point it elsewhere short of editing the plist by hand and reinstalling. depends on the workspaces registry from #96 for the list of known workspaces",
+      "created_at": "2026-04-15T10:41:51.460203+00:00",
+      "desired": "the practitioner picks which workspace the new-tab surface displays — selection works from both the CLI and the tab UI itself, and persists across daemon restarts",
+      "horizon": null,
+      "id": "01KP8BQAV4KVEPV7X6D1APATCK",
+      "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
+      "position": 7,
+      "short_code": 276,
+      "status": "Active"
+    },
+    {
+      "actual": "no command exists; selection requires editing the plist/unit and reinstalling",
+      "created_at": "2026-04-15T10:42:10.246236+00:00",
+      "desired": "werk daemon point <path> sets the daemon's target workspace, persists the choice in ~/.werk/config.toml, and restarts the supervised process so the new selection takes effect immediately",
+      "horizon": null,
+      "id": "01KP8BQX66TKMQ70WEW93FC5VT",
+      "parent_id": "01KP8BQAV4KVEPV7X6D1APATCK",
+      "position": 1,
+      "short_code": 277,
+      "status": "Active"
+    },
+    {
+      "actual": "serve only knows --global; no API surface for workspace metadata",
+      "created_at": "2026-04-15T10:42:10.518631+00:00",
+      "desired": "werk serve honors a configured target workspace (path or registered name) instead of always using --global; new endpoints GET /api/workspace and GET /api/workspaces expose the current selection and the list of known workspaces from the registry",
+      "horizon": null,
+      "id": "01KP8BQXEPZ2R3KE7VPZJH6GSN",
+      "parent_id": "01KP8BQAV4KVEPV7X6D1APATCK",
+      "position": 2,
+      "short_code": 278,
+      "status": "Active"
+    },
+    {
+      "actual": "tab header shows only the word 'werk'; no awareness of which workspace is being displayed",
+      "created_at": "2026-04-15T10:42:10.788472+00:00",
+      "desired": "werk-tab header shows the current workspace name and offers a switcher (picker over known workspaces); selection from the picker hits the API and the page reloads against the new workspace",
+      "horizon": null,
+      "id": "01KP8BQXQ4XVZVBJVW9T4HT7MJ",
+      "parent_id": "01KP8BQAV4KVEPV7X6D1APATCK",
+      "position": 3,
+      "short_code": 279,
+      "status": "Active"
+    },
+    {
+      "actual": "Shipped 2026-04-15 (5/5 children): #281 Enum Kind (IntLevels/FloatLevels, 8 keys with named levels); #282 analysis.sensitivity synthetic StringEnum with cascade through analysis.projection.*; #283 shipped presets (focus/patient/quiet/default) via werk config preset list/show/apply; #284 duration parser (werk-shared/src/duration.rs) threaded through list --approaching, --stale, stats --days; #285 value labels (urgency/drift/staleness bands) wired into show + list --long. Tests: 126 passing in werk-shared (19 new across registry, duration, value_labels).",
+      "created_at": "2026-04-15T10:58:50.889150+00:00",
+      "desired": "Human-friendly values across werk's CLI — named levels with custom escape, bundled sensitivity, shipped presets, human duration inputs, output labels",
+      "horizon": null,
+      "id": "01KP8CPEC91SC3VVT787G0FW6N",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": 1,
+      "short_code": 280,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Shipped 2026-04-15: new Kind variants IntLevels/FloatLevels in werk-shared/src/config_registry.rs. Applied to 8 keys: agent.timeout (quick/default/patient), stats.default_window_days (today/a week/two weeks/a month), signals.approaching.days (a week/two weeks/a month), signals.approaching.urgency (patient/balanced/alert), signals.stale.days (a few days/a week/two weeks/a month), signals.drift.threshold (subtle/noticeable/large), signals.hub.centrality (wide/sensitive/strict), signals.reach.descendants (small/medium/large). Set accepts label or raw. Display shows 'balanced (0.5)' in list view; 'werk config get <key>' shows levels row + default annotation. SignalThresholds::load resolves labels. config_default helper resolves labels for CLI flag defaults. 112 tests passing.",
+      "created_at": "2026-04-15T10:59:10.213294+00:00",
+      "desired": "Enum Kind variant in config registry — labels map to underlying values, set accepts either label or raw, display shows label next to value when matched",
+      "horizon": null,
+      "id": "01KP8CQ185H05H2Y96Q4D8KQXC",
+      "parent_id": "01KP8CPEC91SC3VVT787G0FW6N",
+      "position": null,
+      "short_code": 281,
+      "status": "Resolved"
+    },
+    {
+      "actual": "The four projection keys are individually opaque to users. A bundled sensitivity hides them by default and writes through to the underlying tunables when set. Advanced users can still override individual keys. Requires Set handler to support 'on write, cascade to related keys'.",
+      "created_at": "2026-04-15T10:59:10.498559+00:00",
+      "desired": "analysis.sensitivity — single bundled key that sets all four analysis.projection.* keys on assignment (relaxed / balanced / sharp)",
+      "horizon": null,
+      "id": "01KP8CQ1H22EQVHBHGTDA8ZTGR",
+      "parent_id": "01KP8CPEC91SC3VVT787G0FW6N",
+      "position": null,
+      "short_code": 282,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Beyond the generic export/import already shipped: a registry of named bundles the user can snap to. Ships as config-presets.toml embedded in the binary. 'werk config preset apply focus' applies in a single gesture session.",
+      "created_at": "2026-04-15T10:59:10.778245+00:00",
+      "desired": "Shipped presets — werk config preset list/apply <name>, curated bundles (focus / patient / quiet / default) for practice stances",
+      "horizon": null,
+      "id": "01KP8CQ1STE28K8ENRWC1XSN9V",
+      "parent_id": "01KP8CPEC91SC3VVT787G0FW6N",
+      "position": null,
+      "short_code": 283,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Currently these flags take raw integers. Users think in weeks/months. Build a shared parser (Duration kind) that accepts 'a week', '2 weeks', 'month', '14', '+14d' and normalizes to days. Apply to the three flags. Config values of those keys display the human form in parentheses.",
+      "created_at": "2026-04-15T10:59:11.059352+00:00",
+      "desired": "Duration parser for time-based CLI flags — list --approaching, list --stale, stats --days accept human strings (two weeks / month / 14 / +14d)",
+      "horizon": null,
+      "id": "01KP8CQ22K4R2840H8D65D6V0E",
+      "parent_id": "01KP8CPEC91SC3VVT787G0FW6N",
+      "position": null,
+      "short_code": 284,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Rendering 'urgency: 0.72' is not communicative. Render 'urgency: alert (0.72)' using the same level-table that powers config. Same source of truth, so the language stays consistent across input and output.",
+      "created_at": "2026-04-15T10:59:11.354563+00:00",
+      "desired": "Output labels for urgency/drift/staleness in show, list --long, log --compare — named level alongside raw value",
+      "horizon": null,
+      "id": "01KP8CQ2BTFPVBA8DSCP0R7ZHZ",
+      "parent_id": "01KP8CPEC91SC3VVT787G0FW6N",
+      "position": null,
+      "short_code": 285,
+      "status": "Resolved"
     }
   ]
 }

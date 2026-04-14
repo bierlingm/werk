@@ -42,12 +42,27 @@ Commands by framework:
     list, tree, stats
 
   System
-    init, config, flush, batch, nuke, mcp, serve"
+    init, config, flush, batch, nuke, mcp, serve, daemon, spaces"
 )]
 struct Cli {
     /// Output in JSON format.
     #[arg(short, long, global = true)]
     json: bool,
+
+    /// Target a registered space by name (use "global" for ~/.werk/).
+    /// Overrides the default "walk up from CWD" workspace discovery.
+    /// Must come before the subcommand: `werk -w werk tree`, not `werk tree -w werk`.
+    #[arg(short = 'w', long, value_name = "NAME")]
+    workspace: Option<String>,
+
+    /// Shortcut for `--workspace global` — operate on `~/.werk/`.
+    /// Must come before the subcommand: `werk -g tree`, not `werk tree -g`.
+    #[arg(
+        short = 'g',
+        long = "global-space",
+        conflicts_with = "workspace"
+    )]
+    global_space: bool,
 
     /// Subcommand to execute.
     #[command(subcommand)]
@@ -82,6 +97,15 @@ fn main() {
     };
     let args = Cli::parse_from(cli_args);
     let output = Output::new(args.json);
+
+    // Translate top-level workspace selection into the process-wide override
+    // honored by Workspace::discover(). One-shot — subsequent flag parses
+    // (we only do one) wouldn't be applied anyway.
+    if args.global_space {
+        werk_shared::workspace::set_workspace_override("global");
+    } else if let Some(name) = args.workspace.as_deref() {
+        werk_shared::workspace::set_workspace_override(name);
+    }
 
     // Check mutation status before dispatch consumes the command.
     let is_mutation = args.command.is_mutation();
@@ -235,26 +259,45 @@ fn main() {
             search,
         } => {
             let sig = werk::commands::load_signal_thresholds();
-            let params = werk::commands::list::ListParams {
-                all,
-                status,
-                overdue,
-                approaching: approaching.map(|opt| opt.unwrap_or(sig.approaching_days)),
-                stale: stale.map(|opt| opt.unwrap_or(sig.stale_days)),
-                held,
-                positioned,
-                root,
-                parent,
-                has_deadline,
-                changed,
-                signals,
-                sort,
-                reverse,
-                tree,
-                long,
-                search,
+            let parse_dur = |name: &str, s: String| werk_shared::duration::parse_days(&s)
+                .map_err(|e| werk::error::WerkError::InvalidInput(format!("--{name}: {e}")));
+            let approaching_days = match approaching {
+                None => Ok(None),
+                Some(None) => Ok(Some(sig.approaching_days)),
+                Some(Some(s)) => parse_dur("approaching", s).map(Some),
             };
-            werk::commands::list::cmd_list(&output, params)
+            let stale_days = match stale {
+                None => Ok(None),
+                Some(None) => Ok(Some(sig.stale_days)),
+                Some(Some(s)) => parse_dur("stale", s).map(Some),
+            };
+            match (approaching_days, stale_days) {
+                (Err(e), _) | (_, Err(e)) => Err(e),
+                (Ok(approaching), Ok(stale)) => {
+                    let params = werk::commands::list::ListParams {
+                        all,
+                        status,
+                        overdue,
+                        approaching,
+                        stale,
+                        held,
+                        positioned,
+                        root,
+                        parent,
+                        has_deadline,
+                        changed,
+                        signals,
+                        sort: sort.unwrap_or_else(|| {
+                            werk::commands::config_default_string("list.default_sort", "urgency")
+                        }),
+                        reverse,
+                        tree,
+                        long,
+                        search,
+                    };
+                    werk::commands::list::cmd_list(&output, params)
+                }
+            }
         }
         Commands::Tree {
             id,
@@ -279,10 +322,20 @@ fn main() {
             days,
             repair,
             yes,
-        } => werk::commands::stats::cmd_stats(
-            &output, temporal, attention, changes, traj, engagement, drift, health, all, days,
-            repair, yes,
-        ),
+        } => {
+            let days_value = match days {
+                None => Ok(werk::commands::config_default("stats.default_window_days", 7)),
+                Some(s) => werk_shared::duration::parse_days(&s)
+                    .map_err(|e| werk::error::WerkError::InvalidInput(format!("--days: {e}"))),
+            };
+            match days_value {
+                Err(e) => Err(e),
+                Ok(d) => werk::commands::stats::cmd_stats(
+                    &output, temporal, attention, changes, traj, engagement, drift, health, all,
+                    d, repair, yes,
+                ),
+            }
+        }
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
         Commands::Hooks { command } => {
             use werk::commands::HooksCommand;
@@ -301,7 +354,10 @@ fn main() {
                     global,
                 } => cmd_hooks_rm(&output, event, command, global),
                 HooksCommand::Test { event, tension } => cmd_hooks_test(&output, event, tension),
-                HooksCommand::Log { tail } => cmd_hooks_log(&output, tail),
+                HooksCommand::Log { tail } => cmd_hooks_log(
+                    &output,
+                    tail.unwrap_or_else(|| werk::commands::config_default("hooks.log_tail", 20)),
+                ),
                 HooksCommand::Install { git, hooks } => cmd_hooks_install(&output, git, hooks),
             }
         }
@@ -318,26 +374,23 @@ fn main() {
                 Err(e) => Err(e),
             }
         }
-        Commands::Serve { port } => {
-            let workspace = werk_shared::Workspace::discover()
-                .map_err(|e| werk::error::WerkError::IoError(e.to_string()));
-            match workspace {
-                Ok(ws) => {
-                    let rt = tokio::runtime::Runtime::new().map_err(|e| {
-                        werk::error::WerkError::IoError(format!("failed to create runtime: {}", e))
-                    });
-                    match rt {
-                        Ok(rt) => rt.block_on(async {
-                            werk_web::serve(ws.root().to_path_buf(), port)
-                                .await
-                                .map_err(|e| werk::error::WerkError::IoError(e.to_string()))
-                        }),
-                        Err(e) => Err(e),
-                    }
-                }
-                Err(e) => Err(e),
-            }
-        }
+        Commands::Serve {
+            port,
+            port_range,
+            host,
+            global,
+            daemon_target,
+            workspace_path,
+        } => werk::commands::serve::cmd_serve(
+            port,
+            port_range,
+            host,
+            global,
+            daemon_target,
+            workspace_path,
+        ),
+        Commands::Daemon { command } => werk::commands::daemon::cmd_daemon(&output, command),
+        Commands::Spaces { command } => werk::commands::spaces::cmd_spaces(&output, command),
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)
         }
