@@ -9,6 +9,23 @@
 
 use crate::error::{Result, WerkError};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+/// Process-wide workspace override set by the top-level `-w` / `-g` flags
+/// in main(). Honored by `Workspace::discover()`. Avoids the unsafe
+/// `std::env::set_var` path while staying global.
+static WORKSPACE_OVERRIDE: OnceLock<String> = OnceLock::new();
+
+/// Set the in-process workspace selection. Idempotent: subsequent calls are
+/// silently ignored (top-level flags are parsed once, in main()).
+pub fn set_workspace_override(name: &str) {
+    let _ = WORKSPACE_OVERRIDE.set(name.to_string());
+}
+
+/// Read the in-process workspace selection, if any.
+pub fn workspace_override() -> Option<&'static str> {
+    WORKSPACE_OVERRIDE.get().map(|s| s.as_str())
+}
 
 /// A werk workspace.
 ///
@@ -24,12 +41,45 @@ pub struct Workspace {
 impl Workspace {
     /// Discover a workspace starting from the current directory.
     ///
-    /// Walks up from CWD looking for `.werk/`, falling back to `~/.werk/`.
+    /// Resolution order:
+    /// 1. In-process override set by `set_workspace_override` (top-level
+    ///    `-w` / `-g` flags).
+    /// 2. `WERK_WORKSPACE` env var (set by callers spawning werk as a
+    ///    child process).
+    /// 3. Walk up from CWD looking for `.werk/`.
+    /// 4. Fall back to `~/.werk/`.
+    ///
+    /// Names are resolved through `crate::registry::Registry`; the reserved
+    /// name "global" always maps to `~/.werk/`.
     pub fn discover() -> Result<Self> {
+        if let Some(name) = workspace_override() {
+            if !name.is_empty() {
+                return Self::resolve_name(name);
+            }
+        }
+        if let Ok(name) = std::env::var("WERK_WORKSPACE") {
+            if !name.is_empty() {
+                return Self::resolve_name(&name);
+            }
+        }
         let cwd = std::env::current_dir()
             .map_err(|e| WerkError::IoError(format!("failed to get current directory: {}", e)))?;
 
         Self::discover_from(&cwd)
+    }
+
+    /// Resolve a workspace by registered name. "global" is always implicit.
+    pub fn resolve_name(name: &str) -> Result<Self> {
+        if name == crate::registry::GLOBAL_NAME {
+            return Self::global();
+        }
+        let reg = crate::registry::Registry::load()?;
+        let entry = reg.get(name).ok_or_else(|| {
+            WerkError::IoError(format!(
+                "no registered space named '{name}'. Run `werk spaces list` or register one with `werk spaces register <name> <path>`."
+            ))
+        })?;
+        Self::discover_from(&entry.path)
     }
 
     /// Discover a workspace starting from a specific directory.
@@ -67,6 +117,26 @@ impl Workspace {
             start,
             dirs::home_dir().as_deref(),
         ))
+    }
+
+    /// Open the global workspace at `~/.werk/`.
+    ///
+    /// Errors if `~/.werk/` does not exist. Use `Workspace::init(path, true)`
+    /// to create it.
+    pub fn global() -> Result<Self> {
+        let home = dirs::home_dir()
+            .ok_or_else(|| WerkError::IoError("cannot determine home directory".to_string()))?;
+        let werk_dir = home.join(".werk");
+        if !werk_dir.exists() {
+            return Err(WerkError::no_workspace_with_context(
+                &home,
+                Some(&home),
+            ));
+        }
+        Ok(Self {
+            root: home,
+            werk_dir,
+        })
     }
 
     /// Initialize a workspace at the given path.

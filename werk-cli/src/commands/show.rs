@@ -402,8 +402,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             } else {
                 let days_left = (urg.time_remaining as f64 / 86400.0).floor() as i64;
                 println!(
-                    "  Urgency:  {:.0}% elapsed ({} days remaining)",
-                    pct, days_left
+                    "  Urgency:  {} — {:.0}% elapsed ({} days remaining)",
+                    werk_shared::value_labels::urgency_label(urg.value),
+                    pct,
+                    days_left,
                 );
             }
         }

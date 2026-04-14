@@ -84,7 +84,22 @@ pub fn flush_to_file(workspace: &Workspace) -> Result<FlushOutcome> {
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let now = Utc::now();
 
-    let mut sorted = tensions;
+    // Config: flush.include_released controls whether released tensions are
+    // written to tensions.json. Default true preserves existing behavior.
+    let include_released = crate::config::Config::load(workspace)
+        .ok()
+        .and_then(|c| c.get("flush.include_released").cloned())
+        .map(|v| v != "false")
+        .unwrap_or(true);
+
+    let mut sorted: Vec<_> = if include_released {
+        tensions
+    } else {
+        tensions
+            .into_iter()
+            .filter(|t| t.status != TensionStatus::Released)
+            .collect()
+    };
     sorted.sort_by(|a, b| match (a.short_code, b.short_code) {
         (Some(sa), Some(sb)) => sa.cmp(&sb),
         (Some(_), None) => std::cmp::Ordering::Less,

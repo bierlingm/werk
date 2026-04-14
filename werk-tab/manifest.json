@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "werk tab",
+  "version": "0.1.0",
+  "description": "Replaces the new tab page with the werk frontier of action.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:3749/*",
+    "http://localhost:3750/*",
+    "http://localhost:3751/*",
+    "http://localhost:3752/*",
+    "http://localhost:3753/*",
+    "http://localhost:3754/*",
+    "http://localhost:3755/*",
+    "http://localhost:3756/*",
+    "http://localhost:3757/*",
+    "http://localhost:3758/*",
+    "http://localhost:3759/*"
+  ],
+  "chrome_url_overrides": { "newtab": "index.html" }
+}
