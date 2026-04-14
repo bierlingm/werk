@@ -207,6 +207,35 @@ impl StoreHandle {
 pub struct AppState {
     store: StoreHandle,
     tx: broadcast::Sender<SseEvent>,
+    workspace_root: std::path::PathBuf,
+}
+
+#[derive(Serialize)]
+struct WorkspaceJson {
+    path: String,
+    name: String,
+    is_global: bool,
+}
+
+impl WorkspaceJson {
+    fn from_entry(e: &werk_shared::daemon_workspaces::WorkspaceEntry) -> Self {
+        Self {
+            path: e.path.display().to_string(),
+            name: e.name.clone(),
+            is_global: e.is_global,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct WorkspacesResponse {
+    current: WorkspaceJson,
+    available: Vec<WorkspaceJson>,
+}
+
+#[derive(Deserialize)]
+pub struct SelectWorkspaceRequest {
+    path: String,
 }
 
 #[derive(Clone, Serialize, Debug)]
@@ -310,9 +339,13 @@ fn err_response(status: StatusCode, msg: impl Into<String>) -> Response {
 
 /// Build the Axum router. Takes the workspace root path for store discovery.
 pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
-    let store = StoreHandle::spawn(store_path)?;
+    let store = StoreHandle::spawn(store_path.clone())?;
     let (tx, _) = broadcast::channel::<SseEvent>(64);
-    let state = Arc::new(AppState { store, tx });
+    let state = Arc::new(AppState {
+        store,
+        tx,
+        workspace_root: store_path,
+    });
 
     Ok(Router::new()
         .route("/", get(serve_frontend))
@@ -323,20 +356,89 @@ pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
         .route("/api/tensions/{id}/resolve", post(resolve_tension))
         .route("/api/tensions/{id}/release", post(release_tension))
         .route("/api/tensions/{id}/reopen", post(reopen_tension))
+        .route("/api/workspace", get(get_workspace))
+        .route("/api/workspaces", get(get_workspaces))
+        .route("/api/workspace/select", post(select_workspace))
         .route("/api/events", get(sse_handler))
         .layer(CorsLayer::permissive())
         .with_state(state))
 }
 
-/// Start the server on the given port.
+async fn get_workspace(State(state): State<Arc<AppState>>) -> Response {
+    let entry = werk_shared::daemon_workspaces::WorkspaceEntry::from_path(
+        state.workspace_root.clone(),
+    );
+    Json(WorkspaceJson::from_entry(&entry)).into_response()
+}
+
+async fn get_workspaces(State(state): State<Arc<AppState>>) -> Response {
+    let current = werk_shared::daemon_workspaces::WorkspaceEntry::from_path(
+        state.workspace_root.clone(),
+    );
+    let available = match werk_shared::daemon_workspaces::list() {
+        Ok((_, list)) => list,
+        Err(_) => vec![current.clone()],
+    };
+    Json(WorkspacesResponse {
+        current: WorkspaceJson::from_entry(&current),
+        available: available.iter().map(WorkspaceJson::from_entry).collect(),
+    })
+    .into_response()
+}
+
+async fn select_workspace(Json(req): Json<SelectWorkspaceRequest>) -> Response {
+    let path = std::path::PathBuf::from(&req.path);
+    if !path.join(".werk").exists() {
+        return err_response(
+            StatusCode::BAD_REQUEST,
+            format!("{} is not a werk workspace", path.display()),
+        );
+    }
+    if let Err(e) = werk_shared::daemon_workspaces::set_active(&path) {
+        return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+    // Exit so the supervisor (launchd / systemd) restarts us against the new
+    // workspace. Sleep briefly to let the response flush before tearing down.
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        std::process::exit(0);
+    });
+    let entry = werk_shared::daemon_workspaces::WorkspaceEntry::from_path(path);
+    (StatusCode::ACCEPTED, Json(WorkspaceJson::from_entry(&entry))).into_response()
+}
+
+/// Start the server on the given host and port.
 pub async fn serve(
     store_path: std::path::PathBuf,
+    host: String,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let app = build_router(store_path)?;
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    eprintln!("werk web → http://localhost:{}", port);
+    let ip: std::net::IpAddr = host.parse().map_err(|e| {
+        Box::<dyn std::error::Error>::from(format!("invalid host '{host}': {e}"))
+    })?;
+    let addr = std::net::SocketAddr::new(ip, port);
+    let display_host = if host == "127.0.0.1" || host == "0.0.0.0" {
+        "localhost".to_string()
+    } else {
+        host
+    };
+    eprintln!("werk web → http://{display_host}:{port}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+/// Start the server on an already-bound listener.
+///
+/// Use this when the caller needs to pick the port itself (e.g. scanning a
+/// range for a free port and writing the chosen port to disk before handing
+/// control over).
+pub async fn serve_on(
+    store_path: std::path::PathBuf,
+    listener: tokio::net::TcpListener,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let app = build_router(store_path)?;
     axum::serve(listener, app).await?;
     Ok(())
 }

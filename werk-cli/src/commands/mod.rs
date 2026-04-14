@@ -26,9 +26,12 @@ pub mod recur;
 pub mod release;
 pub mod reopen;
 pub mod resolve;
+pub mod daemon;
 pub mod rm;
+pub mod serve;
 pub mod show;
 pub mod snooze;
+pub mod spaces;
 pub mod split;
 pub mod stats;
 pub mod tree;
@@ -75,6 +78,35 @@ pub fn analysis_thresholds_from(workspace: &Workspace) -> AnalysisThresholds {
         .unwrap_or_default()
 }
 
+/// Read a parsed config value (local workspace first, falling back to global),
+/// or the given fallback if the key is unset or parses wrong. Resolves level
+/// labels (e.g. `"a week"` → `"7"`) before parsing.
+pub fn config_default<T: std::str::FromStr>(key: &str, fallback: T) -> T {
+    use werk_shared::config_registry::resolve_value;
+    let config = Workspace::discover()
+        .ok()
+        .and_then(|ws| Config::load(&ws).ok())
+        .or_else(|| Config::load_global().ok());
+    config
+        .and_then(|c| c.get(key).cloned())
+        .map(|v| resolve_value(key, &v))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(fallback)
+}
+
+/// Like [`config_default`] but for String-valued keys where an empty string
+/// should be treated as "not set" (e.g. `editor.command`).
+pub fn config_default_string(key: &str, fallback: &str) -> String {
+    let config = Workspace::discover()
+        .ok()
+        .and_then(|ws| Config::load(&ws).ok())
+        .or_else(|| Config::load_global().ok());
+    config
+        .and_then(|c| c.get(key).cloned())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 /// CLI subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Commands {
@@ -85,9 +117,9 @@ pub enum Commands {
         global: bool,
     },
 
-    /// Get or set configuration values. Run without subcommand for interactive menu.
+    /// Get or set configuration values. Run without subcommand to list all values.
     Config {
-        /// Config subcommand (omit for interactive menu).
+        /// Config subcommand (omit to list all values).
         #[command(subcommand)]
         command: Option<ConfigCommand>,
     },
@@ -612,13 +644,15 @@ Examples:
         #[arg(long)]
         overdue: bool,
 
-        /// Deadline within N days, or overdue (default: 14).
+        /// Deadline within N days, or overdue. Accepts integer (14), relative
+        /// (+2w, +1m), or named (a week, two weeks, a month). Default: config.
         #[arg(long)]
-        approaching: Option<Option<i64>>,
+        approaching: Option<Option<String>>,
 
-        /// No mutations in N days (default: 14).
+        /// No mutations in N days. Accepts integer (14), relative (+2w, +1m),
+        /// or named (a few days, a week, two weeks). Default: config.
         #[arg(long)]
-        stale: Option<Option<i64>>,
+        stale: Option<Option<String>>,
 
         /// Only held (unpositioned) tensions.
         #[arg(long)]
@@ -649,8 +683,9 @@ Examples:
         signals: bool,
 
         /// Sort field: urgency, name, deadline, created, updated, position.
-        #[arg(long, default_value = "urgency")]
-        sort: String,
+        /// Defaults to `list.default_sort` in config (fallback: `urgency`).
+        #[arg(long)]
+        sort: Option<String>,
 
         /// Reverse sort order.
         #[arg(long, short)]
@@ -756,9 +791,11 @@ Examples:
         #[arg(long)]
         all: bool,
 
-        /// Time window in days for windowed sections.
-        #[arg(long, default_value = "7")]
-        days: i64,
+        /// Time window for windowed sections. Accepts integer (7), relative
+        /// (+2w, +1m), or named (today, a week, two weeks, a month).
+        /// Defaults to `stats.default_window_days` in config.
+        #[arg(long)]
+        days: Option<String>,
 
         /// Repair: purge noop mutations (requires --health).
         #[arg(long)]
@@ -781,11 +818,70 @@ Examples:
     /// protocol-capable harness. The third interface surface alongside TUI and CLI.
     Mcp,
 
+    /// Manage the registry of named werk spaces.
+    ///
+    /// The registry lives in `~/.werk/config.toml` under `[workspaces]` and
+    /// maps short names to absolute paths. Registered names are accepted
+    /// wherever a space identifier is expected — `werk daemon point`, the
+    /// in-tab switcher, and (eventually) `werk -w <name>`.
+    #[command(after_help = "\
+Examples:
+  werk spaces list                        Show registered spaces
+  werk spaces register desk ~/code/werk   Add a registration
+  werk spaces create journal ~/journal    Init + register in one step
+  werk spaces scan                        Walk ~/ for unregistered .werk/ dirs
+  werk spaces rename desk werk            Rename a registration
+  werk spaces unregister journal          Drop a registration")]
+    Spaces {
+        #[command(subcommand)]
+        command: SpacesCommand,
+    },
+
+    /// Manage the background `werk serve --global` process.
+    ///
+    /// Installs an OS-level supervisor (launchd on macOS, systemd --user on Linux)
+    /// that keeps the global web API running so the browser extension and other
+    /// local consumers always find werk at a known address.
+    #[command(after_help = "\
+Examples:
+  werk daemon install         Install and start the daemon
+  werk daemon status          Check if the daemon is running
+  werk daemon logs            Tail the daemon log
+  werk daemon uninstall       Stop and remove the daemon")]
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommand,
+    },
+
     /// Launch the web interface (browser-based structural dynamics instrument).
     Serve {
         /// Port to listen on.
-        #[arg(short, long, default_value = "3749")]
-        port: u16,
+        /// Defaults to `serve.port` in config (fallback: 3749).
+        #[arg(short, long, conflicts_with = "port_range")]
+        port: Option<u16>,
+
+        /// Port range to scan (e.g. "3749-3759"). Binds the first free port.
+        /// Used by `werk daemon` so the server stays up when the default port is taken.
+        #[arg(long, value_name = "RANGE")]
+        port_range: Option<String>,
+
+        /// Bind host.
+        /// Defaults to `serve.host` in config (fallback: 127.0.0.1).
+        #[arg(long)]
+        host: Option<String>,
+
+        /// Target the global workspace (`~/.werk/`) regardless of CWD.
+        #[arg(short = 'g', long, conflicts_with_all = ["daemon_target", "workspace_path"])]
+        global: bool,
+
+        /// Read the active workspace from `~/.werk/config.toml` (`daemon.workspace_path`).
+        /// Used by the supervised `werk daemon` so the in-tab switcher takes effect on restart.
+        #[arg(long, conflicts_with_all = ["global", "workspace_path"])]
+        daemon_target: bool,
+
+        /// Serve a specific workspace path. Mutually exclusive with --global / --daemon-target.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["global", "daemon_target"])]
+        workspace_path: Option<std::path::PathBuf>,
     },
 
     /// Manage lifecycle hooks.
@@ -885,6 +981,100 @@ pub enum NoteCommand {
     },
 }
 
+/// Spaces subcommands.
+#[derive(Debug, Subcommand)]
+pub enum SpacesCommand {
+    /// List registered spaces (the global space is always implicit).
+    List {
+        /// Show full absolute paths instead of basenames.
+        #[arg(long)]
+        path: bool,
+    },
+
+    /// Register an existing workspace under a name.
+    Register {
+        /// Name to use (a-z, 0-9, dash, underscore; reserved: "global").
+        name: String,
+        /// Workspace root (parent of `.werk/`).
+        path: std::path::PathBuf,
+    },
+
+    /// Drop a registration. The workspace files are not touched.
+    Unregister {
+        name: String,
+    },
+
+    /// Initialize a fresh workspace at `path` and register it under `name`.
+    Create {
+        name: String,
+        path: std::path::PathBuf,
+    },
+
+    /// Walk `~/` for `.werk/` directories and report registered vs. unregistered.
+    Scan {
+        /// Maximum recursion depth (default: 6).
+        #[arg(long, default_value_t = 6)]
+        depth: usize,
+
+        /// Auto-register every unregistered hit using a derived name.
+        #[arg(long)]
+        register_all: bool,
+    },
+
+    /// Rename a registration. Path is unchanged.
+    Rename {
+        old: String,
+        new: String,
+    },
+}
+
+/// Daemon subcommands.
+#[derive(Debug, Subcommand)]
+pub enum DaemonCommand {
+    /// Install and start the daemon (launchd on macOS, systemd --user on Linux).
+    Install {
+        /// Port range to scan. Defaults to 3749-3759.
+        #[arg(long, value_name = "RANGE")]
+        port_range: Option<String>,
+
+        /// Overwrite an existing daemon installation without prompting.
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Stop and remove the daemon.
+    Uninstall,
+
+    /// Show whether the daemon is running and which port it's bound to.
+    Status,
+
+    /// Tail the daemon log.
+    Logs {
+        /// Number of lines to tail.
+        #[arg(short = 'n', long, default_value_t = 40)]
+        lines: usize,
+
+        /// Follow the log (like `tail -f`).
+        #[arg(short, long)]
+        follow: bool,
+    },
+
+    /// Point the daemon at a different workspace and restart it.
+    ///
+    /// Accepts a registered name (from `werk spaces register`) or an absolute
+    /// path. Persists the selection in `~/.werk/config.toml` and triggers the
+    /// supervisor to restart the serve process so the change takes effect
+    /// immediately. Use `werk daemon point --global` to return to `~/.werk/`.
+    Point {
+        /// Registered name or workspace path. Omit with --global.
+        target: Option<String>,
+
+        /// Point at the global workspace (`~/.werk/`).
+        #[arg(short = 'g', long, conflicts_with = "target")]
+        global: bool,
+    },
+}
+
 /// Config subcommands.
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
@@ -903,8 +1093,97 @@ pub enum ConfigCommand {
         value: String,
     },
 
+    /// Remove a configuration key (any key, including hooks and unknowns).
+    Unset {
+        /// Configuration key to remove.
+        key: String,
+    },
+
+    /// Open `$EDITOR` on the config file directly. On save, report the diff
+    /// vs. the pre-edit state. Fails with an error in non-interactive contexts
+    /// (no TTY). Use `set`/`unset`/`reset` in scripts.
+    Edit,
+
+    /// Show only the keys whose value differs from the registry default,
+    /// plus all hook and unknown keys.
+    Diff,
+
+    /// Reset registry keys to their defaults.
+    ///
+    /// With no argument: reset every registered key to its default (hooks
+    /// and unknown keys are left alone — use `unset` for those).
+    /// With a group name (framing, analysis, action, persistence, display):
+    /// reset every key in that group.
+    /// With a key name: reset just that one registry key.
+    Reset {
+        /// Key, group name, or omit for all registry keys.
+        target: Option<String>,
+    },
+
+    /// Export the current config to a TOML preset file. Includes a header
+    /// comment with werk version and an FNV-1a hash of the values for
+    /// regression detection on re-import.
+    Export {
+        /// Destination path. Overwrites if it exists.
+        path: std::path::PathBuf,
+    },
+
+    /// Import a TOML preset. Every registry key is validated against its
+    /// declared Kind before the import is applied. Replaces the current
+    /// config (not a merge).
+    Import {
+        /// Source path.
+        path: std::path::PathBuf,
+
+        /// Merge into current config instead of replacing.
+        #[arg(long)]
+        merge: bool,
+    },
+
+    /// Start a config session — snapshots current values. Subsequent changes
+    /// are still applied to config.toml live; `abort` reverts to the snapshot.
+    Begin,
+
+    /// Show diff between current config and the active session snapshot.
+    Status,
+
+    /// Close the active session and record an audit entry.
+    Commit {
+        /// Message describing the batch of changes.
+        #[arg(short, long)]
+        message: Option<String>,
+    },
+
+    /// Revert config to the session's initial snapshot and discard the session.
+    Abort,
+
+    /// Named curated presets — practice stances expressed as config bundles.
+    Preset {
+        #[command(subcommand)]
+        command: PresetCommand,
+    },
+
     /// Show config file path(s).
     Path,
+}
+
+/// Subcommands for `werk config preset`.
+#[derive(Debug, Subcommand)]
+pub enum PresetCommand {
+    /// List all shipped presets.
+    List,
+
+    /// Show the values a preset would apply.
+    Show {
+        /// Preset name.
+        name: String,
+    },
+
+    /// Apply a preset — writes each of its values via the Set handler.
+    Apply {
+        /// Preset name.
+        name: String,
+    },
 }
 
 /// Hooks subcommands.
@@ -960,8 +1239,9 @@ pub enum HooksCommand {
     /// Show hook execution log (from .werk/audit.jsonl).
     Log {
         /// Number of recent entries to show.
-        #[arg(short, long, default_value = "20")]
-        tail: usize,
+        /// Defaults to `hooks.log_tail` in config (fallback: 20).
+        #[arg(short, long)]
+        tail: Option<usize>,
     },
 
     /// Install shipped default hooks or git integration.
