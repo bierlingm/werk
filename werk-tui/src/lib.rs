@@ -2,37 +2,37 @@
 
 //! werk-tui: The Operative Instrument.
 
-pub mod state;
-pub mod glyphs;
-pub mod theme;
-pub mod msg;
 pub mod app;
-pub mod layout;
-pub mod focus;
-pub mod render;
 pub mod deck;
 pub mod deck_zones;
-pub mod update;
+pub mod feedback;
+pub mod focus;
+pub mod glyphs;
+pub mod help;
 pub mod helpers;
 pub mod horizon;
+pub mod inspector;
+pub mod layout;
+pub mod logbase;
+pub mod modal;
+pub mod msg;
+pub mod palette;
+pub mod persistence;
+pub mod render;
 pub mod search;
 pub mod session_log;
+pub mod state;
 pub mod survey;
 pub mod survey_tree;
-pub mod logbase;
+pub mod theme;
 pub mod toast;
-pub mod modal;
 pub mod undo;
-pub mod palette;
-pub mod feedback;
-pub mod inspector;
-pub mod persistence;
-pub mod help;
+pub mod update;
 
 pub use app::InstrumentApp;
 
 use std::collections::HashMap;
-use sd_core::Store;
+use werk_core::Store;
 use werk_shared::Workspace;
 
 use crate::state::FieldEntry;
@@ -44,9 +44,7 @@ pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
     // Backup and locking now handled by Store::init()
     let store = workspace.open_store().map_err(|e| e.to_string())?;
 
-    let tensions = store
-        .list_tensions()
-        .map_err(|e| e.to_string())?;
+    let tensions = store.list_tensions().map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now();
 
@@ -66,11 +64,15 @@ pub fn load_field() -> Result<(Store, Vec<FieldEntry>), String> {
         .map(|t| {
             let child_count = child_counts.get(&t.id).copied().unwrap_or(0);
             let mutations = store.get_mutations(&t.id).unwrap_or_default();
-            let last_reality_update = mutations.iter().rev()
+            let last_reality_update = mutations
+                .iter()
+                .rev()
                 .find(|m| m.field() == "actual" || m.field() == "created")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(t.created_at);
-            let last_status_change = mutations.iter().rev()
+            let last_status_change = mutations
+                .iter()
+                .rev()
                 .find(|m| m.field() == "status")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(t.created_at);
@@ -120,8 +122,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Create file-backed state registry for workspace persistence.
     let registry = crate::persistence::create_registry();
 
-    let mut config = ProgramConfig::fullscreen()
-        .with_diff_config(diff_config);
+    let mut config = ProgramConfig::fullscreen().with_diff_config(diff_config);
     if let Some(ref reg) = registry {
         config = config.with_registry(reg.clone());
     }
@@ -134,12 +135,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(_) => {
             let app = InstrumentApp::new_empty();
-            let fallback_config = ProgramConfig::fullscreen()
-                .with_diff_config(
-                    RuntimeDiffConfig::default()
-                        .with_bayesian_enabled(false)
-                        .with_dirty_rows_enabled(false),
-                );
+            let fallback_config = ProgramConfig::fullscreen().with_diff_config(
+                RuntimeDiffConfig::default()
+                    .with_bayesian_enabled(false)
+                    .with_dirty_rows_enabled(false),
+            );
             let mut program = Program::with_config(app, fallback_config)?;
             program.run()
         }

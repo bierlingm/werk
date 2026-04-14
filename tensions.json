@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-13T17:27:04Z",
+  "flushed_at": "2026-04-14T14:53:49Z",
   "summary": {
-    "active": 42,
-    "released": 57,
+    "active": 55,
+    "released": 63,
     "resolved": 124,
-    "total": 223
+    "total": 242
   },
   "tensions": [
     {
@@ -635,7 +635,7 @@
       "status": "Resolved"
     },
     {
-      "actual": "Second response received from Skinner/Claude with: Mist routing model (5-tier), full Prism cycle on MRP thesis (6-model adversarial), and hook payload spec. Comprehensive reply drafted and sent covering: type corrections (urgency nullable/>1.0, trajectory enum, risk booleans), Prism response accepting Blue precision fixes, articulating creative-vs-reactive orientation thesis and anti-capture traceability, raising observational analysis design question. HookEvent enriched with parent_id and current_reality per spec. post_release hook added. Awaiting their survey --json reader and a real tension to run through Prism.",
+      "actual": "in-person session with Skinner happening now. Playing with werk together. Prior state: comprehensive reply sent covering type corrections, Prism response, creative-vs-reactive orientation thesis, observational analysis design question. HookEvent enriched with parent_id and current_reality. Awaiting hands-on exploration and real tension run-through.",
       "created_at": "2026-03-24T20:30:15.346756+00:00",
       "desired": "Waterlight collaboration has a clear shape — what Mist gets from werk's structural urgency, what the hook contract looks like, and how AI composition (not functional coupling) handles the interpretive layer",
       "horizon": null,
@@ -998,9 +998,9 @@
       "status": "Released"
     },
     {
-      "actual": "unspoken intent since the beginning. werk -g currently just means a workspace at ~/.werk. The deeper vision: global workspace knows about all registered local workspaces. Cross-field patterns (where is energy going, which fields are stagnant). If root level of a single workspace is a command center for that field, global is the command center for all fields. Connects to logbase (cross-workspace query), survey view (cross-field temporal overview), and the mobile app (which field am I looking at right now).",
+      "actual": "~/.werk/ exists as a global fallback workspace (werk init -g, werk -g). No registry of other spaces. No aggregate view. No cross-space addressing. The design for the global space is now resolved in #242 — unified space model, three-tier discovery, cross-space references as generalized edges. Vocabulary settled: 'space' (not workspace, field, domain). Children: #100 (cross-space addressing), #242 (global space design, resolved), #239 (activity classification), #236 (expanded envelope).",
       "created_at": "2026-03-26T11:36:55.312911+00:00",
-      "desired": "a global workspace exists — view and act across all local werk workspaces from one place",
+      "desired": "a global space exists at ~/.werk/ — view and act across all registered spaces from one place. The global space is a normal space (same struct, same operations) that also serves as the registry of other spaces. werk -g accesses it. werk spaces manages registration. The aggregate command center shows vitals, attention, and recent activity across all registered spaces.",
       "horizon": null,
       "id": "01KMMYXS8G84H2XTF189R4ZQZB",
       "parent_id": null,
@@ -1042,9 +1042,9 @@
       "status": "Resolved"
     },
     {
-      "actual": "short codes work within a single workspace; no addressing scheme for cross-workspace references; ULIDs remain internal primary keys but are never needed at the user level",
+      "actual": "short codes work within a single space. No cross-space addressing. ULIDs are internal-only. The design is now resolved in #242: prefixed codes (werk:42) resolve through the global space config registry's [workspaces] section, which maps name → path. The address format, resolution mechanism, and relationship to generalized edges (#154) are defined. No implementation yet.",
       "created_at": "2026-03-27T17:21:06.352779+00:00",
-      "desired": "cross-workspace addressing scheme exists — workspace-prefixed short codes (e.g. werk:42, @global:42) distinguish tensions when looking across workspaces without exposing ULIDs to the user",
+      "desired": "cross-space addressing scheme exists — space-prefixed short codes (e.g. werk:42, journal:3) resolve through the global space's config registry. Bare short codes address within the current space; prefixed codes address across spaces. The global space config is the namespace resolution table. Deep addresses extend to sub-entities (#42.n3, #42~e2) and external targets (files, URLs) via generalized edges (#154).",
       "horizon": null,
       "id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
@@ -2459,6 +2459,215 @@
       "position": null,
       "short_code": 233,
       "status": "Resolved"
+    },
+    {
+      "actual": "No adopt command exists. Setting up a new repo requires manual steps: werk init, but setup, copying .githooks/, writing CLAUDE.md. Each step must be discovered and run separately.",
+      "created_at": "2026-04-14T09:52:31.778076+00:00",
+      "desired": "werk adopt initializes a repo for werk-managed practice — werk init + GitButler setup + hook installation + CLAUDE.md generation in one gesture",
+      "horizon": null,
+      "id": "01KP5PG9H2WTG4P85NVFA40A1K",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 234,
+      "status": "Released"
+    },
+    {
+      "actual": "No hook template system exists. ShippedHooks in werk-shared has 5 hardcoded Bash scripts. Each new repo needs hand-crafted .githooks/pre-commit-user. No tech-stack detection or template selection.",
+      "created_at": "2026-04-14T09:52:48.561218+00:00",
+      "desired": "werk ships hook templates that configure per-tech-stack pre-commit checks — prek-based, composable, one .prek.toml per project",
+      "horizon": null,
+      "id": "01KP5PGSXHVHAB91DVKCW1HJGK",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 235,
+      "status": "Released"
+    },
+    {
+      "actual": "werk field does not exist. #96 defines the need for a global workspace but has no implementation. No manifest, no discovery, no classification, no cross-workspace addressing. Workspaces are siloed — each repo is independent.",
+      "created_at": "2026-04-14T09:52:51.146459+00:00",
+      "desired": "werk field provides the expanded envelope — viewing and acting across all local werk workspaces by applying the four frameworks at field-scale, without introducing new conceptual machinery",
+      "horizon": null,
+      "id": "01KP5PGWEAF515GXEWK1NZ12T5",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "position": null,
+      "short_code": 236,
+      "status": "Released"
+    },
+    {
+      "actual": "GitButler usage is documented in CLAUDE.md but not exposed as werk commands. The .githooks/pre-commit enforcement hook is GitButler-managed but not werk-managed. No way to check or fix GB status from werk.",
+      "created_at": "2026-04-14T09:52:53.691853+00:00",
+      "desired": "werk gitbutler provides explicit GitButler integration — setup, status, and enforcement as a first-class werk surface",
+      "horizon": null,
+      "id": "01KP5PGYXVK4DKAD0AV1WVZ59W",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 237,
+      "status": "Released"
+    },
+    {
+      "actual": "CLAUDE.md is hand-written and must be manually kept in sync. No generator exists. When tech stack or hooks change, CLAUDE.md drifts from reality.",
+      "created_at": "2026-04-14T09:52:56.239211+00:00",
+      "desired": "werk docs claude generates per-repo CLAUDE.md from werk's knowledge of the project — tech stack, GitButler status, hooks, and conventions",
+      "horizon": null,
+      "id": "01KP5PH1DFDMWNASS1MF3FNKZ6",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 238,
+      "status": "Released"
+    },
+    {
+      "actual": "No repo classification exists. Activity analysis is manual (git log inspection). All workspaces get the same treatment regardless of engagement level. No manifest tracks activity state.",
+      "created_at": "2026-04-14T09:52:58.813519+00:00",
+      "desired": "werk classifies workspaces by activity state — active, dormant, reference — surfaced in field status and used to calibrate interaction (hook strictness, setup depth) proportional to actual engagement",
+      "horizon": null,
+      "id": "01KP5PH3XXZEK5W46G920FJQCB",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "position": null,
+      "short_code": 239,
+      "status": "Released"
+    },
+    {
+      "actual": "werk hooks install offers 5 pre-commit-only shipped hooks (flush, readme-tree, auto-stage, guard-delete, audit-log). No hooks exist for session boundaries, workspace entry, or structural transitions. The hook system has no lifecycle awareness beyond commit time.",
+      "created_at": "2026-04-14T11:16:28.256719+00:00",
+      "desired": "werk hooks ships session-lifecycle hooks and more useful workhorse defaults — hook coverage extends beyond pre-commit to session open, session close, and structural transitions",
+      "horizon": null,
+      "id": "01KP5V9ZZ01AZK13PFRNCRKHFH",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 240,
+      "status": "Active"
+    },
+    {
+      "actual": "No standard mechanism exists for an LLM to discover that a project uses werk. CLAUDE.md may mention werk but there is no established pointer pattern. No assurance that werk's JSON output is sufficient for LLM reasoning. werk does not make itself discoverable to agents.",
+      "created_at": "2026-04-14T11:16:37.889092+00:00",
+      "desired": "werk ensures LLMs work well with it — a clean pointer in agent config files points to werk, and werk's query surface (--json on every command, structured output) gives LLMs what they need without werk owning project documentation",
+      "horizon": null,
+      "id": "01KP5VA9C1646AKDV1VKNMQVFW",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 241,
+      "status": "Active"
+    },
+    {
+      "actual": "design resolved through reasoning session. Key decisions: (1) the global space is a normal space at ~/.werk/ with registry awareness — not a new ontological entity, (2) spaces are unified — directory-bound or pure, same struct with optional dir binding, (3) 'space' is the term (not workspace, domain, field), (4) discovery: three-tier (explicit flag > UP walk > global fallback), (5) cross-space references are generalized edges (#154), (6) the global space's command center IS the aggregate view across spaces (#90 at wider scope). No implementation yet.",
+      "created_at": "2026-04-14T11:16:45.530803+00:00",
+      "desired": "the global space exists — a space at ~/.werk/ that serves as the registry of all other spaces, holds its own general-purpose tensions, and provides the aggregate command center view across all registered spaces. Spaces are unified: same struct, same operations, same addressing, with an optional directory binding. CLI: werk -g (global), werk -w <name> (specific space), bare werk (location-detected or global fallback). Cross-space addressing and references are edge types within the generalized edge substrate (#154).",
+      "horizon": null,
+      "id": "01KP5VAGTT6MMRGFNTSND9GDS3",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "position": null,
+      "short_code": 242,
+      "status": "Active"
+    },
+    {
+      "actual": "sd-core is the crate name, sd_core is the module prefix used 434 times across 61 files, SdError appears 179 times across 23 files, sd.db appears 35 times across 10 files. The crate directory is sd-core/. All six consuming crates (werk-cli, werk-shared, werk-tui, werk-web, werk-mcp, werk-app) depend on sd-core by path.",
+      "created_at": "2026-04-14T13:48:21.004170+00:00",
+      "desired": "sd-core is renamed to werk-core — crate name, module prefix (sd_core → werk_core), error types (SdError → WerkError), and database filename (sd.db → werk.db) all align under the werk identity",
+      "horizon": null,
+      "id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 243,
+      "status": "Active"
+    },
+    {
+      "actual": "sd-core/ exists, Cargo.toml members list includes 'sd-core'",
+      "created_at": "2026-04-14T13:49:01.971260+00:00",
+      "desired": "rename sd-core/ directory to werk-core/ and update Cargo.toml members list",
+      "horizon": null,
+      "id": "01KP641B4KMV0K9FFPWJ0N3MQ0",
+      "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "position": null,
+      "short_code": 244,
+      "status": "Active"
+    },
+    {
+      "actual": "6 Cargo.toml files reference sd-core = { path = \"../sd-core\" }",
+      "created_at": "2026-04-14T13:49:09.874638+00:00",
+      "desired": "update crate name in werk-core/Cargo.toml and all path dependencies in consuming crates (werk-cli, werk-shared, werk-tui, werk-web, werk-mcp, werk-app)",
+      "horizon": null,
+      "id": "01KP641JVJ0E4NG77ZWX323FPC",
+      "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "position": null,
+      "short_code": 245,
+      "status": "Active"
+    },
+    {
+      "actual": "434 references across 61 .rs files",
+      "created_at": "2026-04-14T13:49:21.293411+00:00",
+      "desired": "rename all sd_core:: references to werk_core:: across the codebase",
+      "horizon": null,
+      "id": "01KP641Y0DWQG47YFVFQ4518SJ",
+      "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "position": null,
+      "short_code": 246,
+      "status": "Active"
+    },
+    {
+      "actual": "SdError is the core library error type in tension.rs, wrapped by werk-shared WerkError via #[from]",
+      "created_at": "2026-04-14T13:49:30.481600+00:00",
+      "desired": "rename SdError to CoreError and update all 179 references across 23 files",
+      "horizon": null,
+      "id": "01KP6426ZHFRFY86H3D3K8PPW3",
+      "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "position": null,
+      "short_code": 247,
+      "status": "Active"
+    },
+    {
+      "actual": "35 references to sd.db across 10 files",
+      "created_at": "2026-04-14T13:49:39.812264+00:00",
+      "desired": "rename sd.db to werk.db with transparent migration — check for werk.db first, fall back to sd.db and rename if found",
+      "horizon": null,
+      "id": "01KP642G34VHJYQCYY0JWQMNNW",
+      "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "position": null,
+      "short_code": 248,
+      "status": "Active"
+    },
+    {
+      "actual": "not started",
+      "created_at": "2026-04-14T13:49:47.745708+00:00",
+      "desired": "validate rename with cargo check, cargo test, and cargo clippy — fix any breakage",
+      "horizon": null,
+      "id": "01KP642QV1JBXNFED8V80DQ0QX",
+      "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
+      "position": null,
+      "short_code": 249,
+      "status": "Active"
+    },
+    {
+      "actual": "workspace discovery walks UP from CWD and falls back to ~/.werk/. No -g or -w flags. No space registry. werk -g currently just means 'use the global workspace' but there is no registry awareness behind it.",
+      "created_at": "2026-04-14T14:53:31.704130+00:00",
+      "desired": "werk -g and werk -w <name> flags exist — explicit space selection overrides location-based discovery. -g always targets the global space at ~/.werk/. -w <name> targets a registered space by prefix. Three-tier resolution: (1) explicit flag, (2) UP walk from CWD, (3) global fallback.",
+      "horizon": null,
+      "id": "01KP67QE5RJ9RZJBTMF974GW5G",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "position": null,
+      "short_code": 250,
+      "status": "Active"
+    },
+    {
+      "actual": "no spaces subcommand. no registration mechanism. no pure (non-directory-bound) spaces. the global workspace at ~/.werk/ has no [workspaces] config section.",
+      "created_at": "2026-04-14T14:53:41.070201+00:00",
+      "desired": "werk spaces subcommand group exists — list, register, unregister, create, scan, rename. werk spaces list shows all registered spaces with status summary. werk spaces register <path> --as <name> registers a directory-bound space. werk spaces create <name> creates a pure space (no directory binding, stored at ~/.werk/workspaces/<name>/). werk spaces scan <path> discovers unregistered .werk/ directories.",
+      "horizon": null,
+      "id": "01KP67QQAEXREDZ3B1WKNTYHD8",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "position": null,
+      "short_code": 251,
+      "status": "Active"
+    },
+    {
+      "actual": "config.toml exists per workspace but has no [workspaces] section. no concept of a space registry. the Workspace struct in workspace.rs has root and werk_dir but no name or registry awareness.",
+      "created_at": "2026-04-14T14:53:49.072271+00:00",
+      "desired": "the global space config has a [workspaces] section that serves as the registry — maps space name to store location and optional directory binding. This is the namespace resolution table for cross-space addressing (#100) and the source of truth for werk spaces list.",
+      "horizon": null,
+      "id": "01KP67QZ4G27JTZ1BNV33YDPBC",
+      "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
+      "position": null,
+      "short_code": 252,
+      "status": "Active"
     }
   ]
 }

@@ -59,7 +59,9 @@ pub fn cmd_undo(
         };
 
         if output.is_structured() {
-            output.print_structured(&result).map_err(WerkError::IoError)?;
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
             output
                 .info(&format!(
@@ -73,7 +75,7 @@ pub fn cmd_undo(
     }
 
     // Apply the undo
-    let undo_id = store.undo_gesture(&gid).map_err(WerkError::SdError)?;
+    let undo_id = store.undo_gesture(&gid).map_err(WerkError::CoreError)?;
 
     let result = UndoResult {
         gesture_id: gid.clone(),
@@ -81,7 +83,9 @@ pub fn cmd_undo(
     };
 
     if output.is_structured() {
-        output.print_structured(&result).map_err(WerkError::IoError)?;
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         output
             .success(&format!(

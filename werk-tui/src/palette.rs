@@ -15,9 +15,23 @@ use crate::feedback::{FeedbackCollector, FeedbackConfig};
 /// Palette action IDs in default display order.
 /// Reordered at startup by feedback boosts — most-used actions float to top.
 const ACTION_IDS: &[&str] = &[
-    "add", "resolve", "release", "descend", "ascend",
-    "edit_desire", "edit_reality", "edit_horizon", "note", "move",
-    "undo", "redo", "help", "survey", "logbase", "hold", "quit",
+    "add",
+    "resolve",
+    "release",
+    "descend",
+    "ascend",
+    "edit_desire",
+    "edit_reality",
+    "edit_horizon",
+    "note",
+    "move",
+    "undo",
+    "redo",
+    "help",
+    "survey",
+    "logbase",
+    "hold",
+    "quit",
 ];
 
 /// Build a CommandPalette with actions ordered by feedback boosts.
@@ -31,7 +45,8 @@ pub fn build_palette(feedback: Option<&FeedbackCollector>) -> CommandPalette {
                 .map(|id| (*id, fc.get_boost(id)))
                 .collect();
             // Sort by descending boost (highest usage first).
-            ids_with_boost.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            ids_with_boost
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             ids_with_boost.iter().map(|(id, _)| *id).collect::<Vec<_>>()
         }
         None => ACTION_IDS.to_vec(),
@@ -80,8 +95,8 @@ pub const EPOCH_ADDR_PREFIX: &str = "epoch:";
 pub fn build_combined_items(
     query: &str,
     feedback: Option<&FeedbackCollector>,
-    search_index: Option<&sd_core::SearchIndex>,
-    store: &sd_core::Store,
+    search_index: Option<&werk_core::SearchIndex>,
+    store: &werk_core::Store,
 ) -> Vec<ActionItem> {
     let mut items = Vec::new();
 
@@ -92,7 +107,8 @@ pub fn build_combined_items(
                 .iter()
                 .map(|id| (*id, fc.get_boost(id)))
                 .collect();
-            ids_with_boost.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            ids_with_boost
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             ids_with_boost.iter().map(|(id, _)| *id).collect::<Vec<_>>()
         }
         None => ACTION_IDS.to_vec(),
@@ -106,20 +122,27 @@ pub fn build_combined_items(
     // Address resolution — detect deep addresses like #42~e3, #42.n3
     let mut address_resolved = false;
     if !query.is_empty() {
-        if let Ok(addr) = sd_core::address::parse_address(query) {
+        if let Ok(addr) = werk_core::address::parse_address(query) {
             match addr {
-                sd_core::address::Address::Epoch { tension, epoch_num } => {
+                werk_core::address::Address::Epoch { tension, epoch_num } => {
                     // Find tension by short code and offer logbase navigation
                     if let Ok(tensions) = store.list_tensions() {
                         if let Some(t) = tensions.iter().find(|t| t.short_code == Some(tension)) {
                             let action_id = format!("{}{}~e{}", EPOCH_ADDR_PREFIX, t.id, epoch_num);
                             // Title includes the address syntax so the fuzzy matcher can find it
-                            let title = format!("#{}~e{} — epoch {} — {}", tension, epoch_num, epoch_num,
-                                werk_shared::truncate(&t.desired, 50));
-                            items.push(ActionItem::new(action_id, title)
-                                .with_description("open in logbase")
-                                .with_category("\u{2500}")
-                                .with_tags(&["address", "logbase", "epoch"]));
+                            let title = format!(
+                                "#{}~e{} — epoch {} — {}",
+                                tension,
+                                epoch_num,
+                                epoch_num,
+                                werk_shared::truncate(&t.desired, 50)
+                            );
+                            items.push(
+                                ActionItem::new(action_id, title)
+                                    .with_description("open in logbase")
+                                    .with_category("\u{2500}")
+                                    .with_tags(&["address", "logbase", "epoch"]),
+                            );
                             address_resolved = true;
                         }
                     }
@@ -177,15 +200,15 @@ fn tension_action_item(
     id: &str,
     desired: &str,
     short_code: Option<i32>,
-    status: sd_core::TensionStatus,
+    status: werk_core::TensionStatus,
     parent_ref: &str,
 ) -> ActionItem {
     // Status glyph in category badge — rendered separately by the widget,
     // outside the title's match-highlight logic. Keeps titles clean.
     let badge = match status {
-        sd_core::TensionStatus::Active => "\u{25C7}",    // ◇
-        sd_core::TensionStatus::Resolved => "\u{2713}",  // ✓
-        sd_core::TensionStatus::Released => "\u{223C}",   // ∼
+        werk_core::TensionStatus::Active => "\u{25C7}",   // ◇
+        werk_core::TensionStatus::Resolved => "\u{2713}", // ✓
+        werk_core::TensionStatus::Released => "\u{223C}", // ∼
     };
     let title = match short_code {
         Some(c) => format!("#{} {}", c, desired),
@@ -198,24 +221,36 @@ fn tension_action_item(
 }
 
 /// Convert FrankenSearch hits to ActionItems.
-fn search_via_frankensearch(query: &str, index: &sd_core::SearchIndex) -> Vec<ActionItem> {
+fn search_via_frankensearch(query: &str, index: &werk_core::SearchIndex) -> Vec<ActionItem> {
     let hits = index.search(query, 15);
     hits.into_iter()
-        .filter(|hit| hit.status == sd_core::TensionStatus::Active)
+        .filter(|hit| hit.status == werk_core::TensionStatus::Active)
         .map(|hit| {
-            let parent_ref = index.compact_parent_ref(hit.parent_id.as_deref())
+            let parent_ref = index
+                .compact_parent_ref(hit.parent_id.as_deref())
                 .unwrap_or_else(|| "root".to_string());
-            tension_action_item(&hit.doc_id, &hit.desired, hit.short_code, hit.status, &parent_ref)
+            tension_action_item(
+                &hit.doc_id,
+                &hit.desired,
+                hit.short_code,
+                hit.status,
+                &parent_ref,
+            )
         })
         .collect()
 }
 
 /// Substring search — case-insensitive match against desire and reality text.
-fn search_via_substring(query: &str, store: &sd_core::Store, search_index: Option<&sd_core::SearchIndex>) -> Vec<ActionItem> {
+fn search_via_substring(
+    query: &str,
+    store: &werk_core::Store,
+    search_index: Option<&werk_core::SearchIndex>,
+) -> Vec<ActionItem> {
     let q = query.to_lowercase();
     let tensions = store.list_tensions().unwrap_or_default();
-    let mut results: Vec<_> = tensions.iter()
-        .filter(|t| t.status == sd_core::TensionStatus::Active)
+    let mut results: Vec<_> = tensions
+        .iter()
+        .filter(|t| t.status == werk_core::TensionStatus::Active)
         .filter(|t| t.desired.to_lowercase().contains(&q) || t.actual.to_lowercase().contains(&q))
         .take(15)
         .map(|t| {
@@ -232,15 +267,16 @@ fn search_via_substring(query: &str, store: &sd_core::Store, search_index: Optio
 /// Search by short code prefix (e.g. "4" matches #4, #40, #42...).
 fn search_by_short_code(
     code_prefix: &str,
-    store: &sd_core::Store,
-    search_index: Option<&sd_core::SearchIndex>,
+    store: &werk_core::Store,
+    search_index: Option<&werk_core::SearchIndex>,
 ) -> Vec<ActionItem> {
     let prefix_num: i32 = match code_prefix.parse() {
         Ok(n) => n,
         Err(_) => return Vec::new(), // non-numeric after #
     };
     let tensions = store.list_tensions().unwrap_or_default();
-    tensions.iter()
+    tensions
+        .iter()
         .filter(|t| {
             t.short_code.map_or(false, |sc| {
                 sc.to_string().starts_with(&prefix_num.to_string())
@@ -267,22 +303,37 @@ fn desc_with_shortcut(id: &str, desc: &str) -> String {
 fn make_action(id: &str) -> Option<ActionItem> {
     let action = match id {
         "add" => ActionItem::new("add", "Add child tension")
-            .with_description(desc_with_shortcut("add", "Create a new tension under the current parent"))
+            .with_description(desc_with_shortcut(
+                "add",
+                "Create a new tension under the current parent",
+            ))
             .with_tags(&["create", "new", "child"]),
         "ascend" => ActionItem::new("ascend", "Go to parent")
-            .with_description(desc_with_shortcut("ascend", "Navigate up to the parent tension"))
+            .with_description(desc_with_shortcut(
+                "ascend",
+                "Navigate up to the parent tension",
+            ))
             .with_tags(&["up", "back", "parent"]),
         "descend" => ActionItem::new("descend", "Descend into tension")
-            .with_description(desc_with_shortcut("descend", "Navigate into the focused tension's children"))
+            .with_description(desc_with_shortcut(
+                "descend",
+                "Navigate into the focused tension's children",
+            ))
             .with_tags(&["into", "focus", "enter"]),
         "move" => ActionItem::new("move", "Move tension")
             .with_description(desc_with_shortcut("move", "Reparent the focused tension"))
             .with_tags(&["reparent", "relocate"]),
         "resolve" => ActionItem::new("resolve", "Resolve tension")
-            .with_description(desc_with_shortcut("resolve", "Close the gap — desire met reality"))
+            .with_description(desc_with_shortcut(
+                "resolve",
+                "Close the gap — desire met reality",
+            ))
             .with_tags(&["close", "done", "complete"]),
         "release" => ActionItem::new("release", "Release tension")
-            .with_description(desc_with_shortcut("release", "Let it go — acknowledge without closing"))
+            .with_description(desc_with_shortcut(
+                "release",
+                "Let it go — acknowledge without closing",
+            ))
             .with_tags(&["drop", "abandon", "let go"]),
         "edit_desire" => ActionItem::new("edit_desire", "Edit desire")
             .with_description(desc_with_shortcut("edit_desire", "Change what is wanted"))
@@ -300,19 +351,34 @@ fn make_action(id: &str) -> Option<ActionItem> {
             .with_description(desc_with_shortcut("undo", "Revert the most recent action"))
             .with_tags(&["undo", "revert", "back"]),
         "redo" => ActionItem::new("redo", "Redo last undo")
-            .with_description(desc_with_shortcut("redo", "Re-apply the most recently undone action"))
+            .with_description(desc_with_shortcut(
+                "redo",
+                "Re-apply the most recently undone action",
+            ))
             .with_tags(&["redo", "forward"]),
         "help" => ActionItem::new("help", "Help")
-            .with_description(desc_with_shortcut("help", "Show keybindings for current view"))
+            .with_description(desc_with_shortcut(
+                "help",
+                "Show keybindings for current view",
+            ))
             .with_tags(&["help", "keys", "shortcuts", "?"]),
         "survey" => ActionItem::new("survey", "Switch to survey view")
-            .with_description(desc_with_shortcut("survey", "Time-first overview of all tensions"))
+            .with_description(desc_with_shortcut(
+                "survey",
+                "Time-first overview of all tensions",
+            ))
             .with_tags(&["survey", "overview", "time"]),
         "logbase" => ActionItem::new("logbase", "Open logbase")
-            .with_description(desc_with_shortcut("logbase", "Epoch history for the focused tension"))
+            .with_description(desc_with_shortcut(
+                "logbase",
+                "Epoch history for the focused tension",
+            ))
             .with_tags(&["logbase", "log", "history", "epochs"]),
         "hold" => ActionItem::new("hold", "Hold tension")
-            .with_description(desc_with_shortcut("hold", "Remove positioning — place in held zone"))
+            .with_description(desc_with_shortcut(
+                "hold",
+                "Remove positioning — place in held zone",
+            ))
             .with_tags(&["hold", "park", "pause"]),
         "quit" => ActionItem::new("quit", "Quit")
             .with_description(desc_with_shortcut("quit", "Exit the instrument"))

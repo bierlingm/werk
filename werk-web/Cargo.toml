@@ -9,7 +9,7 @@ name = "werk_web"
 path = "src/lib.rs"
 
 [dependencies]
-sd-core = { path = "../sd-core" }
+werk-core = { path = "../werk-core" }
 werk-shared = { path = "../werk-shared" }
 axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1", features = ["full"] }

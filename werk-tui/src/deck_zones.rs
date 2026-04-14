@@ -6,12 +6,12 @@
 //! render_deck() determines how many items each zone shows; this module
 //! converts those items into ListItems.
 
+use ftui::PackedRgba;
 use ftui::style::Style;
 use ftui::text::{Line, Span};
 use ftui::widgets::list::{List, ListItem, ListState};
-use ftui::PackedRgba;
 
-use sd_core::TensionStatus;
+use werk_core::TensionStatus;
 
 use crate::deck::{AccumulatedItem, ColumnLayout, CursorTarget, Frontier};
 use crate::state::FieldEntry;
@@ -53,8 +53,8 @@ pub fn build_child_line(
     w: usize,
     styles: &InstrumentStyles,
 ) -> Line<'static> {
-    let is_done = entry.status == TensionStatus::Resolved
-        || entry.status == TensionStatus::Released;
+    let is_done =
+        entry.status == TensionStatus::Resolved || entry.status == TensionStatus::Released;
 
     let base_style = if is_selected {
         styles.selected
@@ -79,11 +79,7 @@ pub fn build_child_line(
     };
 
     // Left column: deadline label
-    let left_str = entry
-        .horizon_label
-        .as_deref()
-        .unwrap_or("")
-        .to_string();
+    let left_str = entry.horizon_label.as_deref().unwrap_or("").to_string();
     let left_padded = format!("{:<width$}", left_str, width = cols.left);
 
     // Right sub-columns: [id] [→] [age]
@@ -93,7 +89,11 @@ pub fn build_child_line(
         .unwrap_or_else(|| entry.id[..cols.id_width.min(entry.id.len())].to_string());
 
     let right_str = if cols.age_width > 0 {
-        let arrow = if entry.child_count > 0 { "\u{2192}" } else { " " };
+        let arrow = if entry.child_count > 0 {
+            "\u{2192}"
+        } else {
+            " "
+        };
         let age_str = format!("{:>width$}", entry.created_age, width = cols.age_width);
         format!("{} {} {}", id_num, arrow, age_str)
     } else {
@@ -126,7 +126,10 @@ pub fn build_child_line(
 
     let mut spans: Vec<Span<'static>> = Vec::new();
     spans.push(Span::styled(left_padded, left_style));
-    spans.push(Span::styled(" ".repeat(cols.gutter + extra_indent), base_style));
+    spans.push(Span::styled(
+        " ".repeat(cols.gutter + extra_indent),
+        base_style,
+    ));
     spans.push(Span::styled(format!("{} ", glyph), glyph_style));
     spans.push(Span::styled(main_text.clone(), base_style));
 
@@ -187,10 +190,7 @@ pub fn build_note_line(
 
     let total_rendered: usize = spans.iter().map(|s| s.content.chars().count()).sum();
     if total_rendered < w {
-        spans.push(Span::styled(
-            " ".repeat(w - total_rendered),
-            base_style,
-        ));
+        spans.push(Span::styled(" ".repeat(w - total_rendered), base_style));
     }
 
     Line::from_spans(spans)
@@ -274,8 +274,7 @@ pub fn build_route_list<'a>(
     for i in 0..shown_route {
         let sibling_idx = frontier.route[i];
         let entry = &siblings[sibling_idx];
-        let is_sel =
-            active_target == CursorTarget::Route(sibling_idx);
+        let is_sel = active_target == CursorTarget::Route(sibling_idx);
         if is_sel {
             selected = Some(items.len());
         }
@@ -299,8 +298,7 @@ pub fn build_route_list<'a>(
     if route_remaining == 1 {
         let sibling_idx = frontier.route[shown_route];
         let entry = &siblings[sibling_idx];
-        let is_sel =
-            active_target == CursorTarget::RouteSummary;
+        let is_sel = active_target == CursorTarget::RouteSummary;
         if is_sel {
             selected = Some(items.len());
         }
@@ -318,8 +316,7 @@ pub fn build_route_list<'a>(
         );
         items.push(ListItem::new(line));
     } else if route_remaining > 1 {
-        let is_sel =
-            active_target == CursorTarget::RouteSummary;
+        let is_sel = active_target == CursorTarget::RouteSummary;
         if is_sel {
             selected = Some(items.len());
         }
@@ -332,7 +329,11 @@ pub fn build_route_list<'a>(
             .iter()
             .filter_map(|&idx| siblings[idx].horizon_label.as_deref())
             .next();
-        let label = if shown_route > 0 { "more" } else { "route steps" };
+        let label = if shown_route > 0 {
+            "more"
+        } else {
+            "route steps"
+        };
         let text = match next_deadline {
             Some(dl) => format!("\u{25B8} {} {} \u{00B7} next {}", count, label, dl),
             None => format!("\u{25B8} {} {}", count, label),
@@ -369,9 +370,21 @@ pub fn build_route_list_segment<'a>(
         let sibling_idx = frontier.route[i];
         let entry = &siblings[sibling_idx];
         let is_sel = active_target == CursorTarget::Route(sibling_idx);
-        if is_sel { selected = Some(items.len()); }
+        if is_sel {
+            selected = Some(items.len());
+        }
         let glyph = status_glyph(entry.status);
-        let line = build_child_line(entry, glyph, is_sel, false, 0, Some(styles.cyan), cols, w, styles);
+        let line = build_child_line(
+            entry,
+            glyph,
+            is_sel,
+            false,
+            0,
+            Some(styles.cyan),
+            cols,
+            w,
+            styles,
+        );
         items.push(ListItem::new(line));
     }
 
@@ -381,19 +394,41 @@ pub fn build_route_list_segment<'a>(
             let sibling_idx = frontier.route[shown_route];
             let entry = &siblings[sibling_idx];
             let is_sel = active_target == CursorTarget::RouteSummary;
-            if is_sel { selected = Some(items.len()); }
+            if is_sel {
+                selected = Some(items.len());
+            }
             let glyph = status_glyph(entry.status);
-            let line = build_child_line(entry, glyph, is_sel, false, 0, Some(styles.cyan), cols, w, styles);
+            let line = build_child_line(
+                entry,
+                glyph,
+                is_sel,
+                false,
+                0,
+                Some(styles.cyan),
+                cols,
+                w,
+                styles,
+            );
             items.push(ListItem::new(line));
         } else if route_remaining > 1 {
             let is_sel = active_target == CursorTarget::RouteSummary;
-            if is_sel { selected = Some(items.len()); }
-            let count = if shown_route == 0 { frontier.route.len() } else { route_remaining };
+            if is_sel {
+                selected = Some(items.len());
+            }
+            let count = if shown_route == 0 {
+                frontier.route.len()
+            } else {
+                route_remaining
+            };
             let next_deadline = frontier.route[shown_route..]
                 .iter()
                 .filter_map(|&idx| siblings[idx].horizon_label.as_deref())
                 .next();
-            let label = if shown_route > 0 { "more" } else { "route steps" };
+            let label = if shown_route > 0 {
+                "more"
+            } else {
+                "route steps"
+            };
             let text = match next_deadline {
                 Some(dl) => format!("\u{25B8} {} {} \u{00B7} next {}", count, label, dl),
                 None => format!("\u{25B8} {} {}", count, label),
@@ -431,8 +466,20 @@ pub fn build_held_list_segment<'a>(
         let sibling_idx = frontier.held[i];
         let entry = &siblings[sibling_idx];
         let is_sel = active_target == CursorTarget::HeldItem(sibling_idx);
-        if is_sel { selected = Some(items.len()); }
-        let line = build_child_line(entry, "\u{2727}", is_sel, false, HELD_INDENT, Some(styles.subdued), cols, w, styles);
+        if is_sel {
+            selected = Some(items.len());
+        }
+        let line = build_child_line(
+            entry,
+            "\u{2727}",
+            is_sel,
+            false,
+            HELD_INDENT,
+            Some(styles.subdued),
+            cols,
+            w,
+            styles,
+        );
         items.push(ListItem::new(line));
     }
 
@@ -442,12 +489,26 @@ pub fn build_held_list_segment<'a>(
             let sibling_idx = frontier.held[shown_held];
             let entry = &siblings[sibling_idx];
             let is_sel = active_target == CursorTarget::Held;
-            if is_sel { selected = Some(items.len()); }
-            let line = build_child_line(entry, "\u{2727}", is_sel, false, HELD_INDENT, Some(styles.subdued), cols, w, styles);
+            if is_sel {
+                selected = Some(items.len());
+            }
+            let line = build_child_line(
+                entry,
+                "\u{2727}",
+                is_sel,
+                false,
+                HELD_INDENT,
+                Some(styles.subdued),
+                cols,
+                w,
+                styles,
+            );
             items.push(ListItem::new(line));
         } else if held_remaining > 1 {
             let is_sel = active_target == CursorTarget::Held;
-            if is_sel { selected = Some(items.len()); }
+            if is_sel {
+                selected = Some(items.len());
+            }
             let text = if shown_held == 0 {
                 format!("\u{2727} {} held", frontier.held.len())
             } else {
@@ -478,8 +539,7 @@ pub fn build_overdue_list<'a>(
 
     for &sibling_idx in &frontier.overdue {
         let entry = &siblings[sibling_idx];
-        let is_sel =
-            active_target == CursorTarget::Overdue(sibling_idx);
+        let is_sel = active_target == CursorTarget::Overdue(sibling_idx);
         if is_sel {
             selected = Some(items.len());
         }
@@ -543,8 +603,7 @@ pub fn build_held_list<'a>(
     if held_remaining == 1 {
         let sibling_idx = frontier.held[shown_held];
         let entry = &siblings[sibling_idx];
-        let is_sel =
-            active_target == CursorTarget::Held;
+        let is_sel = active_target == CursorTarget::Held;
         if is_sel {
             selected = Some(items.len());
         }
@@ -561,8 +620,7 @@ pub fn build_held_list<'a>(
         );
         items.push(ListItem::new(line));
     } else if held_remaining > 1 {
-        let is_sel =
-            active_target == CursorTarget::Held;
+        let is_sel = active_target == CursorTarget::Held;
         if is_sel {
             selected = Some(items.len());
         }
@@ -613,9 +671,7 @@ pub fn build_accumulated_list<'a>(
                     TensionStatus::Released => "~",
                     _ => "\u{25c6}",
                 };
-                let line = build_child_line(
-                    entry, glyph, is_sel, false, 0, None, cols, w, styles,
-                );
+                let line = build_child_line(entry, glyph, is_sel, false, 0, None, cols, w, styles);
                 items.push(ListItem::new(line));
             }
             AccumulatedItem::Note { text, age, .. } => {
@@ -632,8 +688,7 @@ pub fn build_accumulated_list<'a>(
     // Summary for remaining items
     let remaining = frontier.accumulated.len() - shown;
     if remaining == 1 {
-        let is_sel =
-            active_target == CursorTarget::Accumulated;
+        let is_sel = active_target == CursorTarget::Accumulated;
         if is_sel {
             selected = Some(items.len());
         }
@@ -641,9 +696,7 @@ pub fn build_accumulated_list<'a>(
             AccumulatedItem::Child(sibling_idx) => {
                 let entry = &siblings[*sibling_idx];
                 let glyph = status_glyph(entry.status);
-                let line = build_child_line(
-                    entry, glyph, is_sel, false, 0, None, cols, w, styles,
-                );
+                let line = build_child_line(entry, glyph, is_sel, false, 0, None, cols, w, styles);
                 items.push(ListItem::new(line));
             }
             AccumulatedItem::Note { text, age, .. } => {
@@ -652,8 +705,7 @@ pub fn build_accumulated_list<'a>(
             }
         }
     } else if remaining > 1 {
-        let is_sel =
-            active_target == CursorTarget::Accumulated;
+        let is_sel = active_target == CursorTarget::Accumulated;
         if is_sel {
             selected = Some(items.len());
         }

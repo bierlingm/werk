@@ -27,7 +27,7 @@ fn test_show_displays_tension_magnitude() {
         .success();
 
     // Create tension with a gap between desired and actual
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("write a complete novel", "have an outline")
         .unwrap();
@@ -63,7 +63,7 @@ fn test_show_displays_phase() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -97,7 +97,7 @@ fn test_show_displays_closure_for_parent() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p reality").unwrap();
     let _child1 = store
         .create_tension_with_parent("child1", "c1", Some(parent.id.clone()))
@@ -120,8 +120,14 @@ fn test_show_displays_closure_for_parent() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    assert_eq!(json["frontier"]["closure_progress"]["total"].as_u64(), Some(2));
-    assert_eq!(json["frontier"]["closure_progress"]["resolved"].as_u64(), Some(0));
+    assert_eq!(
+        json["frontier"]["closure_progress"]["total"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        json["frontier"]["closure_progress"]["resolved"].as_u64(),
+        Some(0)
+    );
 }
 
 /// VAL-DISP-009: Show displays last activity
@@ -135,7 +141,7 @@ fn test_show_displays_movement() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -162,7 +168,6 @@ fn test_show_displays_movement() {
 // Verbose Dynamics Tests (VAL-DISP-010)
 // =============================================================================
 
-
 // =============================================================================
 // Mutation History Tests (VAL-DISP-011)
 // =============================================================================
@@ -178,7 +183,7 @@ fn test_show_displays_mutation_history() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store
         .create_tension("mutation goal", "initial reality")
         .unwrap();
@@ -223,7 +228,7 @@ fn test_show_limits_mutation_history() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Create 15 mutations
@@ -269,7 +274,7 @@ fn test_show_displays_children_list() {
         .success();
 
     // Create parent with children
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -311,7 +316,7 @@ fn test_show_no_children_for_leaf() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("leaf goal", "leaf reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -350,7 +355,7 @@ fn test_show_new_tension_shows_germination() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("new goal", "new reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -384,7 +389,7 @@ fn test_show_new_tension_no_panic() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("brand new", "reality").unwrap();
 
     // This should NOT panic
@@ -418,7 +423,7 @@ fn test_show_json_has_temporal() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("json goal", "json reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -435,7 +440,10 @@ fn test_show_json_has_temporal() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    assert!(json.get("temporal").is_some(), "Should have temporal signals");
+    assert!(
+        json.get("temporal").is_some(),
+        "Should have temporal signals"
+    );
     assert!(json.get("dynamics").is_none(), "Should NOT have dynamics");
 }
 
@@ -450,7 +458,7 @@ fn test_show_json_honest_facts() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("verbose json", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -483,7 +491,7 @@ fn test_show_json_null_urgency_no_horizon() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("null test", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -501,7 +509,10 @@ fn test_show_json_null_urgency_no_horizon() {
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
     // Urgency should be null without horizon
-    assert!(json["urgency"].is_null(), "urgency should be null without horizon");
+    assert!(
+        json["urgency"].is_null(),
+        "urgency should be null without horizon"
+    );
     // Overdue should be false
     assert_eq!(json["overdue"].as_bool(), Some(false));
 }
@@ -517,7 +528,7 @@ fn test_show_json_children() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "reality").unwrap();
     let _child = store
         .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
@@ -554,7 +565,7 @@ fn test_show_json_mutations() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("mutations test", "initial").unwrap();
     store.update_actual(&tension.id, "updated").unwrap();
 

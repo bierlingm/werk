@@ -600,9 +600,7 @@ pub fn compute_temporal_signals(
         if let Some(parent_id) = &tension.parent_id {
             // Implied window: find this tension's window among siblings
             let windows = compute_implied_windows(forest, parent_id, now);
-            let my_window = windows
-                .into_iter()
-                .find(|w| w.tension_id == tension_id);
+            let my_window = windows.into_iter().find(|w| w.tension_id == tension_id);
 
             // Sequencing pressure: find pressures involving this tension
             let pressures = detect_sequencing_pressure(forest, parent_id);
@@ -644,7 +642,12 @@ mod tests {
     use crate::tension::{Tension, TensionStatus};
     use chrono::TimeZone;
 
-    fn make_tension(id: &str, parent: Option<&str>, position: Option<i32>, horizon: Option<&str>) -> Tension {
+    fn make_tension(
+        id: &str,
+        parent: Option<&str>,
+        position: Option<i32>,
+        horizon: Option<&str>,
+    ) -> Tension {
         let h = horizon.and_then(|s| Horizon::parse(s).ok());
         let mut t = Tension::new_full(
             &format!("desired {}", id),
@@ -698,7 +701,7 @@ mod tests {
     fn implied_window_step_without_horizon_uses_successor() {
         let tensions = vec![
             make_tension("1", None, None, Some("2026-06")),
-            make_tension("2", Some("1"), Some(1), None),         // no horizon
+            make_tension("2", Some("1"), Some(1), None), // no horizon
             make_tension("3", Some("1"), Some(2), Some("2026-05")),
         ];
         let forest = Forest::from_tensions(tensions).unwrap();
@@ -745,7 +748,7 @@ mod tests {
     #[test]
     fn critical_path_detected() {
         let tensions = vec![
-            make_tension("1", None, None, Some("2026-04")),       // parent: April
+            make_tension("1", None, None, Some("2026-04")), // parent: April
             make_tension("2", Some("1"), Some(1), Some("2026-04")), // child: also April — critical!
         ];
         let forest = Forest::from_tensions(tensions).unwrap();
@@ -790,7 +793,7 @@ mod tests {
     #[test]
     fn containment_violation_detected() {
         let tensions = vec![
-            make_tension("1", None, None, Some("2026-04")),       // parent: April
+            make_tension("1", None, None, Some("2026-04")), // parent: April
             make_tension("2", Some("1"), Some(1), Some("2026-06")), // child: June — violates!
         ];
         let forest = Forest::from_tensions(tensions).unwrap();
@@ -1035,7 +1038,11 @@ mod tests {
 
         let now = end + Duration::hours(2);
         let result = compute_urgency(&t, now).unwrap();
-        assert!(result.value > 1.0, "urgency should be > 1.0, got {}", result.value);
+        assert!(
+            result.value > 1.0,
+            "urgency should be > 1.0, got {}",
+            result.value
+        );
         assert!(
             (result.value - 1.5).abs() < 0.05,
             "urgency should be ~1.5, got {}",
@@ -1119,16 +1126,25 @@ mod tests {
     #[test]
     fn test_detect_horizon_drift_repeated_postponement() {
         let m1 = Mutation::new(
-            "test-rep".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-05".to_string()), "2026-06".to_string(),
+            "test-rep".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
         );
         let m2 = Mutation::new(
-            "test-rep".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-06".to_string()), "2026-08".to_string(),
+            "test-rep".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-08".to_string(),
         );
         let m3 = Mutation::new(
-            "test-rep".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-08".to_string()), "2026-12".to_string(),
+            "test-rep".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-08".to_string()),
+            "2026-12".to_string(),
         );
 
         let result = detect_horizon_drift("test-rep", &[m1, m2, m3]);
@@ -1140,8 +1156,11 @@ mod tests {
     #[test]
     fn test_detect_horizon_drift_tightening() {
         let m1 = Mutation::new(
-            "test-tighten".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-06".to_string()), "2026-05".to_string(),
+            "test-tighten".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-05".to_string(),
         );
 
         let result = detect_horizon_drift("test-tighten", &[m1]);
@@ -1152,8 +1171,11 @@ mod tests {
     #[test]
     fn test_detect_horizon_drift_tightening_to_higher_precision() {
         let m1 = Mutation::new(
-            "test-precision".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026".to_string()), "2026-05".to_string(),
+            "test-precision".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026".to_string()),
+            "2026-05".to_string(),
         );
 
         let result = detect_horizon_drift("test-precision", &[m1]);
@@ -1163,8 +1185,11 @@ mod tests {
     #[test]
     fn test_detect_horizon_drift_loosening() {
         let m1 = Mutation::new(
-            "test-loosen".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-05-15".to_string()), "2026-06".to_string(),
+            "test-loosen".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05-15".to_string()),
+            "2026-06".to_string(),
         );
 
         let result = detect_horizon_drift("test-loosen", &[m1]);
@@ -1175,16 +1200,25 @@ mod tests {
     #[test]
     fn test_detect_horizon_drift_oscillating() {
         let m1 = Mutation::new(
-            "test-osc".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-05".to_string()), "2026-06".to_string(),
+            "test-osc".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
         );
         let m2 = Mutation::new(
-            "test-osc".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-06".to_string()), "2026-04".to_string(),
+            "test-osc".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-04".to_string(),
         );
         let m3 = Mutation::new(
-            "test-osc".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-04".to_string()), "2026-07".to_string(),
+            "test-osc".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-04".to_string()),
+            "2026-07".to_string(),
         );
 
         let result = detect_horizon_drift("test-osc", &[m1, m2, m3]);
@@ -1195,12 +1229,18 @@ mod tests {
     #[test]
     fn test_detect_horizon_drift_two_shifts_is_postponement() {
         let m1 = Mutation::new(
-            "test-two".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-05".to_string()), "2026-06".to_string(),
+            "test-two".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
         );
         let m2 = Mutation::new(
-            "test-two".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-06".to_string()), "2026-08".to_string(),
+            "test-two".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-06".to_string()),
+            "2026-08".to_string(),
         );
 
         let result = detect_horizon_drift("test-two", &[m1, m2]);
@@ -1211,8 +1251,11 @@ mod tests {
     #[test]
     fn test_horizon_drift_struct_fields() {
         let m1 = Mutation::new(
-            "test-fields".to_string(), Utc::now(),
-            "horizon".to_string(), Some("2026-05".to_string()), "2026-06".to_string(),
+            "test-fields".to_string(),
+            Utc::now(),
+            "horizon".to_string(),
+            Some("2026-05".to_string()),
+            "2026-06".to_string(),
         );
 
         let result = detect_horizon_drift("test-fields", &[m1]);

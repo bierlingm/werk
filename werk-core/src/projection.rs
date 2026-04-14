@@ -9,8 +9,8 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use crate::temporal::{compute_urgency, gap_magnitude};
 use crate::mutation::Mutation;
+use crate::temporal::{compute_urgency, gap_magnitude};
 use crate::tension::{Tension, TensionStatus};
 
 /// Engagement pattern extracted from a tension's mutation history.
@@ -94,10 +94,8 @@ pub fn extract_mutation_pattern(
     let frequency_trend = (second_half_count - first_half_count) / first_half_count.max(1.0);
 
     // Gap samples: for each "actual" mutation, compute gap magnitude.
-    let actual_mutations: Vec<&&Mutation> = filtered
-        .iter()
-        .filter(|m| m.field() == "actual")
-        .collect();
+    let actual_mutations: Vec<&&Mutation> =
+        filtered.iter().filter(|m| m.field() == "actual").collect();
     // Take the last 10.
     let recent_actual: Vec<&&Mutation> = if actual_mutations.len() > 10 {
         actual_mutations[actual_mutations.len() - 10..].to_vec()
@@ -178,11 +176,7 @@ impl ProjectionHorizon {
 
 /// Project gap magnitude at a future time point.
 /// Linear extrapolation from gap_trend, clamped to [0.0, 1.0].
-pub fn project_gap_at(
-    pattern: &MutationPattern,
-    current_gap: f64,
-    seconds_forward: i64,
-) -> f64 {
+pub fn project_gap_at(pattern: &MutationPattern, current_gap: f64, seconds_forward: i64) -> f64 {
     if !pattern.is_projectable || pattern.gap_trend == 0.0 {
         return current_gap.clamp(0.0, 1.0);
     }
@@ -197,10 +191,7 @@ pub fn project_gap_at(
 
 /// Project engagement frequency at a future time point.
 /// Extrapolates frequency_trend, clamped to >= 0.
-pub fn project_frequency_at(
-    pattern: &MutationPattern,
-    seconds_forward: i64,
-) -> f64 {
+pub fn project_frequency_at(pattern: &MutationPattern, seconds_forward: i64) -> f64 {
     if !pattern.is_projectable {
         return pattern.frequency_per_day.max(0.0);
     }
@@ -222,10 +213,7 @@ pub fn project_frequency_at(
 
 /// Estimate time-to-resolution in seconds.
 /// Returns None if gap is not closing (gap_trend >= 0) or not projectable.
-pub fn estimate_time_to_resolution(
-    pattern: &MutationPattern,
-    current_gap: f64,
-) -> Option<i64> {
+pub fn estimate_time_to_resolution(pattern: &MutationPattern, current_gap: f64) -> Option<i64> {
     if !pattern.is_projectable || pattern.gap_trend >= 0.0 {
         return None;
     }
@@ -310,7 +298,11 @@ fn classify_trajectory(pattern: &MutationPattern, thresholds: &ProjectionThresho
             .map(|w| w[1] - w[0])
             .collect();
         // Check if consecutive diffs alternate sign (ignore zero diffs).
-        let non_zero_diffs: Vec<f64> = diffs.iter().copied().filter(|d| d.abs() > f64::EPSILON).collect();
+        let non_zero_diffs: Vec<f64> = diffs
+            .iter()
+            .copied()
+            .filter(|d| d.abs() > f64::EPSILON)
+            .collect();
         if non_zero_diffs.len() >= 2 {
             let all_alternate = non_zero_diffs
                 .windows(2)
@@ -356,12 +348,8 @@ pub fn project_tension(
     thresholds: &ProjectionThresholds,
     now: DateTime<Utc>,
 ) -> Vec<TensionProjection> {
-    let pattern = extract_mutation_pattern(
-        tension,
-        mutations,
-        thresholds.pattern_window_seconds,
-        now,
-    );
+    let pattern =
+        extract_mutation_pattern(tension, mutations, thresholds.pattern_window_seconds, now);
     let current_gap = gap_magnitude(&tension.desired, &tension.actual);
     let trajectory = classify_trajectory(&pattern, thresholds);
     let ttr = estimate_time_to_resolution(&pattern, current_gap);
@@ -380,11 +368,8 @@ pub fn project_tension(
             let gap_delta = projected_gap - current_gap;
 
             // Projected urgency at this horizon's future time point.
-            let projected_urgency = compute_urgency(
-                tension,
-                now + chrono::Duration::seconds(secs),
-            )
-            .map(|u| u.value);
+            let projected_urgency =
+                compute_urgency(tension, now + chrono::Duration::seconds(secs)).map(|u| u.value);
 
             // Will resolve: only meaningful if the tension has a horizon deadline.
             let will_resolve = tension.horizon.as_ref().map(|h| {
@@ -516,10 +501,10 @@ pub fn project_field(
 
         let mut high_urgency: Vec<(String, f64)> = Vec::new();
         for t in &active {
-            if let Some(u) = compute_urgency(t, sample_time) {
-                if u.value > 0.7 {
-                    high_urgency.push((t.id.clone(), u.value));
-                }
+            if let Some(u) = compute_urgency(t, sample_time)
+                && u.value > 0.7
+            {
+                high_urgency.push((t.id.clone(), u.value));
             }
         }
 
@@ -556,7 +541,12 @@ mod tests {
     }
 
     /// Helper: build an "actual" mutation at a given offset from `base`.
-    fn actual_mutation(tension_id: &str, base: DateTime<Utc>, offset_secs: i64, new_val: &str) -> Mutation {
+    fn actual_mutation(
+        tension_id: &str,
+        base: DateTime<Utc>,
+        offset_secs: i64,
+        new_val: &str,
+    ) -> Mutation {
         Mutation::new(
             tension_id.to_owned(),
             base + chrono::Duration::seconds(offset_secs),
@@ -661,9 +651,9 @@ mod tests {
         let now = Utc::now();
         // Actual values that progressively approach "xyz"
         let mutations = vec![
-            actual_mutation("t1", now, -300, "aaa"),  // far from "xyz"
-            actual_mutation("t1", now, -200, "xya"),  // closer
-            actual_mutation("t1", now, -100, "xyz"),  // identical = 0 gap
+            actual_mutation("t1", now, -300, "aaa"), // far from "xyz"
+            actual_mutation("t1", now, -200, "xya"), // closer
+            actual_mutation("t1", now, -100, "xyz"), // identical = 0 gap
         ];
         let pattern = extract_mutation_pattern(&t, &mutations, 86400, now);
 
@@ -683,9 +673,9 @@ mod tests {
         let now = Utc::now();
         // Actual values that move away from "xyz"
         let mutations = vec![
-            actual_mutation("t1", now, -300, "xyz"),                   // identical = 0
-            actual_mutation("t1", now, -200, "xya"),                   // small gap
-            actual_mutation("t1", now, -100, "completely different"),   // large gap
+            actual_mutation("t1", now, -300, "xyz"), // identical = 0
+            actual_mutation("t1", now, -200, "xya"), // small gap
+            actual_mutation("t1", now, -100, "completely different"), // large gap
         ];
         let pattern = extract_mutation_pattern(&t, &mutations, 86400, now);
 
@@ -864,11 +854,7 @@ mod tests {
     fn test_zero_gap_stays_zero() {
         let p = make_pattern(0.0, vec![0.0, 0.0], Some(100.0), 1.0, 0.0, 5);
         let projected = project_gap_at(&p, 0.0, 1000);
-        assert!(
-            projected.abs() < 1e-9,
-            "expected 0.0, got {}",
-            projected
-        );
+        assert!(projected.abs() < 1e-9, "expected 0.0, got {}", projected);
     }
 
     #[test]
@@ -958,7 +944,10 @@ mod tests {
         // Gap samples alternate up/down.
         let p = make_pattern(0.0, vec![0.5, 0.7, 0.4, 0.8], Some(100.0), 1.0, 0.0, 10);
         let thresholds = ProjectionThresholds::default();
-        assert_eq!(classify_trajectory(&p, &thresholds), Trajectory::Oscillating);
+        assert_eq!(
+            classify_trajectory(&p, &thresholds),
+            Trajectory::Oscillating
+        );
     }
 
     // ── project_tension ─────────────────────────────────────────────
@@ -1043,10 +1032,10 @@ mod tests {
         let window = 30 * 86400_i64;
         // Alternating closer / further from desired.
         let mutations = vec![
-            actual_mutation("t1", now, -window + 1000, "aaa"),  // far
-            actual_mutation("t1", now, -window + 2000, "xyz"),  // close
-            actual_mutation("t1", now, -window + 3000, "aaa"),  // far
-            actual_mutation("t1", now, -window + 4000, "xyz"),  // close
+            actual_mutation("t1", now, -window + 1000, "aaa"), // far
+            actual_mutation("t1", now, -window + 2000, "xyz"), // close
+            actual_mutation("t1", now, -window + 3000, "aaa"), // far
+            actual_mutation("t1", now, -window + 4000, "xyz"), // close
         ];
         let thresholds = ProjectionThresholds::default();
         let projections = project_tension(&t, &mutations, &thresholds, now);
@@ -1080,7 +1069,11 @@ mod tests {
     #[test]
     fn test_project_tension_will_resolve_false() {
         use crate::horizon::Horizon;
-        let mut t = make_tension("t1", "very-far-desired-state", "completely-different-actual");
+        let mut t = make_tension(
+            "t1",
+            "very-far-desired-state",
+            "completely-different-actual",
+        );
         // Set a horizon very soon (tomorrow).
         let tomorrow = now_plus_days(1);
         t.horizon = Some(Horizon::parse(&tomorrow).unwrap());
@@ -1116,7 +1109,7 @@ mod tests {
         assert!(result.urgency_collisions.is_empty());
         // Funnel should still have 3 horizon entries, all zero.
         assert_eq!(result.funnel.len(), 3);
-        for (_, buckets) in &result.funnel {
+        for buckets in result.funnel.values() {
             assert_eq!(buckets.total, 0);
         }
     }

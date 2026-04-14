@@ -1,13 +1,17 @@
 //! Show command handler.
 
-use crate::serialize::{HorizonRangeJson, TensionInfo, node_to_tension_info};
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
+use crate::serialize::{HorizonRangeJson, TensionInfo, node_to_tension_info};
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::{compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern, gap_magnitude, HorizonDriftType, HorizonKind, TensionStatus};
 use serde::Serialize;
+use werk_core::{
+    HorizonDriftType, HorizonKind, TensionStatus, compute_frontier, compute_structural_signals,
+    compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern,
+    gap_magnitude,
+};
 use werk_shared::cli_display::glyphs;
 use werk_shared::{display_id, relative_time, truncate};
 
@@ -25,11 +29,11 @@ struct ShowResult {
     horizon_range: Option<HorizonRangeJson>,
     urgency: Option<f64>,
     overdue: bool,
-    frontier: sd_core::Frontier,
-    temporal: sd_core::TemporalSignals,
-    structural: sd_core::StructuralSignals,
+    frontier: werk_core::Frontier,
+    temporal: werk_core::TemporalSignals,
+    structural: werk_core::StructuralSignals,
     #[serde(skip_serializing_if = "Option::is_none")]
-    horizon_drift: Option<sd_core::HorizonDrift>,
+    horizon_drift: Option<werk_core::HorizonDrift>,
     mutations: Vec<ShowMutationInfo>,
     children: Vec<ChildInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,9 +85,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
     let sig = crate::commands::signal_thresholds_from(&workspace);
     let analysis = crate::commands::analysis_thresholds_from(&workspace);
 
-    let all_tensions = store
-        .list_tensions()
-        .map_err(WerkError::StoreError)?;
+    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let resolver = PrefixResolver::new(all_tensions.clone());
 
     let tension = resolver.resolve(&id)?;
@@ -93,12 +95,12 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         .map_err(WerkError::StoreError)?;
 
     // Build forest for children
-    let forest = sd_core::Forest::from_tensions(all_tensions.clone())
+    let forest = werk_core::Forest::from_tensions(all_tensions.clone())
         .map_err(|e| WerkError::InvalidInput(e.to_string()))?;
 
     // Collect raw children and their mutations (needed for both sorting and frontier)
     let raw_children = forest.children(&tension.id).unwrap_or_default();
-    let child_mutations: Vec<(String, Vec<sd_core::Mutation>)> = raw_children
+    let child_mutations: Vec<(String, Vec<werk_core::Mutation>)> = raw_children
         .iter()
         .filter_map(|c| {
             let muts = store.get_mutations(&c.id()).ok()?;
@@ -223,7 +225,12 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             .collect();
 
         let proj_thresholds = crate::commands::to_projection_thresholds(&analysis);
-        let pattern = extract_mutation_pattern(tension, &mutations, proj_thresholds.pattern_window_seconds, now);
+        let pattern = extract_mutation_pattern(
+            tension,
+            &mutations,
+            proj_thresholds.pattern_window_seconds,
+            now,
+        );
         let gap = gap_magnitude(&tension.desired, &tension.actual);
         let engagement = serde_json::json!({
             "current_gap": gap,
@@ -307,7 +314,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             println!("  Parent:   {} — {}", parent_display, parent_desired);
         }
         print!("  Status:   {}", &tension.status);
-        println!("          Created: {}", relative_time(tension.created_at, now));
+        println!(
+            "          Created: {}",
+            relative_time(tension.created_at, now)
+        );
 
         // Horizon: own or inherited from parent (clearly distinguished)
         if let Some(h) = &tension.horizon {
@@ -372,7 +382,11 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
         // Wave (topological generation — always shown if computed)
         if let Some(wave) = structural.wave {
-            println!("  Wave:     {} of {}", wave + 1, field_structural.wave_count);
+            println!(
+                "  Wave:     {} of {}",
+                wave + 1,
+                field_structural.wave_count
+            );
         }
 
         // Urgency (only if horizon exists)
@@ -395,17 +409,29 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
         }
 
         // === Signals (by exception — only shown when something needs attention) ===
-        let has_hub = structural.centrality.map(|c| c > sig.hub_centrality).unwrap_or(false);
+        let has_hub = structural
+            .centrality
+            .map(|c| c > sig.hub_centrality)
+            .unwrap_or(false);
         let has_spine = structural.on_longest_path;
-        let has_reach = structural.descendant_count.map(|c| c > sig.reach_descendants as usize).unwrap_or(false);
+        let has_reach = structural
+            .descendant_count
+            .map(|c| c > sig.reach_descendants as usize)
+            .unwrap_or(false);
         let has_signals = temporal.on_critical_path
             || temporal.has_containment_violation
             || !temporal.sequencing_pressures.is_empty()
             || !temporal.critical_path.is_empty()
             || !temporal.containment_violations.is_empty()
-            || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false)
+            || temporal
+                .implied_window
+                .as_ref()
+                .map(|w| w.duration_seconds < 0)
+                .unwrap_or(false)
             || horizon_drift.is_some()
-            || has_hub || has_spine || has_reach;
+            || has_hub
+            || has_spine
+            || has_reach;
 
         if has_signals {
             println!();
@@ -443,7 +469,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 );
             }
             for cpath in &temporal.critical_path {
-                let child_sc = all_tensions.iter().find(|t| t.id == cpath.tension_id).and_then(|t| t.short_code);
+                let child_sc = all_tensions
+                    .iter()
+                    .find(|t| t.id == cpath.tension_id)
+                    .and_then(|t| t.short_code);
                 let child_display = display_id(child_sc, &cpath.tension_id);
                 let slack_days = cpath.slack_seconds as f64 / 86400.0;
                 if slack_days <= 0.0 {
@@ -464,7 +493,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                 }
             }
             for cv in &temporal.containment_violations {
-                let child_sc = all_tensions.iter().find(|t| t.id == cv.tension_id).and_then(|t| t.short_code);
+                let child_sc = all_tensions
+                    .iter()
+                    .find(|t| t.id == cv.tension_id)
+                    .and_then(|t| t.short_code);
                 let child_display = display_id(child_sc, &cv.tension_id);
                 let excess_days = cv.excess_seconds as f64 / 86400.0;
                 println!(
@@ -487,16 +519,33 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             }
             if let Some(ref drift) = horizon_drift {
                 let net_days = drift.net_shift_seconds.abs() / 86400;
-                let direction = if drift.net_shift_seconds > 0 { "+" } else { "-" };
-                let since = drift.onset
+                let direction = if drift.net_shift_seconds > 0 {
+                    "+"
+                } else {
+                    "-"
+                };
+                let since = drift
+                    .onset
                     .map(|ts| format!(" since {}", relative_time(ts, now)))
                     .unwrap_or_default();
                 let desc = match drift.drift_type {
-                    HorizonDriftType::Tightening => format!("tightened{} (net {}{}d)", since, direction, net_days),
-                    HorizonDriftType::Postponement => format!("postponed{} (net +{}d)", since, net_days),
-                    HorizonDriftType::RepeatedPostponement => format!("postponed {}\u{00d7}{} (net +{}d)", drift.change_count, since, net_days),
-                    HorizonDriftType::Loosening => format!("loosening{} (net {}{}d)", since, direction, net_days),
-                    HorizonDriftType::Oscillating => format!("oscillating{} ({} shifts, net {}{}d)", since, drift.change_count, direction, net_days),
+                    HorizonDriftType::Tightening => {
+                        format!("tightened{} (net {}{}d)", since, direction, net_days)
+                    }
+                    HorizonDriftType::Postponement => {
+                        format!("postponed{} (net +{}d)", since, net_days)
+                    }
+                    HorizonDriftType::RepeatedPostponement => format!(
+                        "postponed {}\u{00d7}{} (net +{}d)",
+                        drift.change_count, since, net_days
+                    ),
+                    HorizonDriftType::Loosening => {
+                        format!("loosening{} (net {}{}d)", since, direction, net_days)
+                    }
+                    HorizonDriftType::Oscillating => format!(
+                        "oscillating{} ({} shifts, net {}{}d)",
+                        since, drift.change_count, direction, net_days
+                    ),
                     HorizonDriftType::Stable => unreachable!(),
                 };
                 println!(
@@ -553,7 +602,9 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     };
                     println!(
                         "  Next:     {}{} {}",
-                        ns_display, overdue_marker, truncate(&ns.desired, 40)
+                        ns_display,
+                        overdue_marker,
+                        truncate(&ns.desired, 40)
                     );
                 } else if !frontier.held.is_empty() {
                     let n = frontier.held.len();
@@ -566,7 +617,8 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                         let step_display = display_id(step.short_code, &step.tension_id);
                         println!(
                             "  Overdue:  {} {}",
-                            step_display, truncate(&step.desired, 40)
+                            step_display,
+                            truncate(&step.desired, 40)
                         );
                     }
                 }
@@ -577,10 +629,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 
                 if !frontier.recently_resolved.is_empty() {
                     if epochs.is_empty() {
-                        println!(
-                            "  Recent:   {} resolved",
-                            frontier.recently_resolved.len()
-                        );
+                        println!("  Recent:   {} resolved", frontier.recently_resolved.len());
                     } else {
                         println!(
                             "  Recent:   {} resolved since last epoch",
@@ -602,10 +651,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     "Released" => format!(" {}", palette.chrome(glyphs::STATUS_RELEASED)),
                     _ => String::new(),
                 };
-                println!(
-                    "  {}{} {}",
-                    child_id, status_marker, &child.desired
-                );
+                println!("  {}{} {}", child_id, status_marker, &child.desired);
             }
         }
 
@@ -622,13 +668,18 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     .map(|dt| relative_time(dt.with_timezone(&Utc), now))
                     .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
 
-                let summary = format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
+                let summary =
+                    format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value);
                 let summary_styled = if m.field == "note" {
                     palette.testimony(&summary)
                 } else {
                     summary
                 };
-                println!("  {}  {}", palette.chrome(&format!("{:>12}", ts)), summary_styled);
+                println!(
+                    "  {}  {}",
+                    palette.chrome(&format!("{:>12}", ts)),
+                    summary_styled
+                );
             }
         }
 
@@ -638,7 +689,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
             let latest = &epochs[epochs.len() - 1];
             let age = relative_time(latest.timestamp, now);
             if full {
-                println!("{}", palette.bold(&palette.structure(&format!("Epochs ({}):", epochs.len()))));
+                println!(
+                    "{}",
+                    palette.bold(&palette.structure(&format!("Epochs ({}):", epochs.len())))
+                );
                 for (i, e) in epochs.iter().enumerate().rev() {
                     let e_age = relative_time(e.timestamp, now);
                     println!(
@@ -649,11 +703,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     );
                 }
             } else {
-                println!(
-                    "Epochs:     {} (latest {})",
-                    epochs.len(),
-                    age,
-                );
+                println!("Epochs:     {} (latest {})", epochs.len(), age,);
             }
         }
 
@@ -664,7 +714,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     println!();
                     println!("{}", palette.bold(&palette.structure("Ancestors:")));
                     for a in ancestors {
-                        let sc = a.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| a.id[..8.min(a.id.len())].to_string());
+                        let sc = a
+                            .short_code
+                            .map(|c| format!("#{}", c))
+                            .unwrap_or_else(|| a.id[..8.min(a.id.len())].to_string());
                         println!("  {:<6} {}", sc, truncate(&a.desired, 55));
                     }
                 }
@@ -674,7 +727,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     println!();
                     println!("{}", palette.bold(&palette.structure("Siblings:")));
                     for s in siblings {
-                        let sc = s.short_code.map(|c| format!("#{}", c)).unwrap_or_else(|| s.id[..8.min(s.id.len())].to_string());
+                        let sc = s
+                            .short_code
+                            .map(|c| format!("#{}", c))
+                            .unwrap_or_else(|| s.id[..8.min(s.id.len())].to_string());
                         let status_marker = match s.status.as_str() {
                             "Resolved" => format!(" {}", palette.resolved(glyphs::STATUS_RESOLVED)),
                             "Released" => format!(" {}", palette.chrome(glyphs::STATUS_RELEASED)),
@@ -691,7 +747,13 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     println!("  Frequency: {:.1}/day", freq);
                 }
                 if let Some(trend) = eng.get("frequency_trend").and_then(|v| v.as_f64()) {
-                    let trend_word = if trend > 0.1 { "accelerating" } else if trend < -0.1 { "declining" } else { "steady" };
+                    let trend_word = if trend > 0.1 {
+                        "accelerating"
+                    } else if trend < -0.1 {
+                        "declining"
+                    } else {
+                        "steady"
+                    };
                     println!("  Trend: {}", trend_word);
                 }
                 if let Some(count) = eng.get("mutation_count").and_then(|v| v.as_u64()) {
@@ -743,14 +805,13 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
 }
 
 /// Format a horizon line for display, distinguishing own vs inherited.
-fn print_horizon(h: &sd_core::Horizon, now: DateTime<Utc>, inherited_from: Option<&str>) {
+fn print_horizon(h: &werk_core::Horizon, now: DateTime<Utc>, inherited_from: Option<&str>) {
     let horizon_str = h.to_string();
     let interpretation = match h.kind() {
         HorizonKind::Year(y) => format!("Year {}", y),
         HorizonKind::Month(y, m) => {
             let month_names = [
-                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
-                "Nov", "Dec",
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
             ];
             format!("{} {}", month_names[(m - 1) as usize], y)
         }
@@ -789,17 +850,15 @@ fn format_mutation_summary(field: &str, old_value: Option<&str>, new_value: &str
             // Creation mutation — don't repeat the desired/actual
             "created".to_string()
         }
-        "status" => {
-            match new_value {
-                "Resolved" => "resolved".to_string(),
-                "Released" => "released".to_string(),
-                "Active" => match old_value {
-                    Some(old) => format!("reopened (was {})", old.to_lowercase()),
-                    None => "reopened".to_string(),
-                },
-                _ => format!("status -> {}", new_value),
-            }
-        }
+        "status" => match new_value {
+            "Resolved" => "resolved".to_string(),
+            "Released" => "released".to_string(),
+            "Active" => match old_value {
+                Some(old) => format!("reopened (was {})", old.to_lowercase()),
+                None => "reopened".to_string(),
+            },
+            _ => format!("status -> {}", new_value),
+        },
         "desired" => "desired updated".to_string(),
         "actual" => "reality updated".to_string(),
         "position" => {

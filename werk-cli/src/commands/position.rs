@@ -18,9 +18,7 @@ struct PositionResult {
 
 pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError> {
     if n < 1 {
-        return Err(WerkError::InvalidInput(
-            "position must be >= 1".to_string(),
-        ));
+        return Err(WerkError::InvalidInput("position must be >= 1".to_string()));
     }
 
     let workspace = Workspace::discover()?;
@@ -35,7 +33,7 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
     let _ = store.begin_gesture(Some(&format!("position {} at {}", &tension.id, n)));
     let changed = store
         .update_position(&tension.id, Some(n))
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
 
     // Print success message before palette (human mode)
@@ -44,7 +42,8 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
             output
                 .success(&format!(
                     "Tension {} is already at position {}",
-                    werk_shared::display_id(tension.short_code, &tension.id), n
+                    werk_shared::display_id(tension.short_code, &tension.id),
+                    n
                 ))
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
         } else {
@@ -53,7 +52,9 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
                     output
                         .success(&format!(
                             "Positioned tension {} at {} (was {})",
-                            werk_shared::display_id(tension.short_code, &tension.id), n, p
+                            werk_shared::display_id(tension.short_code, &tension.id),
+                            n,
+                            p
                         ))
                         .map_err(|e| WerkError::IoError(e.to_string()))?;
                 }
@@ -61,7 +62,8 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
                     output
                         .success(&format!(
                             "Positioned tension {} at {} (was held)",
-                            werk_shared::display_id(tension.short_code, &tension.id), n
+                            werk_shared::display_id(tension.short_code, &tension.id),
+                            n
                         ))
                         .map_err(|e| WerkError::IoError(e.to_string()))?;
                 }

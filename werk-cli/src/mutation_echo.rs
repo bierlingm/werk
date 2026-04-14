@@ -29,7 +29,7 @@
 //! tiny and lets the mutation commands call it from a single line.
 
 use crate::error::WerkError;
-use sd_core::{Store, TensionStatus};
+use werk_core::{Store, TensionStatus};
 use werk_shared::cli_display::{Palette, glyphs};
 
 /// Render a compact human-readable echo of a tension's current state.
@@ -44,7 +44,10 @@ pub fn print_human_echo(
     palette: &Palette,
     tension_id: &str,
 ) -> Result<(), WerkError> {
-    let tension = match store.get_tension(tension_id).map_err(WerkError::StoreError)? {
+    let tension = match store
+        .get_tension(tension_id)
+        .map_err(WerkError::StoreError)?
+    {
         Some(t) => t,
         None => return Ok(()),
     };
@@ -57,7 +60,12 @@ pub fn print_human_echo(
     };
 
     println!();
-    println!("  {}{}  {}", palette.bold(&id_display), status_glyph, &tension.desired);
+    println!(
+        "  {}{}  {}",
+        palette.bold(&id_display),
+        status_glyph,
+        &tension.desired
+    );
     println!("  {} {}", palette.chrome("Reality:"), &tension.actual);
 
     // Compact metadata line: horizon · closure · position
@@ -79,7 +87,10 @@ pub fn print_human_echo(
             .count();
         let active_count = children.len() - released_count;
         let closure = if released_count > 0 {
-            format!("[{}/{}] ({} released)", resolved_count, active_count, released_count)
+            format!(
+                "[{}/{}] ({} released)",
+                resolved_count, active_count, released_count
+            )
         } else {
             format!("[{}/{}]", resolved_count, active_count)
         };
@@ -111,10 +122,7 @@ pub fn print_human_echo(
 ///     val["show"] = build_json_echo(&store, &tension_id)?;
 /// }
 /// ```
-pub fn build_json_echo(
-    store: &Store,
-    tension_id: &str,
-) -> Result<serde_json::Value, WerkError> {
+pub fn build_json_echo(store: &Store, tension_id: &str) -> Result<serde_json::Value, WerkError> {
     let tension = store
         .get_tension(tension_id)
         .map_err(WerkError::StoreError)?

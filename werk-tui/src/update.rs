@@ -1,8 +1,8 @@
 //! Update logic for the Operative Instrument.
 
-use ftui::{Cmd, Event, Frame, Model};
 use ftui::layout::{Constraint, Flex, Rect};
 use ftui::runtime::subscription::Subscription;
+use ftui::{Cmd, Event, Frame, Model};
 
 use crate::app::InstrumentApp;
 use crate::msg::Msg;
@@ -104,7 +104,10 @@ impl Model for InstrumentApp {
         if self.toasts.is_active() {
             return match cmd {
                 Cmd::None => Cmd::Tick(std::time::Duration::from_millis(100)),
-                other => Cmd::Batch(vec![other, Cmd::Tick(std::time::Duration::from_millis(100))]),
+                other => Cmd::Batch(vec![
+                    other,
+                    Cmd::Tick(std::time::Duration::from_millis(100)),
+                ]),
             };
         }
 
@@ -131,7 +134,11 @@ impl Model for InstrumentApp {
         let outer = Flex::vertical().constraints(constraints).split(area);
         let content_area = outer[0];
         let lever_area = outer[1];
-        let hints_area = if show_hints { outer[2] } else { Rect::default() };
+        let hints_area = if show_hints {
+            outer[2]
+        } else {
+            Rect::default()
+        };
 
         // Survey orientation — render survey as background, then fall through
         // to overlay rendering so gestures (confirm, edit, note) work in survey.
@@ -152,7 +159,8 @@ impl Model for InstrumentApp {
         if !in_survey && !in_logbase {
             if matches!(self.input_mode, InputMode::Moving { .. }) {
                 self.render_search(&content_area, frame);
-            } else if self.siblings.is_empty() && self.parent_id.is_none()
+            } else if self.siblings.is_empty()
+                && self.parent_id.is_none()
                 && !matches!(self.input_mode, InputMode::Adding(_))
             {
                 self.render_empty(&content_area, frame);
@@ -169,8 +177,15 @@ impl Model for InstrumentApp {
 
                     // Desire and reality anchors
                     let frontier = self.current_frontier();
-                    self.render_anchors(frame, panes.desire, panes.reality,
-                        w, &cols, &desire_lines, &frontier);
+                    self.render_anchors(
+                        frame,
+                        panes.desire,
+                        panes.reality,
+                        w,
+                        &cols,
+                        &desire_lines,
+                        &frontier,
+                    );
 
                     // Field of action
                     self.render_deck(&panes.field, &cols, frame);
@@ -216,7 +231,9 @@ impl Model for InstrumentApp {
             crate::modal::render_backdrop(frame, content_area, &self.styles);
             // with_fill_area(true) makes the widget use our full area instead
             // of its default 60%-width centered layout.
-            let palette_height = (content_area.height / 2).max(8).min(content_area.height.saturating_sub(1));
+            let palette_height = (content_area.height / 2)
+                .max(8)
+                .min(content_area.height.saturating_sub(1));
             let palette_area = ftui::layout::Rect::new(
                 content_area.x,
                 content_area.y,
@@ -238,18 +255,48 @@ impl Model for InstrumentApp {
             if matches!(self.input_mode, InputMode::Help { .. }) {
                 self.render_input_hints("press any key to close", &hints_area, frame);
             } else if self.command_palette.is_visible() {
-                self.render_input_hints("Enter select  \u{2191}/\u{2193} navigate  Esc dismiss", &hints_area, frame);
+                self.render_input_hints(
+                    "Enter select  \u{2191}/\u{2193} navigate  Esc dismiss",
+                    &hints_area,
+                    frame,
+                );
             } else {
                 match &self.input_mode {
-                    InputMode::Adding(_) => self.render_input_hints("Enter create  Tab more fields  Esc cancel  Bksp back", &hints_area, frame),
-                    InputMode::Confirming(_) => self.render_input_hints("y confirm  n cancel", &hints_area, frame),
-                    InputMode::Editing { .. } => self.render_input_hints("Enter save  Tab more fields  Esc cancel", &hints_area, frame),
-                    InputMode::Annotating { .. } => self.render_input_hints("Enter save  Esc cancel", &hints_area, frame),
-                    InputMode::Moving { .. } => self.render_input_hints("Enter place here  \u{2191}/\u{2193} navigate  Esc cancel", &hints_area, frame),
-                    InputMode::Reordering { .. } => self.render_input_hints("Shift+J/K move  Enter drop  Esc cancel", &hints_area, frame),
-                    _ => if in_logbase {
-                        self.render_input_hints("j/k events  J/K epochs  Enter expand  L return  ? help", &hints_area, frame);
-                    },
+                    InputMode::Adding(_) => self.render_input_hints(
+                        "Enter create  Tab more fields  Esc cancel  Bksp back",
+                        &hints_area,
+                        frame,
+                    ),
+                    InputMode::Confirming(_) => {
+                        self.render_input_hints("y confirm  n cancel", &hints_area, frame)
+                    }
+                    InputMode::Editing { .. } => self.render_input_hints(
+                        "Enter save  Tab more fields  Esc cancel",
+                        &hints_area,
+                        frame,
+                    ),
+                    InputMode::Annotating { .. } => {
+                        self.render_input_hints("Enter save  Esc cancel", &hints_area, frame)
+                    }
+                    InputMode::Moving { .. } => self.render_input_hints(
+                        "Enter place here  \u{2191}/\u{2193} navigate  Esc cancel",
+                        &hints_area,
+                        frame,
+                    ),
+                    InputMode::Reordering { .. } => self.render_input_hints(
+                        "Shift+J/K move  Enter drop  Esc cancel",
+                        &hints_area,
+                        frame,
+                    ),
+                    _ => {
+                        if in_logbase {
+                            self.render_input_hints(
+                                "j/k events  J/K epochs  Enter expand  L return  ? help",
+                                &hints_area,
+                                frame,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -308,9 +355,7 @@ impl InstrumentApp {
         let query_before = self.command_palette.query().to_string();
 
         match self.command_palette.handle_event(&event) {
-            Some(PaletteAction::Execute(id)) => {
-                Some(self.dispatch_palette_action(&id))
-            }
+            Some(PaletteAction::Execute(id)) => Some(self.dispatch_palette_action(&id)),
             Some(PaletteAction::Dismiss) => Some(Cmd::none()),
             None => {
                 // Query changed — refresh combined items with tension results
@@ -346,8 +391,12 @@ impl InstrumentApp {
                     self.rebuild_logbase_items();
                     // Select the boundary item for that epoch
                     if let Some(pos) = self.logbase_items.iter().position(|item| {
-                        item.is_boundary && self.logbase_events.get(item.event_index)
-                            .map(|e| e.epoch_index() == target_epoch).unwrap_or(false)
+                        item.is_boundary
+                            && self
+                                .logbase_events
+                                .get(item.event_index)
+                                .map(|e| e.epoch_index() == target_epoch)
+                                .unwrap_or(false)
                     }) {
                         self.logbase_list_state.borrow_mut().select(Some(pos));
                     }
@@ -381,7 +430,7 @@ impl InstrumentApp {
             }
             "resolve" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_mode = InputMode::Confirming(ConfirmKind::Resolve {
                             tension_id: entry.id.clone(),
                             desired: entry.desired.clone(),
@@ -391,7 +440,7 @@ impl InstrumentApp {
             }
             "release" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_mode = InputMode::Confirming(ConfirmKind::Release {
                             tension_id: entry.id.clone(),
                             desired: entry.desired.clone(),
@@ -401,7 +450,7 @@ impl InstrumentApp {
             }
             "edit_desire" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_buffer = entry.desired.clone();
                         self.text_input.set_value(&entry.desired);
                         self.text_input.set_focused(true);
@@ -415,7 +464,7 @@ impl InstrumentApp {
             }
             "edit_reality" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_buffer = entry.actual.clone();
                         self.text_input.set_value(&entry.actual);
                         self.text_input.set_focused(true);
@@ -429,7 +478,7 @@ impl InstrumentApp {
             }
             "edit_horizon" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         let horizon_text = entry.horizon_label.as_deref().unwrap_or("");
                         self.input_buffer = horizon_text.to_string();
                         self.text_input.set_value(horizon_text);
@@ -454,7 +503,9 @@ impl InstrumentApp {
             }
             "move" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    self.input_mode = InputMode::Moving { tension_id: entry.id.clone() };
+                    self.input_mode = InputMode::Moving {
+                        tension_id: entry.id.clone(),
+                    };
                     self.input_buffer.clear();
                     self.search_state = Some(crate::search::SearchState::new());
                 }
@@ -476,14 +527,13 @@ impl InstrumentApp {
                 self.gesture_redo();
             }
             "help" => {
-                self.input_mode = InputMode::Help { from: self.view_orientation };
+                self.input_mode = InputMode::Help {
+                    from: self.view_orientation,
+                };
             }
             "survey" => {
                 // Save stream position and switch to survey
-                self.pre_survey_state = Some((
-                    self.parent_id.clone(),
-                    self.focus_state.active,
-                ));
+                self.pre_survey_state = Some((self.parent_id.clone(), self.focus_state.active));
                 self.load_survey_items();
                 self.view_orientation = crate::state::ViewOrientation::Survey;
             }
@@ -493,10 +543,10 @@ impl InstrumentApp {
                     crate::deck::CursorTarget::Desire | crate::deck::CursorTarget::Reality => {
                         self.parent_id.clone()
                     }
-                    _ => {
-                        self.action_target().map(|e| e.id.clone())
-                            .or_else(|| self.parent_id.clone())
-                    }
+                    _ => self
+                        .action_target()
+                        .map(|e| e.id.clone())
+                        .or_else(|| self.parent_id.clone()),
                 };
                 if let Some(tid) = tension_id {
                     self.enter_logbase(&tid);
@@ -504,7 +554,8 @@ impl InstrumentApp {
             }
             "hold" => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active && entry.position.is_some() {
+                    if entry.status == werk_core::TensionStatus::Active && entry.position.is_some()
+                    {
                         self.begin_gesture(&format!("hold {}", &entry.id[..8.min(entry.id.len())]));
                         let _ = self.engine.store().update_position(&entry.id, None);
                         self.end_gesture();
@@ -561,8 +612,10 @@ impl InstrumentApp {
                 if self.enter_reorder() {
                     self.reorder_move_up();
                 } else {
-                    self.session_log.record(crate::session_log::Category::Reorder,
-                        "enter_reorder failed (cursor not on reorderable item)");
+                    self.session_log.record(
+                        crate::session_log::Category::Reorder,
+                        "enter_reorder failed (cursor not on reorderable item)",
+                    );
                 }
                 Cmd::none()
             }
@@ -570,8 +623,10 @@ impl InstrumentApp {
                 if self.enter_reorder() {
                     self.reorder_move_down();
                 } else {
-                    self.session_log.record(crate::session_log::Category::Reorder,
-                        "enter_reorder failed (cursor not on reorderable item)");
+                    self.session_log.record(
+                        crate::session_log::Category::Reorder,
+                        "enter_reorder failed (cursor not on reorderable item)",
+                    );
                 }
                 Cmd::none()
             }
@@ -659,8 +714,8 @@ impl InstrumentApp {
                     self.deck_zoom = crate::deck::ZoomLevel::Peek;
                 } else if let Some(entry) = self.action_target().cloned() {
                     let mut detail = self.load_focus_detail(&entry);
-                    detail.actual = String::new();       // peek = no reality
-                    detail.recent_notes = Vec::new();    // peek = no notes
+                    detail.actual = String::new(); // peek = no reality
+                    detail.recent_notes = Vec::new(); // peek = no notes
                     self.focused_detail = Some(detail);
                     self.deck_zoom = crate::deck::ZoomLevel::Peek;
                 }
@@ -670,10 +725,7 @@ impl InstrumentApp {
             // Saves stream state so Shift+Tab can return without pivoting.
             Msg::Tab | Msg::ExpandGaze => {
                 // Save stream position for Shift+Tab return.
-                self.pre_survey_state = Some((
-                    self.parent_id.clone(),
-                    self.focus_state.active,
-                ));
+                self.pre_survey_state = Some((self.parent_id.clone(), self.focus_state.active));
                 let focused_id = self.action_target().map(|e| e.id.clone());
                 self.load_survey_items();
                 // Position survey cursor on the focused tension.
@@ -693,10 +745,7 @@ impl InstrumentApp {
             Msg::BackTab => {
                 if !self.survey_items.is_empty() {
                     // Save current stream position so Tab from survey can return here.
-                    self.pre_survey_state = Some((
-                        self.parent_id.clone(),
-                        self.focus_state.active,
-                    ));
+                    self.pre_survey_state = Some((self.parent_id.clone(), self.focus_state.active));
                     self.view_orientation = crate::state::ViewOrientation::Survey;
                 } else {
                     // No survey data yet — do a full Tab instead.
@@ -715,7 +764,8 @@ impl InstrumentApp {
                     }
                     _ => {
                         // On a child → logbase for that child
-                        self.action_target().map(|e| e.id.clone())
+                        self.action_target()
+                            .map(|e| e.id.clone())
                             .or_else(|| self.parent_id.clone())
                     }
                 };
@@ -735,7 +785,7 @@ impl InstrumentApp {
                 if self.enter_anchor_edit() {
                     // Cursor was on desire/reality anchor — edit opened
                 } else if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_buffer = entry.desired.clone();
                         self.text_input.set_value(&entry.desired);
                         self.text_input.set_focused(true);
@@ -761,7 +811,7 @@ impl InstrumentApp {
             }
             Msg::Char('r') | Msg::StartResolve => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_mode = InputMode::Confirming(ConfirmKind::Resolve {
                             tension_id: entry.id.clone(),
                             desired: entry.desired.clone(),
@@ -772,7 +822,7 @@ impl InstrumentApp {
             }
             Msg::Char('x') | Msg::StartRelease => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status == sd_core::TensionStatus::Active {
+                    if entry.status == werk_core::TensionStatus::Active {
                         self.input_mode = InputMode::Confirming(ConfirmKind::Release {
                             tension_id: entry.id.clone(),
                             desired: entry.desired.clone(),
@@ -797,7 +847,8 @@ impl InstrumentApp {
             // Yank — y copies short code, Y copies full context for agent handoff
             Msg::Char('y') => {
                 if let Some(entry) = self.action_target().cloned() {
-                    let label = entry.short_code
+                    let label = entry
+                        .short_code
                         .map(|c| format!("#{}", c))
                         .unwrap_or_else(|| entry.id[..12.min(entry.id.len())].to_string());
                     let _ = self.copy_to_clipboard(&label);
@@ -809,7 +860,8 @@ impl InstrumentApp {
                 if let Some(entry) = self.action_target().cloned() {
                     let ctx = self.build_clipboard_context(&entry.id);
                     let _ = self.copy_to_clipboard(&ctx);
-                    let label = entry.short_code
+                    let label = entry
+                        .short_code
                         .map(|c| format!("#{}", c))
                         .unwrap_or_else(|| "tension".to_string());
                     self.set_transient(format!("copied {} context", label));
@@ -820,12 +872,15 @@ impl InstrumentApp {
             // Reopen (for resolved/released)
             Msg::Char('o') => {
                 if let Some(entry) = self.action_target().cloned() {
-                    if entry.status != sd_core::TensionStatus::Active {
-                        self.begin_gesture(&format!("reopen {}", &entry.id[..8.min(entry.id.len())]));
-                        let _ = self.engine.store().update_status(
-                            &entry.id,
-                            sd_core::TensionStatus::Active,
-                        );
+                    if entry.status != werk_core::TensionStatus::Active {
+                        self.begin_gesture(&format!(
+                            "reopen {}",
+                            &entry.id[..8.min(entry.id.len())]
+                        ));
+                        let _ = self
+                            .engine
+                            .store()
+                            .update_status(&entry.id, werk_core::TensionStatus::Active);
                         self.end_gesture();
                         self.set_transient("reopened");
                         self.load_siblings();
@@ -838,7 +893,7 @@ impl InstrumentApp {
             Msg::Char('p') => {
                 if let Some(entry) = self.action_target().cloned() {
                     let entry_id = entry.id.clone();
-                    if entry.status != sd_core::TensionStatus::Active {
+                    if entry.status != werk_core::TensionStatus::Active {
                         self.set_transient("only active steps can be positioned");
                     } else if entry.position.is_some() {
                         // Positioned → hold
@@ -852,7 +907,10 @@ impl InstrumentApp {
                         }
                     } else {
                         // Held → position at 1 (bottom of sequence = next to act on)
-                        self.begin_gesture(&format!("position {}", &entry_id[..8.min(entry_id.len())]));
+                        self.begin_gesture(&format!(
+                            "position {}",
+                            &entry_id[..8.min(entry_id.len())]
+                        ));
                         let _ = self.engine.update_position(&entry_id, Some(1));
                         self.end_gesture();
                         self.set_transient("positioned");
@@ -882,7 +940,9 @@ impl InstrumentApp {
             // Move by search
             Msg::Char('m') | Msg::StartMove => {
                 if let Some(entry) = self.action_target().cloned() {
-                    self.input_mode = InputMode::Moving { tension_id: entry.id };
+                    self.input_mode = InputMode::Moving {
+                        tension_id: entry.id,
+                    };
                     self.input_buffer.clear();
                     self.search_state = Some(crate::search::SearchState::new());
                 }
@@ -892,14 +952,20 @@ impl InstrumentApp {
             // Toggle trajectory mode (Q30: resolved stay in-place on route)
             Msg::Char('T') => {
                 self.trajectory_mode = !self.trajectory_mode;
-                self.set_transient(if self.trajectory_mode { "trajectory view" } else { "frontier view" });
+                self.set_transient(if self.trajectory_mode {
+                    "trajectory view"
+                } else {
+                    "frontier view"
+                });
                 self.deck_cursor_reset();
                 Cmd::none()
             }
 
             // ? = universal help overlay
             Msg::Char('?') | Msg::ToggleHelp => {
-                self.input_mode = InputMode::Help { from: self.view_orientation };
+                self.input_mode = InputMode::Help {
+                    from: self.view_orientation,
+                };
                 Cmd::none()
             }
 
@@ -911,8 +977,11 @@ impl InstrumentApp {
                         crate::state::AlertKind::Neglect { .. } => {
                             // Open reality for editing on the parent
                             if let Some(ref pid) = self.parent_id {
-                                let actual = self.parent_tension.as_ref()
-                                    .map(|t| t.actual.clone()).unwrap_or_default();
+                                let actual = self
+                                    .parent_tension
+                                    .as_ref()
+                                    .map(|t| t.actual.clone())
+                                    .unwrap_or_default();
                                 self.input_buffer.clone_from(&actual);
                                 self.text_input.set_value(&actual);
                                 self.text_input.set_focused(true);
@@ -926,7 +995,9 @@ impl InstrumentApp {
                         crate::state::AlertKind::HorizonPast { .. } => {
                             // Open horizon for editing on the parent
                             if let Some(ref pid) = self.parent_id {
-                                let horizon_str = self.parent_tension.as_ref()
+                                let horizon_str = self
+                                    .parent_tension
+                                    .as_ref()
                                     .and_then(|t| t.horizon.as_ref().map(|h| h.to_string()))
                                     .unwrap_or_default();
                                 self.input_buffer.clone_from(&horizon_str);
@@ -967,13 +1038,11 @@ impl InstrumentApp {
             Msg::Tick => Cmd::none(),
 
             // In normal mode, RawEvent carries Left/Right that should be navigation
-            Msg::RawEvent(Event::Key(key)) => {
-                match key.code {
-                    ftui::KeyCode::Left => self.update_normal(Msg::Ascend),
-                    ftui::KeyCode::Right => self.update_normal(Msg::Descend),
-                    _ => Cmd::none(),
-                }
-            }
+            Msg::RawEvent(Event::Key(key)) => match key.code {
+                ftui::KeyCode::Left => self.update_normal(Msg::Ascend),
+                ftui::KeyCode::Right => self.update_normal(Msg::Descend),
+                _ => Cmd::none(),
+            },
 
             _ => Cmd::none(),
         }
@@ -995,7 +1064,9 @@ impl InstrumentApp {
                 for _ in 0..self.siblings.len() {
                     let prev = self.reorder_grabbed_index();
                     self.reorder_move_up();
-                    if self.reorder_grabbed_index() == prev { break; }
+                    if self.reorder_grabbed_index() == prev {
+                        break;
+                    }
                 }
                 Cmd::none()
             }
@@ -1003,7 +1074,9 @@ impl InstrumentApp {
                 for _ in 0..self.siblings.len() {
                     let prev = self.reorder_grabbed_index();
                     self.reorder_move_down();
-                    if self.reorder_grabbed_index() == prev { break; }
+                    if self.reorder_grabbed_index() == prev {
+                        break;
+                    }
                 }
                 Cmd::none()
             }
@@ -1072,7 +1145,10 @@ impl InstrumentApp {
 
     fn apply_pathway_choice(&mut self, option_index: usize) {
         if let Some(pw) = self.pathway_state.take() {
-            let choice = if pw.palette.options.get(option_index)
+            let choice = if pw
+                .palette
+                .options
+                .get(option_index)
                 .map(|o| o.action == "dismiss")
                 .unwrap_or(true)
             {
@@ -1081,11 +1157,8 @@ impl InstrumentApp {
                 werk_shared::palette::PaletteChoice::Selected(option_index)
             };
 
-            match werk_shared::palette::apply_choice(
-                self.engine.store_mut(),
-                &pw.context,
-                &choice,
-            ) {
+            match werk_shared::palette::apply_choice(self.engine.store_mut(), &pw.context, &choice)
+            {
                 Ok(Some(msg)) => self.set_transient(msg),
                 Ok(None) => self.set_transient("dismissed"),
                 Err(e) => self.set_transient(format!("palette error: {}", e)),
@@ -1157,8 +1230,12 @@ impl InstrumentApp {
                 if let Some(item) = self.survey_items.get(self.survey_cursor).cloned() {
                     self.view_orientation = ViewOrientation::Stream;
                     // Navigate to the tension's parent context.
-                    let target_parent = self.engine.store()
-                        .get_tension(&item.tension_id).ok().flatten()
+                    let target_parent = self
+                        .engine
+                        .store()
+                        .get_tension(&item.tension_id)
+                        .ok()
+                        .flatten()
                         .and_then(|t| t.parent_id);
                     if target_parent != self.parent_id {
                         // Navigate to a different structural context.
@@ -1176,7 +1253,9 @@ impl InstrumentApp {
                     }
                     self.recompute_frontier();
                     // Position cursor on the tension.
-                    if let Some(sib_idx) = self.siblings.iter().position(|s| s.id == item.tension_id) {
+                    if let Some(sib_idx) =
+                        self.siblings.iter().position(|s| s.id == item.tension_id)
+                    {
                         self.deck_cursor_to_sibling(sib_idx);
                     }
                 }
@@ -1195,7 +1274,12 @@ impl InstrumentApp {
                     self.recompute_frontier();
                     // Restore focus — clamp_active already ran, but try to
                     // restore the exact node if it still exists.
-                    if self.focus_state.targets_ref().iter().any(|(id, _)| *id == saved_focus) {
+                    if self
+                        .focus_state
+                        .targets_ref()
+                        .iter()
+                        .any(|(id, _)| *id == saved_focus)
+                    {
                         self.focus_state.active = saved_focus;
                     }
                 }
@@ -1203,7 +1287,9 @@ impl InstrumentApp {
             }
 
             // h/l/Space — reserved.
-            Msg::Char(' ') | Msg::Char('h') | Msg::Ascend | Msg::Char('l') | Msg::Descend => Cmd::none(),
+            Msg::Char(' ') | Msg::Char('h') | Msg::Ascend | Msg::Char('l') | Msg::Descend => {
+                Cmd::none()
+            }
 
             // Enter — descend into the selected tension (show its children in stream).
             Msg::Submit => {
@@ -1286,7 +1372,9 @@ impl InstrumentApp {
             }
 
             Msg::Char('?') | Msg::ToggleHelp => {
-                self.input_mode = InputMode::Help { from: self.view_orientation };
+                self.input_mode = InputMode::Help {
+                    from: self.view_orientation,
+                };
                 Cmd::none()
             }
             Msg::Char('q') | Msg::Quit => self.save_and_quit(),
@@ -1366,7 +1454,9 @@ impl InstrumentApp {
                 Cmd::none()
             }
             Msg::Char('G') | Msg::JumpBottom => {
-                self.logbase_list_state.borrow_mut().select(Some(item_count - 1));
+                self.logbase_list_state
+                    .borrow_mut()
+                    .select(Some(item_count - 1));
                 self.update_focused_epoch_from_selection();
                 Cmd::none()
             }
@@ -1376,8 +1466,14 @@ impl InstrumentApp {
             Msg::Submit | Msg::Char(' ') => {
                 let sel = self.logbase_list_state.borrow().selected();
                 if let Some(sel) = sel {
-                    let item_data = self.logbase_items.get(sel)
-                        .map(|item| (item.selectable, item.is_boundary, item.bright, item.event_index));
+                    let item_data = self.logbase_items.get(sel).map(|item| {
+                        (
+                            item.selectable,
+                            item.is_boundary,
+                            item.bright,
+                            item.event_index,
+                        )
+                    });
                     if let Some((true, is_boundary, is_bright, event_idx)) = item_data {
                         if is_boundary {
                             // Toggle this epoch as the focused epoch
@@ -1390,8 +1486,12 @@ impl InstrumentApp {
                                     self.rebuild_logbase_items();
                                     // Re-select the boundary for this epoch
                                     if let Some(pos) = self.logbase_items.iter().position(|item| {
-                                        item.is_boundary && self.logbase_events.get(item.event_index)
-                                            .map(|e| e.epoch_index() == target_epoch).unwrap_or(false)
+                                        item.is_boundary
+                                            && self
+                                                .logbase_events
+                                                .get(item.event_index)
+                                                .map(|e| e.epoch_index() == target_epoch)
+                                                .unwrap_or(false)
                                     }) {
                                         self.logbase_list_state.borrow_mut().select(Some(pos));
                                     }
@@ -1401,7 +1501,9 @@ impl InstrumentApp {
                             // Collapse summary line (selectable, not bright) — expand all
                             self.logbase_show_all = !self.logbase_show_all;
                             self.rebuild_logbase_items();
-                            self.logbase_list_state.borrow_mut().select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
+                            self.logbase_list_state
+                                .borrow_mut()
+                                .select(Some(sel.min(self.logbase_items.len().saturating_sub(1))));
                         } else {
                             // Toggle detail expansion for mutation event
                             if self.logbase_expanded == Some(event_idx) {
@@ -1411,9 +1513,11 @@ impl InstrumentApp {
                             }
                             self.rebuild_logbase_items();
                             // Re-select the item matching this event (items shifted due to detail lines)
-                            let new_sel = self.logbase_items.iter().position(|item| {
-                                item.event_index == event_idx && item.selectable
-                            }).unwrap_or(sel.min(self.logbase_items.len().saturating_sub(1)));
+                            let new_sel = self
+                                .logbase_items
+                                .iter()
+                                .position(|item| item.event_index == event_idx && item.selectable)
+                                .unwrap_or(sel.min(self.logbase_items.len().saturating_sub(1)));
                             self.logbase_list_state.borrow_mut().select(Some(new_sel));
                         }
                     }
@@ -1441,7 +1545,9 @@ impl InstrumentApp {
             }
 
             Msg::Char('?') | Msg::ToggleHelp => {
-                self.input_mode = InputMode::Help { from: self.view_orientation };
+                self.input_mode = InputMode::Help {
+                    from: self.view_orientation,
+                };
                 Cmd::none()
             }
 
@@ -1471,18 +1577,25 @@ impl InstrumentApp {
 
                     // Find the right entry point in the new epoch's events
                     let is_new_epoch_event = |item: &crate::logbase::LogbaseItem| -> bool {
-                        item.selectable && !item.is_boundary
-                            && self.logbase_events.get(item.event_index)
+                        item.selectable
+                            && !item.is_boundary
+                            && self
+                                .logbase_events
+                                .get(item.event_index)
                                 .map(|e| e.epoch_index() == new_epoch)
                                 .unwrap_or(false)
                     };
 
                     let pos = if entering_from_below {
                         // Came from below (K) — enter at last event of new epoch
-                        self.logbase_items.iter().rposition(|i| is_new_epoch_event(i))
+                        self.logbase_items
+                            .iter()
+                            .rposition(|i| is_new_epoch_event(i))
                     } else {
                         // Came from above (J) — enter at first event of new epoch
-                        self.logbase_items.iter().position(|i| is_new_epoch_event(i))
+                        self.logbase_items
+                            .iter()
+                            .position(|i| is_new_epoch_event(i))
                     };
 
                     if let Some(pos) = pos {
@@ -1511,11 +1624,16 @@ impl InstrumentApp {
     /// Render the `?` help overlay — context-sensitive keybinding reference.
     /// Renders directly with Spans/Paragraph (not KeybindingHints widget)
     /// to bypass ftui degradation checks and match werk's rendering style.
-    fn render_help_overlay(&self, from: crate::state::ViewOrientation, area: &Rect, frame: &mut Frame<'_>) {
+    fn render_help_overlay(
+        &self,
+        from: crate::state::ViewOrientation,
+        area: &Rect,
+        frame: &mut Frame<'_>,
+    ) {
         use ftui::style::Style;
         use ftui::text::{Line, Span, Text};
-        use ftui::widgets::paragraph::Paragraph;
         use ftui::widgets::Widget;
+        use ftui::widgets::paragraph::Paragraph;
 
         // Opaque background — fully covers the underlying view (no bleed-through)
         let cell = ftui::Cell::from_char(' ')
@@ -1527,7 +1645,8 @@ impl InstrumentApp {
         let groups = crate::help::overlay_groups(from);
 
         // Find max key width for alignment
-        let max_key_w = groups.iter()
+        let max_key_w = groups
+            .iter()
             .flat_map(|g| g.bindings.iter())
             .map(|(k, _)| k.chars().count())
             .max()
@@ -1553,7 +1672,10 @@ impl InstrumentApp {
             for (key, desc) in &group.bindings {
                 lines.push(Line::from_spans([
                     Span::styled(&pad, Style::new()),
-                    Span::styled(format!("{:<width$}", key, width = max_key_w + 2), self.styles.cyan),
+                    Span::styled(
+                        format!("{:<width$}", key, width = max_key_w + 2),
+                        self.styles.cyan,
+                    ),
                     Span::styled(*desc, self.styles.text),
                 ]));
             }
@@ -1605,22 +1727,41 @@ impl InstrumentApp {
                 let buf = self.input_buffer.clone();
                 match self.input_mode.clone() {
                     InputMode::Adding(AddStep::Desire) => {
-                        if buf.is_empty() { return Cmd::none(); } // desire is required
-                        let reality = self.parent_id.as_ref().and_then(|pid| {
-                            self.engine.store().get_tension(pid).ok().flatten()
-                                .map(|p| p.actual)
-                                .filter(|a| !a.is_empty())
-                        }).unwrap_or_else(|| "(not yet assessed)".to_string());
+                        if buf.is_empty() {
+                            return Cmd::none();
+                        } // desire is required
+                        let reality = self
+                            .parent_id
+                            .as_ref()
+                            .and_then(|pid| {
+                                self.engine
+                                    .store()
+                                    .get_tension(pid)
+                                    .ok()
+                                    .flatten()
+                                    .map(|p| p.actual)
+                                    .filter(|a| !a.is_empty())
+                            })
+                            .unwrap_or_else(|| "(not yet assessed)".to_string());
                         self.create_tension(&buf, &reality);
                     }
                     InputMode::Adding(AddStep::Reality { desire }) => {
                         let reality = if buf.is_empty() {
-                            self.parent_id.as_ref().and_then(|pid| {
-                                self.engine.store().get_tension(pid).ok().flatten()
-                                    .map(|p| p.actual)
-                                    .filter(|a| !a.is_empty())
-                            }).unwrap_or_else(|| "(not yet assessed)".to_string())
-                        } else { buf };
+                            self.parent_id
+                                .as_ref()
+                                .and_then(|pid| {
+                                    self.engine
+                                        .store()
+                                        .get_tension(pid)
+                                        .ok()
+                                        .flatten()
+                                        .map(|p| p.actual)
+                                        .filter(|a| !a.is_empty())
+                                })
+                                .unwrap_or_else(|| "(not yet assessed)".to_string())
+                        } else {
+                            buf
+                        };
                         self.create_tension(&desire, &reality);
                     }
                     InputMode::Adding(AddStep::Horizon { desire, reality }) => {
@@ -1649,21 +1790,41 @@ impl InstrumentApp {
                 let buf = self.input_buffer.clone();
                 match self.input_mode.clone() {
                     InputMode::Adding(AddStep::Desire) => {
-                        if buf.is_empty() { return Cmd::none(); } // desire required
-                        let prefill = self.parent_id.as_ref().and_then(|pid| {
-                            self.engine.store().get_tension(pid).ok().flatten().map(|p| p.actual)
-                        }).unwrap_or_default();
+                        if buf.is_empty() {
+                            return Cmd::none();
+                        } // desire required
+                        let prefill = self
+                            .parent_id
+                            .as_ref()
+                            .and_then(|pid| {
+                                self.engine
+                                    .store()
+                                    .get_tension(pid)
+                                    .ok()
+                                    .flatten()
+                                    .map(|p| p.actual)
+                            })
+                            .unwrap_or_default();
                         self.input_buffer = prefill;
                         self.input_mode = InputMode::Adding(AddStep::Reality { desire: buf });
                     }
                     InputMode::Adding(AddStep::Reality { desire }) => {
                         let reality = if buf.is_empty() {
-                            self.parent_id.as_ref().and_then(|pid| {
-                                self.engine.store().get_tension(pid).ok().flatten()
-                                    .map(|p| p.actual)
-                                    .filter(|a| !a.is_empty())
-                            }).unwrap_or_else(|| "(not yet assessed)".to_string())
-                        } else { buf };
+                            self.parent_id
+                                .as_ref()
+                                .and_then(|pid| {
+                                    self.engine
+                                        .store()
+                                        .get_tension(pid)
+                                        .ok()
+                                        .flatten()
+                                        .map(|p| p.actual)
+                                        .filter(|a| !a.is_empty())
+                                })
+                                .unwrap_or_else(|| "(not yet assessed)".to_string())
+                        } else {
+                            buf
+                        };
                         self.input_buffer.clear();
                         self.input_mode = InputMode::Adding(AddStep::Horizon { desire, reality });
                     }
@@ -1700,7 +1861,11 @@ impl InstrumentApp {
                 // Save current field, cycle to next: desire → reality → horizon → desire
                 self.sync_text_input_to_buffer();
                 self.save_current_edit_field();
-                if let InputMode::Editing { ref tension_id, ref field } = self.input_mode.clone() {
+                if let InputMode::Editing {
+                    ref tension_id,
+                    ref field,
+                } = self.input_mode.clone()
+                {
                     let new_field = match field {
                         EditField::Desire => EditField::Reality,
                         EditField::Reality => EditField::Horizon,
@@ -1711,7 +1876,9 @@ impl InstrumentApp {
                         match new_field {
                             EditField::Desire => t.desired.clone(),
                             EditField::Reality => t.actual.clone(),
-                            EditField::Horizon => t.horizon.map(|h| h.to_string()).unwrap_or_default(),
+                            EditField::Horizon => {
+                                t.horizon.map(|h| h.to_string()).unwrap_or_default()
+                            }
                         }
                     } else {
                         String::new()
@@ -1766,7 +1933,11 @@ impl InstrumentApp {
 
     fn save_current_edit_field(&mut self) {
         let buf = self.input_buffer.clone();
-        if let InputMode::Editing { ref tension_id, ref field } = self.input_mode.clone() {
+        if let InputMode::Editing {
+            ref tension_id,
+            ref field,
+        } = self.input_mode.clone()
+        {
             // Check if value actually changed before creating gesture/epoch
             let old_value = self.engine.store().get_tension(tension_id).ok().flatten();
             let actually_changed = match (field, &old_value) {
@@ -1780,7 +1951,11 @@ impl InstrumentApp {
                 return;
             }
 
-            let gesture_desc = format!("edit {} #{}", field.label(), tension_id.get(..8).unwrap_or(&tension_id));
+            let gesture_desc = format!(
+                "edit {} #{}",
+                field.label(),
+                tension_id.get(..8).unwrap_or(&tension_id)
+            );
             self.begin_gesture(&gesture_desc);
 
             match field {
@@ -1805,7 +1980,9 @@ impl InstrumentApp {
                                 let _ = self.engine.update_horizon(tension_id, Some(h));
                                 self.check_containment_palette(tension_id);
                             }
-                            Err(_) => { self.set_transient(format!("horizon not recognized: {}", buf)); }
+                            Err(_) => {
+                                self.set_transient(format!("horizon not recognized: {}", buf));
+                            }
                         }
                     }
                 }
@@ -1820,19 +1997,24 @@ impl InstrumentApp {
     /// gesture (if any) as the trigger — call within a gesture boundary.
     fn close_epoch(&mut self, tension_id: &str) {
         if let Ok(Some(t)) = self.engine.store().get_tension(tension_id) {
-            let children_json = self.engine.store()
+            let children_json = self
+                .engine
+                .store()
                 .get_children(tension_id)
                 .ok()
                 .map(|children| {
-                    let summaries: Vec<serde_json::Value> = children.iter().map(|c| {
-                        serde_json::json!({
-                            "id": c.id,
-                            "desired": c.desired,
-                            "actual": c.actual,
-                            "status": format!("{:?}", c.status),
-                            "position": c.position,
+                    let summaries: Vec<serde_json::Value> = children
+                        .iter()
+                        .map(|c| {
+                            serde_json::json!({
+                                "id": c.id,
+                                "desired": c.desired,
+                                "actual": c.actual,
+                                "status": format!("{:?}", c.status),
+                                "position": c.position,
+                            })
                         })
-                    }).collect();
+                        .collect();
                     serde_json::json!({"children": summaries}).to_string()
                 });
 
@@ -1858,7 +2040,10 @@ impl InstrumentApp {
                 let buf = self.input_buffer.clone();
                 if !buf.is_empty() {
                     if let InputMode::Annotating { ref tension_id } = self.input_mode.clone() {
-                        self.begin_gesture(&format!("add note {}", &tension_id[..8.min(tension_id.len())]));
+                        self.begin_gesture(&format!(
+                            "add note {}",
+                            &tension_id[..8.min(tension_id.len())]
+                        ));
                         let _ = self.engine.store().record_note(tension_id, &buf);
                         self.end_gesture();
                         self.set_transient("note added");
@@ -1913,14 +2098,20 @@ impl InstrumentApp {
         match msg {
             Msg::Char('y') | Msg::Submit => {
                 match self.input_mode.clone() {
-                    InputMode::Confirming(ConfirmKind::Resolve { tension_id, desired }) => {
+                    InputMode::Confirming(ConfirmKind::Resolve {
+                        tension_id,
+                        desired,
+                    }) => {
                         self.begin_gesture(&format!("resolve '{}'", truncate_str(&desired, 30)));
                         let _ = self.engine.resolve(&tension_id);
                         self.end_gesture();
                         self.set_transient(format!("resolved: {}", truncate_str(&desired, 30)));
                         self.load_siblings();
                     }
-                    InputMode::Confirming(ConfirmKind::Release { tension_id, desired }) => {
+                    InputMode::Confirming(ConfirmKind::Release {
+                        tension_id,
+                        desired,
+                    }) => {
                         self.begin_gesture(&format!("release '{}'", truncate_str(&desired, 30)));
                         let _ = self.engine.release(&tension_id);
                         self.end_gesture();
@@ -1955,13 +2146,17 @@ impl InstrumentApp {
             }
             Msg::Up => {
                 if let Some(ref mut s) = self.search_state {
-                    if s.cursor > 0 { s.cursor -= 1; }
+                    if s.cursor > 0 {
+                        s.cursor -= 1;
+                    }
                 }
                 Cmd::none()
             }
             Msg::Down => {
                 if let Some(ref mut s) = self.search_state {
-                    if s.cursor + 1 < s.results.len() { s.cursor += 1; }
+                    if s.cursor + 1 < s.results.len() {
+                        s.cursor += 1;
+                    }
                 }
                 Cmd::none()
             }
@@ -1977,11 +2172,26 @@ impl InstrumentApp {
                         } else {
                             Some(result.id.as_str())
                         };
-                        let dest = if result.is_root_entry { "root" } else { &result.desired };
-                        self.begin_gesture(&format!("move {} to {}", &tension_id[..8.min(tension_id.len())], truncate_str(dest, 20)));
+                        let dest = if result.is_root_entry {
+                            "root"
+                        } else {
+                            &result.desired
+                        };
+                        self.begin_gesture(&format!(
+                            "move {} to {}",
+                            &tension_id[..8.min(tension_id.len())],
+                            truncate_str(dest, 20)
+                        ));
                         let _ = self.engine.update_parent(&tension_id, new_parent);
                         self.end_gesture();
-                        self.set_transient(format!("moved to {}", if result.is_root_entry { "root" } else { &result.desired }));
+                        self.set_transient(format!(
+                            "moved to {}",
+                            if result.is_root_entry {
+                                "root"
+                            } else {
+                                &result.desired
+                            }
+                        ));
                         self.load_siblings();
                         // Check for containment and sequencing after reparent
                         self.check_containment_palette(&tension_id);
@@ -2058,23 +2268,30 @@ impl InstrumentApp {
         // Temporal facts from mutations
         let mutations = self.engine.store().get_mutations(id).unwrap_or_default();
 
-        let last_reality = mutations.iter().rev()
+        let last_reality = mutations
+            .iter()
+            .rev()
             .find(|m| m.field() == "actual" || m.field() == "created")
             .map(|m| m.timestamp())
             .unwrap_or(now);
 
-        let last_desire = mutations.iter().rev()
+        let last_desire = mutations
+            .iter()
+            .rev()
             .find(|m| m.field() == "desired" || m.field() == "created")
             .map(|m| m.timestamp())
             .unwrap_or(now);
 
-        let created_at = mutations.iter()
+        let created_at = mutations
+            .iter()
             .find(|m| m.field() == "created")
             .map(|m| m.timestamp())
             .unwrap_or(now);
 
         // Recent notes (most recent first, rendering decides how many fit)
-        let recent_notes: Vec<(String, String)> = mutations.iter().rev()
+        let recent_notes: Vec<(String, String)> = mutations
+            .iter()
+            .rev()
             .filter(|m| m.field() == "note")
             .map(|m| {
                 let age = crate::glyphs::relative_time(m.timestamp(), now);
@@ -2085,14 +2302,27 @@ impl InstrumentApp {
         // Child breakdown
         let children = self.engine.store().get_children(id).unwrap_or_default();
         let child_count = children.len();
-        let child_active = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active).count();
-        let child_resolved = children.iter().filter(|c| c.status == sd_core::TensionStatus::Resolved).count();
-        let child_released = children.iter().filter(|c| c.status == sd_core::TensionStatus::Released).count();
-        let child_held = children.iter().filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_none()).count();
+        let child_active = children
+            .iter()
+            .filter(|c| c.status == werk_core::TensionStatus::Active)
+            .count();
+        let child_resolved = children
+            .iter()
+            .filter(|c| c.status == werk_core::TensionStatus::Resolved)
+            .count();
+        let child_released = children
+            .iter()
+            .filter(|c| c.status == werk_core::TensionStatus::Released)
+            .count();
+        let child_held = children
+            .iter()
+            .filter(|c| c.status == werk_core::TensionStatus::Active && c.position.is_none())
+            .count();
 
         // Next committed step: active child with the lowest non-null position
-        let next_step_desired = children.iter()
-            .filter(|c| c.status == sd_core::TensionStatus::Active && c.position.is_some())
+        let next_step_desired = children
+            .iter()
+            .filter(|c| c.status == werk_core::TensionStatus::Active && c.position.is_some())
             .min_by_key(|c| c.position.unwrap())
             .map(|c| c.desired.clone());
 
@@ -2121,7 +2351,9 @@ impl InstrumentApp {
         let frontier = &self.frontier;
         let target = self.focus_state.cursor_target();
         if let crate::deck::CursorTarget::NoteItem(acc_idx) = target {
-            if let Some(crate::deck::AccumulatedItem::Note { text, age, .. }) = frontier.accumulated.get(acc_idx) {
+            if let Some(crate::deck::AccumulatedItem::Note { text, age, .. }) =
+                frontier.accumulated.get(acc_idx)
+            {
                 return Some(crate::deck::FocusedNote {
                     acc_index: acc_idx,
                     text: text.clone(),
@@ -2143,8 +2375,11 @@ impl InstrumentApp {
         };
         match target {
             crate::deck::CursorTarget::Desire => {
-                let desired = self.parent_tension.as_ref()
-                    .map(|t| t.desired.clone()).unwrap_or_default();
+                let desired = self
+                    .parent_tension
+                    .as_ref()
+                    .map(|t| t.desired.clone())
+                    .unwrap_or_default();
                 self.input_buffer = desired.clone();
                 self.text_input.set_value(&desired);
                 self.text_input.set_focused(true);
@@ -2156,8 +2391,11 @@ impl InstrumentApp {
                 true
             }
             crate::deck::CursorTarget::Reality => {
-                let actual = self.parent_tension.as_ref()
-                    .map(|t| t.actual.clone()).unwrap_or_default();
+                let actual = self
+                    .parent_tension
+                    .as_ref()
+                    .map(|t| t.actual.clone())
+                    .unwrap_or_default();
                 self.input_buffer = actual.clone();
                 self.text_input.set_value(&actual);
                 self.text_input.set_focused(true);

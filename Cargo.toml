@@ -1,3 +1,3 @@
 [workspace]
-members = ["sd-core", "werk-cli", "werk-mcp", "werk-shared", "werk-tui", "werk-web", "werk-app/src-tauri"]
+members = ["werk-core", "werk-cli", "werk-mcp", "werk-shared", "werk-tui", "werk-web", "werk-app/src-tauri"]
 resolver = "2"

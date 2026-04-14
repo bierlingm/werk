@@ -5,12 +5,12 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::{
-    Forest, TensionStatus, compute_structural_signals, compute_temporal_signals,
-    detect_containment_violations, detect_sequencing_pressure, FieldStructuralSignals,
-};
 use serde::Serialize;
 use std::collections::HashMap;
+use werk_core::{
+    FieldStructuralSignals, Forest, TensionStatus, compute_structural_signals,
+    compute_temporal_signals, detect_containment_violations, detect_sequencing_pressure,
+};
 use werk_shared::cli_display::{Palette, glyphs};
 
 /// JSON output structure for a tension in tree.
@@ -145,10 +145,7 @@ pub fn cmd_tree(
                     .filter(|c| c.tension.status == TensionStatus::Resolved)
                     .count();
                 let overdue = t.status == TensionStatus::Active
-                    && t.horizon
-                        .as_ref()
-                        .map(|h| h.is_past(now))
-                        .unwrap_or(false);
+                    && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
 
                 let containment_violation = t.status == TensionStatus::Active
                     && t.parent_id.as_ref().map_or(false, |pid| {
@@ -232,7 +229,7 @@ pub fn cmd_tree(
         .collect();
 
     /// Sort nodes canonically: positioned DESC, then unpositioned by horizon, then creation time.
-    fn canonical_sort(nodes: &mut Vec<&sd_core::Node>) {
+    fn canonical_sort(nodes: &mut Vec<&werk_core::Node>) {
         nodes.sort_by(|a, b| {
             let a_pos = a.tension.position;
             let b_pos = b.tension.position;
@@ -290,10 +287,18 @@ pub fn cmd_tree(
             if ss.on_longest_path {
                 out.push(glyphs::SIGNAL_SPINE);
             }
-            if ss.centrality.map(|c| c > sig.hub_centrality).unwrap_or(false) {
+            if ss
+                .centrality
+                .map(|c| c > sig.hub_centrality)
+                .unwrap_or(false)
+            {
                 out.push(glyphs::SIGNAL_HUB);
             }
-            if ss.descendant_count.map(|c| c > sig.reach_descendants as usize).unwrap_or(false) {
+            if ss
+                .descendant_count
+                .map(|c| c > sig.reach_descendants as usize)
+                .unwrap_or(false)
+            {
                 out.push(glyphs::SIGNAL_REACH);
             }
         }
@@ -324,7 +329,7 @@ pub fn cmd_tree(
 
     fn compute_node_meta<'a>(
         ctx: &'a RenderCtx<'_>,
-        node: &sd_core::Node,
+        node: &werk_core::Node,
         now: chrono::DateTime<Utc>,
     ) -> NodeMeta<'a> {
         let id_str = werk_shared::display_id(node.tension.short_code, node.id());
@@ -386,7 +391,10 @@ pub fn cmd_tree(
                 .count();
             let active_count = all_children.len() - released_count;
             if released_count > 0 {
-                format!("[{}/{}] ({} released)", resolved_count, active_count, released_count)
+                format!(
+                    "[{}/{}] ({} released)",
+                    resolved_count, active_count, released_count
+                )
             } else {
                 format!("[{}/{}]", resolved_count, active_count)
             }
@@ -439,7 +447,11 @@ pub fn cmd_tree(
 
         for (i, node) in roots.iter().enumerate() {
             let is_last = i == roots.len() - 1;
-            let connector = if is_last { glyphs::TREE_LAST } else { glyphs::TREE_BRANCH };
+            let connector = if is_last {
+                glyphs::TREE_LAST
+            } else {
+                glyphs::TREE_BRANCH
+            };
 
             let meta = compute_node_meta(ctx, node, now);
 
@@ -477,7 +489,8 @@ pub fn cmd_tree(
                 s
             };
 
-            let chrome_width = prefix_chars + meta_plain.chars().count() + suffix_plain.chars().count();
+            let chrome_width =
+                prefix_chars + meta_plain.chars().count() + suffix_plain.chars().count();
             let available = if ctx.term_width > chrome_width + 12 {
                 ctx.term_width - chrome_width
             } else {
@@ -490,7 +503,13 @@ pub fn cmd_tree(
                 "{}{}{}{}{}",
                 prefix,
                 ctx.palette.chrome(connector),
-                format_meta(&ctx.palette, &meta.id_str, &meta.pos_str, &meta.horizon_str, &meta.warnings),
+                format_meta(
+                    &ctx.palette,
+                    &meta.id_str,
+                    &meta.pos_str,
+                    &meta.horizon_str,
+                    &meta.warnings
+                ),
                 desired_text,
                 format_suffix(&ctx.palette, &meta.closure_str, &meta.glyphs),
             );
@@ -544,8 +563,13 @@ pub fn cmd_tree(
             if depth == 0 {
                 // --- Root: two-line zone ---
                 let indent_chars = 3; // `╭─ ` is 3 columns
-                let head_chars = indent_chars + meta.id_str.chars().count()
-                    + if meta.pos_str.is_empty() { 0 } else { meta.pos_str.chars().count() + 1 };
+                let head_chars = indent_chars
+                    + meta.id_str.chars().count()
+                    + if meta.pos_str.is_empty() {
+                        0
+                    } else {
+                        meta.pos_str.chars().count() + 1
+                    };
                 let available = ctx.term_width.saturating_sub(head_chars + 2).max(40);
                 let desired_text = smart_truncate(&node.tension.desired, available);
 
@@ -603,7 +627,11 @@ pub fn cmd_tree(
                 }
             } else {
                 // --- Non-root: single-line like compact, plus signal lines ---
-                let connector = if is_last { glyphs::TREE_LAST } else { glyphs::TREE_BRANCH };
+                let connector = if is_last {
+                    glyphs::TREE_LAST
+                } else {
+                    glyphs::TREE_BRANCH
+                };
 
                 // Width calculation mirrors the compact renderer so the
                 // truncation behavior matches.
@@ -646,7 +674,13 @@ pub fn cmd_tree(
                     "{}{}{}{}{}",
                     prefix,
                     ctx.palette.chrome(connector),
-                    format_meta(&ctx.palette, &meta.id_str, &meta.pos_str, &meta.horizon_str, &empty_warnings),
+                    format_meta(
+                        &ctx.palette,
+                        &meta.id_str,
+                        &meta.pos_str,
+                        &meta.horizon_str,
+                        &empty_warnings
+                    ),
                     desired_text,
                     format_suffix(&ctx.palette, &meta.closure_str, &meta.glyphs),
                 );
@@ -782,7 +816,10 @@ pub fn cmd_tree(
         "{}",
         palette.chrome(&format!(
             "Total: {}  Active: {}  Resolved: {}  Released: {}",
-            tensions.len(), active_count, resolved_count, released_count
+            tensions.len(),
+            active_count,
+            resolved_count,
+            released_count
         ))
     );
 
@@ -828,7 +865,8 @@ pub fn cmd_tree(
             overdue_count
         )
     } else if filter == Filter::Active {
-        "`werk show <id>` for one tension, `werk tree --all` to include resolved/released".to_string()
+        "`werk show <id>` for one tension, `werk tree --all` to include resolved/released"
+            .to_string()
     } else {
         "`werk tree` for active only, `werk show <id>` for one tension".to_string()
     };

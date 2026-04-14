@@ -12,9 +12,9 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Utc};
-use sd_core::Mutation;
 use serde::Serialize;
-use werk_shared::{format_timestamp, HookEvent};
+use werk_core::Mutation;
+use werk_shared::{HookEvent, format_timestamp};
 
 const WORKSPACE_NOTE_TENSION_ID: &str = "WORKSPACE_NOTES";
 
@@ -76,8 +76,15 @@ pub fn cmd_note_add(
             let resolver = PrefixResolver::new(tensions);
             let tension = resolver.resolve(&id_prefix)?;
 
-            let event =
-                HookEvent::mutation(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "note", None, &text);
+            let event = HookEvent::mutation(
+                &tension.id,
+                &tension.desired,
+                Some(&tension.actual),
+                tension.parent_id.as_deref(),
+                "note",
+                None,
+                &text,
+            );
             if !hook_handle.runner.pre_mutation(&event) {
                 return Err(WerkError::InvalidInput(
                     "Blocked by pre_mutation hook".to_string(),
@@ -85,7 +92,9 @@ pub fn cmd_note_add(
             }
 
             let _ = store.begin_gesture(Some(&format!("note {}", &tension.id)));
-            store.record_note(&tension.id, &text).map_err(WerkError::SdError)?;
+            store
+                .record_note(&tension.id, &text)
+                .map_err(WerkError::CoreError)?;
             store.end_gesture();
 
             NoteAddResult {
@@ -111,7 +120,9 @@ pub fn cmd_note_add(
             }
 
             let _ = store.begin_gesture(Some("note workspace"));
-            store.record_note(WORKSPACE_NOTE_TENSION_ID, &text).map_err(WerkError::SdError)?;
+            store
+                .record_note(WORKSPACE_NOTE_TENSION_ID, &text)
+                .map_err(WerkError::CoreError)?;
             store.end_gesture();
 
             NoteAddResult {
@@ -145,11 +156,7 @@ pub fn cmd_note_add(
     Ok(())
 }
 
-pub fn cmd_note_rm(
-    output: &Output,
-    arg1: String,
-    arg2: Option<String>,
-) -> Result<(), WerkError> {
+pub fn cmd_note_rm(output: &Output, arg1: String, arg2: Option<String>) -> Result<(), WerkError> {
     // Parse: `note rm <n>` (workspace) or `note rm <id> <n>` (tension)
     let (tension_id_prefix, note_number) = match arg2 {
         Some(n_str) => {
@@ -177,16 +184,27 @@ pub fn cmd_note_rm(
     let workspace = Workspace::discover()?;
     let (mut store, hook_handle) = workspace.open_store_with_hooks()?;
 
-    let (resolved_tension_id, display_label, tension_actual, tension_parent_id) = match tension_id_prefix {
-        Some(id_prefix) => {
-            let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-            let resolver = PrefixResolver::new(tensions);
-            let tension = resolver.resolve(&id_prefix)?;
-            let display = werk_shared::display_id(tension.short_code, &tension.id);
-            (tension.id.clone(), format!("tension {}", display), Some(tension.actual.clone()), tension.parent_id.clone())
-        }
-        None => (WORKSPACE_NOTE_TENSION_ID.to_string(), "workspace".to_string(), None, None),
-    };
+    let (resolved_tension_id, display_label, tension_actual, tension_parent_id) =
+        match tension_id_prefix {
+            Some(id_prefix) => {
+                let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+                let resolver = PrefixResolver::new(tensions);
+                let tension = resolver.resolve(&id_prefix)?;
+                let display = werk_shared::display_id(tension.short_code, &tension.id);
+                (
+                    tension.id.clone(),
+                    format!("tension {}", display),
+                    Some(tension.actual.clone()),
+                    tension.parent_id.clone(),
+                )
+            }
+            None => (
+                WORKSPACE_NOTE_TENSION_ID.to_string(),
+                "workspace".to_string(),
+                None,
+                None,
+            ),
+        };
 
     // Get all mutations, find active (non-retracted) notes
     let mutations = store
@@ -242,7 +260,7 @@ pub fn cmd_note_rm(
     let _ = store.begin_gesture(Some(&format!("retract note {}", &resolved_tension_id)));
     store
         .retract_note(&resolved_tension_id, &note_text, &note_timestamp)
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge
 
@@ -262,7 +280,10 @@ pub fn cmd_note_rm(
             .map_err(WerkError::IoError)?;
     } else {
         output
-            .success(&format!("Retracted note #{} from {}", note_number, display_label))
+            .success(&format!(
+                "Retracted note #{} from {}",
+                note_number, display_label
+            ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Was: {}", &note_text);
     }
@@ -284,7 +305,10 @@ pub fn cmd_note_list(output: &Output, id: Option<String>) -> Result<(), WerkErro
                 format!("Notes for \"{}\"", tension.desired),
             )
         }
-        None => (WORKSPACE_NOTE_TENSION_ID.to_string(), "Workspace notes".to_string()),
+        None => (
+            WORKSPACE_NOTE_TENSION_ID.to_string(),
+            "Workspace notes".to_string(),
+        ),
     };
 
     let mutations = store

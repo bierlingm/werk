@@ -46,7 +46,8 @@ fn add_tension_enter_creates_immediately() {
     // Type desire and press Enter — creates immediately with defaults
     type_text(&mut sim, "Ship the feature");
     assert_eq!(
-        sim.model().input_buffer, "Ship the feature",
+        sim.model().input_buffer,
+        "Ship the feature",
         "input buffer should have typed text, got '{}'",
         sim.model().input_buffer
     );
@@ -75,7 +76,10 @@ fn add_tension_tab_advances_fields() {
     // Tab advances to reality step
     send(&mut sim, Msg::Tab);
     assert!(
-        matches!(sim.model().input_mode, InputMode::Adding(werk_tui::state::AddStep::Reality { .. })),
+        matches!(
+            sim.model().input_mode,
+            InputMode::Adding(werk_tui::state::AddStep::Reality { .. })
+        ),
         "Tab should advance to Reality step"
     );
 
@@ -84,7 +88,10 @@ fn add_tension_tab_advances_fields() {
     // Tab advances to horizon step
     send(&mut sim, Msg::Tab);
     assert!(
-        matches!(sim.model().input_mode, InputMode::Adding(werk_tui::state::AddStep::Horizon { .. })),
+        matches!(
+            sim.model().input_mode,
+            InputMode::Adding(werk_tui::state::AddStep::Horizon { .. })
+        ),
         "Tab should advance to Horizon step"
     );
 
@@ -120,8 +127,11 @@ fn navigate_and_resolve() {
     assert!(matches!(sim.model().input_mode, InputMode::Normal));
 
     // Should have a resolved tension
-    let resolved = sim.model().siblings.iter()
-        .filter(|s| s.status == sd_core::TensionStatus::Resolved)
+    let resolved = sim
+        .model()
+        .siblings
+        .iter()
+        .filter(|s| s.status == werk_core::TensionStatus::Resolved)
         .count();
     assert_eq!(resolved, 1, "expected one resolved tension");
 }

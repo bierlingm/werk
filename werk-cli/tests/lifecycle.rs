@@ -29,7 +29,7 @@ fn test_resolve_active_tension() {
         .success();
 
     // Create a tension
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -44,7 +44,7 @@ fn test_resolve_active_tension() {
 
     // Verify status changed
     let updated = store.get_tension(&tension_id).unwrap().unwrap();
-    assert_eq!(updated.status, sd_core::TensionStatus::Resolved);
+    assert_eq!(updated.status, werk_core::TensionStatus::Resolved);
 }
 
 /// VAL-CRUD-013: Resolve works with ID prefix
@@ -58,7 +58,7 @@ fn test_resolve_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -70,7 +70,7 @@ fn test_resolve_with_prefix() {
         .success();
 
     let updated = store.get_tension(&tension.id).unwrap().unwrap();
-    assert_eq!(updated.status, sd_core::TensionStatus::Resolved);
+    assert_eq!(updated.status, werk_core::TensionStatus::Resolved);
 }
 
 /// VAL-CRUD-014: Resolve reparents children to roots
@@ -85,7 +85,7 @@ fn test_resolve_auto_resolves_children() {
         .success();
 
     // Create parent with children
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -107,8 +107,8 @@ fn test_resolve_auto_resolves_children() {
     // Children should be auto-resolved, parent relationship preserved
     let child1_after = store.get_tension(&child1.id).unwrap().unwrap();
     let child2_after = store.get_tension(&child2.id).unwrap().unwrap();
-    assert_eq!(child1_after.status, sd_core::TensionStatus::Resolved);
-    assert_eq!(child2_after.status, sd_core::TensionStatus::Resolved);
+    assert_eq!(child1_after.status, werk_core::TensionStatus::Resolved);
+    assert_eq!(child2_after.status, werk_core::TensionStatus::Resolved);
     assert_eq!(child1_after.parent_id, Some(parent.id.clone()));
     assert_eq!(child2_after.parent_id, Some(parent.id.clone()));
 }
@@ -124,12 +124,12 @@ fn test_resolve_non_active_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve it first
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
+        .update_status(&tension.id, werk_core::TensionStatus::Resolved)
         .unwrap();
 
     // Try to resolve again
@@ -157,7 +157,7 @@ fn test_resolve_records_mutation() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -188,7 +188,7 @@ fn test_resolve_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -227,7 +227,7 @@ fn test_release_with_reason() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -242,7 +242,7 @@ fn test_release_with_reason() {
         .stdout(predicate::str::contains("Released").or(predicate::str::contains("released")));
 
     let updated = store.get_tension(&tension_id).unwrap().unwrap();
-    assert_eq!(updated.status, sd_core::TensionStatus::Released);
+    assert_eq!(updated.status, werk_core::TensionStatus::Released);
 }
 
 /// VAL-CRUD-016: Release without --reason fails
@@ -256,7 +256,7 @@ fn test_release_without_reason_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Release without --reason should fail (clap required flag)
@@ -280,7 +280,7 @@ fn test_release_auto_releases_children() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p reality").unwrap();
     let child = store
         .create_tension_with_parent("child", "c reality", Some(parent.id.clone()))
@@ -297,7 +297,7 @@ fn test_release_auto_releases_children() {
 
     // Child should be auto-released
     let child_after = store.get_tension(&child.id).unwrap().unwrap();
-    assert_eq!(child_after.status, sd_core::TensionStatus::Released);
+    assert_eq!(child_after.status, werk_core::TensionStatus::Released);
     assert_eq!(child_after.parent_id, Some(parent.id.clone()));
 }
 
@@ -312,12 +312,12 @@ fn test_release_on_resolved_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve first
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
+        .update_status(&tension.id, werk_core::TensionStatus::Resolved)
         .unwrap();
 
     // Try to release
@@ -344,7 +344,7 @@ fn test_release_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -382,7 +382,7 @@ fn test_rm_deletes_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();
 
@@ -410,7 +410,7 @@ fn test_rm_reparents_to_grandparent() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Create A -> B -> C hierarchy
     let grandparent = store.create_tension("A", "a").unwrap();
@@ -448,7 +448,7 @@ fn test_rm_root_makes_children_roots() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child1 = store
         .create_tension_with_parent("child1", "c1", Some(parent.id.clone()))
@@ -502,7 +502,7 @@ fn test_rm_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -529,7 +529,7 @@ fn test_rm_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -611,7 +611,7 @@ fn test_full_lifecycle_resolve() {
         .success();
 
     // Add via CLI (to get the actual ID from output)
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Resolve via CLI using the actual tension ID
@@ -624,7 +624,7 @@ fn test_full_lifecycle_resolve() {
 
     // Verify the tension is resolved
     let updated = store.get_tension(&tension.id).unwrap().unwrap();
-    assert_eq!(updated.status, sd_core::TensionStatus::Resolved);
+    assert_eq!(updated.status, werk_core::TensionStatus::Resolved);
 }
 
 /// Release reason is recorded in mutation
@@ -638,7 +638,7 @@ fn test_release_reason_recorded() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")

@@ -23,10 +23,10 @@
 use crate::error::{Result, WerkError};
 use crate::workspace::Workspace;
 use chrono::Utc;
-use sd_core::TensionStatus;
 use serde::Serialize;
 use std::io::Write;
 use std::path::PathBuf;
+use werk_core::TensionStatus;
 
 /// The flush output file name, placed at workspace root.
 pub const FLUSH_FILENAME: &str = "tensions.json";
@@ -81,9 +81,7 @@ pub struct FlushOutcome {
 /// call — no mtime update, no git dirtying.
 pub fn flush_to_file(workspace: &Workspace) -> Result<FlushOutcome> {
     let store = workspace.open_store()?;
-    let tensions = store
-        .list_tensions()
-        .map_err(WerkError::StoreError)?;
+    let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
     let now = Utc::now();
 
     let mut sorted = tensions;
@@ -127,25 +125,25 @@ pub fn flush_to_file(workspace: &Workspace) -> Result<FlushOutcome> {
 
     // SAFETY: refuse to overwrite tensions.json if tension count drops dramatically.
     // This prevents a corrupt/empty DB from destroying good data.
-    if flush_path.exists() {
-        if let Ok(existing) = std::fs::read_to_string(&flush_path) {
-            if let Ok(existing_val) = serde_json::from_str::<serde_json::Value>(&existing) {
-                if let Some(old_total) = existing_val["summary"]["total"].as_u64() {
-                    let old_total = old_total as usize;
-                    if old_total > 0 && count == 0 {
-                        return Err(WerkError::IoError(format!(
-                            "SAFETY: refusing to overwrite tensions.json with 0 tensions (was {}). \
-                             If intentional, delete tensions.json first.", old_total
-                        )));
-                    }
-                    if old_total > 5 && count < old_total / 2 {
-                        return Err(WerkError::IoError(format!(
-                            "SAFETY: refusing to overwrite tensions.json: count dropped from {} to {}. \
-                             If intentional, delete tensions.json first.", old_total, count
-                        )));
-                    }
-                }
-            }
+    if flush_path.exists()
+        && let Ok(existing) = std::fs::read_to_string(&flush_path)
+        && let Ok(existing_val) = serde_json::from_str::<serde_json::Value>(&existing)
+        && let Some(old_total) = existing_val["summary"]["total"].as_u64()
+    {
+        let old_total = old_total as usize;
+        if old_total > 0 && count == 0 {
+            return Err(WerkError::IoError(format!(
+                "SAFETY: refusing to overwrite tensions.json with 0 tensions (was {}). \
+                 If intentional, delete tensions.json first.",
+                old_total
+            )));
+        }
+        if old_total > 5 && count < old_total / 2 {
+            return Err(WerkError::IoError(format!(
+                "SAFETY: refusing to overwrite tensions.json: count dropped from {} to {}. \
+                 If intentional, delete tensions.json first.",
+                old_total, count
+            )));
         }
     }
 
@@ -166,16 +164,15 @@ pub fn flush_to_file(workspace: &Workspace) -> Result<FlushOutcome> {
     // IDEMPOTENCY: if the existing file is structurally identical (ignoring the
     // `flushed_at` timestamp), leave it untouched. This is what lets the pre-commit
     // hook run `werk flush` on every commit without producing spurious dirty files.
-    if flush_path.exists() {
-        if let Ok(existing) = std::fs::read_to_string(&flush_path) {
-            if content_equivalent(&existing, &json) {
-                return Ok(FlushOutcome {
-                    path: flush_path,
-                    count,
-                    wrote: false,
-                });
-            }
-        }
+    if flush_path.exists()
+        && let Ok(existing) = std::fs::read_to_string(&flush_path)
+        && content_equivalent(&existing, &json)
+    {
+        return Ok(FlushOutcome {
+            path: flush_path,
+            count,
+            wrote: false,
+        });
     }
 
     // Back up tensions.json before overwriting (only when we're actually writing).
@@ -188,25 +185,13 @@ pub fn flush_to_file(workspace: &Workspace) -> Result<FlushOutcome> {
     }
 
     let mut file = std::fs::File::create(&flush_path).map_err(|e| {
-        WerkError::IoError(format!(
-            "failed to create {}: {}",
-            flush_path.display(),
-            e
-        ))
+        WerkError::IoError(format!("failed to create {}: {}", flush_path.display(), e))
     })?;
     file.write_all(json.as_bytes()).map_err(|e| {
-        WerkError::IoError(format!(
-            "failed to write {}: {}",
-            flush_path.display(),
-            e
-        ))
+        WerkError::IoError(format!("failed to write {}: {}", flush_path.display(), e))
     })?;
     file.write_all(b"\n").map_err(|e| {
-        WerkError::IoError(format!(
-            "failed to write {}: {}",
-            flush_path.display(),
-            e
-        ))
+        WerkError::IoError(format!("failed to write {}: {}", flush_path.display(), e))
     })?;
 
     Ok(FlushOutcome {

@@ -30,10 +30,10 @@ fn test_tree_resolved_no_panic() {
         .success();
 
     // Create a resolved tension
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
+        .update_status(&tension.id, werk_core::TensionStatus::Resolved)
         .unwrap();
 
     // --resolved should work without panic
@@ -57,10 +57,10 @@ fn test_tree_released_no_panic() {
         .success();
 
     // Create a released tension
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Released)
+        .update_status(&tension.id, werk_core::TensionStatus::Released)
         .unwrap();
 
     // --released should work without panic
@@ -109,7 +109,7 @@ fn test_move_to_new_parent() {
         .success();
 
     // Create parent and child
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store
         .create_tension("parent goal", "parent reality")
         .unwrap();
@@ -143,7 +143,7 @@ fn test_move_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     // Small delay to ensure different ULID prefix
     std::thread::sleep(std::time::Duration::from_millis(10));
@@ -178,7 +178,7 @@ fn test_move_to_root() {
         .success();
 
     // Create parent with child
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store
         .create_tension_with_parent("child", "c", Some(parent.id.clone()))
@@ -209,7 +209,7 @@ fn test_move_prevents_cycle() {
         .success();
 
     // Create A -> B -> C chain
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let a = store.create_tension("A", "a").unwrap();
     let b = store
         .create_tension_with_parent("B", "b", Some(a.id.clone()))
@@ -249,7 +249,7 @@ fn test_move_to_self_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -278,7 +278,7 @@ fn test_move_to_nonexistent_parent() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -303,7 +303,7 @@ fn test_move_records_mutation() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
@@ -339,7 +339,7 @@ fn test_move_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
 
@@ -401,7 +401,7 @@ fn test_note_add_on_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -434,7 +434,7 @@ fn test_note_add_with_prefix() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let prefix = &tension.id[..6];
 
@@ -462,11 +462,11 @@ fn test_note_add_on_resolved_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Resolved)
+        .update_status(&tension.id, werk_core::TensionStatus::Resolved)
         .unwrap();
 
     cargo_bin_cmd!("werk")
@@ -493,11 +493,11 @@ fn test_note_add_on_released_tension() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     store
-        .update_status(&tension.id, sd_core::TensionStatus::Released)
+        .update_status(&tension.id, werk_core::TensionStatus::Released)
         .unwrap();
 
     cargo_bin_cmd!("werk")
@@ -568,7 +568,7 @@ fn test_note_add_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     let output = cargo_bin_cmd!("werk")
@@ -602,7 +602,7 @@ fn test_note_add_unicode() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -698,7 +698,7 @@ fn test_multiple_notes() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -735,7 +735,7 @@ fn test_move_preserves_children() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent = store.create_tension("parent", "p").unwrap();
     let child = store.create_tension("child", "c").unwrap();
     let grandchild = store
@@ -768,7 +768,7 @@ fn test_move_between_parents() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let parent1 = store.create_tension("parent1", "p1").unwrap();
     let parent2 = store.create_tension("parent2", "p2").unwrap();
     let child = store
@@ -887,7 +887,10 @@ fn test_note_list_json_output() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    assert!(json.get("notes").is_some(), "JSON should have 'notes' field");
+    assert!(
+        json.get("notes").is_some(),
+        "JSON should have 'notes' field"
+    );
     let notes = json.get("notes").unwrap().as_array();
     assert!(notes.is_some(), "'notes' should be an array");
     assert_eq!(notes.unwrap().len(), 1, "Should have one note");
@@ -923,7 +926,7 @@ fn test_note_rm_retracts_note() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Add two notes
@@ -954,7 +957,9 @@ fn test_note_rm_retracts_note() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Retracted").and(predicate::str::contains("first testimony")));
+        .stdout(
+            predicate::str::contains("Retracted").and(predicate::str::contains("first testimony")),
+        );
 
     // Verify note_retracted mutation was recorded
     let mutations = store.get_mutations(&tension.id).unwrap();
@@ -974,7 +979,7 @@ fn test_note_rm_excluded_from_list() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // Add two notes
@@ -1032,7 +1037,7 @@ fn test_note_rm_invalid_number() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     // No notes exist, try to retract #1
@@ -1058,7 +1063,7 @@ fn test_note_rm_zero_fails() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -1123,7 +1128,7 @@ fn test_note_rm_json_output() {
         .assert()
         .success();
 
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
 
     cargo_bin_cmd!("werk")
@@ -1151,6 +1156,9 @@ fn test_note_rm_json_output() {
     let stdout = String::from_utf8_lossy(&output);
     let json: Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
-    assert!(json.get("retracted_note").is_some(), "JSON should have 'retracted_note'");
+    assert!(
+        json.get("retracted_note").is_some(),
+        "JSON should have 'retracted_note'"
+    );
     assert_eq!(json.get("note_number").unwrap().as_u64(), Some(1));
 }

@@ -6,7 +6,7 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use sd_core::{compute_urgency, Mutation, Tension};
+use werk_core::{Mutation, Tension, compute_urgency};
 
 // ============================================================================
 // JSON Serialization Types
@@ -49,7 +49,7 @@ pub struct MutationInfo {
 // ============================================================================
 
 /// Compute tension info with horizon data for a forest node.
-pub fn node_to_tension_info(node: &sd_core::Node, now: DateTime<Utc>) -> TensionInfo {
+pub fn node_to_tension_info(node: &werk_core::Node, now: DateTime<Utc>) -> TensionInfo {
     let horizon = node.tension.horizon.as_ref().map(|h| h.to_string());
     let horizon_range = node.tension.horizon.as_ref().map(|h| HorizonRangeJson {
         start: h.range_start().to_rfc3339(),

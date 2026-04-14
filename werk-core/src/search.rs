@@ -81,12 +81,15 @@ impl SearchIndex {
             let content = format!("{} {}", t.desired, t.actual);
             let embedding = embedder.embed_sync(&content);
             docs.push((t.id.clone(), embedding));
-            meta.insert(t.id.clone(), DocMeta {
-                desired: t.desired.clone(),
-                parent_id: t.parent_id.clone(),
-                status: t.status,
-                short_code: t.short_code,
-            });
+            meta.insert(
+                t.id.clone(),
+                DocMeta {
+                    desired: t.desired.clone(),
+                    parent_id: t.parent_id.clone(),
+                    status: t.status,
+                    short_code: t.short_code,
+                },
+            );
         }
 
         Some(Self {
@@ -109,7 +112,9 @@ impl SearchIndex {
 
         let query_vec = self.embedder.embed_sync(query);
 
-        let mut scored: Vec<SearchHit> = self.docs.iter()
+        let mut scored: Vec<SearchHit> = self
+            .docs
+            .iter()
             .filter_map(|(id, doc_vec)| {
                 let score = frankensearch::cosine_similarity(&query_vec, doc_vec);
                 if score <= 0.0 {
@@ -127,7 +132,11 @@ impl SearchIndex {
             })
             .collect();
 
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(limit);
         scored
     }
@@ -202,10 +211,10 @@ impl SearchIndex {
 /// Not needed for the current in-memory search path.
 #[allow(dead_code)]
 pub fn persist_disk_index(store: &Store) -> Option<PathBuf> {
-    use std::sync::Arc;
+    use frankensearch::core::traits::Embedder;
     use frankensearch::prelude::*;
     use frankensearch::{EmbedderStack, IndexBuilder};
-    use frankensearch::core::traits::Embedder;
+    use std::sync::Arc;
 
     let db_path = store.path()?;
     let werk_dir = db_path.parent()?;
@@ -244,18 +253,21 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = Store::init(dir.path()).expect("init store");
 
-        store.create_tension(
-            "deadline management and temporal signals",
-            "basic urgency computation exists",
-        ).expect("create t1");
-        store.create_tension(
-            "sustainable business model for revenue",
-            "no revenue yet",
-        ).expect("create t2");
-        store.create_tension(
-            "graph intelligence with centrality measures",
-            "FrankenNetworkX integrated",
-        ).expect("create t3");
+        store
+            .create_tension(
+                "deadline management and temporal signals",
+                "basic urgency computation exists",
+            )
+            .expect("create t1");
+        store
+            .create_tension("sustainable business model for revenue", "no revenue yet")
+            .expect("create t2");
+        store
+            .create_tension(
+                "graph intelligence with centrality measures",
+                "FrankenNetworkX integrated",
+            )
+            .expect("create t3");
 
         let idx = SearchIndex::build(&store).expect("build index");
         assert_eq!(idx.doc_count(), 3);
@@ -292,11 +304,15 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = Store::init(dir.path()).expect("init store");
 
-        store.create_tension("alpha tension", "first").expect("create");
+        store
+            .create_tension("alpha tension", "first")
+            .expect("create");
         let idx = SearchIndex::build(&store).expect("build");
         assert_eq!(idx.doc_count(), 1);
 
-        store.create_tension("beta tension", "second").expect("create");
+        store
+            .create_tension("beta tension", "second")
+            .expect("create");
         let idx = SearchIndex::rebuild(&store).expect("rebuild");
         assert_eq!(idx.doc_count(), 2);
 
@@ -309,8 +325,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = Store::init(dir.path()).expect("init store");
 
-        let parent = store.create_tension("parent tension", "reality").expect("create parent");
-        store.create_tension_with_parent("child tension", "child reality", Some(parent.id.clone()))
+        let parent = store
+            .create_tension("parent tension", "reality")
+            .expect("create parent");
+        store
+            .create_tension_with_parent("child tension", "child reality", Some(parent.id.clone()))
             .expect("create child");
 
         let idx = SearchIndex::build(&store).expect("build");
@@ -320,6 +339,9 @@ mod tests {
         assert!(!hits.is_empty());
         let child = &hits[0];
         let crumb = idx.breadcrumb(child.parent_id.as_deref());
-        assert!(crumb.contains("parent"), "breadcrumb should contain parent, got: {crumb}");
+        assert!(
+            crumb.contains("parent"),
+            "breadcrumb should contain parent, got: {crumb}"
+        );
     }
 }

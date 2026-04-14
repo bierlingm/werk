@@ -71,13 +71,13 @@ pub fn cmd_compose_up(
     // Create the new parent tension under the same parent the children had
     let new_parent = store
         .create_tension_full(&desired, &actual, first_parent.clone(), None)
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
 
     // Reparent each child under the new parent
     for child in &resolved_children {
         store
             .update_parent(&child.id, Some(&new_parent.id))
-            .map_err(WerkError::SdError)?;
+            .map_err(WerkError::CoreError)?;
     }
 
     store.end_gesture();

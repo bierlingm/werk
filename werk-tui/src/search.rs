@@ -3,7 +3,7 @@
 //! Uses FrankenSearch (hash embedder) for relevance ranking when available,
 //! falls back to substring matching if the search index isn't built.
 
-use sd_core::{SearchIndex, Store};
+use werk_core::{SearchIndex, Store};
 use werk_shared::truncate;
 
 /// A search result with parent breadcrumb.
@@ -51,7 +51,11 @@ pub fn search_all(query: &str, store: &Store, index: Option<&SearchIndex>) -> Ve
 }
 
 /// Search with a special "(root level)" entry prepended (for move-to-root).
-pub fn search_all_with_root(query: &str, store: &Store, index: Option<&SearchIndex>) -> Vec<SearchResult> {
+pub fn search_all_with_root(
+    query: &str,
+    store: &Store,
+    index: Option<&SearchIndex>,
+) -> Vec<SearchResult> {
     let mut results = vec![SearchResult {
         id: String::new(),
         desired: "(root level)".to_string(),
@@ -67,7 +71,7 @@ fn search_via_index(query: &str, index: &SearchIndex) -> Vec<SearchResult> {
     let hits = index.search(query, 20);
 
     hits.into_iter()
-        .filter(|hit| hit.status == sd_core::TensionStatus::Active)
+        .filter(|hit| hit.status == werk_core::TensionStatus::Active)
         .map(|hit| {
             let parent_path = index.breadcrumb(hit.parent_id.as_deref());
             SearchResult {
@@ -87,9 +91,7 @@ fn search_via_substring(query: &str, store: &Store) -> Vec<SearchResult> {
 
     let mut results: Vec<SearchResult> = tensions
         .iter()
-        .filter(|t| {
-            t.desired.to_lowercase().contains(&q) || t.actual.to_lowercase().contains(&q)
-        })
+        .filter(|t| t.desired.to_lowercase().contains(&q) || t.actual.to_lowercase().contains(&q))
         .map(|t| {
             let parent_path = build_breadcrumb(t.parent_id.as_deref(), store);
             SearchResult {

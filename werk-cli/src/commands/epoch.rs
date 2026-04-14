@@ -194,10 +194,10 @@ pub fn cmd_epoch(
 
 fn cmd_epoch_show(
     output: &Output,
-    store: &sd_core::Store,
+    store: &werk_core::Store,
     tension_id: &str,
     tension_display: &str,
-    tension: &sd_core::Tension,
+    tension: &werk_core::Tension,
     n: usize,
 ) -> Result<(), WerkError> {
     if n == 0 {
@@ -260,9 +260,7 @@ fn cmd_epoch_show(
     } else {
         println!("Epoch {} for {}:", n, tension_display);
         println!();
-        println!(
-            "  Delta at boundary:"
-        );
+        println!("  Delta at boundary:");
         println!("    Desire:  {}", truncate(&epoch.desire_snapshot, 72));
         println!("    Reality: {}", truncate(&epoch.reality_snapshot, 72));
         println!();
@@ -317,7 +315,7 @@ fn cmd_epoch_show(
     Ok(())
 }
 
-fn count_children_snapshot(epoch: &sd_core::EpochRecord) -> usize {
+fn count_children_snapshot(epoch: &werk_core::EpochRecord) -> usize {
     epoch
         .children_snapshot_json
         .as_ref()
@@ -327,11 +325,7 @@ fn count_children_snapshot(epoch: &sd_core::EpochRecord) -> usize {
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        s
-    } else {
-        &s[..max]
-    }
+    if s.len() <= max { s } else { &s[..max] }
 }
 
 fn format_age(timestamp: chrono::DateTime<chrono::Utc>) -> String {

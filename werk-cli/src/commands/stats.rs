@@ -3,19 +3,19 @@
 //! The sole analysis surface. Default output: field vitals. Use flags to add
 //! sections (temporal, attention, changes, trajectory, engagement, drift, health).
 
-use chrono::{Datelike, DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{
-    compute_urgency, detect_containment_violations, detect_critical_path_recursive,
-    detect_horizon_drift, detect_sequencing_pressure, project_field, Forest,
-    TensionStatus,
+use werk_core::{
+    Forest, TensionStatus, compute_urgency, detect_containment_violations,
+    detect_critical_path_recursive, detect_horizon_drift, detect_sequencing_pressure,
+    project_field,
 };
-use werk_shared::cli_display::{glyphs, Palette};
+use werk_shared::cli_display::{Palette, glyphs};
 use werk_shared::truncate;
 
 // ── JSON output ────────────────────────────────────────────────────
@@ -251,7 +251,12 @@ pub fn cmd_stats(
             result.changes = Some(compute_changes(&tensions, &store, cutoff, now)?);
         }
         if show_trajectory {
-            result.trajectory = Some(compute_trajectory(&tensions, &all_mutations, now, &analysis)?);
+            result.trajectory = Some(compute_trajectory(
+                &tensions,
+                &all_mutations,
+                now,
+                &analysis,
+            )?);
         }
         if show_engagement {
             result.engagement = Some(compute_engagement(&tensions, &all_mutations, days, now)?);
@@ -263,26 +268,45 @@ pub fn cmd_stats(
             result.health = Some(compute_health(&store, repair, yes)?);
         }
 
-        output.print_structured(&result).map_err(WerkError::IoError)?;
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         // Text output
         let palette = output.palette();
         print_vitals(&vitals, &palette);
 
         if show_temporal {
-            print_temporal(&compute_temporal(&tensions, &store, now, &sig)?, &tensions, &palette);
+            print_temporal(
+                &compute_temporal(&tensions, &store, now, &sig)?,
+                &tensions,
+                &palette,
+            );
         }
         if show_attention {
-            print_attention(&compute_attention(&tensions, &store, cutoff)?, days, &palette);
+            print_attention(
+                &compute_attention(&tensions, &store, cutoff)?,
+                days,
+                &palette,
+            );
         }
         if show_changes {
             print_changes(&compute_changes(&tensions, &store, cutoff, now)?, days);
         }
         if show_trajectory {
-            print_trajectory(&compute_trajectory(&tensions, &all_mutations, now, &analysis)?);
+            print_trajectory(&compute_trajectory(
+                &tensions,
+                &all_mutations,
+                now,
+                &analysis,
+            )?);
         }
         if show_engagement {
-            print_engagement(&compute_engagement(&tensions, &all_mutations, days, now)?, days, &palette);
+            print_engagement(
+                &compute_engagement(&tensions, &all_mutations, days, now)?,
+                days,
+                &palette,
+            );
         }
         if show_drift {
             print_drift(&compute_drift(&tensions, &store)?);
@@ -309,15 +333,24 @@ pub fn cmd_stats(
 // ── Vitals ─────────────────────────────────────────────────────────
 
 fn compute_vitals(
-    tensions: &[sd_core::Tension],
-    mutations: &[sd_core::Mutation],
+    tensions: &[werk_core::Tension],
+    mutations: &[werk_core::Mutation],
     cutoff: DateTime<Utc>,
     days: i64,
     now: DateTime<Utc>,
 ) -> VitalsJson {
-    let active = tensions.iter().filter(|t| t.status == TensionStatus::Active).count();
-    let resolved = tensions.iter().filter(|t| t.status == TensionStatus::Resolved).count();
-    let released = tensions.iter().filter(|t| t.status == TensionStatus::Released).count();
+    let active = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+        .count();
+    let resolved = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Resolved)
+        .count();
+    let released = tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Released)
+        .count();
     let deadlined = tensions.iter().filter(|t| t.horizon.is_some()).count();
     let overdue = tensions
         .iter()
@@ -335,7 +368,10 @@ fn compute_vitals(
         .filter(|t| t.status == TensionStatus::Active && t.position.is_none())
         .count();
 
-    let recent: Vec<&sd_core::Mutation> = mutations.iter().filter(|m| m.timestamp() >= cutoff).collect();
+    let recent: Vec<&werk_core::Mutation> = mutations
+        .iter()
+        .filter(|m| m.timestamp() >= cutoff)
+        .collect();
     let recent_count = recent.len();
     let mut touched: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for m in &recent {
@@ -396,8 +432,8 @@ fn print_vitals(v: &VitalsJson, palette: &Palette) {
 // ── Temporal ───────────────────────────────────────────────────────
 
 fn compute_temporal(
-    tensions: &[sd_core::Tension],
-    _store: &sd_core::Store,
+    tensions: &[werk_core::Tension],
+    _store: &werk_core::Store,
     now: DateTime<Utc>,
     sig: &werk_shared::SignalThresholds,
 ) -> Result<TemporalJson, WerkError> {
@@ -405,22 +441,36 @@ fn compute_temporal(
 
     // Approaching
     let mut approaching: Vec<ApproachingJson> = Vec::new();
-    for t in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
+    for t in tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+    {
         if let Some(u) = compute_urgency(t, now) {
             let is_approaching = u.value > sig.approaching_urgency
-                || t.horizon.as_ref().map(|h| h.range_end() <= frame_end).unwrap_or(false);
+                || t.horizon
+                    .as_ref()
+                    .map(|h| h.range_end() <= frame_end)
+                    .unwrap_or(false);
             let is_overdue = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
             if is_approaching || is_overdue {
                 approaching.push(ApproachingJson {
                     short_code: t.short_code,
                     desired: t.desired.clone(),
-                    deadline: t.horizon.as_ref().map(|h| h.to_string()).unwrap_or_default(),
+                    deadline: t
+                        .horizon
+                        .as_ref()
+                        .map(|h| h.to_string())
+                        .unwrap_or_default(),
                     urgency: u.value,
                 });
             }
         }
     }
-    approaching.sort_by(|a, b| b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal));
+    approaching.sort_by(|a, b| {
+        b.urgency
+            .partial_cmp(&a.urgency)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     approaching.truncate(10);
 
     // Critical path — collect from all roots
@@ -431,7 +481,7 @@ fn compute_temporal(
         .map(|t| t.id.clone())
         .collect();
 
-    let tension_lookup: HashMap<String, &sd_core::Tension> =
+    let tension_lookup: HashMap<String, &werk_core::Tension> =
         tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
     let mut critical_path: Vec<CriticalPathJson> = Vec::new();
@@ -493,7 +543,7 @@ fn compute_temporal(
     })
 }
 
-fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension], palette: &Palette) {
+fn print_temporal(t: &TemporalJson, _tensions: &[werk_core::Tension], palette: &Palette) {
     if t.approaching.is_empty()
         && t.critical_path.is_empty()
         && t.sequencing_pressure.is_empty()
@@ -522,11 +572,20 @@ fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension], palette: &Pa
     if !t.critical_path.is_empty() {
         println!("  Critical path");
         for cp in &t.critical_path {
-            let psc = cp.parent_short_code.map(|c| format!("#{}", c)).unwrap_or_default();
-            let csc = cp.child_short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let psc = cp
+                .parent_short_code
+                .map(|c| format!("#{}", c))
+                .unwrap_or_default();
+            let csc = cp
+                .child_short_code
+                .map(|c| format!("#{}", c))
+                .unwrap_or_default();
             println!(
                 "    {} \u{2192} {}  {} (slack {}d)",
-                psc, csc, truncate(&cp.child_desired, 30), cp.slack_days
+                psc,
+                csc,
+                truncate(&cp.child_desired, 30),
+                cp.slack_days
             );
         }
     }
@@ -535,10 +594,15 @@ fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension], palette: &Pa
         println!("  Sequencing pressure");
         for sp in &t.sequencing_pressure {
             let sc = sp.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
-            let psc = sp.predecessor_short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let psc = sp
+                .predecessor_short_code
+                .map(|c| format!("#{}", c))
+                .unwrap_or_default();
             println!(
                 "    {}  {} — ordered after {} but due earlier",
-                sc, truncate(&sp.desired, 30), psc
+                sc,
+                truncate(&sp.desired, 30),
+                psc
             );
         }
     }
@@ -547,10 +611,16 @@ fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension], palette: &Pa
         println!("  Containment violations");
         for v in &t.containment_violations {
             let sc = v.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
-            let psc = v.parent_short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let psc = v
+                .parent_short_code
+                .map(|c| format!("#{}", c))
+                .unwrap_or_default();
             println!(
                 "    {}  {} exceeds parent {} by {}d",
-                sc, truncate(&v.desired, 30), psc, v.excess_days
+                sc,
+                truncate(&v.desired, 30),
+                psc,
+                v.excess_days
             );
         }
     }
@@ -559,11 +629,11 @@ fn print_temporal(t: &TemporalJson, _tensions: &[sd_core::Tension], palette: &Pa
 // ── Attention ──────────────────────────────────────────────────────
 
 fn compute_attention(
-    tensions: &[sd_core::Tension],
-    store: &sd_core::Store,
+    tensions: &[werk_core::Tension],
+    store: &werk_core::Store,
     cutoff: DateTime<Utc>,
 ) -> Result<AttentionJson, WerkError> {
-    let roots: Vec<&sd_core::Tension> = tensions
+    let roots: Vec<&werk_core::Tension> = tensions
         .iter()
         .filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active)
         .collect();
@@ -575,7 +645,9 @@ fn compute_attention(
         let mut descendants_touched = 0usize;
 
         // Count mutations for root itself
-        let root_muts = store.get_mutations(&root.id).map_err(WerkError::StoreError)?;
+        let root_muts = store
+            .get_mutations(&root.id)
+            .map_err(WerkError::StoreError)?;
         let root_recent = root_muts.iter().filter(|m| m.timestamp() >= cutoff).count();
         if root_recent > 0 {
             total_mutations += root_recent;
@@ -583,9 +655,11 @@ fn compute_attention(
         }
 
         // Per-branch (immediate children of root)
-        let children: Vec<&sd_core::Tension> = tensions
+        let children: Vec<&werk_core::Tension> = tensions
             .iter()
-            .filter(|t| t.parent_id.as_deref() == Some(&root.id) && t.status == TensionStatus::Active)
+            .filter(|t| {
+                t.parent_id.as_deref() == Some(&root.id) && t.status == TensionStatus::Active
+            })
             .collect();
 
         let mut branches = Vec::new();
@@ -599,8 +673,13 @@ fn compute_attention(
             let mut branch_touched = 0usize;
 
             // Count child's own mutations
-            let child_muts = store.get_mutations(&child.id).map_err(WerkError::StoreError)?;
-            let child_recent = child_muts.iter().filter(|m| m.timestamp() >= cutoff).count();
+            let child_muts = store
+                .get_mutations(&child.id)
+                .map_err(WerkError::StoreError)?;
+            let child_recent = child_muts
+                .iter()
+                .filter(|m| m.timestamp() >= cutoff)
+                .count();
             if child_recent > 0 {
                 branch_mutations += child_recent;
                 branch_touched += 1;
@@ -622,7 +701,9 @@ fn compute_attention(
             // Count total children for untouched annotation
             let total_children = tensions
                 .iter()
-                .filter(|t| t.parent_id.as_deref() == Some(&child.id) && t.status == TensionStatus::Active)
+                .filter(|t| {
+                    t.parent_id.as_deref() == Some(&child.id) && t.status == TensionStatus::Active
+                })
                 .count();
 
             let untouched = if branch_mutations == 0 && total_children > 0 {
@@ -664,10 +745,16 @@ fn print_attention(a: &AttentionJson, days: i64, palette: &Palette) {
     }
 
     println!();
-    println!("{}", palette.bold(&palette.structure(&format!("Attention (last {} days)", days))));
+    println!(
+        "{}",
+        palette.bold(&palette.structure(&format!("Attention (last {} days)", days)))
+    );
 
     for root in &a.roots {
-        let sc = root.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+        let sc = root
+            .short_code
+            .map(|c| format!("#{}", c))
+            .unwrap_or_default();
         println!(
             "  {:<6} {:<35}  {} mutations across {} descendants",
             sc,
@@ -677,7 +764,10 @@ fn print_attention(a: &AttentionJson, days: i64, palette: &Palette) {
         );
 
         for branch in &root.branches {
-            let bsc = branch.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let bsc = branch
+                .short_code
+                .map(|c| format!("#{}", c))
+                .unwrap_or_default();
             let untouched = branch
                 .untouched_children
                 .map(|n| format!(" \u{2190} {} children, none touched", n))
@@ -697,15 +787,17 @@ fn print_attention(a: &AttentionJson, days: i64, palette: &Palette) {
 // ── Changes ────────────────────────────────────────────────────────
 
 fn compute_changes(
-    tensions: &[sd_core::Tension],
-    store: &sd_core::Store,
+    tensions: &[werk_core::Tension],
+    store: &werk_core::Store,
     cutoff: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> Result<ChangesJson, WerkError> {
-    let tension_map: HashMap<String, &sd_core::Tension> =
+    let tension_map: HashMap<String, &werk_core::Tension> =
         tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
-    let mutations = store.mutations_between(cutoff, now).map_err(WerkError::StoreError)?;
+    let mutations = store
+        .mutations_between(cutoff, now)
+        .map_err(WerkError::StoreError)?;
 
     // Epochs
     let mut epochs = Vec::new();
@@ -828,8 +920,8 @@ fn print_changes(c: &ChangesJson, days: i64) {
 // ── Trajectory ─────────────────────────────────────────────────────
 
 fn compute_trajectory(
-    tensions: &[sd_core::Tension],
-    mutations: &[sd_core::Mutation],
+    tensions: &[werk_core::Tension],
+    mutations: &[werk_core::Mutation],
     now: DateTime<Utc>,
     analysis: &werk_shared::AnalysisThresholds,
 ) -> Result<TrajectoryJson, WerkError> {
@@ -841,14 +933,14 @@ fn compute_trajectory(
     let mut stalling = 0;
     let mut oscillating = 0;
 
-    if let Some(buckets) = field.funnel.get(&sd_core::ProjectionHorizon::OneWeek) {
+    if let Some(buckets) = field.funnel.get(&werk_core::ProjectionHorizon::OneWeek) {
         resolving = buckets.resolving;
         drifting = buckets.drifting;
         stalling = buckets.stalling;
         oscillating = buckets.oscillating;
     }
 
-    let tension_map: HashMap<String, &sd_core::Tension> =
+    let tension_map: HashMap<String, &werk_core::Tension> =
         tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
     let collisions: Vec<CollisionJson> = field
@@ -910,13 +1002,16 @@ fn print_trajectory(t: &TrajectoryJson) {
 // ── Engagement ─────────────────────────────────────────────────────
 
 fn compute_engagement(
-    tensions: &[sd_core::Tension],
-    mutations: &[sd_core::Mutation],
+    tensions: &[werk_core::Tension],
+    mutations: &[werk_core::Mutation],
     days: i64,
     now: DateTime<Utc>,
 ) -> Result<EngagementJson, WerkError> {
     let cutoff = now - chrono::Duration::days(days);
-    let recent: Vec<&sd_core::Mutation> = mutations.iter().filter(|m| m.timestamp() >= cutoff).collect();
+    let recent: Vec<&werk_core::Mutation> = mutations
+        .iter()
+        .filter(|m| m.timestamp() >= cutoff)
+        .collect();
 
     let field_freq = if days > 0 {
         recent.len() as f64 / days as f64
@@ -930,20 +1025,21 @@ fn compute_engagement(
         *per_tension.entry(m.tension_id().to_string()).or_default() += 1;
     }
 
-    let tension_map: HashMap<String, &sd_core::Tension> =
+    let tension_map: HashMap<String, &werk_core::Tension> =
         tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
-    let most_engaged = per_tension
-        .iter()
-        .max_by_key(|(_, count)| *count)
-        .and_then(|(id, count)| {
-            tension_map.get(id).map(|t| EngagedTensionJson {
-                short_code: t.short_code,
-                desired: t.desired.clone(),
-                frequency: *count as f64 / days.max(1) as f64,
-                deadline: None,
-            })
-        });
+    let most_engaged =
+        per_tension
+            .iter()
+            .max_by_key(|(_, count)| *count)
+            .and_then(|(id, count)| {
+                tension_map.get(id).map(|t| EngagedTensionJson {
+                    short_code: t.short_code,
+                    desired: t.desired.clone(),
+                    frequency: *count as f64 / days.max(1) as f64,
+                    deadline: None,
+                })
+            });
 
     // Least engaged with deadline — active, has deadline, lowest mutation count
     let least_engaged = tensions
@@ -988,7 +1084,10 @@ fn compute_engagement(
 }
 
 fn print_engagement(e: &EngagementJson, _days: i64, palette: &Palette) {
-    println!("  Field frequency: {}/day ({})", e.field_frequency, e.field_trend);
+    println!(
+        "  Field frequency: {}/day ({})",
+        e.field_frequency, e.field_trend
+    );
     if let Some(ref me) = e.most_engaged {
         let sc = me.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
         println!(
@@ -1017,7 +1116,11 @@ fn print_engagement(e: &EngagementJson, _days: i64, palette: &Palette) {
             .iter()
             .enumerate()
             .map(|(i, name)| {
-                format!("{} {}", palette.chrome(name), bar_inline(e.activity_by_weekday[i], max, 5, palette))
+                format!(
+                    "{} {}",
+                    palette.chrome(name),
+                    bar_inline(e.activity_by_weekday[i], max, 5, palette)
+                )
             })
             .collect();
         println!("  Activity by day: {}", parts.join("  "));
@@ -1041,12 +1144,15 @@ fn bar_inline(count: usize, max: usize, width: usize, palette: &Palette) -> Stri
 // ── Drift ──────────────────────────────────────────────────────────
 
 fn compute_drift(
-    tensions: &[sd_core::Tension],
-    store: &sd_core::Store,
+    tensions: &[werk_core::Tension],
+    store: &werk_core::Store,
 ) -> Result<Vec<DriftEntryJson>, WerkError> {
     let mut drifts = Vec::new();
 
-    for t in tensions.iter().filter(|t| t.status == TensionStatus::Active && t.horizon.is_some()) {
+    for t in tensions
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active && t.horizon.is_some())
+    {
         let mutations = store.get_mutations(&t.id).map_err(WerkError::StoreError)?;
         let drift = detect_horizon_drift(&t.id, &mutations);
 
@@ -1090,15 +1196,15 @@ fn print_drift(drifts: &[DriftEntryJson]) {
 // ── Health ──────────────────────────────────────────────────────────
 
 fn compute_health(
-    store: &sd_core::Store,
+    store: &werk_core::Store,
     repair: bool,
     yes: bool,
 ) -> Result<HealthJson, WerkError> {
-    let noop_count = store.count_noop_mutations().map_err(WerkError::SdError)?;
+    let noop_count = store.count_noop_mutations().map_err(WerkError::CoreError)?;
 
     let purged = if repair && noop_count > 0 {
         if yes || confirm_repair(noop_count) {
-            let purged = store.purge_noop_mutations().map_err(WerkError::SdError)?;
+            let purged = store.purge_noop_mutations().map_err(WerkError::CoreError)?;
             Some(purged)
         } else {
             None

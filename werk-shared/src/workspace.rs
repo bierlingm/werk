@@ -1,6 +1,6 @@
 //! Workspace resolution for werk.
 //!
-//! A workspace is a `.werk/` directory containing `sd.db` and optionally `config.toml`.
+//! A workspace is a `.werk/` directory containing `werk.db` and optionally `config.toml`.
 //!
 //! Resolution strategy:
 //! 1. Walk up from CWD looking for `.werk/` directory
@@ -111,7 +111,7 @@ impl Workspace {
 
     /// Get the path to the database file.
     pub fn db_path(&self) -> PathBuf {
-        self.werk_dir.join("sd.db")
+        self.werk_dir.join("werk.db")
     }
 
     /// Get the path to the config file.
@@ -141,8 +141,8 @@ impl Workspace {
     /// Open the store for this workspace.
     ///
     /// If the store doesn't exist yet, it will be initialized.
-    pub fn open_store(&self) -> Result<sd_core::Store> {
-        let store = sd_core::Store::init(self.root()).map_err(WerkError::StoreError)?;
+    pub fn open_store(&self) -> Result<werk_core::Store> {
+        let store = werk_core::Store::init(self.root()).map_err(WerkError::StoreError)?;
         Ok(store)
     }
 
@@ -153,19 +153,28 @@ impl Workspace {
     /// bridge to remain subscribed. Drop it when the command completes.
     ///
     /// This is the preferred entry point for CLI/MCP commands that mutate state.
-    pub fn open_store_with_hooks(&self) -> Result<(sd_core::Store, crate::hooks::HookBridgeHandle)> {
-        let mut store = sd_core::Store::init(self.root()).map_err(WerkError::StoreError)?;
-        let bus = sd_core::events::EventBus::new();
+    pub fn open_store_with_hooks(
+        &self,
+    ) -> Result<(werk_core::Store, crate::hooks::HookBridgeHandle)> {
+        let mut store = werk_core::Store::init(self.root()).map_err(WerkError::StoreError)?;
+        let bus = werk_core::events::EventBus::new();
         store.set_event_bus(bus.clone());
 
         let config = crate::config::Config::load(self).unwrap_or_default();
         let global_config = crate::config::Config::load_global().ok();
-        let runner = std::sync::Arc::new(
-            crate::hooks::HookRunner::from_configs(global_config.as_ref(), &config),
-        );
+        let runner = std::sync::Arc::new(crate::hooks::HookRunner::from_configs(
+            global_config.as_ref(),
+            &config,
+        ));
         let bridge = crate::hooks::HookBridge::new(&bus, runner.clone());
 
-        Ok((store, crate::hooks::HookBridgeHandle { _bridge: bridge, runner }))
+        Ok((
+            store,
+            crate::hooks::HookBridgeHandle {
+                _bridge: bridge,
+                runner,
+            },
+        ))
     }
 }
 
@@ -237,7 +246,7 @@ mod tests {
     fn test_db_path() {
         let dir = TempDir::new().unwrap();
         let workspace = Workspace::init(dir.path(), false).unwrap();
-        assert!(workspace.db_path().ends_with("sd.db"));
+        assert!(workspace.db_path().ends_with("werk.db"));
     }
 
     #[test]

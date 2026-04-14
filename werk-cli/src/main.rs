@@ -1,7 +1,7 @@
 // werk: Operative instrument for structural dynamics
 //
 // The practitioner's workspace. Practice, presence, oracle.
-// Built on sd-core. Maximally opinionated.
+// Built on werk-core. Maximally opinionated.
 //
 // Exit codes:
 //   0 - Success
@@ -23,7 +23,10 @@ use werk::output::Output;
 /// operations (closing gaps), not management (coordinating existing structure).
 #[derive(Parser, Debug)]
 #[command(name = "werk")]
-#[command(version, about, after_long_help = "\
+#[command(
+    version,
+    about,
+    after_long_help = "\
 Commands by framework:
 
   Structure (Architecture of Space)
@@ -39,7 +42,8 @@ Commands by framework:
     list, tree, stats
 
   System
-    init, config, flush, batch, nuke, mcp, serve")]
+    init, config, flush, batch, nuke, mcp, serve"
+)]
 struct Cli {
     /// Output in JSON format.
     #[arg(short, long, global = true)]
@@ -85,7 +89,9 @@ fn main() {
     // Dispatch to subcommand handlers
     let result = match args.command {
         Commands::Init { global } => werk::commands::init::cmd_init(&output, global),
-        Commands::Config { command } => werk::commands::config::cmd_config(&output, command.as_ref()),
+        Commands::Config { command } => {
+            werk::commands::config::cmd_config(&output, command.as_ref())
+        }
         Commands::Add {
             desired,
             actual,
@@ -99,20 +105,47 @@ fn main() {
         } => werk::commands::compose_up::cmd_compose_up(&output, desired, actual, children),
 
         Commands::Flush => werk::commands::flush::cmd_flush(&output),
-        Commands::Log { id, search, since, compare, session } => werk::commands::log::cmd_log(&output, id, search, since, compare, session),
-        Commands::Epoch { id, list, show } => werk::commands::epoch::cmd_epoch(&output, id, list, show),
+        Commands::Log {
+            id,
+            search,
+            since,
+            compare,
+            session,
+        } => werk::commands::log::cmd_log(&output, id, search, since, compare, session),
+        Commands::Epoch { id, list, show } => {
+            werk::commands::epoch::cmd_epoch(&output, id, list, show)
+        }
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
         Commands::Show { id, full } => werk::commands::show::cmd_show(&output, id, full),
-        Commands::Reality { id, value, no_epoch, show_after } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch, show_after),
-        Commands::Desire { id, value, no_epoch, show_after } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch, show_after),
-        Commands::Resolve { id, actual_at, dry_run, show_after } => werk::commands::resolve::cmd_resolve(&output, id, actual_at, dry_run, show_after),
-        Commands::Release { id, reason, show_after } => {
-            werk::commands::release::cmd_release(&output, id, reason, show_after)
-        }
+        Commands::Reality {
+            id,
+            value,
+            no_epoch,
+            show_after,
+        } => werk::commands::reality::cmd_reality(&output, id, value, no_epoch, show_after),
+        Commands::Desire {
+            id,
+            value,
+            no_epoch,
+            show_after,
+        } => werk::commands::desire::cmd_desire(&output, id, value, no_epoch, show_after),
+        Commands::Resolve {
+            id,
+            actual_at,
+            dry_run,
+            show_after,
+        } => werk::commands::resolve::cmd_resolve(&output, id, actual_at, dry_run, show_after),
+        Commands::Release {
+            id,
+            reason,
+            show_after,
+        } => werk::commands::release::cmd_release(&output, id, reason, show_after),
         Commands::Reopen { id, reason } => werk::commands::reopen::cmd_reopen(&output, id, reason),
-        Commands::Undo { gesture_id, last, dry_run } => {
-            werk::commands::undo::cmd_undo(&output, gesture_id, last, dry_run)
-        }
+        Commands::Undo {
+            gesture_id,
+            last,
+            dry_run,
+        } => werk::commands::undo::cmd_undo(&output, gesture_id, last, dry_run),
         Commands::Snooze { id, date, clear } => {
             werk::commands::snooze::cmd_snooze(&output, id, date, clear)
         }
@@ -122,13 +155,53 @@ fn main() {
             clear,
         } => werk::commands::recur::cmd_recur(&output, id, interval, clear),
         Commands::Rm { id, dry_run } => werk::commands::rm::cmd_rm(&output, id, dry_run),
-        Commands::Move { id, parent, dry_run } => werk::commands::move_cmd::cmd_move(&output, id, parent, dry_run),
-        Commands::Split { id, desires, assign, children_to_parent, children_to, keep, release, hold, dry_run } => {
-            werk::commands::split::cmd_split(&output, id, desires, assign, children_to_parent, children_to, keep, release, hold, dry_run)
-        }
-        Commands::Merge { id1, id2, into, as_desire, desire, assign, children_to_parent, dry_run } => {
-            werk::commands::merge::cmd_merge(&output, id1, id2, into, as_desire, desire, assign, children_to_parent, dry_run)
-        }
+        Commands::Move {
+            id,
+            parent,
+            dry_run,
+        } => werk::commands::move_cmd::cmd_move(&output, id, parent, dry_run),
+        Commands::Split {
+            id,
+            desires,
+            assign,
+            children_to_parent,
+            children_to,
+            keep,
+            release,
+            hold,
+            dry_run,
+        } => werk::commands::split::cmd_split(
+            &output,
+            id,
+            desires,
+            assign,
+            children_to_parent,
+            children_to,
+            keep,
+            release,
+            hold,
+            dry_run,
+        ),
+        Commands::Merge {
+            id1,
+            id2,
+            into,
+            as_desire,
+            desire,
+            assign,
+            children_to_parent,
+            dry_run,
+        } => werk::commands::merge::cmd_merge(
+            &output,
+            id1,
+            id2,
+            into,
+            as_desire,
+            desire,
+            assign,
+            children_to_parent,
+            dry_run,
+        ),
         Commands::Hold { id } => werk::commands::hold::cmd_hold(&output, id),
         Commands::Position { id, n } => werk::commands::position::cmd_position(&output, id, n),
         Commands::Note { command } => match command {
@@ -191,7 +264,9 @@ fn main() {
             released,
             stats,
             compact,
-        } => werk::commands::tree::cmd_tree(&output, id, open, all, resolved, released, stats, compact),
+        } => werk::commands::tree::cmd_tree(
+            &output, id, open, all, resolved, released, stats, compact,
+        ),
         Commands::Stats {
             temporal,
             attention,
@@ -205,31 +280,39 @@ fn main() {
             repair,
             yes,
         } => werk::commands::stats::cmd_stats(
-            &output, temporal, attention, changes, traj, engagement, drift, health, all, days, repair, yes,
+            &output, temporal, attention, changes, traj, engagement, drift, health, all, days,
+            repair, yes,
         ),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
         Commands::Hooks { command } => {
-            use werk::commands::hooks::*;
             use werk::commands::HooksCommand;
+            use werk::commands::hooks::*;
             match command {
                 HooksCommand::List { verbose } => cmd_hooks_list(&output, verbose),
-                HooksCommand::Add { event, command, filter, global } => {
-                    cmd_hooks_add(&output, event, command, filter, global)
-                }
-                HooksCommand::Rm { event, command, global } => {
-                    cmd_hooks_rm(&output, event, command, global)
-                }
+                HooksCommand::Add {
+                    event,
+                    command,
+                    filter,
+                    global,
+                } => cmd_hooks_add(&output, event, command, filter, global),
+                HooksCommand::Rm {
+                    event,
+                    command,
+                    global,
+                } => cmd_hooks_rm(&output, event, command, global),
                 HooksCommand::Test { event, tension } => cmd_hooks_test(&output, event, tension),
                 HooksCommand::Log { tail } => cmd_hooks_log(&output, tail),
                 HooksCommand::Install { git, hooks } => cmd_hooks_install(&output, git, hooks),
             }
         }
         Commands::Mcp => {
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| werk::error::WerkError::IoError(format!("failed to create runtime: {}", e)));
+            let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                werk::error::WerkError::IoError(format!("failed to create runtime: {}", e))
+            });
             match rt {
                 Ok(rt) => rt.block_on(async {
-                    werk_mcp::run_server().await
+                    werk_mcp::run_server()
+                        .await
                         .map_err(|e| werk::error::WerkError::IoError(e.to_string()))
                 }),
                 Err(e) => Err(e),
@@ -240,11 +323,13 @@ fn main() {
                 .map_err(|e| werk::error::WerkError::IoError(e.to_string()));
             match workspace {
                 Ok(ws) => {
-                    let rt = tokio::runtime::Runtime::new()
-                        .map_err(|e| werk::error::WerkError::IoError(format!("failed to create runtime: {}", e)));
+                    let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                        werk::error::WerkError::IoError(format!("failed to create runtime: {}", e))
+                    });
                     match rt {
                         Ok(rt) => rt.block_on(async {
-                            werk_web::serve(ws.root().to_path_buf(), port).await
+                            werk_web::serve(ws.root().to_path_buf(), port)
+                                .await
                                 .map_err(|e| werk::error::WerkError::IoError(e.to_string()))
                         }),
                         Err(e) => Err(e),

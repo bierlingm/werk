@@ -1,11 +1,11 @@
 //! werk-web: Axum-based web server for the werk structural dynamics instrument.
 //!
-//! Serves an interactive HTML frontend and exposes a REST API that calls sd-core directly.
+//! Serves an interactive HTML frontend and exposes a REST API that calls werk-core directly.
 //! Designed to migrate cleanly into Tauri commands later.
 //!
 //! # Architecture
 //!
-//! sd-core's `Store` is `!Send` (fsqlite uses Rc internally). We handle this by
+//! werk-core's `Store` is `!Send` (fsqlite uses Rc internally). We handle this by
 //! running all store operations on a dedicated OS thread, communicating via channels.
 //! This pattern maps directly to Tauri's command model later.
 
@@ -16,12 +16,12 @@ use axum::{
     response::{Html, IntoResponse, Response, Sse},
     routing::{get, patch, post},
 };
-use sd_core::{Forest, Horizon, Tension, TensionStatus};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{broadcast, oneshot};
 use tokio_stream::StreamExt;
 use tower_http::cors::CorsLayer;
+use werk_core::{Forest, Horizon, Tension, TensionStatus};
 
 const FRONTEND_HTML: &str = include_str!("../index.html");
 
@@ -76,7 +76,7 @@ impl StoreHandle {
         std::thread::Builder::new()
             .name("werk-store".into())
             .spawn(move || {
-                let mut store = match sd_core::Store::init(&store_path) {
+                let mut store = match werk_core::Store::init(&store_path) {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("failed to open store: {}", e);
@@ -87,11 +87,15 @@ impl StoreHandle {
                 while let Ok(cmd) = rx.recv() {
                     match cmd {
                         StoreCmd::ListTensions { reply } => {
-                            let _ = reply.send(
-                                store.list_tensions().map_err(|e| e.to_string()),
-                            );
+                            let _ = reply.send(store.list_tensions().map_err(|e| e.to_string()));
                         }
-                        StoreCmd::CreateTension { desired, actual, parent_id, horizon, reply } => {
+                        StoreCmd::CreateTension {
+                            desired,
+                            actual,
+                            parent_id,
+                            horizon,
+                            reply,
+                        } => {
                             let _ = store.begin_gesture(Some("web: create tension"));
                             let result = store
                                 .create_tension_full(&desired, &actual, parent_id, horizon)
@@ -101,13 +105,15 @@ impl StoreHandle {
                         }
                         StoreCmd::UpdateDesired { id, value, reply } => {
                             let _ = store.begin_gesture(Some("web: update desired"));
-                            let result = store.update_desired(&id, &value).map_err(|e| e.to_string());
+                            let result =
+                                store.update_desired(&id, &value).map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
                         StoreCmd::UpdateReality { id, value, reply } => {
                             let _ = store.begin_gesture(Some("web: update reality"));
-                            let result = store.update_actual(&id, &value).map_err(|e| e.to_string());
+                            let result =
+                                store.update_actual(&id, &value).map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
@@ -118,14 +124,13 @@ impl StoreHandle {
                                 TensionStatus::Released => "web: release",
                             };
                             let _ = store.begin_gesture(Some(label));
-                            let result = store.update_status(&id, status).map_err(|e| e.to_string());
+                            let result =
+                                store.update_status(&id, status).map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
                         StoreCmd::GetTension { id, reply } => {
-                            let _ = reply.send(
-                                store.get_tension(&id).map_err(|e| e.to_string()),
-                            );
+                            let _ = reply.send(store.get_tension(&id).map_err(|e| e.to_string()));
                         }
                     }
                 }
@@ -137,7 +142,9 @@ impl StoreHandle {
 
     async fn list_tensions(&self) -> StoreResult<Vec<Tension>> {
         let (reply, rx) = oneshot::channel();
-        self.tx.send(StoreCmd::ListTensions { reply }).map_err(|e| e.to_string())?;
+        self.tx
+            .send(StoreCmd::ListTensions { reply })
+            .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
 
@@ -150,32 +157,46 @@ impl StoreHandle {
     ) -> StoreResult<Tension> {
         let (reply, rx) = oneshot::channel();
         self.tx
-            .send(StoreCmd::CreateTension { desired, actual, parent_id, horizon, reply })
+            .send(StoreCmd::CreateTension {
+                desired,
+                actual,
+                parent_id,
+                horizon,
+                reply,
+            })
             .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
 
     async fn update_desired(&self, id: String, value: String) -> StoreResult<()> {
         let (reply, rx) = oneshot::channel();
-        self.tx.send(StoreCmd::UpdateDesired { id, value, reply }).map_err(|e| e.to_string())?;
+        self.tx
+            .send(StoreCmd::UpdateDesired { id, value, reply })
+            .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
 
     async fn update_reality(&self, id: String, value: String) -> StoreResult<()> {
         let (reply, rx) = oneshot::channel();
-        self.tx.send(StoreCmd::UpdateReality { id, value, reply }).map_err(|e| e.to_string())?;
+        self.tx
+            .send(StoreCmd::UpdateReality { id, value, reply })
+            .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
 
     async fn update_status(&self, id: String, status: TensionStatus) -> StoreResult<()> {
         let (reply, rx) = oneshot::channel();
-        self.tx.send(StoreCmd::UpdateStatus { id, status, reply }).map_err(|e| e.to_string())?;
+        self.tx
+            .send(StoreCmd::UpdateStatus { id, status, reply })
+            .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
 
     async fn get_tension(&self, id: String) -> StoreResult<Option<Tension>> {
         let (reply, rx) = oneshot::channel();
-        self.tx.send(StoreCmd::GetTension { id, reply }).map_err(|e| e.to_string())?;
+        self.tx
+            .send(StoreCmd::GetTension { id, reply })
+            .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
 }
@@ -308,7 +329,10 @@ pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
 }
 
 /// Start the server on the given port.
-pub async fn serve(store_path: std::path::PathBuf, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn serve(
+    store_path: std::path::PathBuf,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     let app = build_router(store_path)?;
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     eprintln!("werk web → http://localhost:{}", port);
@@ -330,9 +354,18 @@ async fn get_tensions(State(state): State<Arc<AppState>>) -> Response {
     };
 
     let summary = SummaryJson {
-        active: all.iter().filter(|t| t.status == TensionStatus::Active).count(),
-        resolved: all.iter().filter(|t| t.status == TensionStatus::Resolved).count(),
-        released: all.iter().filter(|t| t.status == TensionStatus::Released).count(),
+        active: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active)
+            .count(),
+        resolved: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Resolved)
+            .count(),
+        released: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Released)
+            .count(),
         total: all.len(),
     };
 
@@ -359,7 +392,7 @@ async fn get_tensions(State(state): State<Arc<AppState>>) -> Response {
     .into_response()
 }
 
-fn build_tree_node(forest: &Forest, node: &sd_core::tree::Node) -> TreeNodeJson {
+fn build_tree_node(forest: &Forest, node: &werk_core::tree::Node) -> TreeNodeJson {
     let children: Vec<TreeNodeJson> = node
         .children
         .iter()
@@ -408,7 +441,10 @@ async fn create_tension(
             match Horizon::parse(h) {
                 Ok(h) => Some(h),
                 Err(e) => {
-                    return err_response(StatusCode::BAD_REQUEST, format!("invalid horizon: {}", e))
+                    return err_response(
+                        StatusCode::BAD_REQUEST,
+                        format!("invalid horizon: {}", e),
+                    );
                 }
             }
         }
@@ -428,9 +464,15 @@ async fn create_tension(
         None
     };
 
-    match state.store.create_tension(req.desired, actual, parent_id, horizon).await {
+    match state
+        .store
+        .create_tension(req.desired, actual, parent_id, horizon)
+        .await
+    {
         Ok(t) => {
-            let _ = state.tx.send(SseEvent { kind: "tension_created".into() });
+            let _ = state.tx.send(SseEvent {
+                kind: "tension_created".into(),
+            });
             (StatusCode::CREATED, Json(TensionJson::from_tension(&t))).into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
@@ -449,7 +491,9 @@ async fn update_desired(
 
     match state.store.update_desired(tension_id, req.value).await {
         Ok(()) => {
-            let _ = state.tx.send(SseEvent { kind: "tension_updated".into() });
+            let _ = state.tx.send(SseEvent {
+                kind: "tension_updated".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
@@ -468,61 +512,72 @@ async fn update_reality(
 
     match state.store.update_reality(tension_id, req.value).await {
         Ok(()) => {
-            let _ = state.tx.send(SseEvent { kind: "tension_updated".into() });
+            let _ = state.tx.send(SseEvent {
+                kind: "tension_updated".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
     }
 }
 
-async fn resolve_tension(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn resolve_tension(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
     let tension_id = match resolve_id(&state.store, &id).await {
         Ok(id) => id,
         Err(r) => return r,
     };
 
-    match state.store.update_status(tension_id, TensionStatus::Resolved).await {
+    match state
+        .store
+        .update_status(tension_id, TensionStatus::Resolved)
+        .await
+    {
         Ok(()) => {
-            let _ = state.tx.send(SseEvent { kind: "tension_resolved".into() });
+            let _ = state.tx.send(SseEvent {
+                kind: "tension_resolved".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
     }
 }
 
-async fn release_tension(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn release_tension(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
     let tension_id = match resolve_id(&state.store, &id).await {
         Ok(id) => id,
         Err(r) => return r,
     };
 
-    match state.store.update_status(tension_id, TensionStatus::Released).await {
+    match state
+        .store
+        .update_status(tension_id, TensionStatus::Released)
+        .await
+    {
         Ok(()) => {
-            let _ = state.tx.send(SseEvent { kind: "tension_released".into() });
+            let _ = state.tx.send(SseEvent {
+                kind: "tension_released".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
     }
 }
 
-async fn reopen_tension(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn reopen_tension(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
     let tension_id = match resolve_id(&state.store, &id).await {
         Ok(id) => id,
         Err(r) => return r,
     };
 
-    match state.store.update_status(tension_id, TensionStatus::Active).await {
+    match state
+        .store
+        .update_status(tension_id, TensionStatus::Active)
+        .await
+    {
         Ok(()) => {
-            let _ = state.tx.send(SseEvent { kind: "tension_reopened".into() });
+            let _ = state.tx.send(SseEvent {
+                kind: "tension_reopened".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
@@ -531,8 +586,9 @@ async fn reopen_tension(
 
 async fn sse_handler(
     State(state): State<Arc<AppState>>,
-) -> Sse<impl futures_core::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>
-{
+) -> Sse<
+    impl futures_core::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+> {
     let rx = state.tx.subscribe();
     let stream =
         tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|result| match result {

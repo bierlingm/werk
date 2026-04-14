@@ -1,7 +1,7 @@
 //! Symbol vocabulary for the Operative Instrument.
 
 use chrono::Datelike;
-use sd_core::TensionStatus;
+use werk_core::TensionStatus;
 
 /// Status glyph: ✦ resolved, · released, ◇ active.
 pub fn status_glyph(status: TensionStatus) -> &'static str {
@@ -27,8 +27,14 @@ pub fn temporal_urgency(
     now: chrono::DateTime<chrono::Utc>,
 ) -> f64 {
     if let Some(end) = horizon_end {
-        let window_secs = end.signed_duration_since(last_reality_update).num_seconds().max(1) as f64;
-        let elapsed_secs = now.signed_duration_since(last_reality_update).num_seconds().max(0) as f64;
+        let window_secs = end
+            .signed_duration_since(last_reality_update)
+            .num_seconds()
+            .max(1) as f64;
+        let elapsed_secs = now
+            .signed_duration_since(last_reality_update)
+            .num_seconds()
+            .max(0) as f64;
         elapsed_secs / window_secs
     } else {
         let weeks_since = now.signed_duration_since(last_reality_update).num_weeks();
@@ -138,7 +144,10 @@ pub fn relative_time(
 
 /// Compact age string for the deck right column.
 /// Returns e.g. "2d", "3w", "1mo" — no "ago" suffix, minimal width.
-pub fn compact_age(from: chrono::DateTime<chrono::Utc>, now: chrono::DateTime<chrono::Utc>) -> String {
+pub fn compact_age(
+    from: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
     let delta = now.signed_duration_since(from);
     let hours = delta.num_hours();
     let days = delta.num_days();
@@ -157,5 +166,5 @@ pub fn compact_age(from: chrono::DateTime<chrono::Utc>, now: chrono::DateTime<ch
 
 // Separator constants
 pub const LIGHT_RULE: char = '\u{2504}'; // ┄
-pub const RULE: char = '\u{2500}';       // ─
+pub const RULE: char = '\u{2500}'; // ─
 pub const HEAVY_RULE: char = '\u{2501}'; // ━

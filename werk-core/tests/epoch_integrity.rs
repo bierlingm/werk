@@ -7,26 +7,35 @@
 //! - Multiple epochs partition correctly
 //! - Last epoch timestamp query matches full query
 
-use sd_core::{Store, TensionStatus};
+use werk_core::{Store, TensionStatus};
 
 #[test]
 fn test_epoch_creates_valid_snapshot() {
     let store = Store::new_in_memory().unwrap();
-    let parent = store.create_tension("build the thing", "nothing built yet").unwrap();
-    let c1 = store.create_tension_with_parent("step one", "not started", Some(parent.id.clone())).unwrap();
-    let _c2 = store.create_tension_with_parent("step two", "not started", Some(parent.id.clone())).unwrap();
+    let parent = store
+        .create_tension("build the thing", "nothing built yet")
+        .unwrap();
+    let c1 = store
+        .create_tension_with_parent("step one", "not started", Some(parent.id.clone()))
+        .unwrap();
+    let _c2 = store
+        .create_tension_with_parent("step two", "not started", Some(parent.id.clone()))
+        .unwrap();
 
     let children_json = serde_json::json!({"children": [
         {"id": c1.id, "desired": "step one", "status": "Active"}
-    ]}).to_string();
+    ]})
+    .to_string();
 
-    let epoch_id = store.create_epoch(
-        &parent.id,
-        "build the thing",
-        "nothing built yet",
-        Some(&children_json),
-        None,
-    ).unwrap();
+    let epoch_id = store
+        .create_epoch(
+            &parent.id,
+            "build the thing",
+            "nothing built yet",
+            Some(&children_json),
+            None,
+        )
+        .unwrap();
 
     let epochs = store.get_epochs(&parent.id).unwrap();
     assert_eq!(epochs.len(), 1);
@@ -41,10 +50,14 @@ fn test_multiple_epochs_are_chronological() {
     let store = Store::new_in_memory().unwrap();
     let t = store.create_tension("goal", "reality").unwrap();
 
-    let e1 = store.create_epoch(&t.id, "goal v1", "reality v1", None, None).unwrap();
+    let e1 = store
+        .create_epoch(&t.id, "goal v1", "reality v1", None, None)
+        .unwrap();
     // Small delay to ensure different timestamps
     std::thread::sleep(std::time::Duration::from_millis(10));
-    let e2 = store.create_epoch(&t.id, "goal v2", "reality v2", None, None).unwrap();
+    let e2 = store
+        .create_epoch(&t.id, "goal v2", "reality v2", None, None)
+        .unwrap();
 
     let epochs = store.get_epochs(&t.id).unwrap();
     assert_eq!(epochs.len(), 2);
@@ -63,11 +76,15 @@ fn test_last_epoch_timestamp_matches_full_query() {
     assert!(ts.is_none());
 
     // Create first epoch
-    store.create_epoch(&t.id, "goal v1", "reality v1", None, None).unwrap();
+    store
+        .create_epoch(&t.id, "goal v1", "reality v1", None, None)
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(10));
 
     // Create second epoch
-    store.create_epoch(&t.id, "goal v2", "reality v2", None, None).unwrap();
+    store
+        .create_epoch(&t.id, "goal v2", "reality v2", None, None)
+        .unwrap();
 
     let last_ts = store.get_last_epoch_timestamp(&t.id).unwrap().unwrap();
     let all_epochs = store.get_epochs(&t.id).unwrap();
@@ -90,10 +107,14 @@ fn test_epoch_for_nonexistent_tension_returns_empty() {
 fn test_epoch_snapshot_after_child_resolve() {
     let store = Store::new_in_memory().unwrap();
     let parent = store.create_tension("project", "started").unwrap();
-    let child = store.create_tension_with_parent("task", "todo", Some(parent.id.clone())).unwrap();
+    let child = store
+        .create_tension_with_parent("task", "todo", Some(parent.id.clone()))
+        .unwrap();
 
     // Resolve the child
-    store.update_status(&child.id, TensionStatus::Resolved).unwrap();
+    store
+        .update_status(&child.id, TensionStatus::Resolved)
+        .unwrap();
 
     // Create epoch after resolution
     let children = store.get_children(&parent.id).unwrap();
@@ -101,7 +122,9 @@ fn test_epoch_snapshot_after_child_resolve() {
         serde_json::json!({"id": c.id, "desired": c.desired.clone(), "status": format!("{:?}", c.status)})
     }).collect::<Vec<_>>()}).to_string();
 
-    store.create_epoch(&parent.id, "project", "started", Some(&children_json), None).unwrap();
+    store
+        .create_epoch(&parent.id, "project", "started", Some(&children_json), None)
+        .unwrap();
 
     let epochs = store.get_epochs(&parent.id).unwrap();
     let snapshot = epochs[0].children_snapshot_json.as_ref().unwrap();

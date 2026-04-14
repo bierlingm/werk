@@ -2,14 +2,14 @@
 //!
 //! Apply or validate mutations in bulk from a YAML file or stdin.
 
-use werk_shared::{BatchMutation, Config, HookBridge, HookRunner};
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
 use chrono::Utc;
 use clap::Subcommand;
-use sd_core::{Engine, Mutation, TensionStatus};
 use std::sync::Arc;
+use werk_core::{Engine, Mutation, TensionStatus};
+use werk_shared::{BatchMutation, Config, HookBridge, HookRunner};
 
 /// Batch subcommands.
 #[derive(Debug, Subcommand)]
@@ -83,9 +83,10 @@ fn cmd_batch_apply(output: &Output, file: &str, dry_run: bool) -> Result<(), Wer
 
     // Begin a single gesture for the entire batch — a batch IS one gesture
     if !dry_run {
-        let _ = engine.store_mut().begin_gesture(
-            Some(&format!("batch apply ({} mutations)", mutations.len())),
-        );
+        let _ = engine.store_mut().begin_gesture(Some(&format!(
+            "batch apply ({} mutations)",
+            mutations.len()
+        )));
     }
 
     // Validate and optionally apply each mutation
@@ -267,10 +268,7 @@ fn validate_mutation(engine: &Engine, mutation: &BatchMutation) -> Result<(), We
 }
 
 /// Apply a single mutation to the store.
-fn apply_single_mutation(
-    engine: &mut Engine,
-    mutation: &BatchMutation,
-) -> Result<(), WerkError> {
+fn apply_single_mutation(engine: &mut Engine, mutation: &BatchMutation) -> Result<(), WerkError> {
     match mutation {
         BatchMutation::UpdateActual {
             tension_id,
@@ -280,7 +278,7 @@ fn apply_single_mutation(
             engine
                 .store()
                 .update_actual(tension_id, new_value)
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
         }
         BatchMutation::CreateChild {
             parent_id,
@@ -291,7 +289,7 @@ fn apply_single_mutation(
             engine
                 .store()
                 .create_tension_with_parent(desired, actual, Some(parent_id.clone()))
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
         }
         BatchMutation::AddNote {
             tension_id, text, ..
@@ -305,7 +303,7 @@ fn apply_single_mutation(
                     None,
                     text.clone(),
                 ))
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
         }
         BatchMutation::UpdateStatus {
             tension_id,
@@ -326,7 +324,7 @@ fn apply_single_mutation(
             engine
                 .store()
                 .update_status(tension_id, status)
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
         }
         BatchMutation::UpdateDesired {
             tension_id,
@@ -336,25 +334,46 @@ fn apply_single_mutation(
             engine
                 .store()
                 .update_desired(tension_id, new_value)
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
         }
-        BatchMutation::SetHorizon { tension_id, horizon, .. } => {
-            if let Ok(h) = sd_core::Horizon::parse(horizon) {
-                engine.update_horizon(tension_id, Some(h))
-                    .map_err(WerkError::SdError)?;
+        BatchMutation::SetHorizon {
+            tension_id,
+            horizon,
+            ..
+        } => {
+            if let Ok(h) = werk_core::Horizon::parse(horizon) {
+                engine
+                    .update_horizon(tension_id, Some(h))
+                    .map_err(WerkError::CoreError)?;
             }
         }
-        BatchMutation::MoveTension { tension_id, new_parent_id, .. } => {
-            engine.update_parent(tension_id, new_parent_id.as_deref())
-                .map_err(WerkError::SdError)?;
+        BatchMutation::MoveTension {
+            tension_id,
+            new_parent_id,
+            ..
+        } => {
+            engine
+                .update_parent(tension_id, new_parent_id.as_deref())
+                .map_err(WerkError::CoreError)?;
         }
-        BatchMutation::CreateParent { child_id, desired, actual, .. } => {
-            let current_parent = engine.store().get_tension(child_id)
-                .ok().flatten().and_then(|t| t.parent_id.clone());
-            let parent = engine.create_tension_with_parent(desired, actual, current_parent)
-                .map_err(WerkError::SdError)?;
-            engine.update_parent(child_id, Some(&parent.id))
-                .map_err(WerkError::SdError)?;
+        BatchMutation::CreateParent {
+            child_id,
+            desired,
+            actual,
+            ..
+        } => {
+            let current_parent = engine
+                .store()
+                .get_tension(child_id)
+                .ok()
+                .flatten()
+                .and_then(|t| t.parent_id.clone());
+            let parent = engine
+                .create_tension_with_parent(desired, actual, current_parent)
+                .map_err(WerkError::CoreError)?;
+            engine
+                .update_parent(child_id, Some(&parent.id))
+                .map_err(WerkError::CoreError)?;
         }
     }
 

@@ -8,9 +8,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Errors that can occur in sd-core operations.
+/// Errors that can occur in werk-core operations.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum SdError {
+pub enum CoreError {
     /// A required field was empty or invalid.
     #[error("validation error: {0}")]
     ValidationError(String),
@@ -88,7 +88,7 @@ impl Tension {
     ///
     /// Returns an error if either `desired` or `actual` is empty.
     /// The horizon defaults to None.
-    pub fn new(desired: &str, actual: &str) -> Result<Self, SdError> {
+    pub fn new(desired: &str, actual: &str) -> Result<Self, CoreError> {
         Self::new_inner(desired, actual, None, None)
     }
 
@@ -100,7 +100,7 @@ impl Tension {
         desired: &str,
         actual: &str,
         parent_id: Option<String>,
-    ) -> Result<Self, SdError> {
+    ) -> Result<Self, CoreError> {
         Self::new_inner(desired, actual, parent_id, None)
     }
 
@@ -113,13 +113,14 @@ impl Tension {
         actual: &str,
         parent_id: Option<String>,
         horizon: Option<Horizon>,
-    ) -> Result<Self, SdError> {
+    ) -> Result<Self, CoreError> {
         Self::new_inner(desired, actual, parent_id, horizon)
     }
 
     /// Create a new tension with all fields including parent snapshots and position.
     ///
     /// Used when creating child tensions that need to capture parent state.
+    #[allow(clippy::too_many_arguments)]
     pub fn new_full_with_snapshots(
         desired: &str,
         actual: &str,
@@ -129,7 +130,7 @@ impl Tension {
         parent_desired_snapshot: Option<String>,
         parent_actual_snapshot: Option<String>,
         parent_snapshot_json: Option<String>,
-    ) -> Result<Self, SdError> {
+    ) -> Result<Self, CoreError> {
         let mut tension = Self::new_inner(desired, actual, parent_id, horizon)?;
         tension.position = position;
         tension.parent_desired_snapshot = parent_desired_snapshot;
@@ -143,14 +144,14 @@ impl Tension {
         actual: &str,
         parent_id: Option<String>,
         horizon: Option<Horizon>,
-    ) -> Result<Self, SdError> {
+    ) -> Result<Self, CoreError> {
         if desired.is_empty() {
-            return Err(SdError::ValidationError(
+            return Err(CoreError::ValidationError(
                 "desired state cannot be empty".to_owned(),
             ));
         }
         if actual.is_empty() {
-            return Err(SdError::ValidationError(
+            return Err(CoreError::ValidationError(
                 "actual state cannot be empty".to_owned(),
             ));
         }
@@ -174,12 +175,12 @@ impl Tension {
     /// Update the desired state.
     ///
     /// Returns an error if the new value is empty or if the tension is not active.
-    pub fn update_desired(&mut self, new_desired: &str) -> Result<String, SdError> {
+    pub fn update_desired(&mut self, new_desired: &str) -> Result<String, CoreError> {
         if self.status != TensionStatus::Active {
-            return Err(SdError::UpdateOnInactiveTension(self.status));
+            return Err(CoreError::UpdateOnInactiveTension(self.status));
         }
         if new_desired.is_empty() {
-            return Err(SdError::ValidationError(
+            return Err(CoreError::ValidationError(
                 "desired state cannot be empty".to_owned(),
             ));
         }
@@ -190,12 +191,12 @@ impl Tension {
     /// Update the actual state.
     ///
     /// Returns an error if the new value is empty or if the tension is not active.
-    pub fn update_actual(&mut self, new_actual: &str) -> Result<String, SdError> {
+    pub fn update_actual(&mut self, new_actual: &str) -> Result<String, CoreError> {
         if self.status != TensionStatus::Active {
-            return Err(SdError::UpdateOnInactiveTension(self.status));
+            return Err(CoreError::UpdateOnInactiveTension(self.status));
         }
         if new_actual.is_empty() {
-            return Err(SdError::ValidationError(
+            return Err(CoreError::ValidationError(
                 "actual state cannot be empty".to_owned(),
             ));
         }
@@ -206,9 +207,9 @@ impl Tension {
     /// Transition this tension to Resolved status.
     ///
     /// Only valid from Active status.
-    pub fn resolve(&mut self) -> Result<(), SdError> {
+    pub fn resolve(&mut self) -> Result<(), CoreError> {
         if self.status != TensionStatus::Active {
-            return Err(SdError::InvalidStatusTransition {
+            return Err(CoreError::InvalidStatusTransition {
                 from: self.status,
                 to: TensionStatus::Resolved,
             });
@@ -220,9 +221,9 @@ impl Tension {
     /// Transition this tension to Released status.
     ///
     /// Only valid from Active status.
-    pub fn release(&mut self) -> Result<(), SdError> {
+    pub fn release(&mut self) -> Result<(), CoreError> {
         if self.status != TensionStatus::Active {
-            return Err(SdError::InvalidStatusTransition {
+            return Err(CoreError::InvalidStatusTransition {
                 from: self.status,
                 to: TensionStatus::Released,
             });
@@ -234,9 +235,9 @@ impl Tension {
     /// Transition this tension back to Active status (reopen).
     ///
     /// Only valid from Resolved or Released status.
-    pub fn reopen(&mut self) -> Result<(), SdError> {
+    pub fn reopen(&mut self) -> Result<(), CoreError> {
         if self.status == TensionStatus::Active {
-            return Err(SdError::InvalidStatusTransition {
+            return Err(CoreError::InvalidStatusTransition {
                 from: self.status,
                 to: TensionStatus::Active,
             });
@@ -252,9 +253,9 @@ impl Tension {
     pub fn update_horizon(
         &mut self,
         new_horizon: Option<Horizon>,
-    ) -> Result<Option<Horizon>, SdError> {
+    ) -> Result<Option<Horizon>, CoreError> {
         if self.status != TensionStatus::Active {
-            return Err(SdError::UpdateOnInactiveTension(self.status));
+            return Err(CoreError::UpdateOnInactiveTension(self.status));
         }
         let old = std::mem::replace(&mut self.horizon, new_horizon);
         Ok(old)
@@ -292,7 +293,7 @@ mod tests {
         let result = Tension::new("", "some reality");
         assert!(result.is_err());
         match result.unwrap_err() {
-            SdError::ValidationError(msg) => assert!(msg.contains("desired")),
+            CoreError::ValidationError(msg) => assert!(msg.contains("desired")),
             other => panic!("expected ValidationError, got {other:?}"), // ubs:ignore test assertion
         }
     }
@@ -302,7 +303,7 @@ mod tests {
         let result = Tension::new("some goal", "");
         assert!(result.is_err());
         match result.unwrap_err() {
-            SdError::ValidationError(msg) => assert!(msg.contains("actual")),
+            CoreError::ValidationError(msg) => assert!(msg.contains("actual")),
             other => panic!("expected ValidationError, got {other:?}"), // ubs:ignore test assertion
         }
     }
@@ -592,7 +593,7 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Tension>();
         assert_send_sync::<TensionStatus>();
-        assert_send_sync::<SdError>();
+        assert_send_sync::<CoreError>();
     }
 
     #[test]
@@ -626,17 +627,17 @@ mod tests {
 
     #[test]
     fn test_sd_error_display() {
-        let e = SdError::ValidationError("test".to_owned());
+        let e = CoreError::ValidationError("test".to_owned());
         assert!(e.to_string().contains("validation error"));
 
-        let e = SdError::InvalidStatusTransition {
+        let e = CoreError::InvalidStatusTransition {
             from: TensionStatus::Resolved,
             to: TensionStatus::Active,
         };
         assert!(e.to_string().contains("Resolved"));
         assert!(e.to_string().contains("Active"));
 
-        let e = SdError::UpdateOnInactiveTension(TensionStatus::Resolved);
+        let e = CoreError::UpdateOnInactiveTension(TensionStatus::Resolved);
         assert!(e.to_string().contains("Resolved"));
     }
 
@@ -791,7 +792,7 @@ mod tests {
         let result = t.update_horizon(Some(Horizon::new_month(2026, 5).unwrap()));
         assert!(result.is_err());
         match result.unwrap_err() {
-            SdError::UpdateOnInactiveTension(status) => {
+            CoreError::UpdateOnInactiveTension(status) => {
                 assert_eq!(status, TensionStatus::Resolved);
             }
             other => panic!("expected UpdateOnInactiveTension, got {other:?}"), // ubs:ignore test assertion
@@ -814,7 +815,7 @@ mod tests {
         let result = t.update_horizon(Some(Horizon::new_month(2026, 5).unwrap()));
         assert!(result.is_err());
         match result.unwrap_err() {
-            SdError::UpdateOnInactiveTension(status) => {
+            CoreError::UpdateOnInactiveTension(status) => {
                 assert_eq!(status, TensionStatus::Released);
             }
             other => panic!("expected UpdateOnInactiveTension, got {other:?}"), // ubs:ignore test assertion

@@ -3,10 +3,10 @@
 //! Provides a thin layer over Store that handles parent snapshot capture
 //! during tension creation.
 
-use crate::temporal::compute_urgency;
-use crate::events::{EventBus};
+use crate::events::EventBus;
 use crate::horizon::Horizon;
 use crate::store::Store;
+use crate::temporal::compute_urgency;
 use crate::tension::Tension;
 
 /// Store wrapper with event bus and convenience methods.
@@ -57,13 +57,16 @@ impl Engine {
         &mut self,
         desired: &str,
         actual: &str,
-    ) -> Result<Tension, crate::tension::SdError> {
+    ) -> Result<Tension, crate::tension::CoreError> {
         self.store.create_tension(desired, actual)
     }
 
     /// Capture parent's full state for snapshot storage.
     /// Returns (desired_text, actual_text, full_json_snapshot).
-    fn parent_snapshots(&self, parent_id: &Option<String>) -> (Option<String>, Option<String>, Option<String>) {
+    fn parent_snapshots(
+        &self,
+        parent_id: &Option<String>,
+    ) -> (Option<String>, Option<String>, Option<String>) {
         if let Some(pid) = parent_id {
             match self.store.get_tension(pid) {
                 Ok(Some(parent)) => {
@@ -82,16 +85,19 @@ impl Engine {
     /// Build a JSON snapshot of a parent's full descended view state.
     fn build_parent_snapshot_json(&self, parent_id: &str, parent: &Tension) -> Option<String> {
         let children = self.store.get_children(parent_id).ok()?;
-        let children_json: Vec<serde_json::Value> = children.iter().map(|c| {
-            serde_json::json!({
-                "id": c.id,
-                "desired": c.desired,
-                "actual": c.actual,
-                "status": c.status.to_string(),
-                "position": c.position,
-                "horizon": c.horizon.as_ref().map(|h| h.to_string()),
+        let children_json: Vec<serde_json::Value> = children
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    "id": c.id,
+                    "desired": c.desired,
+                    "actual": c.actual,
+                    "status": c.status.to_string(),
+                    "position": c.position,
+                    "horizon": c.horizon.as_ref().map(|h| h.to_string()),
+                })
             })
-        }).collect();
+            .collect();
 
         let snapshot = serde_json::json!({
             "desired": parent.desired,
@@ -110,7 +116,7 @@ impl Engine {
         desired: &str,
         actual: &str,
         parent_id: Option<String>,
-    ) -> Result<Tension, crate::tension::SdError> {
+    ) -> Result<Tension, crate::tension::CoreError> {
         let (parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json) =
             self.parent_snapshots(&parent_id);
 
@@ -131,7 +137,7 @@ impl Engine {
         &mut self,
         id: &str,
         new_actual: &str,
-    ) -> Result<(), crate::tension::SdError> {
+    ) -> Result<(), crate::tension::CoreError> {
         self.store.update_actual(id, new_actual)
     }
 
@@ -140,7 +146,7 @@ impl Engine {
         &mut self,
         id: &str,
         new_desired: &str,
-    ) -> Result<(), crate::tension::SdError> {
+    ) -> Result<(), crate::tension::CoreError> {
         self.store.update_desired(id, new_desired)
     }
 
@@ -150,7 +156,7 @@ impl Engine {
         &mut self,
         id: &str,
         new_position: Option<i32>,
-    ) -> Result<bool, crate::tension::SdError> {
+    ) -> Result<bool, crate::tension::CoreError> {
         self.store.update_position(id, new_position)
     }
 
@@ -158,7 +164,7 @@ impl Engine {
     pub fn reorder_siblings(
         &mut self,
         ordered_ids: &[String],
-    ) -> Result<(), crate::tension::SdError> {
+    ) -> Result<(), crate::tension::CoreError> {
         self.store.reorder_siblings(ordered_ids)
     }
 
@@ -167,18 +173,18 @@ impl Engine {
         &mut self,
         id: &str,
         new_parent_id: Option<&str>,
-    ) -> Result<(), crate::tension::SdError> {
+    ) -> Result<(), crate::tension::CoreError> {
         self.store.update_parent(id, new_parent_id)
     }
 
     /// Resolve a tension.
-    pub fn resolve(&mut self, id: &str) -> Result<(), crate::tension::SdError> {
+    pub fn resolve(&mut self, id: &str) -> Result<(), crate::tension::CoreError> {
         self.store
             .update_status(id, crate::tension::TensionStatus::Resolved)
     }
 
     /// Release a tension.
-    pub fn release(&mut self, id: &str) -> Result<(), crate::tension::SdError> {
+    pub fn release(&mut self, id: &str) -> Result<(), crate::tension::CoreError> {
         self.store
             .update_status(id, crate::tension::TensionStatus::Released)
     }
@@ -191,7 +197,7 @@ impl Engine {
         actual: &str,
         parent_id: Option<String>,
         horizon: Option<Horizon>,
-    ) -> Result<Tension, crate::tension::SdError> {
+    ) -> Result<Tension, crate::tension::CoreError> {
         let (parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json) =
             self.parent_snapshots(&parent_id);
 
@@ -241,7 +247,7 @@ impl Engine {
         &mut self,
         id: &str,
         new_horizon: Option<Horizon>,
-    ) -> Result<(), crate::tension::SdError> {
+    ) -> Result<(), crate::tension::CoreError> {
         self.store.update_horizon(id, new_horizon)
     }
 
@@ -255,10 +261,7 @@ impl Engine {
     /// Undo a gesture by appending reversal mutations.
     ///
     /// Returns the undo gesture ID on success.
-    pub fn undo_gesture(
-        &mut self,
-        gesture_id: &str,
-    ) -> Result<String, crate::tension::SdError> {
+    pub fn undo_gesture(&mut self, gesture_id: &str) -> Result<String, crate::tension::CoreError> {
         let undo_id = self.store.undo_gesture(gesture_id)?;
 
         self.bus.emit(&crate::events::Event::GestureUndone {
@@ -365,7 +368,10 @@ mod tests {
         let found = engine.store().get_tension(&t.id).unwrap();
         assert!(found.is_some());
 
-        engine.store_mut().update_actual(&t.id, "new reality").unwrap();
+        engine
+            .store_mut()
+            .update_actual(&t.id, "new reality")
+            .unwrap();
         let updated = engine.store().get_tension(&t.id).unwrap().unwrap();
         assert_eq!(updated.actual, "new reality");
     }

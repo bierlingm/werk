@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ftui::widgets::input::TextInput;
 use ftui_runtime::state_persistence::StateRegistry;
-use sd_core::{Engine, Store, Tension, TensionStatus};
+use werk_core::{Engine, Store, Tension, TensionStatus};
 use werk_shared::truncate;
 
 use crate::glyphs;
@@ -36,7 +36,7 @@ pub struct InstrumentApp {
 
     // Search
     pub search_state: Option<crate::search::SearchState>,
-    pub search_index: Option<sd_core::SearchIndex>,
+    pub search_index: Option<werk_core::SearchIndex>,
 
     // Chrome
     /// Inspector overlay — dev tool toggled by Ctrl+Shift+I.
@@ -112,15 +112,18 @@ pub struct InstrumentApp {
     /// Survey band collapse/expand state.
     pub survey_tree_state: crate::survey_tree::SurveyTreeState,
     /// Per-band ListState for survey view — each band scrolls independently.
-    pub survey_band_states: std::collections::HashMap<crate::survey::TimeBand, std::cell::RefCell<ftui::widgets::list::ListState>>,
+    pub survey_band_states: std::collections::HashMap<
+        crate::survey::TimeBand,
+        std::cell::RefCell<ftui::widgets::list::ListState>,
+    >,
 
     // Logbase view — epoch stream for a single tension.
     /// Which tension's logbase we're viewing.
     pub logbase_tension_id: Option<String>,
     /// Cached tension data for the logbase subject.
-    pub logbase_tension: Option<sd_core::Tension>,
+    pub logbase_tension: Option<werk_core::Tension>,
     /// All epochs for the logbase tension (chronological, oldest first).
-    pub logbase_epochs: Vec<sd_core::store::EpochRecord>,
+    pub logbase_epochs: Vec<werk_core::store::EpochRecord>,
     /// Flat event stream: epochs + their mutations, ordered most-recent-first.
     pub logbase_events: Vec<crate::logbase::LogbaseEvent>,
     /// Provenance edges for the logbase tension.
@@ -147,7 +150,11 @@ pub struct InstrumentApp {
     /// List area height from last render (used by bar for compression counts).
     pub logbase_list_height: std::cell::Cell<u16>,
     /// Saved originating view state for L-return (orientation, parent_id, focus node).
-    pub pre_logbase_state: Option<(crate::state::ViewOrientation, Option<String>, ftui::widgets::FocusId)>,
+    pub pre_logbase_state: Option<(
+        crate::state::ViewOrientation,
+        Option<String>,
+        ftui::widgets::FocusId,
+    )>,
 
     // Session telemetry — records every significant action for debugging.
     pub session_log: crate::session_log::SessionLog,
@@ -185,7 +192,11 @@ pub struct InstrumentApp {
 
 impl InstrumentApp {
     /// Create a new app. Starts at the Field (root level).
-    pub fn new(store: Store, all_entries: Vec<FieldEntry>, registry: Option<Arc<StateRegistry>>) -> Self {
+    pub fn new(
+        store: Store,
+        all_entries: Vec<FieldEntry>,
+        registry: Option<Arc<StateRegistry>>,
+    ) -> Self {
         let engine = Engine::with_store(store);
         let session_id = engine.store().start_session().ok();
         let total_count = all_entries.len();
@@ -194,7 +205,7 @@ impl InstrumentApp {
             .filter(|e| e.status == TensionStatus::Active)
             .count();
 
-        let search_index = sd_core::SearchIndex::build(&engine.store());
+        let search_index = werk_core::SearchIndex::build(&engine.store());
 
         // Resolve theme for detected terminal mode
         let theme = crate::theme::instrument_theme();
@@ -470,49 +481,67 @@ impl InstrumentApp {
 
         // Compute parent temporal data for descended view header/footer
         if let Some(ref parent) = self.parent_tension {
-            let mutations = self.engine.store()
-                .get_mutations(&parent.id).unwrap_or_default();
+            let mutations = self
+                .engine
+                .store()
+                .get_mutations(&parent.id)
+                .unwrap_or_default();
 
-            let last_reality = mutations.iter().rev()
+            let last_reality = mutations
+                .iter()
+                .rev()
                 .find(|m| m.field() == "actual" || m.field() == "created")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(parent.created_at);
 
-            let last_desire = mutations.iter().rev()
+            let last_desire = mutations
+                .iter()
+                .rev()
                 .find(|m| m.field() == "desired" || m.field() == "created")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(parent.created_at);
 
             let now_year = chrono::Datelike::year(&now);
-            self.parent_horizon_label = parent.horizon.as_ref()
+            self.parent_horizon_label = parent
+                .horizon
+                .as_ref()
                 .map(|h| crate::glyphs::compact_horizon(h, now_year));
 
             self.parent_desire_age = Some(crate::glyphs::relative_time(last_desire, now));
             self.parent_reality_age = Some(crate::glyphs::relative_time(last_reality, now));
             // Cache grandparent display for deck breadcrumb
             self.grandparent_display = parent.parent_id.as_ref().and_then(|gp_id| {
-                self.engine.store().get_tension(gp_id).ok().flatten().map(|gp| {
-                    (werk_shared::display_id(gp.short_code, &gp.id), gp.desired.clone())
-                })
+                self.engine
+                    .store()
+                    .get_tension(gp_id)
+                    .ok()
+                    .flatten()
+                    .map(|gp| {
+                        (
+                            werk_shared::display_id(gp.short_code, &gp.id),
+                            gp.desired.clone(),
+                        )
+                    })
             });
 
             // Cache mutation count for deck log indicator
             self.parent_mutation_count = mutations.len();
 
             // Extract parent notes for accumulated zone display
-            self.parent_notes = mutations.iter()
+            self.parent_notes = mutations
+                .iter()
                 .filter(|m| m.field() == "note")
-                .map(|m| {
-                    crate::deck::AccumulatedItem::Note {
-                        text: m.new_value().to_string(),
-                        age: crate::glyphs::relative_time(m.timestamp(), now),
-                        timestamp: m.timestamp(),
-                    }
+                .map(|m| crate::deck::AccumulatedItem::Note {
+                    text: m.new_value().to_string(),
+                    age: crate::glyphs::relative_time(m.timestamp(), now),
+                    timestamp: m.timestamp(),
                 })
                 .collect();
 
             // V5: Compute epoch boundary — last epoch timestamp (lightweight query)
-            self.epoch_boundary = self.engine.store()
+            self.epoch_boundary = self
+                .engine
+                .store()
                 .get_last_epoch_timestamp(&parent.id)
                 .ok()
                 .flatten();
@@ -535,31 +564,35 @@ impl InstrumentApp {
         // Re-sort only the unpositioned group by horizon range_end (deadline).
         let first_unpositioned = filtered.iter().position(|t| t.position.is_none());
         if let Some(start) = first_unpositioned {
-            filtered[start..].sort_by(|a, b| {
-                match (&a.horizon, &b.horizon) {
-                    (Some(ha), Some(hb)) => {
-                        let end_ord = ha.range_end().cmp(&hb.range_end());
-                        if end_ord != std::cmp::Ordering::Equal {
-                            return end_ord;
-                        }
-                        ha.precision_level().cmp(&hb.precision_level())
+            filtered[start..].sort_by(|a, b| match (&a.horizon, &b.horizon) {
+                (Some(ha), Some(hb)) => {
+                    let end_ord = ha.range_end().cmp(&hb.range_end());
+                    if end_ord != std::cmp::Ordering::Equal {
+                        return end_ord;
                     }
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => a.created_at.cmp(&b.created_at),
+                    ha.precision_level().cmp(&hb.precision_level())
                 }
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => a.created_at.cmp(&b.created_at),
             });
         }
 
         // Batch queries: count children and get mutation timestamps
         let child_ids: Vec<&str> = filtered.iter().map(|t| t.id.as_str()).collect();
-        let children_counts = self.engine.store()
+        let children_counts = self
+            .engine
+            .store()
             .count_children_by_parent(&child_ids)
             .unwrap_or_default();
-        let last_reality_updates = self.engine.store()
+        let last_reality_updates = self
+            .engine
+            .store()
             .get_last_mutation_timestamps(&child_ids, &["actual", "created"])
             .unwrap_or_default();
-        let last_status_changes = self.engine.store()
+        let last_status_changes = self
+            .engine
+            .store()
             .get_last_mutation_timestamps(&child_ids, &["status"])
             .unwrap_or_default();
 
@@ -575,7 +608,13 @@ impl InstrumentApp {
                     .get(&t.id)
                     .copied()
                     .unwrap_or(t.created_at);
-                FieldEntry::from_tension(t, last_reality_update, child_count, last_status_change, now)
+                FieldEntry::from_tension(
+                    t,
+                    last_reality_update,
+                    child_count,
+                    last_status_change,
+                    now,
+                )
             })
             .collect();
 
@@ -600,7 +639,7 @@ impl InstrumentApp {
         // focus_state.clamp_active() is called within rebuild_for_frontier
 
         // Rebuild search index (fast: ~1.6ms for 150 docs)
-        self.search_index = sd_core::SearchIndex::build(self.engine.store());
+        self.search_index = werk_core::SearchIndex::build(self.engine.store());
 
         // Refresh db_modified so the next Tick doesn't treat our own writes as external changes
         self.refresh_db_modified();
@@ -614,9 +653,14 @@ impl InstrumentApp {
 
         if let Some(ref parent) = self.parent_tension {
             // Neglect: no reality check in 3+ weeks
-            let mutations = self.engine.store()
-                .get_mutations(&parent.id).unwrap_or_default();
-            let last_reality = mutations.iter().rev()
+            let mutations = self
+                .engine
+                .store()
+                .get_mutations(&parent.id)
+                .unwrap_or_default();
+            let last_reality = mutations
+                .iter()
+                .rev()
                 .find(|m| m.field() == "actual" || m.field() == "created")
                 .map(|m| m.timestamp().to_owned())
                 .unwrap_or(parent.created_at);
@@ -646,13 +690,19 @@ impl InstrumentApp {
         // Root-level alert: multiple root tensions
         if self.parent_id.is_none() {
             let roots = self.engine.store().get_roots().unwrap_or_default();
-            let active_roots = roots.iter()
+            let active_roots = roots
+                .iter()
                 .filter(|t| t.status == TensionStatus::Active)
                 .count();
             if active_roots > 1 {
                 alerts.push(Alert {
-                    kind: AlertKind::MultipleRoots { count: active_roots },
-                    message: format!("{} root tensions \u{2014} no senior organizing principle", active_roots),
+                    kind: AlertKind::MultipleRoots {
+                        count: active_roots,
+                    },
+                    message: format!(
+                        "{} root tensions \u{2014} no senior organizing principle",
+                        active_roots
+                    ),
                     action_hint: "create a parent for all / move inside another".to_string(),
                 });
             }
@@ -664,7 +714,10 @@ impl InstrumentApp {
 
     /// Descend into a tension's children.
     pub fn descend(&mut self, id: &str) {
-        self.session_log.record(crate::session_log::Category::Nav, format!("DESCEND into {}", id));
+        self.session_log.record(
+            crate::session_log::Category::Nav,
+            format!("DESCEND into {}", id),
+        );
         self.parent_id = Some(id.to_string());
         self.load_siblings();
         self.deck_cursor_reset();
@@ -672,7 +725,10 @@ impl InstrumentApp {
 
     /// Ascend to parent level. Cursor lands on the tension we just left.
     pub fn ascend(&mut self) {
-        self.session_log.record(crate::session_log::Category::Nav, format!("ASCEND from {:?}", self.parent_id));
+        self.session_log.record(
+            crate::session_log::Category::Nav,
+            format!("ASCEND from {:?}", self.parent_id),
+        );
         let old_parent_id = self.parent_id.take();
 
         // Find the grandparent
@@ -725,7 +781,9 @@ impl InstrumentApp {
 
         let desc = format!("create tension '{}'", truncate(desired, 40));
         self.begin_gesture(&desc);
-        let result = self.engine.create_tension_full(desired, actual, parent, horizon);
+        let result = self
+            .engine
+            .create_tension_full(desired, actual, parent, horizon);
         self.end_gesture();
 
         if let Ok(tension) = result {
@@ -747,10 +805,9 @@ impl InstrumentApp {
     /// Check for containment violations after a horizon change.
     /// If a signal is found, enters Pathway mode with the first palette.
     pub fn check_containment_palette(&mut self, tension_id: &str) {
-        if let Ok(palettes) = werk_shared::palette::detect_containment_palettes(
-            self.engine.store(),
-            tension_id,
-        ) {
+        if let Ok(palettes) =
+            werk_shared::palette::detect_containment_palettes(self.engine.store(), tension_id)
+        {
             if let Some((palette, context)) = palettes.into_iter().next() {
                 self.pathway_state = Some(crate::state::PathwayState {
                     palette,
@@ -765,10 +822,9 @@ impl InstrumentApp {
     /// Check for sequencing pressure after a position change.
     /// If a signal is found, enters Pathway mode with the first palette.
     pub fn check_sequencing_palette(&mut self, tension_id: &str) {
-        if let Ok(palettes) = werk_shared::palette::detect_sequencing_palettes(
-            self.engine.store(),
-            tension_id,
-        ) {
+        if let Ok(palettes) =
+            werk_shared::palette::detect_sequencing_palettes(self.engine.store(), tension_id)
+        {
             if let Some((palette, context)) = palettes.into_iter().next() {
                 self.pathway_state = Some(crate::state::PathwayState {
                     palette,
@@ -809,7 +865,9 @@ impl InstrumentApp {
         frontier.compute_expansion(self.last_render_lines.get());
         // Set desire/reality anchor selectability based on whether we're descended
         frontier.has_desire_anchor = self.parent_tension.is_some();
-        frontier.has_reality_anchor = self.parent_tension.as_ref()
+        frontier.has_reality_anchor = self
+            .parent_tension
+            .as_ref()
             .map(|p| !p.actual.is_empty())
             .unwrap_or(false);
         // Apply user-toggled expansion overrides
@@ -825,7 +883,8 @@ impl InstrumentApp {
         // Rebuild focus graph from the new frontier
         let has_desire = frontier.has_desire_anchor;
         let has_reality = frontier.has_reality_anchor;
-        self.focus_state.rebuild_for_frontier(&frontier, has_desire, has_reality);
+        self.focus_state
+            .rebuild_for_frontier(&frontier, has_desire, has_reality);
         // Apply deferred cursor target from workspace restore
         if let Some(target) = self.restore_cursor_target.take() {
             if let Some(fid) = self.focus_state.focus_for(&target) {
@@ -844,7 +903,9 @@ impl InstrumentApp {
     /// Only active tensions can be reordered (resolved/released cannot).
     /// Returns true if reorder mode was entered, false if blocked.
     pub fn enter_reorder(&mut self) -> bool {
-        if self.siblings.is_empty() { return false; }
+        if self.siblings.is_empty() {
+            return false;
+        }
 
         // Determine the sibling index of the selected item
         let cursor = match self.deck_selected_sibling_index() {
@@ -865,22 +926,42 @@ impl InstrumentApp {
         let tension_id = self.siblings[cursor].id.clone();
 
         // Store original positions for cancel
-        self.reorder_original = self.siblings.iter()
+        self.reorder_original = self
+            .siblings
+            .iter()
             .map(|s| (s.id.clone(), s.position))
             .collect();
 
-        self.input_mode = InputMode::Reordering { tension_id: tension_id.clone() };
+        self.input_mode = InputMode::Reordering {
+            tension_id: tension_id.clone(),
+        };
 
         // Telemetry: log entry with state snapshot
         use crate::session_log::Category;
-        let positions: Vec<String> = self.siblings.iter()
+        let positions: Vec<String> = self
+            .siblings
+            .iter()
             .filter(|s| s.status == TensionStatus::Active)
-            .map(|s| format!("{}:{}", s.short_code.unwrap_or(-1),
-                s.position.map(|p| p.to_string()).unwrap_or_else(|| "held".into())))
+            .map(|s| {
+                format!(
+                    "{}:{}",
+                    s.short_code.unwrap_or(-1),
+                    s.position
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "held".into())
+                )
+            })
             .collect();
-        self.session_log.record(Category::Reorder,
-            format!("ENTER cursor={} id={} focus={} positions=[{}]",
-                cursor, &tension_id, self.focus_state.active, positions.join(", ")));
+        self.session_log.record(
+            Category::Reorder,
+            format!(
+                "ENTER cursor={} id={} focus={} positions=[{}]",
+                cursor,
+                &tension_id,
+                self.focus_state.active,
+                positions.join(", ")
+            ),
+        );
 
         true
     }
@@ -904,7 +985,9 @@ impl InstrumentApp {
             Some(idx) => idx,
             None => return,
         };
-        if cursor == 0 { return; }
+        if cursor == 0 {
+            return;
+        }
 
         // Find the nearest active sibling above
         let mut target = cursor - 1;
@@ -927,11 +1010,15 @@ impl InstrumentApp {
             Some(idx) => idx,
             None => return,
         };
-        if cursor >= self.siblings.len() - 1 { return; }
+        if cursor >= self.siblings.len() - 1 {
+            return;
+        }
 
         // Find the nearest active sibling below
         let mut target = cursor + 1;
-        while target < self.siblings.len() - 1 && self.siblings[target].status != TensionStatus::Active {
+        while target < self.siblings.len() - 1
+            && self.siblings[target].status != TensionStatus::Active
+        {
             target += 1;
         }
         if self.siblings[target].status != TensionStatus::Active {
@@ -953,31 +1040,53 @@ impl InstrumentApp {
 
         // Telemetry: log commit with final array state
         use crate::session_log::Category;
-        let final_order: Vec<String> = self.siblings.iter()
+        let final_order: Vec<String> = self
+            .siblings
+            .iter()
             .filter(|s| s.status == TensionStatus::Active)
-            .map(|s| format!("{}:{}", s.short_code.unwrap_or(-1),
-                s.position.map(|p| p.to_string()).unwrap_or_else(|| "held".into())))
+            .map(|s| {
+                format!(
+                    "{}:{}",
+                    s.short_code.unwrap_or(-1),
+                    s.position
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "held".into())
+                )
+            })
             .collect();
-        self.session_log.record(Category::Reorder,
-            format!("COMMIT id={} final_order=[{}]",
-                &tension_id, final_order.join(", ")));
+        self.session_log.record(
+            Category::Reorder,
+            format!(
+                "COMMIT id={} final_order=[{}]",
+                &tension_id,
+                final_order.join(", ")
+            ),
+        );
 
         // Count how many ACTIVE items were originally positioned
         // (reorder_original includes all siblings — filter to active only)
-        let active_ids: std::collections::HashSet<&str> = self.siblings.iter()
+        let active_ids: std::collections::HashSet<&str> = self
+            .siblings
+            .iter()
             .filter(|s| s.status == TensionStatus::Active)
             .map(|s| s.id.as_str())
             .collect();
-        let originally_positioned = self.reorder_original.iter()
+        let originally_positioned = self
+            .reorder_original
+            .iter()
             .filter(|(id, pos)| pos.is_some() && active_ids.contains(id.as_str()))
             .count();
 
         // Was the grabbed tension originally positioned?
-        let grabbed_was_positioned = self.reorder_original.iter()
+        let grabbed_was_positioned = self
+            .reorder_original
+            .iter()
             .any(|(id, pos)| id == &tension_id && pos.is_some());
 
         // Find where the grabbed tension ended up among active items
-        let grabbed_active_index = self.siblings.iter()
+        let grabbed_active_index = self
+            .siblings
+            .iter()
             .filter(|s| s.status == TensionStatus::Active)
             .position(|s| s.id == tension_id)
             .unwrap_or(0);
@@ -1028,7 +1137,8 @@ impl InstrumentApp {
 
     /// Cancel the reorder: restore original positions and cursor.
     pub fn reorder_cancel(&mut self) {
-        self.session_log.record(crate::session_log::Category::Reorder, "CANCEL");
+        self.session_log
+            .record(crate::session_log::Category::Reorder, "CANCEL");
 
         let tension_id = match &self.input_mode {
             InputMode::Reordering { tension_id } => tension_id.clone(),
@@ -1049,7 +1159,6 @@ impl InstrumentApp {
         }
     }
 
-
     /// Build tension context for clipboard handoff.
     pub fn build_clipboard_context(&mut self, tension_id: &str) -> String {
         let mut ctx = String::new();
@@ -1062,23 +1171,44 @@ impl InstrumentApp {
             }
             ctx.push_str(&format!("Status: {}\n", t.status));
 
-            let children = self.engine.store().get_children(tension_id).unwrap_or_default();
+            let children = self
+                .engine
+                .store()
+                .get_children(tension_id)
+                .unwrap_or_default();
             if !children.is_empty() {
-                ctx.push_str(&format!("\nChildren ({} active):\n",
-                    children.iter().filter(|c| c.status == sd_core::TensionStatus::Active).count()
+                ctx.push_str(&format!(
+                    "\nChildren ({} active):\n",
+                    children
+                        .iter()
+                        .filter(|c| c.status == werk_core::TensionStatus::Active)
+                        .count()
                 ));
-                for c in children.iter().filter(|c| c.status == sd_core::TensionStatus::Active).take(8) {
+                for c in children
+                    .iter()
+                    .filter(|c| c.status == werk_core::TensionStatus::Active)
+                    .take(8)
+                {
                     ctx.push_str(&format!("  - {}\n", c.desired));
                 }
             }
 
-            let mutations = self.engine.store().get_mutations(tension_id).unwrap_or_default();
+            let mutations = self
+                .engine
+                .store()
+                .get_mutations(tension_id)
+                .unwrap_or_default();
             if !mutations.is_empty() {
                 ctx.push_str("\nRecent history:\n");
                 let now = chrono::Utc::now();
                 for m in mutations.iter().rev().take(5) {
                     let rel = werk_shared::relative_time(m.timestamp(), now);
-                    ctx.push_str(&format!("  {} {}: {}\n", rel, m.field(), truncate(m.new_value(), 50)));
+                    ctx.push_str(&format!(
+                        "  {} {}: {}\n",
+                        rel,
+                        m.field(),
+                        truncate(m.new_value(), 50)
+                    ));
                 }
             }
         }
@@ -1087,8 +1217,8 @@ impl InstrumentApp {
 
     /// Copy text to system clipboard.
     pub fn copy_to_clipboard(&self, text: &str) -> Result<(), String> {
-        use std::process::{Command, Stdio};
         use std::io::Write;
+        use std::process::{Command, Stdio};
         let mut child = Command::new("pbcopy")
             .stdin(Stdio::piped())
             .spawn()
@@ -1100,31 +1230,31 @@ impl InstrumentApp {
         Ok(())
     }
 
-
     /// Check if the database file has been modified since last check.
     /// Returns true if data should be reloaded.
     pub fn db_has_changed(&mut self) -> bool {
         // Cache the db path on first call to avoid walking the filesystem every tick
         if self.db_path_cache.is_none() {
-            self.db_path_cache = std::env::current_dir()
-                .ok()
-                .and_then(|mut d| {
-                    loop {
-                        let candidate = d.join(".werk").join("sd.db");
-                        if candidate.exists() {
-                            return Some(candidate);
-                        }
-                        if !d.pop() {
-                            return None;
-                        }
+            self.db_path_cache = std::env::current_dir().ok().and_then(|mut d| {
+                loop {
+                    let candidate = d.join(".werk").join("werk.db");
+                    if candidate.exists() {
+                        return Some(candidate);
                     }
-                });
+                    if !d.pop() {
+                        return None;
+                    }
+                }
+            });
         }
 
         if let Some(ref path) = self.db_path_cache {
             if let Ok(meta) = std::fs::metadata(&path) {
                 if let Ok(modified) = meta.modified() {
-                    let changed = self.db_modified.map(|prev| modified != prev).unwrap_or(true);
+                    let changed = self
+                        .db_modified
+                        .map(|prev| modified != prev)
+                        .unwrap_or(true);
                     self.db_modified = Some(modified);
                     return changed;
                 }
@@ -1139,19 +1269,17 @@ impl InstrumentApp {
     fn refresh_db_modified(&mut self) {
         // Ensure db_path_cache is populated (may not be if called before first tick)
         if self.db_path_cache.is_none() {
-            self.db_path_cache = std::env::current_dir()
-                .ok()
-                .and_then(|mut d| {
-                    loop {
-                        let candidate = d.join(".werk").join("sd.db");
-                        if candidate.exists() {
-                            return Some(candidate);
-                        }
-                        if !d.pop() {
-                            return None;
-                        }
+            self.db_path_cache = std::env::current_dir().ok().and_then(|mut d| {
+                loop {
+                    let candidate = d.join(".werk").join("werk.db");
+                    if candidate.exists() {
+                        return Some(candidate);
                     }
-                });
+                    if !d.pop() {
+                        return None;
+                    }
+                }
+            });
         }
         if let Some(ref path) = self.db_path_cache {
             if let Ok(meta) = std::fs::metadata(path) {
@@ -1208,7 +1336,8 @@ impl InstrumentApp {
 
     /// Dump the session log to .werk/session.log.
     pub fn dump_session_log(&mut self) {
-        self.session_log.record(crate::session_log::Category::Session, "log dumped by user");
+        self.session_log
+            .record(crate::session_log::Category::Session, "log dumped by user");
         match self.session_log.dump_to_file() {
             Ok(path) => self.set_transient(format!("log \u{2192} {}", path.display())),
             Err(e) => self.set_transient(format!("log dump failed: {}", e)),
@@ -1218,7 +1347,9 @@ impl InstrumentApp {
     /// Save workspace state and palette feedback to the persistence registry.
     /// Called on every quit path so the practitioner returns to their reasoning surface.
     pub fn save_workspace(&self) {
-        let Some(ref registry) = self.state_registry else { return };
+        let Some(ref registry) = self.state_registry else {
+            return;
+        };
         // Save palette feedback boosts
         crate::persistence::save_feedback(registry, &self.palette_feedback);
         let collapsed: Vec<crate::persistence::PersistedTimeBand> = self
@@ -1243,9 +1374,13 @@ impl InstrumentApp {
     /// Restore workspace state from the persistence registry.
     /// Called during construction, before load_siblings().
     fn restore_workspace(&mut self) {
-        let Some(ref registry) = self.state_registry else { return };
+        let Some(ref registry) = self.state_registry else {
+            return;
+        };
         // Registry already loaded in constructor (for feedback). Just read.
-        let Some(state) = crate::persistence::load_workspace(registry) else { return };
+        let Some(state) = crate::persistence::load_workspace(registry) else {
+            return;
+        };
 
         self.parent_id = state.parent_id;
         self.view_orientation = state.view_orientation.into();
@@ -1278,8 +1413,10 @@ impl Drop for InstrumentApp {
             let _ = self.engine.store().end_session(sid, None);
         }
         // Dump telemetry log (diagnostic record)
-        self.session_log.record(crate::session_log::Category::Session,
-            format!("session ended ({} events)", self.session_log.total_count()));
+        self.session_log.record(
+            crate::session_log::Category::Session,
+            format!("session ended ({} events)", self.session_log.total_count()),
+        );
         let _ = self.session_log.dump_to_file();
     }
 }

@@ -22,7 +22,7 @@ use ftui::widgets::status_line::{StatusItem, StatusLine};
 use ftui::widgets::{StatefulWidget, Widget};
 use ftui::{Cmd, Event, Frame, KeyCode, Model, PackedRgba, Program, ProgramConfig};
 
-use sd_core::{Store, TensionStatus};
+use werk_core::{Store, TensionStatus};
 use werk_shared::Workspace;
 
 // ---------------------------------------------------------------------------
@@ -31,19 +31,19 @@ use werk_shared::Workspace;
 
 // Aligned with production theme (dark terminal)
 const BG: PackedRgba = PackedRgba::rgb(0, 0, 0);
-const SURFACE: PackedRgba = PackedRgba::rgb(35, 42, 42);     // #232A2A
-const FG: PackedRgba = PackedRgba::rgb(220, 220, 220);       // #DCDCDC
-const BRIGHT: PackedRgba = PackedRgba::rgb(255, 255, 255);   // white
-const SUBDUED: PackedRgba = PackedRgba::rgb(100, 100, 100);  // #646464 — muted text
-const DIM: PackedRgba = PackedRgba::rgb(160, 160, 160);      // #A0A0A0 — text_subtle, readable
-const BORDER: PackedRgba = PackedRgba::rgb(60, 60, 70);      // #3C3C46
-const AMBER: PackedRgba = PackedRgba::rgb(200, 170, 60);     // #C8AA3C
+const SURFACE: PackedRgba = PackedRgba::rgb(35, 42, 42); // #232A2A
+const FG: PackedRgba = PackedRgba::rgb(220, 220, 220); // #DCDCDC
+const BRIGHT: PackedRgba = PackedRgba::rgb(255, 255, 255); // white
+const SUBDUED: PackedRgba = PackedRgba::rgb(100, 100, 100); // #646464 — muted text
+const DIM: PackedRgba = PackedRgba::rgb(160, 160, 160); // #A0A0A0 — text_subtle, readable
+const BORDER: PackedRgba = PackedRgba::rgb(60, 60, 70); // #3C3C46
+const AMBER: PackedRgba = PackedRgba::rgb(200, 170, 60); // #C8AA3C
 const AMBER_HI: PackedRgba = PackedRgba::rgb(230, 200, 80);
 const AMBER_LO: PackedRgba = PackedRgba::rgb(120, 95, 25);
-const RED: PackedRgba = PackedRgba::rgb(220, 90, 90);        // #DC5A5A
-const GREEN: PackedRgba = PackedRgba::rgb(80, 190, 120);     // #50BE78
-const CYAN: PackedRgba = PackedRgba::rgb(80, 190, 210);      // #50BED2
-const SEL_BG: PackedRgba = PackedRgba::rgb(35, 42, 42);      // same as SURFACE
+const RED: PackedRgba = PackedRgba::rgb(220, 90, 90); // #DC5A5A
+const GREEN: PackedRgba = PackedRgba::rgb(80, 190, 120); // #50BE78
+const CYAN: PackedRgba = PackedRgba::rgb(80, 190, 210); // #50BED2
+const SEL_BG: PackedRgba = PackedRgba::rgb(35, 42, 42); // same as SURFACE
 
 // ---------------------------------------------------------------------------
 // Data
@@ -105,20 +105,32 @@ impl Band {
 }
 
 fn urgency_color(u: f64) -> PackedRgba {
-    if u > 1.3 { RED }
-    else if u > 1.0 { AMBER_HI }
-    else if u > 0.7 { AMBER }
-    else if u > 0.3 { AMBER_LO }
-    else { PackedRgba::rgb(70, 110, 70) } // low urgency green, readable on black
+    if u > 1.3 {
+        RED
+    } else if u > 1.0 {
+        AMBER_HI
+    } else if u > 0.7 {
+        AMBER
+    } else if u > 0.3 {
+        AMBER_LO
+    } else {
+        PackedRgba::rgb(70, 110, 70)
+    } // low urgency green, readable on black
 }
 
 fn compact_age(secs: i64) -> String {
     let s = secs.unsigned_abs();
-    if s < 3600 { format!("{}m", s / 60) }
-    else if s < 86400 { format!("{}h", s / 3600) }
-    else if s < 86400 * 14 { format!("{}d", s / 86400) }
-    else if s < 86400 * 63 { format!("{}w", s / (86400 * 7)) }
-    else { format!("{}mo", s / (86400 * 30)) }
+    if s < 3600 {
+        format!("{}m", s / 60)
+    } else if s < 86400 {
+        format!("{}h", s / 3600)
+    } else if s < 86400 * 14 {
+        format!("{}d", s / 86400)
+    } else if s < 86400 * 63 {
+        format!("{}w", s / (86400 * 7))
+    } else {
+        format!("{}mo", s / (86400 * 30))
+    }
 }
 
 fn load_items(store: &Store) -> Vec<Item> {
@@ -133,59 +145,94 @@ fn load_items(store: &Store) -> Vec<Item> {
         }
     }
 
-    let compact_horizon = |h: &sd_core::Horizon| -> String {
-        use sd_core::HorizonKind;
+    let compact_horizon = |h: &werk_core::Horizon| -> String {
+        use werk_core::HorizonKind;
         let mn = |m: u32| -> &'static str {
-            match m { 1=>"Jan",2=>"Feb",3=>"Mar",4=>"Apr",5=>"May",6=>"Jun",
-                       7=>"Jul",8=>"Aug",9=>"Sep",10=>"Oct",11=>"Nov",12=>"Dec",_=>"?" }
+            match m {
+                1 => "Jan",
+                2 => "Feb",
+                3 => "Mar",
+                4 => "Apr",
+                5 => "May",
+                6 => "Jun",
+                7 => "Jul",
+                8 => "Aug",
+                9 => "Sep",
+                10 => "Oct",
+                11 => "Nov",
+                12 => "Dec",
+                _ => "?",
+            }
         };
         match h.kind() {
             HorizonKind::Year(y) => format!("{y}"),
-            HorizonKind::Month(y, m) => if y == now_year { mn(m).into() } else { format!("{} {}", mn(m), y%100) },
+            HorizonKind::Month(y, m) => {
+                if y == now_year {
+                    mn(m).into()
+                } else {
+                    format!("{} {}", mn(m), y % 100)
+                }
+            }
             HorizonKind::Day(d) => format!("{} {}", mn(d.month()), d.day()),
             HorizonKind::DateTime(dt) => format!("{} {}", mn(dt.month()), dt.day()),
         }
     };
 
-    tensions.iter().map(|t| {
-        let horizon_end = t.horizon.as_ref().map(|h| h.range_end());
-        let horizon_label = t.horizon.as_ref().map(|h| compact_horizon(h));
+    tensions
+        .iter()
+        .map(|t| {
+            let horizon_end = t.horizon.as_ref().map(|h| h.range_end());
+            let horizon_label = t.horizon.as_ref().map(|h| compact_horizon(h));
 
-        let urgency = match horizon_end {
-            Some(end) => {
-                let window = end.signed_duration_since(t.created_at).num_seconds().max(1) as f64;
-                let elapsed = now.signed_duration_since(t.created_at).num_seconds().max(0) as f64;
-                elapsed / window
+            let urgency = match horizon_end {
+                Some(end) => {
+                    let window =
+                        end.signed_duration_since(t.created_at).num_seconds().max(1) as f64;
+                    let elapsed =
+                        now.signed_duration_since(t.created_at).num_seconds().max(0) as f64;
+                    elapsed / window
+                }
+                None => {
+                    let weeks = now.signed_duration_since(t.created_at).num_weeks() as f64;
+                    (weeks / 6.0).min(1.0)
+                }
+            };
+
+            let band = match horizon_end {
+                None => Band::Unframed,
+                Some(end) => {
+                    let hours = (end - now).num_hours() as f64;
+                    if hours < 0.0 {
+                        Band::Overdue
+                    } else if hours <= 168.0 {
+                        Band::Imminent
+                    } else if hours <= 720.0 {
+                        Band::Approaching
+                    } else {
+                        Band::Later
+                    }
+                }
+            };
+
+            let age_secs = now.signed_duration_since(t.created_at).num_seconds();
+            let age_label = compact_age(age_secs);
+
+            Item {
+                id: t.id.clone(),
+                short_code: t.short_code,
+                desired: t.desired.clone(),
+                actual: t.actual.clone(),
+                status: t.status,
+                parent_id: t.parent_id.clone(),
+                position: t.position,
+                children: child_counts.get(&t.id).copied().unwrap_or(0),
+                urgency,
+                horizon_label,
+                age_label,
+                band,
             }
-            None => {
-                let weeks = now.signed_duration_since(t.created_at).num_weeks() as f64;
-                (weeks / 6.0).min(1.0)
-            }
-        };
-
-        let band = match horizon_end {
-            None => Band::Unframed,
-            Some(end) => {
-                let hours = (end - now).num_hours() as f64;
-                if hours < 0.0 { Band::Overdue }
-                else if hours <= 168.0 { Band::Imminent }
-                else if hours <= 720.0 { Band::Approaching }
-                else { Band::Later }
-            }
-        };
-
-        let age_secs = now.signed_duration_since(t.created_at).num_seconds();
-        let age_label = compact_age(age_secs);
-
-        Item {
-            id: t.id.clone(), short_code: t.short_code,
-            desired: t.desired.clone(), actual: t.actual.clone(),
-            status: t.status, parent_id: t.parent_id.clone(),
-            position: t.position,
-            children: child_counts.get(&t.id).copied().unwrap_or(0),
-            urgency, horizon_label, age_label, band,
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -194,18 +241,24 @@ fn load_items(store: &Store) -> Vec<Item> {
 
 fn trunc(s: &str, max: usize) -> String {
     let first = s.lines().next().unwrap_or(s).trim();
-    if first.chars().count() <= max { first.to_string() }
-    else { let t: String = first.chars().take(max.saturating_sub(1)).collect(); format!("{t}\u{2026}") }
+    if first.chars().count() <= max {
+        first.to_string()
+    } else {
+        let t: String = first.chars().take(max.saturating_sub(1)).collect();
+        format!("{t}\u{2026}")
+    }
 }
 
 fn display_id(item: &Item) -> String {
-    item.short_code.map(|sc| format!("#{sc}")).unwrap_or_else(|| format!("#{}", &item.id[..4.min(item.id.len())]))
+    item.short_code
+        .map(|sc| format!("#{sc}"))
+        .unwrap_or_else(|| format!("#{}", &item.id[..4.min(item.id.len())]))
 }
 
 fn status_glyph(item: &Item) -> &'static str {
     match item.status {
-        TensionStatus::Active if item.position.is_some() => "\u{25c6}",  // ◆ positioned
-        TensionStatus::Active => "\u{2727}",   // ✧ held
+        TensionStatus::Active if item.position.is_some() => "\u{25c6}", // ◆ positioned
+        TensionStatus::Active => "\u{2727}",                            // ✧ held
         TensionStatus::Resolved => "\u{2726}", // ✦ resolved (production glyph)
         TensionStatus::Released => "\u{00b7}", // · released (production glyph)
     }
@@ -226,20 +279,33 @@ fn glyph_color(item: &Item) -> PackedRgba {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq)]
-enum View { Survey, Deck }
+enum View {
+    Survey,
+    Deck,
+}
 
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-enum Msg { Up, Down, Descend, Ascend, SwitchView, Quit, Noop }
+enum Msg {
+    Up,
+    Down,
+    Descend,
+    Ascend,
+    SwitchView,
+    Quit,
+    Noop,
+}
 
 impl From<Event> for Msg {
     fn from(event: Event) -> Self {
         match event {
             Event::Key(key) => {
-                if key.ctrl() && key.code == KeyCode::Char('c') { return Msg::Quit; }
+                if key.ctrl() && key.code == KeyCode::Char('c') {
+                    return Msg::Quit;
+                }
                 match key.code {
                     KeyCode::Char('q') => Msg::Quit,
                     KeyCode::Char('j') | KeyCode::Down => Msg::Down,
@@ -273,21 +339,38 @@ struct App {
 impl App {
     fn new(items: Vec<Item>) -> Self {
         let mut band_states = HashMap::new();
-        for &b in &[Band::Overdue, Band::Imminent, Band::Approaching, Band::Later, Band::Unframed] {
+        for &b in &[
+            Band::Overdue,
+            Band::Imminent,
+            Band::Approaching,
+            Band::Later,
+            Band::Unframed,
+        ] {
             band_states.insert(b, RefCell::new(ListState::default()));
         }
         Self {
-            items, view: View::Survey, cursor: 0, deck_parent: None,
-            band_states, deck_list_state: RefCell::new(ListState::default()),
+            items,
+            view: View::Survey,
+            cursor: 0,
+            deck_parent: None,
+            band_states,
+            deck_list_state: RefCell::new(ListState::default()),
         }
     }
 
     fn survey_items(&self) -> Vec<&Item> {
-        let mut v: Vec<&Item> = self.items.iter()
+        let mut v: Vec<&Item> = self
+            .items
+            .iter()
             .filter(|i| i.status == TensionStatus::Active)
             .collect();
-        v.sort_by(|a, b| a.band.cmp(&b.band)
-            .then(b.urgency.partial_cmp(&a.urgency).unwrap_or(std::cmp::Ordering::Equal)));
+        v.sort_by(|a, b| {
+            a.band.cmp(&b.band).then(
+                b.urgency
+                    .partial_cmp(&a.urgency)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+        });
         v
     }
 
@@ -317,7 +400,9 @@ impl App {
 
     fn deck_children(&self) -> Vec<&Item> {
         let pid = self.deck_parent.as_deref();
-        let mut v: Vec<&Item> = self.items.iter()
+        let mut v: Vec<&Item> = self
+            .items
+            .iter()
             .filter(|i| {
                 i.parent_id.as_deref() == pid
                 // At root (no parent), only show active items to avoid dumping everything
@@ -333,14 +418,17 @@ impl App {
                     TensionStatus::Released => 3,
                 }
             };
-            rank(a).cmp(&rank(b))
+            rank(a)
+                .cmp(&rank(b))
                 .then_with(|| a.position.unwrap_or(9999).cmp(&b.position.unwrap_or(9999)))
         });
         v
     }
 
     fn deck_parent_item(&self) -> Option<&Item> {
-        self.deck_parent.as_ref().and_then(|pid| self.items.iter().find(|i| i.id == *pid))
+        self.deck_parent
+            .as_ref()
+            .and_then(|pid| self.items.iter().find(|i| i.id == *pid))
     }
 
     fn visible_count(&self) -> usize {
@@ -352,8 +440,11 @@ impl App {
 
     fn clamp_cursor(&mut self) {
         let n = self.visible_count();
-        if n == 0 { self.cursor = 0; }
-        else if self.cursor >= n { self.cursor = n - 1; }
+        if n == 0 {
+            self.cursor = 0;
+        } else if self.cursor >= n {
+            self.cursor = n - 1;
+        }
     }
 
     fn content_rect(&self, full: Rect) -> Rect {
@@ -364,7 +455,8 @@ impl App {
 
     /// Sync band ListStates from the global cursor (1 row per item).
     fn sync_survey_states(&self) {
-        let (active_band, active_offset) = self.cursor_band_position().unwrap_or((Band::Overdue, 0));
+        let (active_band, active_offset) =
+            self.cursor_band_position().unwrap_or((Band::Overdue, 0));
         for (&band, state) in &self.band_states {
             let mut s = state.borrow_mut();
             if band == active_band {
@@ -385,13 +477,17 @@ fn render_survey(app: &App, frame: &mut Frame<'_>, area: Rect) {
 
     if groups.is_empty() {
         Paragraph::new(Text::from(Line::from(Span::styled(
-            "  no active tensions.", Style::new().fg(SUBDUED),
-        )))).render(area, frame);
+            "  no active tensions.",
+            Style::new().fg(SUBDUED),
+        ))))
+        .render(area, frame);
         return;
     }
 
     // Layout: sparkline(1) + bands (capped, largest gets Fill) + status(1)
-    let max_band_idx = groups.iter().enumerate()
+    let max_band_idx = groups
+        .iter()
+        .enumerate()
         .max_by_key(|(_, (_, g))| g.len())
         .map(|(i, _)| i)
         .unwrap_or(0);
@@ -436,33 +532,44 @@ fn render_survey(app: &App, frame: &mut Frame<'_>, area: Rect) {
         let right_cols = 9usize;
         let name_budget = inner_w.saturating_sub(left_cols + right_cols);
 
-        let list_items: Vec<ListItem> = group.iter().map(|item| {
-            let g = status_glyph(item);
-            let gc = glyph_color(item);
-            let did = display_id(item);
-            let arrow = if item.children > 0 { "\u{2192}" } else { " " };
-            let hlabel = item.horizon_label.as_deref().unwrap_or("");
-            let name = trunc(&item.desired, name_budget);
-            let name_pad = name_budget.saturating_sub(name.chars().count());
-            let hlabel_c = if item.urgency > 1.0 { band.accent() } else { SUBDUED };
+        let list_items: Vec<ListItem> = group
+            .iter()
+            .map(|item| {
+                let g = status_glyph(item);
+                let gc = glyph_color(item);
+                let did = display_id(item);
+                let arrow = if item.children > 0 { "\u{2192}" } else { " " };
+                let hlabel = item.horizon_label.as_deref().unwrap_or("");
+                let name = trunc(&item.desired, name_budget);
+                let name_pad = name_budget.saturating_sub(name.chars().count());
+                let hlabel_c = if item.urgency > 1.0 {
+                    band.accent()
+                } else {
+                    SUBDUED
+                };
 
-            let line = Line::from_spans([
-                Span::styled(format!("{:<7}", hlabel), Style::new().fg(hlabel_c)),
-                Span::styled(format!("{g} "), Style::new().fg(gc)),
-                Span::styled(format!("{arrow} "), Style::new().fg(SUBDUED)),
-                Span::styled(name, Style::new().fg(FG)),
-                Span::styled(" ".repeat(name_pad), Style::new()),
-                Span::styled(format!(" {:>3}", item.age_label), Style::new().fg(SUBDUED)),
-                Span::styled(format!(" {:>4}", did), Style::new().fg(SUBDUED)),
-            ]);
-            ListItem::new(line).marker("")
-        }).collect();
+                let line = Line::from_spans([
+                    Span::styled(format!("{:<7}", hlabel), Style::new().fg(hlabel_c)),
+                    Span::styled(format!("{g} "), Style::new().fg(gc)),
+                    Span::styled(format!("{arrow} "), Style::new().fg(SUBDUED)),
+                    Span::styled(name, Style::new().fg(FG)),
+                    Span::styled(" ".repeat(name_pad), Style::new()),
+                    Span::styled(format!(" {:>3}", item.age_label), Style::new().fg(SUBDUED)),
+                    Span::styled(format!(" {:>4}", did), Style::new().fg(SUBDUED)),
+                ]);
+                ListItem::new(line).marker("")
+            })
+            .collect();
 
         let title = format!(" {} ({}) ", band.name(), group.len());
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(if is_active { band.accent() } else { band.border() }))
+            .border_style(Style::new().fg(if is_active {
+                band.accent()
+            } else {
+                band.border()
+            }))
             .title(title.as_str())
             .style(Style::new().bg(BG));
 
@@ -480,7 +587,11 @@ fn render_survey(app: &App, frame: &mut Frame<'_>, area: Rect) {
     // Status bar
     let status_slot = *slots.last().unwrap();
     let active_count = app.survey_items().len();
-    let overdue_count = app.survey_items().iter().filter(|i| i.band == Band::Overdue).count();
+    let overdue_count = app
+        .survey_items()
+        .iter()
+        .filter(|i| i.band == Band::Overdue)
+        .count();
     let left = if overdue_count > 0 {
         format!("{active_count} active \u{00B7} {overdue_count} overdue")
     } else {
@@ -506,15 +617,18 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
 
     let has_reality = parent.map(|p| !p.actual.is_empty()).unwrap_or(false);
     let has_children = !children.is_empty();
-    let resolved = children.iter().filter(|c| c.status == TensionStatus::Resolved).count();
+    let resolved = children
+        .iter()
+        .filter(|c| c.status == TensionStatus::Resolved)
+        .count();
     let total = children.len();
 
     // Layout: desire(2) + progress(1) + sparkline(1) + table(fill) + reality(1-2) + status(1)
     let mut constraints = vec![
-        Constraint::Fixed(2),  // desire
-        Constraint::Fixed(1),  // progress bar
-        Constraint::Fixed(1),  // sparkline
-        Constraint::Fill,      // children table
+        Constraint::Fixed(2), // desire
+        Constraint::Fixed(1), // progress bar
+        Constraint::Fixed(1), // sparkline
+        Constraint::Fill,     // children table
     ];
     if has_reality {
         constraints.push(Constraint::Fixed(2)); // blank + reality
@@ -526,7 +640,8 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
 
     // --- Desire ---
     {
-        let slot = slots[si]; si += 1;
+        let slot = slots[si];
+        si += 1;
         let lines = match parent {
             Some(p) => {
                 let did = display_id(p);
@@ -543,7 +658,10 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
                     ]),
                     Line::from_spans([
                         Span::styled("  ", Style::new()),
-                        Span::styled("\u{2501}".repeat(cw.saturating_sub(2)), Style::new().fg(BORDER)),
+                        Span::styled(
+                            "\u{2501}".repeat(cw.saturating_sub(2)),
+                            Style::new().fg(BORDER),
+                        ),
                     ]),
                 ]
             }
@@ -559,7 +677,10 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
                     ]),
                     Line::from_spans([
                         Span::styled("  ", Style::new()),
-                        Span::styled("\u{2501}".repeat(cw.saturating_sub(2)), Style::new().fg(BORDER)),
+                        Span::styled(
+                            "\u{2501}".repeat(cw.saturating_sub(2)),
+                            Style::new().fg(BORDER),
+                        ),
                     ]),
                 ]
             }
@@ -569,7 +690,8 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
 
     // --- Progress bar (closure ratio) ---
     {
-        let slot = slots[si]; si += 1;
+        let slot = slots[si];
+        si += 1;
         if total > 0 {
             let ratio = resolved as f64 / total as f64;
             let label_str = format!("{resolved}/{total}");
@@ -577,28 +699,43 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
                 .ratio(ratio)
                 .label(Box::leak(label_str.into_boxed_str()))
                 .style(Style::new().fg(SUBDUED).bg(BG))
-                .gauge_style(if resolved == total { Style::new().fg(GREEN) } else { Style::new().fg(AMBER_LO) })
+                .gauge_style(if resolved == total {
+                    Style::new().fg(GREEN)
+                } else {
+                    Style::new().fg(AMBER_LO)
+                })
                 .render(slot, frame);
         }
     }
 
     // --- Sparkline ---
     {
-        let slot = slots[si]; si += 1;
+        let slot = slots[si];
+        si += 1;
         let data: Vec<f64> = children.iter().map(|c| c.urgency).collect();
         if !data.is_empty() {
-            Sparkline::new(&data).style(Style::new().fg(AMBER)).max(2.0).render(slot, frame);
+            Sparkline::new(&data)
+                .style(Style::new().fg(AMBER))
+                .max(2.0)
+                .render(slot, frame);
         }
     }
 
     // --- Children list ---
     {
-        let slot = slots[si]; si += 1;
+        let slot = slots[si];
+        si += 1;
         if !has_children {
-            let msg = if parent.is_some() { "  no children. press a to add." }
-                else { "  nothing here. press a to name what matters." };
-            Paragraph::new(Text::from(Line::from(Span::styled(msg, Style::new().fg(SUBDUED)))))
-                .render(slot, frame);
+            let msg = if parent.is_some() {
+                "  no children. press a to add."
+            } else {
+                "  nothing here. press a to name what matters."
+            };
+            Paragraph::new(Text::from(Line::from(Span::styled(
+                msg,
+                Style::new().fg(SUBDUED),
+            ))))
+            .render(slot, frame);
         } else {
             let inner_w = slot.width.saturating_sub(2) as usize;
             // Layout: [horizon 7][glyph 2][arrow 2] name... [age 4][id 5]
@@ -606,52 +743,65 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
             let right_cols = 9usize;
             let name_budget = inner_w.saturating_sub(left_cols + right_cols);
 
-            let list_items: Vec<ListItem> = children.iter().map(|item| {
-                let is_done = matches!(item.status, TensionStatus::Resolved | TensionStatus::Released);
-                let is_held = item.status == TensionStatus::Active && item.position.is_none();
-                let gc = glyph_color(item);
-                let g = status_glyph(item);
-                let did = display_id(item);
-                let arrow = if item.children > 0 { "\u{2192}" } else { " " };
+            let list_items: Vec<ListItem> = children
+                .iter()
+                .map(|item| {
+                    let is_done = matches!(
+                        item.status,
+                        TensionStatus::Resolved | TensionStatus::Released
+                    );
+                    let is_held = item.status == TensionStatus::Active && item.position.is_none();
+                    let gc = glyph_color(item);
+                    let g = status_glyph(item);
+                    let did = display_id(item);
+                    let arrow = if item.children > 0 { "\u{2192}" } else { " " };
 
-                let name_style = if is_done {
-                    Style::new().fg(SUBDUED)
-                } else if is_held {
-                    Style::new().fg(DIM)
-                } else {
-                    Style::new().fg(BRIGHT).bold()
-                };
+                    let name_style = if is_done {
+                        Style::new().fg(SUBDUED)
+                    } else if is_held {
+                        Style::new().fg(DIM)
+                    } else {
+                        Style::new().fg(BRIGHT).bold()
+                    };
 
-                let name = trunc(&item.desired, name_budget);
-                let name_pad = name_budget.saturating_sub(name.chars().count());
-                let hlabel = item.horizon_label.as_deref().unwrap_or("");
+                    let name = trunc(&item.desired, name_budget);
+                    let name_pad = name_budget.saturating_sub(name.chars().count());
+                    let hlabel = item.horizon_label.as_deref().unwrap_or("");
 
-                if is_done {
-                    let line = Line::from_spans([
-                        Span::styled(format!("{:<7}", hlabel), Style::new().fg(SUBDUED)),
-                        Span::styled(format!("{g} "), Style::new().fg(gc)),
-                        Span::styled("  ", Style::new()),
-                        Span::styled(name, name_style),
-                        Span::styled(" ".repeat(name_pad), Style::new()),
-                        Span::styled("    ", Style::new()),
-                        Span::styled(format!(" {:>4}", did), Style::new().fg(SUBDUED)),
-                    ]);
-                    ListItem::new(line).marker("")
-                } else {
-                    let hlabel_c = if item.urgency > 1.0 { urgency_color(item.urgency) } else { SUBDUED };
+                    if is_done {
+                        let line = Line::from_spans([
+                            Span::styled(format!("{:<7}", hlabel), Style::new().fg(SUBDUED)),
+                            Span::styled(format!("{g} "), Style::new().fg(gc)),
+                            Span::styled("  ", Style::new()),
+                            Span::styled(name, name_style),
+                            Span::styled(" ".repeat(name_pad), Style::new()),
+                            Span::styled("    ", Style::new()),
+                            Span::styled(format!(" {:>4}", did), Style::new().fg(SUBDUED)),
+                        ]);
+                        ListItem::new(line).marker("")
+                    } else {
+                        let hlabel_c = if item.urgency > 1.0 {
+                            urgency_color(item.urgency)
+                        } else {
+                            SUBDUED
+                        };
 
-                    let line = Line::from_spans([
-                        Span::styled(format!("{:<7}", hlabel), Style::new().fg(hlabel_c)),
-                        Span::styled(format!("{g} "), Style::new().fg(gc)),
-                        Span::styled(format!("{arrow} "), Style::new().fg(SUBDUED)),
-                        Span::styled(name, name_style),
-                        Span::styled(" ".repeat(name_pad), Style::new()),
-                        Span::styled(format!(" {:>3}", item.age_label), Style::new().fg(SUBDUED)),
-                        Span::styled(format!(" {:>4}", did), Style::new().fg(SUBDUED)),
-                    ]);
-                    ListItem::new(line).marker("")
-                }
-            }).collect();
+                        let line = Line::from_spans([
+                            Span::styled(format!("{:<7}", hlabel), Style::new().fg(hlabel_c)),
+                            Span::styled(format!("{g} "), Style::new().fg(gc)),
+                            Span::styled(format!("{arrow} "), Style::new().fg(SUBDUED)),
+                            Span::styled(name, name_style),
+                            Span::styled(" ".repeat(name_pad), Style::new()),
+                            Span::styled(
+                                format!(" {:>3}", item.age_label),
+                                Style::new().fg(SUBDUED),
+                            ),
+                            Span::styled(format!(" {:>4}", did), Style::new().fg(SUBDUED)),
+                        ]);
+                        ListItem::new(line).marker("")
+                    }
+                })
+                .collect();
 
             let block = Block::new()
                 .borders(Borders::ALL)
@@ -676,19 +826,24 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
 
     // --- Reality ---
     if has_reality {
-        let slot = slots[si]; si += 1;
+        let slot = slots[si];
+        si += 1;
         if let Some(p) = parent {
             let reality = trunc(&p.actual, cw.saturating_sub(12));
             Paragraph::new(Text::from_lines(vec![
                 Line::from_spans([
                     Span::styled("  ", Style::new()),
-                    Span::styled("\u{2501}".repeat(cw.saturating_sub(2)), Style::new().fg(BORDER)),
+                    Span::styled(
+                        "\u{2501}".repeat(cw.saturating_sub(2)),
+                        Style::new().fg(BORDER),
+                    ),
                 ]),
                 Line::from_spans([
                     Span::styled("\u{25c7} ", Style::new().fg(SUBDUED)),
                     Span::styled(reality, Style::new().fg(DIM)),
                 ]),
-            ])).render(slot, frame);
+            ]))
+            .render(slot, frame);
         }
     }
 
@@ -696,12 +851,17 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
     {
         let slot = *slots.last().unwrap();
         let loc = match &app.deck_parent {
-            Some(_) => app.deck_parent_item().map(|p| display_id(p)).unwrap_or_else(|| "?".into()),
+            Some(_) => app
+                .deck_parent_item()
+                .map(|p| display_id(p))
+                .unwrap_or_else(|| "?".into()),
             None => "root".into(),
         };
         StatusLine::new()
             .style(Style::new().fg(SUBDUED).bg(SURFACE))
-            .left(StatusItem::Text(Box::leak(format!("deck \u{00B7} {loc}").into_boxed_str())))
+            .left(StatusItem::Text(Box::leak(
+                format!("deck \u{00B7} {loc}").into_boxed_str(),
+            )))
             .right(StatusItem::Text("Tab\u{00A0}survey"))
             .right(StatusItem::Text("h\u{00A0}up"))
             .right(StatusItem::Text("l\u{00A0}enter"))
@@ -718,18 +878,30 @@ fn render_deck(app: &App, frame: &mut Frame<'_>, area: Rect) {
 
 impl Model for App {
     type Message = Msg;
-    fn init(&mut self) -> Cmd<Msg> { Cmd::none() }
+    fn init(&mut self) -> Cmd<Msg> {
+        Cmd::none()
+    }
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
             Msg::Quit => return Cmd::Quit,
-            Msg::Up => { if self.cursor > 0 { self.cursor -= 1; } }
+            Msg::Up => {
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                }
+            }
             Msg::Down => {
                 let n = self.visible_count();
-                if self.cursor + 1 < n { self.cursor += 1; }
+                if self.cursor + 1 < n {
+                    self.cursor += 1;
+                }
             }
             Msg::SwitchView => {
-                self.view = if self.view == View::Survey { View::Deck } else { View::Survey };
+                self.view = if self.view == View::Survey {
+                    View::Deck
+                } else {
+                    View::Survey
+                };
                 self.cursor = 0;
                 self.clamp_cursor();
             }
@@ -737,11 +909,17 @@ impl Model for App {
                 let target_id = match self.view {
                     View::Survey => {
                         let items = self.survey_items();
-                        items.get(self.cursor).filter(|i| i.children > 0).map(|i| i.id.clone())
+                        items
+                            .get(self.cursor)
+                            .filter(|i| i.children > 0)
+                            .map(|i| i.id.clone())
                     }
                     View::Deck => {
                         let children = self.deck_children();
-                        children.get(self.cursor).filter(|i| i.children > 0).map(|i| i.id.clone())
+                        children
+                            .get(self.cursor)
+                            .filter(|i| i.children > 0)
+                            .map(|i| i.id.clone())
                     }
                 };
                 if let Some(id) = target_id {
@@ -754,7 +932,10 @@ impl Model for App {
             Msg::Ascend => {
                 if self.view == View::Deck {
                     if let Some(ref pid) = self.deck_parent.clone() {
-                        let grandparent = self.items.iter().find(|i| i.id == *pid)
+                        let grandparent = self
+                            .items
+                            .iter()
+                            .find(|i| i.id == *pid)
                             .and_then(|i| i.parent_id.clone());
                         self.deck_parent = grandparent;
                         self.cursor = 0;
@@ -769,7 +950,10 @@ impl Model for App {
 
     fn view(&self, frame: &mut Frame<'_>) {
         let full = Rect::new(0, 0, frame.width(), frame.height());
-        frame.buffer.fill(full, ftui::Cell::from_char(' ').with_fg(SUBDUED).with_bg(BG));
+        frame.buffer.fill(
+            full,
+            ftui::Cell::from_char(' ').with_fg(SUBDUED).with_bg(BG),
+        );
         let area = self.content_rect(full);
 
         match self.view {
@@ -785,7 +969,9 @@ impl Model for App {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = Workspace::discover().map_err(|e| format!("No werk workspace: {e}"))?;
-    let store = workspace.open_store().map_err(|e| format!("Store error: {e}"))?;
+    let store = workspace
+        .open_store()
+        .map_err(|e| format!("Store error: {e}"))?;
     let items = load_items(&store);
     let app = App::new(items);
     let mut program = Program::with_config(app, ProgramConfig::fullscreen())?;

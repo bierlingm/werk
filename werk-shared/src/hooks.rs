@@ -13,12 +13,12 @@
 
 use crate::config::Config;
 use chrono::{DateTime, Utc};
-use sd_core::events::{Event, EventBus};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write as IoWrite;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use werk_core::events::{Event, EventBus};
 
 // ============================================================================
 // Hook Event Payload
@@ -43,7 +43,7 @@ pub struct HookEvent {
 }
 
 impl HookEvent {
-    /// Build a HookEvent from an sd-core Event.
+    /// Build a HookEvent from a werk-core Event.
     ///
     /// The Event's serde representation carries all the typed data.
     /// We flatten it into the hook payload format for backward compatibility.
@@ -217,9 +217,7 @@ impl HookEvent {
                 new_value: Some(format!("{:?}:{}", drift_type, change_count)),
             },
             Event::NoteTaken {
-                tension_id,
-                text,
-                ..
+                tension_id, text, ..
             } => Self {
                 event: hook_name,
                 category,
@@ -233,9 +231,7 @@ impl HookEvent {
                 new_value: Some(text.clone()),
             },
             Event::NoteRetracted {
-                tension_id,
-                text,
-                ..
+                tension_id, text, ..
             } => Self {
                 event: hook_name,
                 category,
@@ -487,12 +483,12 @@ impl HookRunner {
                     .into_iter()
                     .collect();
 
-                let entry = hooks.entry(hook_name.to_string()).or_insert_with(|| {
-                    HookEntry {
+                let entry = hooks
+                    .entry(hook_name.to_string())
+                    .or_insert_with(|| HookEntry {
                         commands: Vec::new(),
                         filters: Vec::new(),
-                    }
-                });
+                    });
                 entry.commands.extend(commands);
                 if entry.filters.is_empty() {
                     entry.filters = filters;
@@ -626,7 +622,7 @@ impl HookRunner {
                     String::new(),
                     format!("failed to serialize hook event: {}", e),
                     0,
-                )
+                );
             }
         };
 
@@ -654,7 +650,12 @@ impl HookRunner {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                 (output.status.success(), stdout, stderr, duration)
             }
-            Err(e) => (false, String::new(), format!("spawn failed: {}", e), duration),
+            Err(e) => (
+                false,
+                String::new(),
+                format!("spawn failed: {}", e),
+                duration,
+            ),
         }
     }
 
@@ -742,7 +743,7 @@ impl HookRunner {
 /// Pre-hooks are NOT handled by the bridge — they remain at the command level
 /// because they need to block before the Store mutation happens.
 pub struct HookBridge {
-    _subscription: sd_core::events::SubscriptionHandle,
+    _subscription: werk_core::events::SubscriptionHandle,
 }
 
 impl HookBridge {
@@ -832,7 +833,11 @@ echo "" >> .werk/audit.jsonl
     /// Install a shipped hook to the workspace hooks directory.
     ///
     /// Returns the path where the hook was written.
-    pub fn install(hooks_dir: &std::path::Path, name: &str, content: &str) -> std::io::Result<PathBuf> {
+    pub fn install(
+        hooks_dir: &std::path::Path,
+        name: &str,
+        content: &str,
+    ) -> std::io::Result<PathBuf> {
         std::fs::create_dir_all(hooks_dir)?;
         let path = hooks_dir.join(format!("{}.sh", name));
         std::fs::write(&path, content)?;
@@ -847,10 +852,22 @@ echo "" >> .werk/audit.jsonl
     /// List available shipped hooks with descriptions.
     pub fn available() -> Vec<(&'static str, &'static str, &'static str)> {
         vec![
-            ("flush", "post_*", "Flush tensions.json after every mutation"),
+            (
+                "flush",
+                "post_*",
+                "Flush tensions.json after every mutation",
+            ),
             ("readme-tree", "post_*", "Update README.md tension tree"),
-            ("auto-stage", "post_*", "Stage tensions.json and README.md for git"),
-            ("guard-delete", "pre_delete", "Block deletion of tensions with children"),
+            (
+                "auto-stage",
+                "post_*",
+                "Stage tensions.json and README.md for git",
+            ),
+            (
+                "guard-delete",
+                "pre_delete",
+                "Block deletion of tensions with children",
+            ),
             ("audit-log", "post_*", "Append events to .werk/audit.jsonl"),
         ]
     }
@@ -993,7 +1010,7 @@ mod tests {
 
     #[test]
     fn test_hook_event_from_event() {
-        let event = sd_core::events::EventBuilder::tension_created(
+        let event = werk_core::events::EventBuilder::tension_created(
             "01ABC".to_owned(),
             "goal".to_owned(),
             "reality".to_owned(),
@@ -1009,7 +1026,7 @@ mod tests {
 
     #[test]
     fn test_hook_event_from_reality_confronted() {
-        let event = sd_core::events::EventBuilder::reality_confronted(
+        let event = werk_core::events::EventBuilder::reality_confronted(
             "01ABC".to_owned(),
             "old".to_owned(),
             "new".to_owned(),
@@ -1067,10 +1084,7 @@ mod tests {
     #[test]
     fn test_from_config_new_event_names() {
         let mut config = Config::default();
-        config.set(
-            "hooks.post_tension_resolved",
-            "./notify.sh".to_string(),
-        );
+        config.set("hooks.post_tension_resolved", "./notify.sh".to_string());
         let runner = HookRunner::from_config(&config);
         assert!(runner.has_hooks());
         assert_eq!(
@@ -1096,10 +1110,7 @@ mod tests {
     #[test]
     fn test_matching_hooks_specific() {
         let mut config = Config::default();
-        config.set(
-            "hooks.post_tension_resolved",
-            "./specific.sh".to_string(),
-        );
+        config.set("hooks.post_tension_resolved", "./specific.sh".to_string());
         let runner = HookRunner::from_config(&config);
         let event = HookEvent {
             event: "tension_resolved".to_string(),
@@ -1122,10 +1133,7 @@ mod tests {
     fn test_matching_hooks_category_and_specific() {
         let mut config = Config::default();
         config.set("hooks.post_mutation", "./category.sh".to_string());
-        config.set(
-            "hooks.post_reality_confronted",
-            "./specific.sh".to_string(),
-        );
+        config.set("hooks.post_reality_confronted", "./specific.sh".to_string());
         let runner = HookRunner::from_config(&config);
         let event = HookEvent {
             event: "reality_confronted".to_string(),
@@ -1218,7 +1226,7 @@ mod tests {
         let _bridge = HookBridge::new(&bus, runner);
 
         // Just verify it doesn't panic — actual hook execution requires shell
-        let event = sd_core::events::EventBuilder::tension_created(
+        let event = werk_core::events::EventBuilder::tension_created(
             "01ABC".to_owned(),
             "goal".to_owned(),
             "reality".to_owned(),
@@ -1230,7 +1238,7 @@ mod tests {
 
     #[test]
     fn test_event_hook_name() {
-        let event = sd_core::events::EventBuilder::tension_created(
+        let event = werk_core::events::EventBuilder::tension_created(
             "01ABC".to_owned(),
             "g".to_owned(),
             "r".to_owned(),
@@ -1240,7 +1248,7 @@ mod tests {
         assert_eq!(event.hook_name(), "tension_created");
         assert!(event.is_commandable());
 
-        let event = sd_core::events::EventBuilder::urgency_threshold_crossed(
+        let event = werk_core::events::EventBuilder::urgency_threshold_crossed(
             "01ABC".to_owned(),
             0.4,
             0.6,

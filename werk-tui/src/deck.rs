@@ -12,9 +12,9 @@ use ftui::widgets::Widget;
 use ftui::widgets::borders::BorderType;
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::rule::Rule;
-use ftui::widgets::status_line::{StatusLine, StatusItem};
+use ftui::widgets::status_line::{StatusItem, StatusLine};
 
-use sd_core::TensionStatus;
+use werk_core::TensionStatus;
 
 /// An item in the accumulated zone — either a resolved/released child or a parent note.
 #[derive(Debug, Clone)]
@@ -41,7 +41,6 @@ impl AccumulatedItem {
 
 use crate::app::InstrumentApp;
 use crate::state::FieldEntry;
-
 
 // ---------------------------------------------------------------------------
 // Column layout
@@ -115,7 +114,8 @@ impl Default for DeckConfig {
 impl DeckConfig {
     /// Load deck config from the werk config system.
     pub fn load(config: &werk_shared::Config) -> Self {
-        let chrome = config.get("deck.chrome")
+        let chrome = config
+            .get("deck.chrome")
             .map(|v| ChromeMode::from_str(v))
             .unwrap_or(ChromeMode::Adaptive);
         Self { chrome }
@@ -227,7 +227,11 @@ impl Frontier {
     /// When `epoch_boundary` is Some, only resolved/released items whose last status
     /// change is after the boundary are shown in accumulated. Items from prior epochs
     /// are hidden (they belong to the log, not the current epoch).
-    pub fn compute(siblings: &[FieldEntry], trajectory: bool, epoch_boundary: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+    pub fn compute(
+        siblings: &[FieldEntry],
+        trajectory: bool,
+        epoch_boundary: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Self {
         let mut frontier = Frontier::default();
 
         // Separate into groups
@@ -278,7 +282,8 @@ impl Frontier {
         // Find the "next" step: the one with the lowest position value among non-overdue.
         // Since siblings are sorted position DESC, the last positioned active non-overdue
         // in the list has the lowest position number (closest to frontier).
-        let non_overdue_positioned: Vec<usize> = positioned_active.iter()
+        let non_overdue_positioned: Vec<usize> = positioned_active
+            .iter()
             .copied()
             .filter(|idx| !overdue_set.contains(idx))
             .collect();
@@ -312,7 +317,10 @@ impl Frontier {
     /// Build a frontier for reorder mode: all active items go into `route`
     /// in their current array order (ignoring position fields). Resolved/released
     /// go to `accumulated` filtered by epoch boundary. No overdue classification.
-    pub fn from_raw_order(siblings: &[FieldEntry], epoch_boundary: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+    pub fn from_raw_order(
+        siblings: &[FieldEntry],
+        epoch_boundary: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Self {
         let mut frontier = Frontier::default();
 
         for (i, entry) in siblings.iter().enumerate() {
@@ -454,7 +462,6 @@ impl Frontier {
             }
         }
     }
-
 }
 
 /// What the deck cursor is pointing at.
@@ -490,8 +497,11 @@ impl CursorTarget {
     /// Get the sibling index this target refers to, if it points to a specific child.
     pub fn sibling_index(&self) -> Option<usize> {
         match self {
-            CursorTarget::Route(i) | CursorTarget::Overdue(i) | CursorTarget::Next(i)
-            | CursorTarget::HeldItem(i) | CursorTarget::AccumulatedItem(i) => Some(*i),
+            CursorTarget::Route(i)
+            | CursorTarget::Overdue(i)
+            | CursorTarget::Next(i)
+            | CursorTarget::HeldItem(i)
+            | CursorTarget::AccumulatedItem(i) => Some(*i),
             _ => None,
         }
     }
@@ -564,7 +574,9 @@ impl InstrumentApp {
     /// Compute column layout from current siblings state.
     pub(crate) fn compute_cols(&self, w: usize) -> ColumnLayout {
         let deadline_label = self.parent_horizon_label.as_deref();
-        let max_child_deadline = self.siblings.iter()
+        let max_child_deadline = self
+            .siblings
+            .iter()
             .filter_map(|s| s.horizon_label.as_deref())
             .max_by_key(|s| s.len());
         let widest_deadline = match (deadline_label, max_child_deadline) {
@@ -573,11 +585,15 @@ impl InstrumentApp {
             (None, Some(b)) => Some(b),
             (None, None) => None,
         };
-        let max_id = self.siblings.iter()
+        let max_id = self
+            .siblings
+            .iter()
             .filter_map(|s| s.short_code)
             .max()
             .unwrap_or(0) as usize;
-        let max_age_len = self.siblings.iter()
+        let max_age_len = self
+            .siblings
+            .iter()
             .map(|s| s.created_age.chars().count())
             .max()
             .unwrap_or(2);
@@ -593,15 +609,24 @@ impl InstrumentApp {
         };
 
         let has_breadcrumb = self.grandparent_display.is_some();
-        let has_deadline = self.parent_horizon_label.as_ref().map_or(false, |d| !d.is_empty());
+        let has_deadline = self
+            .parent_horizon_label
+            .as_ref()
+            .map_or(false, |d| !d.is_empty());
 
-        let desire_indent = if has_deadline { cols.left + cols.gutter } else { 0 };
+        let desire_indent = if has_deadline {
+            cols.left + cols.gutter
+        } else {
+            0
+        };
         let right_col_reserve = cols.gutter + cols.right;
         let desire_wrap_width = w.saturating_sub(desire_indent + right_col_reserve);
         let d_lines = word_wrap(&parent.desired, desire_wrap_width);
 
         let mut h: u16 = 0;
-        if has_breadcrumb { h += 1; }
+        if has_breadcrumb {
+            h += 1;
+        }
         h += 1; // blank line before desire
         h += d_lines.len() as u16;
         h += 1; // desire rule
@@ -656,19 +681,38 @@ impl InstrumentApp {
         };
 
         let has_breadcrumb = self.grandparent_display.is_some();
-        let has_deadline = self.parent_horizon_label.as_ref().map_or(false, |d| !d.is_empty());
+        let has_deadline = self
+            .parent_horizon_label
+            .as_ref()
+            .map_or(false, |d| !d.is_empty());
         let deadline_str = self.parent_horizon_label.as_deref().unwrap_or("");
         let reality_age_str = self.parent_reality_age.as_deref().unwrap_or("");
 
         let active_target = self.focus_state.cursor_target();
-        let desire_selected = frontier.has_desire_anchor
-            && active_target == CursorTarget::Desire;
-        let reality_selected = frontier.has_reality_anchor
-            && active_target == CursorTarget::Reality;
+        let desire_selected = frontier.has_desire_anchor && active_target == CursorTarget::Desire;
+        let reality_selected =
+            frontier.has_reality_anchor && active_target == CursorTarget::Reality;
 
-        self.render_desire_zone(frame, desire_zone, w, cols, parent, desire_lines,
-            has_breadcrumb, has_deadline, deadline_str, desire_selected);
-        self.render_reality_zone(frame, reality_zone, w, parent, reality_age_str, reality_selected);
+        self.render_desire_zone(
+            frame,
+            desire_zone,
+            w,
+            cols,
+            parent,
+            desire_lines,
+            has_breadcrumb,
+            has_deadline,
+            deadline_str,
+            desire_selected,
+        );
+        self.render_reality_zone(
+            frame,
+            reality_zone,
+            w,
+            parent,
+            reality_age_str,
+            reality_selected,
+        );
     }
 
     /// Main deck render entry point — renders the field zone (middle pane).
@@ -704,15 +748,26 @@ impl InstrumentApp {
         let focus_detail_height: usize = if self.deck_zoom.has_detail() {
             if let Some(ref detail) = self.focused_detail {
                 let text_w = w.saturating_sub(cols.left + cols.gutter + HELD_INDENT * 2);
-                let reality_lines = if detail.actual.is_empty() { 0 } else {
+                let reality_lines = if detail.actual.is_empty() {
+                    0
+                } else {
                     word_wrap(&detail.actual, text_w).len()
                 };
                 let meta_line = 1; // combined temporal + progress bar + counts
-                let next_step_line = if detail.child_count > 0 && detail.next_step_desired.is_some() { 1 } else { 0 };
+                let next_step_line = if detail.child_count > 0 && detail.next_step_desired.is_some()
+                {
+                    1
+                } else {
+                    0
+                };
                 let note_lines = detail.recent_notes.len();
                 reality_lines + meta_line + next_step_line + note_lines
-            } else { 0 }
-        } else { 0 };
+            } else {
+                0
+            }
+        } else {
+            0
+        };
 
         // === Two-pass layout: measure → reconcile → render ===
         let middle_start = middle_zone.y;
@@ -740,28 +795,43 @@ impl InstrumentApp {
             // Route
             let sr = frontier.show_route.min(frontier.route.len());
             top += sr;
-            if sr < frontier.route.len() { top += 1; }
+            if sr < frontier.route.len() {
+                top += 1;
+            }
             top += frontier.overdue.len();
-            if frontier.next.is_some() { top += 1; }
-            if frontier.route.is_empty() && frontier.overdue.is_empty()
-                && frontier.next.is_none() && !frontier.held.is_empty() {
+            if frontier.next.is_some() {
+                top += 1;
+            }
+            if frontier.route.is_empty()
+                && frontier.overdue.is_empty()
+                && frontier.next.is_none()
+                && !frontier.held.is_empty()
+            {
                 top += 2; // "no committed next step" + breathing
             }
-            let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
-                || frontier.next.is_some() || !frontier.held.is_empty()
+            let has_content = !frontier.route.is_empty()
+                || !frontier.overdue.is_empty()
+                || frontier.next.is_some()
+                || !frontier.held.is_empty()
                 || !frontier.accumulated.is_empty();
-            if has_content { top += 2; } // console + breathing
+            if has_content {
+                top += 2;
+            } // console + breathing
             // Inline focus detail (V7) takes extra lines in the top-down pass
             top += fdh;
             if !frontier.held.is_empty() {
                 top += sh;
-                if sh < frontier.held.len() { top += 1; } // summary (always present)
+                if sh < frontier.held.len() {
+                    top += 1;
+                } // summary (always present)
             }
             top += 1; // input point
             // Accumulated — always at least a summary line if non-empty
             if !frontier.accumulated.is_empty() {
                 top += sa;
-                if sa < frontier.accumulated.len() { top += 1; } // summary
+                if sa < frontier.accumulated.len() {
+                    top += 1;
+                } // summary
             }
             top
         };
@@ -770,11 +840,18 @@ impl InstrumentApp {
         // But never hide the focused item if it's in the accumulated zone.
         let min_show_acc = if self.deck_zoom.has_detail() {
             if let Some(ref detail) = self.focused_detail {
-                frontier.accumulated.iter().position(|item| item.child_index() == Some(detail.sibling_index))
+                frontier
+                    .accumulated
+                    .iter()
+                    .position(|item| item.child_index() == Some(detail.sibling_index))
                     .map(|pos| pos + 1)
                     .unwrap_or(0)
-            } else { 0 }
-        } else { 0 };
+            } else {
+                0
+            }
+        } else {
+            0
+        };
         while recount(final_show_acc, final_show_held, effective_focus_height) > middle_lines
             && final_show_acc > min_show_acc
         {
@@ -784,11 +861,18 @@ impl InstrumentApp {
         // But never hide the focused item — it must remain individually visible.
         let min_show_held = if self.deck_zoom.has_detail() {
             if let Some(ref detail) = self.focused_detail {
-                frontier.held.iter().position(|&si| si == detail.sibling_index)
-                    .map(|pos| pos + 1)  // must show at least up to this index
+                frontier
+                    .held
+                    .iter()
+                    .position(|&si| si == detail.sibling_index)
+                    .map(|pos| pos + 1) // must show at least up to this index
                     .unwrap_or(0)
-            } else { 0 }
-        } else { 0 };
+            } else {
+                0
+            }
+        } else {
+            0
+        };
         while recount(final_show_acc, final_show_held, effective_focus_height) > middle_lines
             && final_show_held > min_show_held
         {
@@ -807,13 +891,18 @@ impl InstrumentApp {
         let focus_detail_height = effective_focus_height;
 
         // Cursor and focus setup — get active target from FocusGraph
-        let active_target = if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
-            let sibling_idx = self.siblings.iter().position(|s| s.id == *tension_id).unwrap_or(0);
-            // During reorder, point at the grabbed item
-            CursorTarget::Route(sibling_idx)
-        } else {
-            self.focus_state.cursor_target()
-        };
+        let active_target =
+            if let crate::state::InputMode::Reordering { ref tension_id } = self.input_mode {
+                let sibling_idx = self
+                    .siblings
+                    .iter()
+                    .position(|s| s.id == *tension_id)
+                    .unwrap_or(0);
+                // During reorder, point at the grabbed item
+                CursorTarget::Route(sibling_idx)
+            } else {
+                self.focus_state.cursor_target()
+            };
         let focused_sibling = if self.deck_zoom.has_detail() {
             self.focused_detail.as_ref().map(|d| d.sibling_index)
         } else {
@@ -837,7 +926,13 @@ impl InstrumentApp {
         if !frontier.accumulated.is_empty() && acc_item_count > 0 {
             let shown = frontier.show_accumulated;
             let (acc_list, mut acc_state) = crate::deck_zones::build_accumulated_list(
-                &frontier, &self.siblings, shown, active_target, &cols, w, &self.styles,
+                &frontier,
+                &self.siblings,
+                shown,
+                active_target,
+                &cols,
+                w,
+                &self.styles,
             );
 
             // Anchor accumulated items to bottom of middle_zone
@@ -861,7 +956,9 @@ impl InstrumentApp {
                             if let Some(ref detail) = self.focused_detail {
                                 // Render below the accumulated list
                                 let focus_y = acc_top.saturating_sub(focus_detail_height as u16);
-                                self.render_inline_focus(frame, area.x, focus_y, acc_top, w, &cols, detail, 0);
+                                self.render_inline_focus(
+                                    frame, area.x, focus_y, acc_top, w, &cols, detail, 0,
+                                );
                                 acc_top = focus_y;
                             }
                         }
@@ -881,8 +978,8 @@ impl InstrumentApp {
         let route_remaining = frontier.route.len() - shown_route;
         let shown_held = frontier.show_held.min(frontier.held.len());
         let held_remaining = frontier.held.len() - shown_held;
-        let unified_summary = shown_route == 0 && route_remaining > 0
-            && shown_held == 0 && held_remaining > 0;
+        let unified_summary =
+            shown_route == 0 && route_remaining > 0 && shown_held == 0 && held_remaining > 0;
 
         if unified_summary && my < top_limit {
             // Merge route + next + held into one summary line above NOW (Q28)
@@ -898,14 +995,26 @@ impl InstrumentApp {
                 total_route,
                 frontier.held.len()
             );
-            self.render_indicator_line(frame, area.x, my, w, &cols, &text, is_selected, self.styles.dim, 0);
+            self.render_indicator_line(
+                frame,
+                area.x,
+                my,
+                w,
+                &cols,
+                &text,
+                is_selected,
+                self.styles.dim,
+                0,
+            );
             my += 1;
         } else {
             // --- Route zone: List widget (split around focused item for inline detail) ---
             {
                 let focused_route_pos = if self.deck_zoom.has_detail() {
                     focused_sibling.and_then(|si| {
-                        frontier.route[..shown_route.min(frontier.route.len())].iter().position(|&r| r == si)
+                        frontier.route[..shown_route.min(frontier.route.len())]
+                            .iter()
+                            .position(|&r| r == si)
                     })
                 } else {
                     None
@@ -915,8 +1024,16 @@ impl InstrumentApp {
                     // Pre-focus segment: items 0..=focus_pos
                     let pre_count = focus_pos + 1;
                     let (pre_list, mut pre_state) = crate::deck_zones::build_route_list_segment(
-                        &frontier, &self.siblings, 0, pre_count, shown_route, false,
-                        active_target, &cols, w, &self.styles,
+                        &frontier,
+                        &self.siblings,
+                        0,
+                        pre_count,
+                        shown_route,
+                        false,
+                        active_target,
+                        &cols,
+                        w,
+                        &self.styles,
                     );
                     let pre_h = pre_count.min((top_limit - my) as usize);
                     if pre_h > 0 {
@@ -931,7 +1048,8 @@ impl InstrumentApp {
 
                     // Inline focus detail
                     if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                        my += self
+                            .render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
                     }
 
                     // Post-focus segment: items (focus_pos+1)..shown_route + summary
@@ -939,10 +1057,19 @@ impl InstrumentApp {
                     let post_count = shown_route.saturating_sub(post_start);
                     let has_summary = route_remaining > 0;
                     if post_count > 0 || has_summary {
-                        let (post_list, mut post_state) = crate::deck_zones::build_route_list_segment(
-                            &frontier, &self.siblings, post_start, post_count, shown_route, has_summary,
-                            active_target, &cols, w, &self.styles,
-                        );
+                        let (post_list, mut post_state) =
+                            crate::deck_zones::build_route_list_segment(
+                                &frontier,
+                                &self.siblings,
+                                post_start,
+                                post_count,
+                                shown_route,
+                                has_summary,
+                                active_target,
+                                &cols,
+                                w,
+                                &self.styles,
+                            );
                         let post_item_count = post_count + if has_summary { 1 } else { 0 };
                         let post_h = post_item_count.min((top_limit - my) as usize);
                         if post_h > 0 {
@@ -958,10 +1085,15 @@ impl InstrumentApp {
                 } else {
                     // No focused item in route — render as single list
                     let (route_list, mut route_state) = crate::deck_zones::build_route_list(
-                        &frontier, &self.siblings, shown_route, active_target, &cols, w, &self.styles,
+                        &frontier,
+                        &self.siblings,
+                        shown_route,
+                        active_target,
+                        &cols,
+                        w,
+                        &self.styles,
                     );
-                    let route_item_count = shown_route
-                        + if route_remaining > 0 { 1 } else { 0 };
+                    let route_item_count = shown_route + if route_remaining > 0 { 1 } else { 0 };
                     let route_h = route_item_count.min((top_limit - my) as usize);
                     if route_h > 0 {
                         ftui::widgets::StatefulWidget::render(
@@ -978,7 +1110,12 @@ impl InstrumentApp {
             // --- Overdue zone: List widget ---
             {
                 let (overdue_list, mut overdue_state) = crate::deck_zones::build_overdue_list(
-                    &frontier, &self.siblings, active_target, &cols, w, &self.styles,
+                    &frontier,
+                    &self.siblings,
+                    active_target,
+                    &cols,
+                    w,
+                    &self.styles,
                 );
                 let overdue_h = frontier.overdue.len().min((top_limit - my) as usize);
                 if overdue_h > 0 {
@@ -994,7 +1131,9 @@ impl InstrumentApp {
                     for &sibling_idx in &frontier.overdue {
                         if focused_sibling == Some(sibling_idx) {
                             if let Some(ref detail) = self.focused_detail {
-                                my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                                my += self.render_inline_focus(
+                                    frame, area.x, my, top_limit, w, &cols, detail, 0,
+                                );
                             }
                         }
                     }
@@ -1006,11 +1145,25 @@ impl InstrumentApp {
                 if my < top_limit {
                     let entry = &self.siblings[next_idx];
                     let is_selected = active_target == CursorTarget::Next(next_idx);
-                    self.render_child_line(frame, area.x, my, w, &cols, entry, "\u{25c6}", is_selected, false, 0, Some(self.styles.green));
+                    self.render_child_line(
+                        frame,
+                        area.x,
+                        my,
+                        w,
+                        &cols,
+                        entry,
+                        "\u{25c6}",
+                        is_selected,
+                        false,
+                        0,
+                        Some(self.styles.green),
+                    );
                     my += 1;
                     if focused_sibling == Some(next_idx) {
                         if let Some(ref detail) = self.focused_detail {
-                            my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, 0);
+                            my += self.render_inline_focus(
+                                frame, area.x, my, top_limit, w, &cols, detail, 0,
+                            );
                         }
                     }
                 }
@@ -1022,7 +1175,9 @@ impl InstrumentApp {
                 && frontier.next.is_none()
                 && !frontier.held.is_empty();
             if s4_held_only && my < top_limit {
-                if my > middle_start { my += 1; } // breathing
+                if my > middle_start {
+                    my += 1;
+                } // breathing
                 let msg = "no committed next step";
                 let prefix_len = cols.left + cols.gutter;
                 let pad_right = w.saturating_sub(prefix_len + msg.len());
@@ -1030,13 +1185,16 @@ impl InstrumentApp {
                     Span::styled(" ".repeat(prefix_len), Style::new()),
                     Span::styled(msg, self.styles.dim),
                     Span::styled(" ".repeat(pad_right), Style::new()),
-                ])).render(Rect::new(area.x, my, area.width, 1), frame);
+                ]))
+                .render(Rect::new(area.x, my, area.width, 1), frame);
                 my += 1;
             }
 
             // --- Console header: enriched boundary with structural readouts (S3) ---
-            let has_content = !frontier.route.is_empty() || !frontier.overdue.is_empty()
-                || frontier.next.is_some() || !frontier.held.is_empty()
+            let has_content = !frontier.route.is_empty()
+                || !frontier.overdue.is_empty()
+                || frontier.next.is_some()
+                || !frontier.held.is_empty()
                 || !frontier.accumulated.is_empty();
             if has_content && my < top_limit {
                 // S5: Breathing line above console header
@@ -1046,23 +1204,36 @@ impl InstrumentApp {
 
                 // Build readout cells for the console vitals rule title
                 let total_children = self.siblings.len();
-                let done_count = self.siblings.iter()
-                    .filter(|s| s.status == TensionStatus::Resolved || s.status == TensionStatus::Released)
+                let done_count = self
+                    .siblings
+                    .iter()
+                    .filter(|s| {
+                        s.status == TensionStatus::Resolved || s.status == TensionStatus::Released
+                    })
                     .count();
                 let epoch_display = self.epoch_boundary.map(|boundary| {
                     let delta = chrono::Utc::now().signed_duration_since(boundary);
                     let hours = delta.num_hours();
                     let days = delta.num_days();
-                    if hours < 1 { "fresh".to_string() }
-                    else if hours < 24 { format!("epoch {}h", hours) }
-                    else { format!("epoch {}d", days) }
+                    if hours < 1 {
+                        "fresh".to_string()
+                    } else if hours < 24 {
+                        format!("epoch {}h", hours)
+                    } else {
+                        format!("epoch {}d", days)
+                    }
                 });
-                let next_dl = frontier.next.iter()
+                let next_dl = frontier
+                    .next
+                    .iter()
                     .filter_map(|&idx| self.siblings.get(idx))
                     .filter_map(|s| s.horizon_label.as_deref())
                     .next()
                     .or_else(|| {
-                        frontier.route.iter().rev()
+                        frontier
+                            .route
+                            .iter()
+                            .rev()
                             .filter_map(|&idx| self.siblings.get(idx))
                             .filter_map(|s| s.horizon_label.as_deref())
                             .next()
@@ -1094,7 +1265,9 @@ impl InstrumentApp {
             if !frontier.held.is_empty() && my < top_limit {
                 let focused_held_pos = if self.deck_zoom.has_detail() {
                     focused_sibling.and_then(|si| {
-                        frontier.held[..shown_held.min(frontier.held.len())].iter().position(|&r| r == si)
+                        frontier.held[..shown_held.min(frontier.held.len())]
+                            .iter()
+                            .position(|&r| r == si)
                     })
                 } else {
                     None
@@ -1104,8 +1277,16 @@ impl InstrumentApp {
                     // Pre-focus segment
                     let pre_count = focus_pos + 1;
                     let (pre_list, mut pre_state) = crate::deck_zones::build_held_list_segment(
-                        &frontier, &self.siblings, 0, pre_count, shown_held, false,
-                        active_target, &cols, w, &self.styles,
+                        &frontier,
+                        &self.siblings,
+                        0,
+                        pre_count,
+                        shown_held,
+                        false,
+                        active_target,
+                        &cols,
+                        w,
+                        &self.styles,
                     );
                     let pre_h = pre_count.min((top_limit - my) as usize);
                     if pre_h > 0 {
@@ -1120,7 +1301,16 @@ impl InstrumentApp {
 
                     // Inline focus detail
                     if let Some(ref detail) = self.focused_detail {
-                        my += self.render_inline_focus(frame, area.x, my, top_limit, w, &cols, detail, HELD_INDENT);
+                        my += self.render_inline_focus(
+                            frame,
+                            area.x,
+                            my,
+                            top_limit,
+                            w,
+                            &cols,
+                            detail,
+                            HELD_INDENT,
+                        );
                     }
 
                     // Post-focus segment + summary
@@ -1128,10 +1318,19 @@ impl InstrumentApp {
                     let post_count = shown_held.saturating_sub(post_start);
                     let has_summary = held_remaining > 0;
                     if post_count > 0 || has_summary {
-                        let (post_list, mut post_state) = crate::deck_zones::build_held_list_segment(
-                            &frontier, &self.siblings, post_start, post_count, shown_held, has_summary,
-                            active_target, &cols, w, &self.styles,
-                        );
+                        let (post_list, mut post_state) =
+                            crate::deck_zones::build_held_list_segment(
+                                &frontier,
+                                &self.siblings,
+                                post_start,
+                                post_count,
+                                shown_held,
+                                has_summary,
+                                active_target,
+                                &cols,
+                                w,
+                                &self.styles,
+                            );
                         let post_item_count = post_count + if has_summary { 1 } else { 0 };
                         let post_h = post_item_count.min((top_limit - my) as usize);
                         if post_h > 0 {
@@ -1147,10 +1346,22 @@ impl InstrumentApp {
                 } else {
                     // No focused item in held — render as single list
                     let (held_list, mut held_state) = crate::deck_zones::build_held_list(
-                        &frontier, &self.siblings, shown_held, active_target, &cols, w, &self.styles,
+                        &frontier,
+                        &self.siblings,
+                        shown_held,
+                        active_target,
+                        &cols,
+                        w,
+                        &self.styles,
                     );
                     let held_item_count = shown_held
-                        + if held_remaining == 1 { 1 } else if held_remaining > 1 { 1 } else { 0 };
+                        + if held_remaining == 1 {
+                            1
+                        } else if held_remaining > 1 {
+                            1
+                        } else {
+                            0
+                        };
                     let held_h = held_item_count.min((top_limit - my) as usize);
                     if held_h > 0 {
                         ftui::widgets::StatefulWidget::render(
@@ -1173,7 +1384,9 @@ impl InstrumentApp {
 
         if is_empty_console && my < top_limit {
             // Truly empty: no children or all accumulated
-            if my < top_limit { my += 1; } // breathing
+            if my < top_limit {
+                my += 1;
+            } // breathing
             let msg = if frontier.accumulated.is_empty() && self.siblings.is_empty() {
                 "no steps yet"
             } else {
@@ -1185,19 +1398,25 @@ impl InstrumentApp {
                 Span::styled(" ".repeat(prefix_len), Style::new()),
                 Span::styled(msg, self.styles.dim),
                 Span::styled(" ".repeat(pad_right), Style::new()),
-            ])).render(Rect::new(area.x, my, area.width, 1), frame);
+            ]))
+            .render(Rect::new(area.x, my, area.width, 1), frame);
             my += 1;
-            if my < top_limit { my += 1; } // breathing
+            if my < top_limit {
+                my += 1;
+            } // breathing
         }
 
         // --- Input line: the action surface at the console's heart ---
         if my < top_limit {
             let is_selected = active_target == CursorTarget::InputPoint;
             let line = crate::deck_zones::build_input_line(
-                is_selected, is_empty_console, &cols, w, &self.styles,
+                is_selected,
+                is_empty_console,
+                &cols,
+                w,
+                &self.styles,
             );
-            Paragraph::new(Text::from(line))
-                .render(Rect::new(area.x, my, area.width, 1), frame);
+            Paragraph::new(Text::from(line)).render(Rect::new(area.x, my, area.width, 1), frame);
         }
     }
 
@@ -1218,10 +1437,17 @@ impl InstrumentApp {
         glyph_color: Option<Style>,
     ) {
         let line = crate::deck_zones::build_child_line(
-            entry, glyph, is_selected, is_overdue, extra_indent, glyph_color, cols, w, &self.styles,
+            entry,
+            glyph,
+            is_selected,
+            is_overdue,
+            extra_indent,
+            glyph_color,
+            cols,
+            w,
+            &self.styles,
         );
-        Paragraph::new(Text::from(line))
-            .render(Rect::new(x, y, w as u16, 1), frame);
+        Paragraph::new(Text::from(line)).render(Rect::new(x, y, w as u16, 1), frame);
     }
 
     /// Render an indicator line (held, accumulated) in the deck.
@@ -1238,9 +1464,15 @@ impl InstrumentApp {
         _base_style: Style,
         extra_indent: usize,
     ) {
-        let line = crate::deck_zones::build_indicator_line(text, is_selected, extra_indent, cols, w, &self.styles);
-        Paragraph::new(Text::from(line))
-            .render(Rect::new(x, y, w as u16, 1), frame);
+        let line = crate::deck_zones::build_indicator_line(
+            text,
+            is_selected,
+            extra_indent,
+            cols,
+            w,
+            &self.styles,
+        );
+        Paragraph::new(Text::from(line)).render(Rect::new(x, y, w as u16, 1), frame);
     }
 
     /// Render the desire zone (top anchor): breadcrumb + blank + desire text + rule.
@@ -1250,7 +1482,7 @@ impl InstrumentApp {
         zone: Rect,
         w: usize,
         cols: &ColumnLayout,
-        parent: &sd_core::Tension,
+        parent: &werk_core::Tension,
         desire_lines: &[String],
         has_breadcrumb: bool,
         has_deadline: bool,
@@ -1258,10 +1490,16 @@ impl InstrumentApp {
         selected: bool,
     ) {
         // Split zone into rows: [breadcrumb?] [blank] [text lines] [rule]
-        let breadcrumb_h: u16 = if has_breadcrumb && self.grandparent_display.is_some() { 1 } else { 0 };
+        let breadcrumb_h: u16 = if has_breadcrumb && self.grandparent_display.is_some() {
+            1
+        } else {
+            0
+        };
         let text_h = desire_lines.len().max(1) as u16;
         let mut constraints = Vec::new();
-        if breadcrumb_h > 0 { constraints.push(Constraint::Fixed(1)); }
+        if breadcrumb_h > 0 {
+            constraints.push(Constraint::Fixed(1));
+        }
         constraints.push(Constraint::Fixed(1)); // blank
         constraints.push(Constraint::Fixed(text_h)); // desire text
         constraints.push(Constraint::Fixed(1)); // rule
@@ -1281,7 +1519,8 @@ impl InstrumentApp {
                 Paragraph::new(Line::from_spans([
                     Span::styled(pad, self.styles.dim),
                     Span::styled(breadcrumb, self.styles.dim),
-                ])).render(rows[ri], frame);
+                ]))
+                .render(rows[ri], frame);
             }
             ri += 1;
         }
@@ -1293,17 +1532,34 @@ impl InstrumentApp {
         let text_zone = rows[ri];
         ri += 1;
 
-        let desire_age = self.parent_desire_age.as_deref().unwrap_or("")
-            .trim_end_matches(" ago").to_string();
-        let desire_id = parent.short_code
+        let desire_age = self
+            .parent_desire_age
+            .as_deref()
+            .unwrap_or("")
+            .trim_end_matches(" ago")
+            .to_string();
+        let desire_id = parent
+            .short_code
             .map(|sc| format!("{:0>width$}", sc, width = cols.id_width))
             .unwrap_or_default();
         let desire_right = format!("{} {}", desire_id, desire_age);
         let desire_right_w = desire_right.chars().count();
 
-        let text_style = if selected { self.styles.selected } else { self.styles.text_bold };
-        let glyph_style = if selected { self.styles.selected } else { self.styles.cyan };
-        let right_style = if selected { self.styles.selected } else { self.styles.dim };
+        let text_style = if selected {
+            self.styles.selected
+        } else {
+            self.styles.text_bold
+        };
+        let glyph_style = if selected {
+            self.styles.selected
+        } else {
+            self.styles.cyan
+        };
+        let right_style = if selected {
+            self.styles.selected
+        } else {
+            self.styles.dim
+        };
 
         let mut lines: Vec<Line> = Vec::new();
         for (i, line_text) in desire_lines.iter().enumerate() {
@@ -1327,7 +1583,12 @@ impl InstrumentApp {
             spans.push(Span::styled(line_text.clone(), text_style));
 
             if i == 0 {
-                let text_used = if has_deadline { cols.left + cols.gutter } else { 0 } + 2 + line_text.chars().count();
+                let text_used = if has_deadline {
+                    cols.left + cols.gutter
+                } else {
+                    0
+                } + 2
+                    + line_text.chars().count();
                 let gap = w.saturating_sub(text_used + desire_right_w);
                 if gap >= cols.gutter {
                     spans.push(Span::styled(" ".repeat(gap), right_style));
@@ -1355,11 +1616,13 @@ impl InstrumentApp {
         frame: &mut Frame<'_>,
         zone: Rect,
         w: usize,
-        parent: &sd_core::Tension,
+        parent: &werk_core::Tension,
         reality_age: &str,
         selected: bool,
     ) {
-        if zone.height == 0 { return; }
+        if zone.height == 0 {
+            return;
+        }
 
         // Use Flex to split: [blank line] [reality text] [rule]
         let has_reality = !parent.actual.is_empty();
@@ -1376,14 +1639,16 @@ impl InstrumentApp {
             Some(z) => z,
             None => return,
         };
-        Rule::new()
-            .style(self.styles.dim)
-            .render(*rule_zone, frame);
+        Rule::new().style(self.styles.dim).render(*rule_zone, frame);
 
-        if !has_reality { return; }
+        if !has_reality {
+            return;
+        }
 
         let text_zone = zones[1];
-        if text_zone.height == 0 { return; }
+        if text_zone.height == 0 {
+            return;
+        }
 
         let age_suffix = if reality_age.is_empty() {
             String::new()
@@ -1396,8 +1661,16 @@ impl InstrumentApp {
         let full_lines = word_wrap(&parent.actual, w.saturating_sub(2));
         let fits = full_lines.len() as u16 <= text_zone.height;
 
-        let text_style = if selected { self.styles.selected } else { self.styles.dim };
-        let glyph_style = if selected { self.styles.selected } else { self.styles.subdued };
+        let text_style = if selected {
+            self.styles.selected
+        } else {
+            self.styles.dim
+        };
+        let glyph_style = if selected {
+            self.styles.selected
+        } else {
+            self.styles.subdued
+        };
 
         let mut lines: Vec<Line> = Vec::new();
         if fits {
@@ -1433,7 +1706,10 @@ impl InstrumentApp {
             for (i, l) in full_lines.iter().enumerate().take(avail) {
                 let pfx = if i == 0 { glyph_prefix } else { "  " };
                 let ps = if i == 0 { glyph_style } else { text_style };
-                lines.push(Line::from_spans([Span::styled(pfx, ps), Span::styled(l.as_str(), text_style)]));
+                lines.push(Line::from_spans([
+                    Span::styled(pfx, ps),
+                    Span::styled(l.as_str(), text_style),
+                ]));
             }
             lines.push(Line::from_spans([
                 Span::styled("  ", text_style),
@@ -1461,20 +1737,26 @@ impl InstrumentApp {
         detail: &FocusedDetail,
         parent_indent: usize,
     ) -> u16 {
-        if start_y >= limit_y { return 0; }
+        if start_y >= limit_y {
+            return 0;
+        }
         let max_lines = (limit_y - start_y) as usize;
 
         let child_indent = parent_indent + HELD_INDENT;
         let indent_str: String = " ".repeat(cols.left + cols.gutter + child_indent);
         let text_w = w.saturating_sub(cols.left + cols.gutter + child_indent);
-        if text_w == 0 { return 0; }
+        if text_w == 0 {
+            return 0;
+        }
 
         let mut lines: Vec<Line> = Vec::new();
 
         // 1. Reality (the thing you never see in the list — subdued weight)
         if !detail.actual.is_empty() {
             for line_text in word_wrap(&detail.actual, text_w) {
-                if lines.len() >= max_lines { break; }
+                if lines.len() >= max_lines {
+                    break;
+                }
                 lines.push(Line::from_spans([
                     Span::styled(indent_str.clone(), self.styles.subdued),
                     Span::styled(line_text, self.styles.subdued),
@@ -1493,7 +1775,11 @@ impl InstrumentApp {
                 let ratio = done as f64 / detail.child_count as f64;
                 let bar_width = 11;
                 let filled = (ratio * bar_width as f64).round() as usize;
-                let bar = format!("{}{}", "\u{2588}".repeat(filled), "\u{2591}".repeat(bar_width - filled));
+                let bar = format!(
+                    "{}{}",
+                    "\u{2588}".repeat(filled),
+                    "\u{2591}".repeat(bar_width - filled)
+                );
                 spans.push(Span::styled(format!("{} ", bar), self.styles.green));
 
                 let mut count_parts: Vec<String> = Vec::new();
@@ -1501,7 +1787,10 @@ impl InstrumentApp {
                 if detail.child_held > 0 {
                     count_parts.push(format!("{} held", detail.child_held));
                 }
-                spans.push(Span::styled(format!("{} \u{00b7} ", count_parts.join(" \u{00b7} ")), self.styles.dim));
+                spans.push(Span::styled(
+                    format!("{} \u{00b7} ", count_parts.join(" \u{00b7} ")),
+                    self.styles.dim,
+                ));
             }
 
             // Temporal facts
@@ -1540,7 +1829,9 @@ impl InstrumentApp {
 
         // 3. Notes (fill remaining space)
         for (age, text) in detail.recent_notes.iter() {
-            if lines.len() >= max_lines { break; }
+            if lines.len() >= max_lines {
+                break;
+            }
             let age_w = age.len() + 2;
             let note_avail = text_w.saturating_sub(age_w + 2);
             let truncated = if text.chars().count() > note_avail {
@@ -1597,31 +1888,30 @@ impl InstrumentApp {
     /// Render the deck bottom bar using ftui StatusLine.
     /// S6: Context-sensitive gesture hints based on cursor target (Normal mode only).
     pub fn render_deck_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let content = self.layout.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
+        let content =
+            self.layout
+                .content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
         // S6: Context-sensitive hints — only in Normal input mode
         let hints_text = if matches!(self.input_mode, crate::state::InputMode::Normal) {
             let target = self.focus_state.cursor_target();
             match target {
-                CursorTarget::Desire =>
-                    "e edit desire \u{00B7} Enter focus",
-                CursorTarget::Route(_) | CursorTarget::Next(_) =>
-                    "e edit \u{00B7} Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve",
-                CursorTarget::Overdue(_) =>
-                    "r resolve \u{00B7} ~ release \u{00B7} l descend",
-                CursorTarget::HeldItem(_) =>
-                    "e edit \u{00B7} p position \u{00B7} Enter focus \u{00B7} r resolve",
-                CursorTarget::AccumulatedItem(_) =>
-                    "l descend \u{00B7} Enter focus",
-                CursorTarget::NoteItem(_) =>
-                    "Enter focus",
-                CursorTarget::InputPoint =>
-                    "a add \u{00B7} n note \u{00B7} e edit",
-                CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated =>
-                    "Enter expand \u{00B7} j/k navigate",
-                CursorTarget::Reality =>
-                    "e edit reality \u{00B7} Enter focus",
+                CursorTarget::Desire => "e edit desire \u{00B7} Enter focus",
+                CursorTarget::Route(_) | CursorTarget::Next(_) => {
+                    "e edit \u{00B7} Enter focus \u{00B7} l descend \u{00B7} p hold \u{00B7} r resolve"
+                }
+                CursorTarget::Overdue(_) => "r resolve \u{00B7} ~ release \u{00B7} l descend",
+                CursorTarget::HeldItem(_) => {
+                    "e edit \u{00B7} p position \u{00B7} Enter focus \u{00B7} r resolve"
+                }
+                CursorTarget::AccumulatedItem(_) => "l descend \u{00B7} Enter focus",
+                CursorTarget::NoteItem(_) => "Enter focus",
+                CursorTarget::InputPoint => "a add \u{00B7} n note \u{00B7} e edit",
+                CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated => {
+                    "Enter expand \u{00B7} j/k navigate"
+                }
+                CursorTarget::Reality => "e edit reality \u{00B7} Enter focus",
             }
         } else {
             ""
@@ -1648,7 +1938,6 @@ impl InstrumentApp {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 
 /// Word-wrap text to a given width.
 pub fn word_wrap(text: &str, width: usize) -> Vec<String> {

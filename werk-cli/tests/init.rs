@@ -1,15 +1,15 @@
 //! Integration tests for `werk init` command.
 //!
 //! Tests verify:
-//! - VAL-INIT-001: `werk init` creates .werk/sd.db with correct schema
-//! - VAL-INIT-002: `werk init --global` creates ~/.werk/sd.db
+//! - VAL-INIT-001: `werk init` creates .werk/werk.db with correct schema
+//! - VAL-INIT-002: `werk init --global` creates ~/.werk/werk.db
 //! - VAL-INIT-003: Init is idempotent (re-running preserves data)
 
 use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
-/// VAL-INIT-001: `werk init` creates .werk/sd.db with correct schema
+/// VAL-INIT-001: `werk init` creates .werk/werk.db with correct schema
 #[test]
 fn test_init_creates_workspace() {
     let dir = TempDir::new().unwrap();
@@ -24,8 +24,8 @@ fn test_init_creates_workspace() {
     // Verify .werk/ directory was created
     assert!(dir.path().join(".werk").exists());
 
-    // Verify sd.db was created
-    assert!(dir.path().join(".werk").join("sd.db").exists());
+    // Verify werk.db was created
+    assert!(dir.path().join(".werk").join("werk.db").exists());
 }
 
 /// VAL-INIT-001: Database has correct schema (tensions + mutations tables)
@@ -39,9 +39,9 @@ fn test_init_creates_correct_schema() {
         .assert()
         .success();
 
-    // Open the database using sd_core and verify we can create/list tensions
+    // Open the database using werk_core and verify we can create/list tensions
     // This verifies the schema is correct
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
 
     // Should be able to list tensions (empty is fine)
     let tensions = store.list_tensions().unwrap();
@@ -56,7 +56,7 @@ fn test_init_creates_correct_schema() {
     assert_eq!(mutations.len(), 1, "should have creation mutation");
 }
 
-/// VAL-INIT-002: `werk init --global` creates ~/.werk/sd.db
+/// VAL-INIT-002: `werk init --global` creates ~/.werk/werk.db
 /// Note: We can't test against real home directory, so we test that --global
 /// creates a workspace at a different location than local init.
 #[test]
@@ -90,8 +90,8 @@ fn test_init_idempotent_preserves_data() {
         .success()
         .stdout(predicate::str::contains("Workspace initialized"));
 
-    // Create a tension using sd-core directly
-    let store = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    // Create a tension using werk-core directly
+    let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("test goal", "test reality").unwrap();
 
     // Re-run init - should say "already initialized" but still succeed
@@ -103,7 +103,7 @@ fn test_init_idempotent_preserves_data() {
         .stdout(predicate::str::contains("Workspace"));
 
     // Verify tension still exists
-    let store2 = sd_core::Store::init_unlocked(dir.path()).unwrap();
+    let store2 = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let retrieved = store2.get_tension(&tension.id).unwrap();
     assert!(
         retrieved.is_some(),

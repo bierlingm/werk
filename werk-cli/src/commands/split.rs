@@ -13,8 +13,8 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use sd_core::tension::TensionStatus;
 use serde::Serialize;
+use werk_core::tension::TensionStatus;
 
 #[derive(Serialize)]
 struct SplitResult {
@@ -74,8 +74,7 @@ pub fn cmd_split(
     }
 
     let source_id = source.id.clone();
-    let source_display =
-        werk_shared::display_id(source.short_code, &source_id);
+    let source_display = werk_shared::display_id(source.short_code, &source_id);
     let parent_id = source.parent_id.clone();
 
     // Get children of the source
@@ -97,9 +96,9 @@ pub fn cmd_split(
             .trim_start_matches('#')
             .parse()
             .map_err(|_| WerkError::InvalidInput(format!("invalid child ID: '{}'", parts[0])))?;
-        let target: usize = parts[1]
-            .parse()
-            .map_err(|_| WerkError::InvalidInput(format!("invalid target number: '{}'", parts[1])))?;
+        let target: usize = parts[1].parse().map_err(|_| {
+            WerkError::InvalidInput(format!("invalid target number: '{}'", parts[1]))
+        })?;
         if target < 1 || target > desires.len() {
             return Err(WerkError::InvalidInput(format!(
                 "target {} out of range (1-{})",
@@ -111,7 +110,10 @@ pub fn cmd_split(
     }
 
     // Determine assignment strategy for unassigned children
-    if !children.is_empty() && assignments.is_empty() && !children_to_parent && children_to.is_none()
+    if !children.is_empty()
+        && assignments.is_empty()
+        && !children_to_parent
+        && children_to.is_none()
     {
         // No assignment strategy — error with helpful message
         let child_list: Vec<String> = children
@@ -145,7 +147,11 @@ pub fn cmd_split(
     }
 
     if dry_run {
-        println!("Dry run: would split {} into {} tensions:", source_display, desires.len());
+        println!(
+            "Dry run: would split {} into {} tensions:",
+            source_display,
+            desires.len()
+        );
         for (i, d) in desires.iter().enumerate() {
             println!("  {}. {}", i + 1, d);
         }
@@ -196,7 +202,7 @@ pub fn cmd_split(
         .map_err(WerkError::StoreError)?;
 
     // 2. Create new tensions
-    let mut new_tensions: Vec<sd_core::Tension> = Vec::new();
+    let mut new_tensions: Vec<werk_core::Tension> = Vec::new();
     for desire in &desires {
         let t = store
             .create_tension_with_parent(desire, "", parent_id.clone())
@@ -204,7 +210,7 @@ pub fn cmd_split(
 
         // Create split_from edge: new → source
         store
-            .create_edge(&t.id, &source_id, sd_core::EDGE_SPLIT_FROM)
+            .create_edge(&t.id, &source_id, werk_core::EDGE_SPLIT_FROM)
             .map_err(WerkError::StoreError)?;
 
         // Create origin epoch on new tension
@@ -277,7 +283,7 @@ pub fn cmd_split(
 
     // Record the split mutation on source
     store
-        .record_mutation(&sd_core::Mutation::new(
+        .record_mutation(&werk_core::Mutation::new(
             source_id.clone(),
             chrono::Utc::now(),
             "split".to_owned(),
@@ -321,7 +327,11 @@ pub fn cmd_split(
             .map_err(WerkError::IoError)?;
     } else {
         output
-            .success(&format!("Split {} into {} tensions:", source_display, new_tensions.len()))
+            .success(&format!(
+                "Split {} into {} tensions:",
+                source_display,
+                new_tensions.len()
+            ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         for (i, t) in new_tensions.iter().enumerate() {
             let display = werk_shared::display_id(t.short_code, &t.id);
@@ -335,7 +345,13 @@ pub fn cmd_split(
         if !reparented.is_empty() {
             println!("\n  {} children reparented.", reparented.len());
         }
-        let disposition = if keep { "kept active" } else if release { "released" } else { "resolved" };
+        let disposition = if keep {
+            "kept active"
+        } else if release {
+            "released"
+        } else {
+            "resolved"
+        };
         println!("  Source {} {}.", source_display, disposition);
     }
 

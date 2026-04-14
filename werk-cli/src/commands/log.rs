@@ -14,8 +14,8 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use sd_core::address::{Address, parse_address};
 use serde::Serialize;
+use werk_core::address::{Address, parse_address};
 use werk_shared::cli_display::glyphs;
 
 // ── JSON output structs ───────────────────────────────────────────
@@ -113,9 +113,7 @@ pub fn cmd_log(
                 let tension = tensions
                     .iter()
                     .find(|t| t.short_code == Some(n))
-                    .ok_or_else(|| {
-                        WerkError::InvalidInput(format!("tension #{} not found", n))
-                    })?;
+                    .ok_or_else(|| WerkError::InvalidInput(format!("tension #{} not found", n)))?;
                 if compare {
                     return cmd_log_compare(output, &store, tension);
                 }
@@ -178,8 +176,8 @@ pub fn cmd_log(
 
 fn cmd_log_tension(
     output: &Output,
-    store: &sd_core::Store,
-    tension: &sd_core::Tension,
+    store: &werk_core::Store,
+    tension: &werk_core::Tension,
     search: Option<&str>,
     since: Option<&str>,
     _session: bool,
@@ -226,7 +224,8 @@ fn cmd_log_tension(
                 .iter()
                 .map(|e| {
                     let epoch_idx = all_epochs.iter().position(|ae| ae.id == e.id).unwrap_or(0);
-                    let mutation_count = count_mutations_in_epoch(store, tension_id, &all_epochs, epoch_idx);
+                    let mutation_count =
+                        count_mutations_in_epoch(store, tension_id, &all_epochs, epoch_idx);
                     LogEpochEntry {
                         number: epoch_idx + 1,
                         id: e.id.clone(),
@@ -283,9 +282,13 @@ fn cmd_log_tension(
         // container distinct from tree connectors.
         let rev_epochs: Vec<_> = epochs.iter().rev().collect();
         for epoch in rev_epochs.iter() {
-            let epoch_idx = all_epochs.iter().position(|ae| ae.id == epoch.id).unwrap_or(0);
+            let epoch_idx = all_epochs
+                .iter()
+                .position(|ae| ae.id == epoch.id)
+                .unwrap_or(0);
             let age = format_age(epoch.timestamp);
-            let mutation_count = count_mutations_in_epoch(store, tension_id, &all_epochs, epoch_idx);
+            let mutation_count =
+                count_mutations_in_epoch(store, tension_id, &all_epochs, epoch_idx);
 
             let type_label = match &epoch.epoch_type {
                 Some(t) => palette.chrome(&format!(" [{}]", t)),
@@ -352,8 +355,8 @@ fn cmd_log_tension(
 
 fn cmd_log_epoch_detail(
     output: &Output,
-    store: &sd_core::Store,
-    tension: &sd_core::Tension,
+    store: &werk_core::Store,
+    tension: &werk_core::Tension,
     epoch_num: usize,
 ) -> Result<(), WerkError> {
     let tension_id = &tension.id;
@@ -472,8 +475,8 @@ fn cmd_log_epoch_detail(
 
 fn cmd_log_compare(
     output: &Output,
-    store: &sd_core::Store,
-    tension: &sd_core::Tension,
+    store: &werk_core::Store,
+    tension: &werk_core::Tension,
 ) -> Result<(), WerkError> {
     let tension_id = &tension.id;
     let display = werk_shared::display_id(tension.short_code, tension_id);
@@ -537,7 +540,11 @@ fn cmd_log_compare(
 
         // Current state
         println!();
-        println!("  current               \u{25c6} {} \u{25c7} {}", truncate(&tension.desired, 40), truncate(&tension.actual, 40));
+        println!(
+            "  current               \u{25c6} {} \u{25c7} {}",
+            truncate(&tension.desired, 40),
+            truncate(&tension.actual, 40)
+        );
     }
 
     Ok(())
@@ -547,7 +554,7 @@ fn cmd_log_compare(
 
 fn cmd_log_timeline(
     output: &Output,
-    store: &sd_core::Store,
+    store: &werk_core::Store,
     since: Option<&str>,
 ) -> Result<(), WerkError> {
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
@@ -558,7 +565,14 @@ fn cmd_log_timeline(
     };
 
     // Collect all recent epochs across all tensions
-    let mut entries: Vec<(DateTime<Utc>, String, Option<i32>, String, usize, Option<String>)> = Vec::new();
+    let mut entries: Vec<(
+        DateTime<Utc>,
+        String,
+        Option<i32>,
+        String,
+        usize,
+        Option<String>,
+    )> = Vec::new();
 
     for tension in &tensions {
         let epochs = store
@@ -634,7 +648,7 @@ fn cmd_log_timeline(
 
 fn cmd_log_gesture(
     output: &Output,
-    store: &sd_core::Store,
+    store: &werk_core::Store,
     gesture_id: &str,
 ) -> Result<(), WerkError> {
     // Find all mutations with this gesture_id
@@ -685,7 +699,15 @@ fn cmd_log_gesture(
             .map_err(WerkError::IoError)?;
     } else {
         println!("Gesture {}", &gesture_id[..gesture_id.len().min(12)]);
-        println!("  {} mutation{}", gesture_mutations.len(), if gesture_mutations.len() == 1 { "" } else { "s" });
+        println!(
+            "  {} mutation{}",
+            gesture_mutations.len(),
+            if gesture_mutations.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
+        );
         println!();
         for m in &gesture_mutations {
             let ts = &m.timestamp().to_rfc3339()[..19].replace('T', " ");
@@ -705,9 +727,9 @@ fn cmd_log_gesture(
 // ── Helpers ───────────────────────────────────────────────────────
 
 fn build_provenance(
-    edges: &[sd_core::Edge],
+    edges: &[werk_core::Edge],
     tension_id: &str,
-    tensions: &[sd_core::Tension],
+    tensions: &[werk_core::Tension],
 ) -> ProvenanceInfo {
     let find_tension = |id: &str| -> ProvenanceRef {
         let t = tensions.iter().find(|t| t.id == id);
@@ -720,25 +742,25 @@ fn build_provenance(
 
     let split_from: Vec<_> = edges
         .iter()
-        .filter(|e| e.from_id == tension_id && e.edge_type == sd_core::EDGE_SPLIT_FROM)
+        .filter(|e| e.from_id == tension_id && e.edge_type == werk_core::EDGE_SPLIT_FROM)
         .map(|e| find_tension(&e.to_id))
         .collect();
 
     let merged_into: Vec<_> = edges
         .iter()
-        .filter(|e| e.from_id == tension_id && e.edge_type == sd_core::EDGE_MERGED_INTO)
+        .filter(|e| e.from_id == tension_id && e.edge_type == werk_core::EDGE_MERGED_INTO)
         .map(|e| find_tension(&e.to_id))
         .collect();
 
     let split_children: Vec<_> = edges
         .iter()
-        .filter(|e| e.to_id == tension_id && e.edge_type == sd_core::EDGE_SPLIT_FROM)
+        .filter(|e| e.to_id == tension_id && e.edge_type == werk_core::EDGE_SPLIT_FROM)
         .map(|e| find_tension(&e.from_id))
         .collect();
 
     let merge_sources: Vec<_> = edges
         .iter()
-        .filter(|e| e.to_id == tension_id && e.edge_type == sd_core::EDGE_MERGED_INTO)
+        .filter(|e| e.to_id == tension_id && e.edge_type == werk_core::EDGE_MERGED_INTO)
         .map(|e| find_tension(&e.from_id))
         .collect();
 
@@ -762,7 +784,14 @@ fn print_provenance(p: &ProvenanceInfo) {
         let refs: Vec<String> = p
             .split_from
             .iter()
-            .map(|r| format!("#{}", r.short_code.map(|n| n.to_string()).unwrap_or_else(|| "?".into())))
+            .map(|r| {
+                format!(
+                    "#{}",
+                    r.short_code
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "?".into())
+                )
+            })
             .collect();
         println!("  Split from: {}", refs.join(", "));
     }
@@ -770,7 +799,14 @@ fn print_provenance(p: &ProvenanceInfo) {
         let refs: Vec<String> = p
             .merged_into
             .iter()
-            .map(|r| format!("#{}", r.short_code.map(|n| n.to_string()).unwrap_or_else(|| "?".into())))
+            .map(|r| {
+                format!(
+                    "#{}",
+                    r.short_code
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "?".into())
+                )
+            })
             .collect();
         println!("  Merged into: {}", refs.join(", "));
     }
@@ -778,7 +814,14 @@ fn print_provenance(p: &ProvenanceInfo) {
         let refs: Vec<String> = p
             .split_children
             .iter()
-            .map(|r| format!("#{}", r.short_code.map(|n| n.to_string()).unwrap_or_else(|| "?".into())))
+            .map(|r| {
+                format!(
+                    "#{}",
+                    r.short_code
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "?".into())
+                )
+            })
             .collect();
         println!("  Split into: {}", refs.join(", "));
     }
@@ -786,16 +829,23 @@ fn print_provenance(p: &ProvenanceInfo) {
         let refs: Vec<String> = p
             .merge_sources
             .iter()
-            .map(|r| format!("#{}", r.short_code.map(|n| n.to_string()).unwrap_or_else(|| "?".into())))
+            .map(|r| {
+                format!(
+                    "#{}",
+                    r.short_code
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "?".into())
+                )
+            })
             .collect();
         println!("  Absorbed: {}", refs.join(", "));
     }
 }
 
 fn count_mutations_in_epoch(
-    store: &sd_core::Store,
+    store: &werk_core::Store,
     tension_id: &str,
-    epochs: &[sd_core::EpochRecord],
+    epochs: &[werk_core::EpochRecord],
     idx: usize,
 ) -> usize {
     let epoch = &epochs[idx];
@@ -817,20 +867,14 @@ fn count_mutations_in_epoch(
 fn parse_timespec(s: &str) -> Result<DateTime<Utc>, WerkError> {
     // Try ISO date first
     if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Ok(date
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc());
+        return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
     }
 
     // Try partial date (YYYY-MM)
     if s.len() == 7 && s.chars().nth(4) == Some('-') {
         let with_day = format!("{}-01", s);
         if let Ok(date) = NaiveDate::parse_from_str(&with_day, "%Y-%m-%d") {
-            return Ok(date
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_utc());
+            return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
         }
     }
 
@@ -841,14 +885,14 @@ fn parse_timespec(s: &str) -> Result<DateTime<Utc>, WerkError> {
         "yesterday" => Ok(now - Duration::days(1)),
         _ => {
             if let Some(n_str) = s.strip_suffix('d') {
-                let n: i64 = n_str.parse().map_err(|_| {
-                    WerkError::InvalidInput(format!("invalid timespec: '{}'", s))
-                })?;
+                let n: i64 = n_str
+                    .parse()
+                    .map_err(|_| WerkError::InvalidInput(format!("invalid timespec: '{}'", s)))?;
                 Ok(now - Duration::days(n))
             } else if let Some(n_str) = s.strip_suffix('w') {
-                let n: i64 = n_str.parse().map_err(|_| {
-                    WerkError::InvalidInput(format!("invalid timespec: '{}'", s))
-                })?;
+                let n: i64 = n_str
+                    .parse()
+                    .map_err(|_| WerkError::InvalidInput(format!("invalid timespec: '{}'", s)))?;
                 Ok(now - Duration::weeks(n))
             } else {
                 Err(WerkError::InvalidInput(format!(
@@ -861,11 +905,7 @@ fn parse_timespec(s: &str) -> Result<DateTime<Utc>, WerkError> {
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        s
-    } else {
-        &s[..max]
-    }
+    if s.len() <= max { s } else { &s[..max] }
 }
 
 fn format_age(timestamp: DateTime<Utc>) -> String {

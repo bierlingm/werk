@@ -27,7 +27,7 @@ use ftui::text::{Line, Span, Text};
 use ftui::widgets::Widget;
 use ftui::widgets::paragraph::Paragraph;
 
-use sd_core::TensionStatus;
+use werk_core::TensionStatus;
 
 use crate::app::InstrumentApp;
 use crate::glyphs;
@@ -80,14 +80,24 @@ impl TimeBand {
 
     /// All band variants in display order.
     pub fn all() -> &'static [TimeBand] {
-        &[TimeBand::Overdue, TimeBand::ThisWeek, TimeBand::ThisMonth, TimeBand::Later, TimeBand::NoDeadline]
+        &[
+            TimeBand::Overdue,
+            TimeBand::ThisWeek,
+            TimeBand::ThisMonth,
+            TimeBand::Later,
+            TimeBand::NoDeadline,
+        ]
     }
 
     /// Create a HashMap of per-band ListStates (used by app initialization).
-    pub fn all_band_states() -> std::collections::HashMap<TimeBand, std::cell::RefCell<ftui::widgets::list::ListState>> {
+    pub fn all_band_states()
+    -> std::collections::HashMap<TimeBand, std::cell::RefCell<ftui::widgets::list::ListState>> {
         let mut m = std::collections::HashMap::new();
         for &b in Self::all() {
-            m.insert(b, std::cell::RefCell::new(ftui::widgets::list::ListState::default()));
+            m.insert(
+                b,
+                std::cell::RefCell::new(ftui::widgets::list::ListState::default()),
+            );
         }
         m
     }
@@ -117,7 +127,11 @@ pub fn compute_band_ranges(items: &[SurveyItem]) -> Vec<BandRange> {
         while i < items.len() && items[i].band == band {
             i += 1;
         }
-        ranges.push(BandRange { band, start, count: i - start });
+        ranges.push(BandRange {
+            band,
+            start,
+            count: i - start,
+        });
     }
     ranges
 }
@@ -178,7 +192,7 @@ impl InstrumentApp {
         };
 
         // Build id → tension map for parent/ancestor lookups.
-        let tension_map: std::collections::HashMap<&str, &sd_core::Tension> =
+        let tension_map: std::collections::HashMap<&str, &werk_core::Tension> =
             all.iter().map(|t| (t.id.as_str(), t)).collect();
 
         // Child count and resolved count per tension (for closure ratio).
@@ -199,12 +213,14 @@ impl InstrumentApp {
                 if t.status == TensionStatus::Active {
                     if let Some(pos) = t.position {
                         let entry = next_step_per_parent.entry(pid.as_str());
-                        entry.and_modify(|(id, cur_pos)| {
-                            if pos < *cur_pos {
-                                *id = t.id.as_str();
-                                *cur_pos = pos;
-                            }
-                        }).or_insert((t.id.as_str(), pos));
+                        entry
+                            .and_modify(|(id, cur_pos)| {
+                                if pos < *cur_pos {
+                                    *id = t.id.as_str();
+                                    *cur_pos = pos;
+                                }
+                            })
+                            .or_insert((t.id.as_str(), pos));
                     }
                 }
             }
@@ -218,10 +234,13 @@ impl InstrumentApp {
             .map(|t| {
                 // Walk ancestry to find effective horizon.
                 let own_end = t.horizon.as_ref().map(|h| h.range_end());
-                let own_label = t.horizon.as_ref()
+                let own_label = t
+                    .horizon
+                    .as_ref()
                     .map(|h| glyphs::compact_horizon(h, now_year));
 
-                let (effective_end, effective_label, inherited, provider_id) = if own_end.is_some() {
+                let (effective_end, effective_label, inherited, provider_id) = if own_end.is_some()
+                {
                     (own_end, own_label.clone(), false, None)
                 } else {
                     let (end, label, inh, pid) = find_ancestor_horizon(t, &tension_map, now_year);
@@ -234,7 +253,9 @@ impl InstrumentApp {
                 let resolved_children = resolved_counts.get(t.id.as_str()).copied().unwrap_or(0);
 
                 // Is this tension the "next step" in its parent's sequence?
-                let is_next = t.parent_id.as_deref()
+                let is_next = t
+                    .parent_id
+                    .as_deref()
                     .and_then(|pid| next_step_per_parent.get(pid))
                     .map(|(next_id, _)| *next_id == t.id.as_str())
                     .unwrap_or(false);
@@ -262,12 +283,12 @@ impl InstrumentApp {
             .collect();
 
         // Compute structural signals for each item.
-        if let Ok(forest) = sd_core::Forest::from_tensions(all.clone()) {
-            let field_structural = sd_core::compute_structural_signals(&forest);
+        if let Ok(forest) = werk_core::Forest::from_tensions(all.clone()) {
+            let field_structural = werk_core::compute_structural_signals(&forest);
 
             for idx in 0..items.len() {
                 let tension_id = items[idx].tension_id.clone();
-                let temporal = sd_core::compute_temporal_signals(&forest, &tension_id, now);
+                let temporal = werk_core::compute_temporal_signals(&forest, &tension_id, now);
 
                 // Overdue glyph (band already colors it, but glyph is explicit signal mark)
                 if items[idx].band == TimeBand::Overdue {
@@ -285,7 +306,9 @@ impl InstrumentApp {
                 if !temporal.critical_path.is_empty() && !temporal.on_critical_path {
                     items[idx].signal_glyphs.push("\u{2021}"); // ‡ (as parent)
                 }
-                if !temporal.containment_violations.is_empty() && !temporal.has_containment_violation {
+                if !temporal.containment_violations.is_empty()
+                    && !temporal.has_containment_violation
+                {
                     items[idx].signal_glyphs.push("\u{21a5}"); // ↥ (as parent)
                 }
 
@@ -293,10 +316,10 @@ impl InstrumentApp {
                 let t = all.iter().find(|t| t.id == tension_id);
                 if t.is_some_and(|t| t.horizon.is_some()) {
                     if let Ok(mutations) = self.engine.store().get_mutations(&tension_id) {
-                        let drift = sd_core::detect_horizon_drift(&tension_id, &mutations);
+                        let drift = werk_core::detect_horizon_drift(&tension_id, &mutations);
                         match drift.drift_type {
-                            sd_core::HorizonDriftType::RepeatedPostponement
-                            | sd_core::HorizonDriftType::Oscillating => {
+                            werk_core::HorizonDriftType::RepeatedPostponement
+                            | werk_core::HorizonDriftType::Oscillating => {
                                 items[idx].signal_glyphs.push("\u{219d}"); // ↝
                             }
                             _ => {}
@@ -306,7 +329,11 @@ impl InstrumentApp {
 
                 // Structural signals
                 if let Some(ss) = field_structural.signals.get(&tension_id) {
-                    if ss.centrality.map(|c| c > self.signal_thresholds.hub_centrality).unwrap_or(false) {
+                    if ss
+                        .centrality
+                        .map(|c| c > self.signal_thresholds.hub_centrality)
+                        .unwrap_or(false)
+                    {
                         items[idx].signal_glyphs.push("\u{25c9}"); // ◉ HUB
                     }
                     if ss.on_longest_path {
@@ -318,13 +345,14 @@ impl InstrumentApp {
 
         // Phase 1: Sort by band, then by effective deadline descending.
         items.sort_by(|a, b| {
-            a.band.cmp(&b.band)
-                .then_with(|| match (&a.effective_horizon_end, &b.effective_horizon_end) {
+            a.band.cmp(&b.band).then_with(|| {
+                match (&a.effective_horizon_end, &b.effective_horizon_end) {
                     (Some(ae), Some(be)) => be.cmp(ae),
                     (Some(_), None) => std::cmp::Ordering::Greater,
                     (None, Some(_)) => std::cmp::Ordering::Less,
                     (None, None) => a.tension_id.cmp(&b.tension_id),
-                })
+                }
+            })
         });
 
         // Phase 2: Within each band, reorder into depth-first tree order
@@ -352,11 +380,16 @@ impl InstrumentApp {
             }
         }
         // Stale realities: active tensions whose last 'actual' mutation is >7 days old.
-        let active_ids: Vec<&str> = all.iter()
+        let active_ids: Vec<&str> = all
+            .iter()
             .filter(|t| t.status == TensionStatus::Active)
             .map(|t| t.id.as_str())
             .collect();
-        if let Ok(last_actuals) = self.engine.store().get_last_mutation_timestamps(&active_ids, &["actual"]) {
+        if let Ok(last_actuals) = self
+            .engine
+            .store()
+            .get_last_mutation_timestamps(&active_ids, &["actual"])
+        {
             let stale_cutoff = now - chrono::Duration::days(7);
             for t in all.iter().filter(|t| t.status == TensionStatus::Active) {
                 match last_actuals.get(&t.id) {
@@ -400,14 +433,13 @@ impl InstrumentApp {
     pub fn survey_focused_band(&self) -> Option<TimeBand> {
         self.survey_items.get(self.survey_cursor).map(|it| it.band)
     }
-
 }
 
 /// Walk up the ancestry chain to find the nearest horizon.
 /// Returns (end, label, inherited, provider_id).
 fn find_ancestor_horizon(
-    tension: &sd_core::Tension,
-    map: &std::collections::HashMap<&str, &sd_core::Tension>,
+    tension: &werk_core::Tension,
+    map: &std::collections::HashMap<&str, &werk_core::Tension>,
     now_year: i32,
 ) -> (Option<DateTime<Utc>>, Option<String>, bool, Option<String>) {
     let mut current_pid = tension.parent_id.as_deref();
@@ -419,7 +451,12 @@ fn find_ancestor_horizon(
                 if let Some(ancestor) = map.get(pid) {
                     if let Some(ref h) = ancestor.horizon {
                         let label = glyphs::compact_horizon(h, now_year);
-                        return (Some(h.range_end()), Some(label), true, Some(ancestor.id.clone()));
+                        return (
+                            Some(h.range_end()),
+                            Some(label),
+                            true,
+                            Some(ancestor.id.clone()),
+                        );
                     }
                     current_pid = ancestor.parent_id.as_deref();
                 } else {
@@ -449,7 +486,8 @@ fn tree_order_within_bands(items: Vec<SurveyItem>) -> Vec<SurveyItem> {
         // Identify provider groups: items sharing the same provider_id.
         // Standalone items (no provider) are their own group.
         let mut groups: Vec<Vec<&SurveyItem>> = Vec::new();
-        let mut group_map: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut group_map: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
 
         for item in band_items {
             match item.horizon_provider_id.as_deref() {
@@ -493,7 +531,9 @@ fn tree_order_within_bands(items: Vec<SurveyItem>) -> Vec<SurveyItem> {
             }
 
             // Find the provider (first item without horizon_provider_id, or first item).
-            let provider_idx = group.iter().position(|it| it.horizon_provider_id.is_none())
+            let provider_idx = group
+                .iter()
+                .position(|it| it.horizon_provider_id.is_none())
                 .unwrap_or(0);
             let provider = group[provider_idx];
 
@@ -503,15 +543,15 @@ fn tree_order_within_bands(items: Vec<SurveyItem>) -> Vec<SurveyItem> {
             result.push(p);
 
             // Build parent → children mapping for the remaining items.
-            let inheritors: Vec<&SurveyItem> = group.iter()
+            let inheritors: Vec<&SurveyItem> = group
+                .iter()
                 .filter(|it| it.tension_id != provider.tension_id)
                 .copied()
                 .collect();
 
             // Map from id → [children in this group].
-            let item_ids: std::collections::HashSet<&str> = group.iter()
-                .map(|it| it.tension_id.as_str())
-                .collect();
+            let item_ids: std::collections::HashSet<&str> =
+                group.iter().map(|it| it.tension_id.as_str()).collect();
             let mut children_of: std::collections::HashMap<&str, Vec<&SurveyItem>> =
                 std::collections::HashMap::new();
 
@@ -530,7 +570,8 @@ fn tree_order_within_bands(items: Vec<SurveyItem>) -> Vec<SurveyItem> {
                         }
                         // Walk up: find this id's parent in the group items.
                         // We need the raw parent_id chain. Check if any group item has this id.
-                        let parent_of_current = group.iter()
+                        let parent_of_current = group
+                            .iter()
                             .find(|it| it.tension_id == current)
                             .and_then(|it| it.parent_id.as_deref());
                         match parent_of_current {
@@ -627,7 +668,12 @@ fn truncate_desired(s: &str, max_chars: usize) -> String {
     if chars.len() <= max_chars {
         first_line.to_string()
     } else {
-        format!("{}…", chars[..max_chars.saturating_sub(1)].iter().collect::<String>())
+        format!(
+            "{}…",
+            chars[..max_chars.saturating_sub(1)]
+                .iter()
+                .collect::<String>()
+        )
     }
 }
 
@@ -641,17 +687,15 @@ const SURVEY_INDENT: &str = "  ";
 impl InstrumentApp {
     pub fn render_survey(&self, area: &Rect, frame: &mut Frame<'_>) {
         use ftui::layout::{Constraint, Flex};
+        use ftui::widgets::StatefulWidget;
         use ftui::widgets::block::Block;
         use ftui::widgets::borders::{BorderType, Borders};
         use ftui::widgets::list::{List, ListItem};
-        use ftui::widgets::StatefulWidget;
 
         let full_area = self.layout.content_area(*area);
 
         if self.survey_items.is_empty() {
-            let line = Line::from_spans([
-                Span::styled("  No active tensions.", self.styles.dim),
-            ]);
+            let line = Line::from_spans([Span::styled("  No active tensions.", self.styles.dim)]);
             Paragraph::new(Text::from_lines(vec![line])).render(full_area, frame);
             return;
         }
@@ -672,18 +716,21 @@ impl InstrumentApp {
         let total_h = area.height as usize;
         let min_band: usize = 3; // border + 1 item + border
 
-        let natural: Vec<usize> = ranges.iter()
-            .map(|r| r.count + 2)
-            .collect();
+        let natural: Vec<usize> = ranges.iter().map(|r| r.count + 2).collect();
         let total_natural: usize = natural.iter().sum();
 
         let constraints: Vec<Constraint> = if total_natural <= total_h {
             // Everything fits — use exact natural heights, no empty Fill space.
-            natural.iter().map(|&h| Constraint::Fixed(h as u16)).collect()
+            natural
+                .iter()
+                .map(|&h| Constraint::Fixed(h as u16))
+                .collect()
         } else {
             // Overflow — largest band gets Fill (it needs scrolling most),
             // all others get capped Fixed heights.
-            let largest_idx = natural.iter().enumerate()
+            let largest_idx = natural
+                .iter()
+                .enumerate()
                 .max_by_key(|&(_, h)| h)
                 .map(|(i, _)| i)
                 .unwrap_or(0);
@@ -695,14 +742,18 @@ impl InstrumentApp {
                 0
             };
 
-            ranges.iter().enumerate().map(|(i, range)| {
-                if i == largest_idx {
-                    Constraint::Fill
-                } else {
-                    let h = (range.count + 2).min(per_band_budget).max(min_band);
-                    Constraint::Fixed(h as u16)
-                }
-            }).collect()
+            ranges
+                .iter()
+                .enumerate()
+                .map(|(i, range)| {
+                    if i == largest_idx {
+                        Constraint::Fill
+                    } else {
+                        let h = (range.count + 2).min(per_band_budget).max(min_band);
+                        Constraint::Fixed(h as u16)
+                    }
+                })
+                .collect()
         };
 
         let slots = Flex::vertical().constraints(constraints).split(area);
@@ -753,7 +804,9 @@ impl InstrumentApp {
 
     /// Render the survey bottom bar with field vitals.
     pub fn render_survey_bar(&self, area: &Rect, frame: &mut Frame<'_>) {
-        let content = self.layout.content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
+        let content =
+            self.layout
+                .content_area(Rect::new(area.x, area.y, area.width, area.height + 10));
         let bar_area = Rect::new(content.x, area.y, content.width, 1);
 
         let v = &self.field_vitals;
@@ -784,7 +837,14 @@ impl InstrumentApp {
 
         let mut spans: Vec<Span> = Vec::new();
         let has_attention = v.stale_realities > 0 || v.signaled > 0;
-        spans.push(Span::styled(&left, if has_attention { self.styles.amber } else { self.styles.dim }));
+        spans.push(Span::styled(
+            &left,
+            if has_attention {
+                self.styles.amber
+            } else {
+                self.styles.dim
+            },
+        ));
 
         if center_start > left_w + 1 {
             let pad = " ".repeat(center_start - left_w);
@@ -795,14 +855,16 @@ impl InstrumentApp {
         let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
         let right_start = w.saturating_sub(right_w);
         if used < right_start {
-            spans.push(Span::styled(" ".repeat(right_start - used), self.styles.dim));
+            spans.push(Span::styled(
+                " ".repeat(right_start - used),
+                self.styles.dim,
+            ));
             spans.push(Span::styled(right_text, self.styles.dim));
         } else if used < w {
             spans.push(Span::styled(" ".repeat(w - used), self.styles.dim));
         }
 
-        Paragraph::new(Text::from_lines(vec![Line::from_spans(spans)]))
-            .render(bar_area, frame);
+        Paragraph::new(Text::from_lines(vec![Line::from_spans(spans)])).render(bar_area, frame);
     }
 }
 
@@ -853,12 +915,32 @@ fn render_provider_line(
     let text_w = desire_text.chars().count();
     let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
-    let style_text = if is_selected { styles.selected } else { styles.text };
-    let style_dim = if is_selected { styles.selected } else { styles.dim };
-    let style_glyph = if is_selected { styles.selected } else { glyph_style(item, styles) };
-    let style_signal = if is_selected { styles.selected } else { styles.amber };
+    let style_text = if is_selected {
+        styles.selected
+    } else {
+        styles.text
+    };
+    let style_dim = if is_selected {
+        styles.selected
+    } else {
+        styles.dim
+    };
+    let style_glyph = if is_selected {
+        styles.selected
+    } else {
+        glyph_style(item, styles)
+    };
+    let style_signal = if is_selected {
+        styles.selected
+    } else {
+        styles.amber
+    };
     let style_horizon = if item.urgency > 1.0 {
-        if is_selected { styles.selected } else { styles.amber }
+        if is_selected {
+            styles.selected
+        } else {
+            styles.amber
+        }
     } else {
         style_dim
     };
@@ -901,10 +983,26 @@ fn render_tree_child_line(
     let text_w = desire_text.chars().count();
     let gap = w.saturating_sub(left_used + text_w + signal_w + right_w);
 
-    let style_text = if is_selected { styles.selected } else { styles.text };
-    let style_dim = if is_selected { styles.selected } else { styles.dim };
-    let style_glyph = if is_selected { styles.selected } else { glyph_style(item, styles) };
-    let style_signal = if is_selected { styles.selected } else { styles.amber };
+    let style_text = if is_selected {
+        styles.selected
+    } else {
+        styles.text
+    };
+    let style_dim = if is_selected {
+        styles.selected
+    } else {
+        styles.dim
+    };
+    let style_glyph = if is_selected {
+        styles.selected
+    } else {
+        glyph_style(item, styles)
+    };
+    let style_signal = if is_selected {
+        styles.selected
+    } else {
+        styles.amber
+    };
 
     let mut spans = vec![
         Span::styled(" ".repeat(base_indent), style_dim),
@@ -925,7 +1023,13 @@ fn position_glyph(item: &SurveyItem) -> &'static str {
 }
 
 fn glyph_style(item: &SurveyItem, styles: &InstrumentStyles) -> ftui::style::Style {
-    if item.is_held { styles.subdued } else if item.is_next { styles.green } else { styles.cyan }
+    if item.is_held {
+        styles.subdued
+    } else if item.is_next {
+        styles.green
+    } else {
+        styles.cyan
+    }
 }
 
 fn signal_display_str(item: &SurveyItem) -> String {
@@ -937,7 +1041,9 @@ fn signal_display_str(item: &SurveyItem) -> String {
 }
 
 fn build_right_col(item: &SurveyItem) -> String {
-    item.short_code.map(|c| format!("{c:02}")).unwrap_or_default()
+    item.short_code
+        .map(|c| format!("{c:02}"))
+        .unwrap_or_default()
 }
 
 fn pad_to_width(spans: &mut Vec<Span>, w: usize, style: ftui::style::Style) {

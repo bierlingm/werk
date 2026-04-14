@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use fnx_algorithms::{
-    BetweennessCentralityResult, ComplexityWitness,
-    betweenness_centrality_directed, dag_longest_path, descendants, topological_generations,
+    BetweennessCentralityResult, ComplexityWitness, betweenness_centrality_directed,
+    dag_longest_path, descendants, topological_generations,
 };
 use serde::{Deserialize, Serialize};
 
@@ -227,7 +227,8 @@ mod tests {
         // only keeps the first parent_id. So it's really root → {left, right},
         // left → bottom OR right → bottom depending on insertion order.
         // Test that we don't panic.
-        let mut bottom = Tension::new_with_parent("desired", "actual", Some("left".to_string())).unwrap();
+        let mut bottom =
+            Tension::new_with_parent("desired", "actual", Some("left".to_string())).unwrap();
         bottom.id = "bottom".to_string();
 
         let forest = Forest::from_tensions(vec![
@@ -245,15 +246,18 @@ mod tests {
 
     #[test]
     fn witnesses_recorded() {
-        let forest = Forest::from_tensions(vec![
-            make_tension("a", None),
-            make_tension("b", Some("a")),
-        ])
-        .unwrap();
+        let forest =
+            Forest::from_tensions(vec![make_tension("a", None), make_tension("b", Some("a"))])
+                .unwrap();
 
         let result = compute_structural_signals(&forest);
         // At least centrality + topo generations witnesses.
         assert!(result.witnesses.len() >= 2);
-        assert!(result.witnesses.iter().any(|w| w.algorithm.contains("betweenness")));
+        assert!(
+            result
+                .witnesses
+                .iter()
+                .any(|w| w.algorithm.contains("betweenness"))
+        );
     }
 }

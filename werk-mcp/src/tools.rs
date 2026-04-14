@@ -4,18 +4,17 @@
 //! Gesture tools mutate the tension structure and return confirmation JSON.
 //! All tools operate on the same workspace discovery and store as the CLI.
 
-use chrono::{Datelike, DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content, ServerCapabilities, ServerInfo};
-use rmcp::{tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
-use sd_core::{
+use rmcp::{ErrorData as McpError, ServerHandler, tool, tool_handler, tool_router};
+use serde::{Deserialize, Serialize};
+use werk_core::{
+    Engine, Forest, Horizon, Mutation, ProjectionHorizon, ProjectionThresholds, TensionStatus,
     compute_frontier, compute_structural_signals, compute_temporal_signals, compute_urgency,
     detect_horizon_drift, extract_mutation_pattern, gap_magnitude, project_field,
-    Engine, Forest, Horizon, Mutation, ProjectionHorizon, ProjectionThresholds,
-    TensionStatus,
 };
-use serde::{Deserialize, Serialize};
 use werk_shared::{Config, HookEvent, PrefixResolver, WerkError, Workspace};
 
 // ── Server ──────────────────────────────────────────────────────────
@@ -408,13 +407,14 @@ fn json_result(value: &impl Serialize) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
-fn open_store() -> Result<(Workspace, sd_core::Store), McpError> {
+fn open_store() -> Result<(Workspace, werk_core::Store), McpError> {
     let workspace = Workspace::discover().map_err(werk_err)?;
     let store = workspace.open_store().map_err(werk_err)?;
     Ok((workspace, store))
 }
 
-fn open_store_with_hooks() -> Result<(Workspace, sd_core::Store, werk_shared::HookBridgeHandle), McpError> {
+fn open_store_with_hooks()
+-> Result<(Workspace, werk_core::Store, werk_shared::HookBridgeHandle), McpError> {
     let workspace = Workspace::discover().map_err(werk_err)?;
     let (store, handle) = workspace.open_store_with_hooks().map_err(werk_err)?;
     Ok((workspace, store, handle))
@@ -440,10 +440,7 @@ fn load_signal_thresholds(workspace: &Workspace) -> werk_shared::SignalThreshold
         .unwrap_or_default()
 }
 
-fn resolve_id(
-    tensions: &[sd_core::Tension],
-    id: &str,
-) -> Result<sd_core::Tension, McpError> {
+fn resolve_id(tensions: &[werk_core::Tension], id: &str) -> Result<werk_core::Tension, McpError> {
     let resolver = PrefixResolver::new(tensions.to_vec());
     resolver.resolve(id).map(|t| t.clone()).map_err(werk_err)
 }
@@ -478,22 +475,29 @@ fn parse_mcp_timespec(s: &str) -> Result<DateTime<Utc>, String> {
         "yesterday" => Ok(now - chrono::Duration::days(1)),
         _ => {
             if let Some(n_str) = s.strip_suffix('d') {
-                let n: i64 = n_str.parse().map_err(|_| format!("invalid timespec: '{}'", s))?;
+                let n: i64 = n_str
+                    .parse()
+                    .map_err(|_| format!("invalid timespec: '{}'", s))?;
                 Ok(now - chrono::Duration::days(n))
             } else if let Some(n_str) = s.strip_suffix('w') {
-                let n: i64 = n_str.parse().map_err(|_| format!("invalid timespec: '{}'", s))?;
+                let n: i64 = n_str
+                    .parse()
+                    .map_err(|_| format!("invalid timespec: '{}'", s))?;
                 Ok(now - chrono::Duration::weeks(n))
             } else {
-                Err(format!("invalid timespec: '{}'. Use YYYY-MM-DD, YYYY-MM, Nd, Nw", s))
+                Err(format!(
+                    "invalid timespec: '{}'. Use YYYY-MM-DD, YYYY-MM, Nd, Nw",
+                    s
+                ))
             }
         }
     }
 }
 
 fn build_mcp_provenance(
-    edges: &[sd_core::Edge],
+    edges: &[werk_core::Edge],
     tension_id: &str,
-    tensions: &[sd_core::Tension],
+    tensions: &[werk_core::Tension],
 ) -> serde_json::Value {
     let find_ref = |id: &str| -> serde_json::Value {
         let t = tensions.iter().find(|t| t.id == id);
@@ -504,20 +508,32 @@ fn build_mcp_provenance(
         })
     };
 
-    let split_from: Vec<_> = edges.iter()
-        .filter(|e| e.from_id == tension_id && e.edge_type == sd_core::EDGE_SPLIT_FROM)
-        .map(|e| find_ref(&e.to_id)).collect();
-    let merged_into: Vec<_> = edges.iter()
-        .filter(|e| e.from_id == tension_id && e.edge_type == sd_core::EDGE_MERGED_INTO)
-        .map(|e| find_ref(&e.to_id)).collect();
-    let split_children: Vec<_> = edges.iter()
-        .filter(|e| e.to_id == tension_id && e.edge_type == sd_core::EDGE_SPLIT_FROM)
-        .map(|e| find_ref(&e.from_id)).collect();
-    let merge_sources: Vec<_> = edges.iter()
-        .filter(|e| e.to_id == tension_id && e.edge_type == sd_core::EDGE_MERGED_INTO)
-        .map(|e| find_ref(&e.from_id)).collect();
+    let split_from: Vec<_> = edges
+        .iter()
+        .filter(|e| e.from_id == tension_id && e.edge_type == werk_core::EDGE_SPLIT_FROM)
+        .map(|e| find_ref(&e.to_id))
+        .collect();
+    let merged_into: Vec<_> = edges
+        .iter()
+        .filter(|e| e.from_id == tension_id && e.edge_type == werk_core::EDGE_MERGED_INTO)
+        .map(|e| find_ref(&e.to_id))
+        .collect();
+    let split_children: Vec<_> = edges
+        .iter()
+        .filter(|e| e.to_id == tension_id && e.edge_type == werk_core::EDGE_SPLIT_FROM)
+        .map(|e| find_ref(&e.from_id))
+        .collect();
+    let merge_sources: Vec<_> = edges
+        .iter()
+        .filter(|e| e.to_id == tension_id && e.edge_type == werk_core::EDGE_MERGED_INTO)
+        .map(|e| find_ref(&e.from_id))
+        .collect();
 
-    if split_from.is_empty() && merged_into.is_empty() && split_children.is_empty() && merge_sources.is_empty() {
+    if split_from.is_empty()
+        && merged_into.is_empty()
+        && split_children.is_empty()
+        && merge_sources.is_empty()
+    {
         return serde_json::Value::Null;
     }
 
@@ -529,17 +545,15 @@ fn build_mcp_provenance(
     })
 }
 
-
 /// Detect containment palettes after a horizon change, optionally applying a pre-selected response.
 ///
 /// Returns (palette_json_array, applied_action_description).
 fn mcp_check_containment(
-    store: &mut sd_core::Store,
+    store: &mut werk_core::Store,
     tension_id: &str,
     palette_response: Option<&str>,
 ) -> Result<(Vec<serde_json::Value>, Option<String>), McpError> {
-    let detected = werk_shared::detect_containment_palettes(store, tension_id)
-        .map_err(werk_err)?;
+    let detected = werk_shared::detect_containment_palettes(store, tension_id).map_err(werk_err)?;
 
     let mut palette_json = Vec::new();
     let mut applied_desc = None;
@@ -550,7 +564,11 @@ fn mcp_check_containment(
 
         // If a palette_response was provided, find the matching action and apply it
         if let Some(response_action) = palette_response {
-            if let Some(idx) = palette.options.iter().position(|o| o.action == response_action) {
+            if let Some(idx) = palette
+                .options
+                .iter()
+                .position(|o| o.action == response_action)
+            {
                 let choice = if response_action == "dismiss" {
                     werk_shared::PaletteChoice::Dismissed
                 } else {
@@ -568,12 +586,11 @@ fn mcp_check_containment(
 
 /// Detect sequencing palettes after a position change, optionally applying a pre-selected response.
 fn mcp_check_sequencing(
-    store: &mut sd_core::Store,
+    store: &mut werk_core::Store,
     tension_id: &str,
     palette_response: Option<&str>,
 ) -> Result<(Vec<serde_json::Value>, Option<String>), McpError> {
-    let detected = werk_shared::detect_sequencing_palettes(store, tension_id)
-        .map_err(werk_err)?;
+    let detected = werk_shared::detect_sequencing_palettes(store, tension_id).map_err(werk_err)?;
 
     let mut palette_json = Vec::new();
     let mut applied_desc = None;
@@ -583,7 +600,11 @@ fn mcp_check_sequencing(
         palette_json.push(palette_val);
 
         if let Some(response_action) = palette_response {
-            if let Some(idx) = palette.options.iter().position(|o| o.action == response_action) {
+            if let Some(idx) = palette
+                .options
+                .iter()
+                .position(|o| o.action == response_action)
+            {
                 let choice = if response_action == "dismiss" {
                     werk_shared::PaletteChoice::Dismissed
                 } else {
@@ -606,10 +627,12 @@ fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, McpError> {
         return Ok(now - chrono::Duration::days(1));
     }
     if let Some(rest) = v.strip_suffix(" days ago") {
-        let n: i64 = rest
-            .trim()
-            .parse()
-            .map_err(|_| err(format!("invalid number in '{}': expected 'N days ago'", value)))?;
+        let n: i64 = rest.trim().parse().map_err(|_| {
+            err(format!(
+                "invalid number in '{}': expected 'N days ago'",
+                value
+            ))
+        })?;
         return Ok(now - chrono::Duration::days(n));
     }
     if let Ok(date) = NaiveDate::parse_from_str(&v, "%Y-%m-%d") {
@@ -621,9 +644,15 @@ fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, McpError> {
     )))
 }
 
-fn validate_batch_mutation(engine: &Engine, mutation: &werk_shared::BatchMutation) -> Result<(), McpError> {
+fn validate_batch_mutation(
+    engine: &Engine,
+    mutation: &werk_shared::BatchMutation,
+) -> Result<(), McpError> {
     use werk_shared::BatchMutation;
-    let tensions = engine.store().list_tensions().map_err(|e| err(e.to_string()))?;
+    let tensions = engine
+        .store()
+        .list_tensions()
+        .map_err(|e| err(e.to_string()))?;
     let exists = |id: &str| tensions.iter().any(|t| t.id == id);
 
     match mutation {
@@ -631,17 +660,25 @@ fn validate_batch_mutation(engine: &Engine, mutation: &werk_shared::BatchMutatio
         | BatchMutation::AddNote { tension_id, .. }
         | BatchMutation::UpdateStatus { tension_id, .. }
         | BatchMutation::UpdateDesired { tension_id, .. } => {
-            if !exists(tension_id) { return Err(err(format!("tension '{}' not found", tension_id))); }
+            if !exists(tension_id) {
+                return Err(err(format!("tension '{}' not found", tension_id)));
+            }
         }
         BatchMutation::CreateChild { parent_id, .. } => {
-            if !exists(parent_id) { return Err(err(format!("parent '{}' not found", parent_id))); }
+            if !exists(parent_id) {
+                return Err(err(format!("parent '{}' not found", parent_id)));
+            }
         }
         BatchMutation::SetHorizon { tension_id, .. }
         | BatchMutation::MoveTension { tension_id, .. } => {
-            if !exists(tension_id) { return Err(err(format!("tension '{}' not found", tension_id))); }
+            if !exists(tension_id) {
+                return Err(err(format!("tension '{}' not found", tension_id)));
+            }
         }
         BatchMutation::CreateParent { child_id, .. } => {
-            if !exists(child_id) { return Err(err(format!("child '{}' not found", child_id))); }
+            if !exists(child_id) {
+                return Err(err(format!("child '{}' not found", child_id)));
+            }
         }
     }
 
@@ -654,45 +691,105 @@ fn validate_batch_mutation(engine: &Engine, mutation: &werk_shared::BatchMutatio
     Ok(())
 }
 
-fn apply_batch_mutation(engine: &mut Engine, mutation: &werk_shared::BatchMutation) -> Result<(), McpError> {
+fn apply_batch_mutation(
+    engine: &mut Engine,
+    mutation: &werk_shared::BatchMutation,
+) -> Result<(), McpError> {
     use werk_shared::BatchMutation;
     match mutation {
-        BatchMutation::UpdateActual { tension_id, new_value, .. } => {
-            engine.store().update_actual(tension_id, new_value).map_err(|e| err(e.to_string()))?;
-        }
-        BatchMutation::CreateChild { parent_id, desired, actual, .. } => {
-            engine.store().create_tension_with_parent(desired, actual, Some(parent_id.clone()))
+        BatchMutation::UpdateActual {
+            tension_id,
+            new_value,
+            ..
+        } => {
+            engine
+                .store()
+                .update_actual(tension_id, new_value)
                 .map_err(|e| err(e.to_string()))?;
         }
-        BatchMutation::AddNote { tension_id, text, .. } => {
-            engine.store().record_note(tension_id, text).map_err(|e| err(e.to_string()))?;
+        BatchMutation::CreateChild {
+            parent_id,
+            desired,
+            actual,
+            ..
+        } => {
+            engine
+                .store()
+                .create_tension_with_parent(desired, actual, Some(parent_id.clone()))
+                .map_err(|e| err(e.to_string()))?;
         }
-        BatchMutation::UpdateStatus { tension_id, new_status, .. } => {
+        BatchMutation::AddNote {
+            tension_id, text, ..
+        } => {
+            engine
+                .store()
+                .record_note(tension_id, text)
+                .map_err(|e| err(e.to_string()))?;
+        }
+        BatchMutation::UpdateStatus {
+            tension_id,
+            new_status,
+            ..
+        } => {
             let status = match new_status.to_lowercase().as_str() {
                 "resolved" => TensionStatus::Resolved,
                 "released" => TensionStatus::Released,
                 "active" => TensionStatus::Active,
                 other => return Err(err(format!("unknown status: '{}'", other))),
             };
-            engine.store().update_status(tension_id, status).map_err(|e| err(e.to_string()))?;
+            engine
+                .store()
+                .update_status(tension_id, status)
+                .map_err(|e| err(e.to_string()))?;
         }
-        BatchMutation::UpdateDesired { tension_id, new_value, .. } => {
-            engine.store().update_desired(tension_id, new_value).map_err(|e| err(e.to_string()))?;
+        BatchMutation::UpdateDesired {
+            tension_id,
+            new_value,
+            ..
+        } => {
+            engine
+                .store()
+                .update_desired(tension_id, new_value)
+                .map_err(|e| err(e.to_string()))?;
         }
-        BatchMutation::SetHorizon { tension_id, horizon, .. } => {
+        BatchMutation::SetHorizon {
+            tension_id,
+            horizon,
+            ..
+        } => {
             if let Ok(h) = Horizon::parse(horizon) {
-                engine.update_horizon(tension_id, Some(h)).map_err(|e| err(e.to_string()))?;
+                engine
+                    .update_horizon(tension_id, Some(h))
+                    .map_err(|e| err(e.to_string()))?;
             }
         }
-        BatchMutation::MoveTension { tension_id, new_parent_id, .. } => {
-            engine.update_parent(tension_id, new_parent_id.as_deref()).map_err(|e| err(e.to_string()))?;
-        }
-        BatchMutation::CreateParent { child_id, desired, actual, .. } => {
-            let current_parent = engine.store().get_tension(child_id)
-                .ok().flatten().and_then(|t| t.parent_id.clone());
-            let parent = engine.create_tension_with_parent(desired, actual, current_parent)
+        BatchMutation::MoveTension {
+            tension_id,
+            new_parent_id,
+            ..
+        } => {
+            engine
+                .update_parent(tension_id, new_parent_id.as_deref())
                 .map_err(|e| err(e.to_string()))?;
-            engine.update_parent(child_id, Some(&parent.id)).map_err(|e| err(e.to_string()))?;
+        }
+        BatchMutation::CreateParent {
+            child_id,
+            desired,
+            actual,
+            ..
+        } => {
+            let current_parent = engine
+                .store()
+                .get_tension(child_id)
+                .ok()
+                .flatten()
+                .and_then(|t| t.parent_id.clone());
+            let parent = engine
+                .create_tension_with_parent(desired, actual, current_parent)
+                .map_err(|e| err(e.to_string()))?;
+            engine
+                .update_parent(child_id, Some(&parent.id))
+                .map_err(|e| err(e.to_string()))?;
         }
     }
     Ok(())
@@ -710,11 +807,10 @@ impl WerkServer {
 
     // ── Read tools ──────────────────────────────────────────────
 
-    #[tool(description = "Show tension details including desired/actual state, status, frontier, temporal signals, children, and recent mutations. Pass full=true to include ancestors, siblings, and engagement metrics.")]
-    async fn show(
-        &self,
-        Parameters(p): Parameters<ShowParam>,
-    ) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Show tension details including desired/actual state, status, frontier, temporal signals, children, and recent mutations. Pass full=true to include ancestors, siblings, and engagement metrics."
+    )]
+    async fn show(&self, Parameters(p): Parameters<ShowParam>) -> Result<CallToolResult, McpError> {
         let (ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
@@ -747,7 +843,11 @@ impl WerkServer {
                 .unwrap_or(false);
         let temporal = compute_temporal_signals(&forest, &tension.id, now);
         let field_structural = compute_structural_signals(&forest);
-        let structural = field_structural.signals.get(&tension.id).cloned().unwrap_or_default();
+        let structural = field_structural
+            .signals
+            .get(&tension.id)
+            .cloned()
+            .unwrap_or_default();
 
         let mutation_infos: Vec<serde_json::Value> = mutations
             .iter()
@@ -818,23 +918,32 @@ impl WerkServer {
                 .ancestors(&tension.id)
                 .unwrap_or_default()
                 .into_iter()
-                .map(|n| serde_json::json!({
-                    "id": n.id(), "short_code": n.tension.short_code,
-                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
-                }))
+                .map(|n| {
+                    serde_json::json!({
+                        "id": n.id(), "short_code": n.tension.short_code,
+                        "desired": n.tension.desired, "status": n.tension.status.to_string(),
+                    })
+                })
                 .collect();
 
             let siblings: Vec<serde_json::Value> = forest
                 .siblings(&tension.id)
                 .unwrap_or_default()
                 .into_iter()
-                .map(|n| serde_json::json!({
-                    "id": n.id(), "short_code": n.tension.short_code,
-                    "desired": n.tension.desired, "status": n.tension.status.to_string(),
-                }))
+                .map(|n| {
+                    serde_json::json!({
+                        "id": n.id(), "short_code": n.tension.short_code,
+                        "desired": n.tension.desired, "status": n.tension.status.to_string(),
+                    })
+                })
                 .collect();
 
-            let pattern = extract_mutation_pattern(&tension, &mutations, thresholds.pattern_window_seconds, now);
+            let pattern = extract_mutation_pattern(
+                &tension,
+                &mutations,
+                thresholds.pattern_window_seconds,
+                now,
+            );
             let engagement = serde_json::json!({
                 "current_gap": gap_magnitude(&tension.desired, &tension.actual),
                 "mutation_count": pattern.mutation_count,
@@ -855,11 +964,10 @@ impl WerkServer {
         json_result(&result)
     }
 
-    #[tool(description = "Display the tension forest as a tree. Shows hierarchy, closure progress, and temporal signals. Pass an ID to show a subtree.")]
-    async fn tree(
-        &self,
-        Parameters(p): Parameters<TreeParam>,
-    ) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Display the tension forest as a tree. Shows hierarchy, closure progress, and temporal signals. Pass an ID to show a subtree."
+    )]
+    async fn tree(&self, Parameters(p): Parameters<TreeParam>) -> Result<CallToolResult, McpError> {
         let (_ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let forest = Forest::from_tensions(tensions.clone()).map_err(|e| err(e.to_string()))?;
@@ -900,10 +1008,7 @@ impl WerkServer {
                     .filter(|c| c.tension.status == TensionStatus::Resolved)
                     .count();
                 let overdue = t.status == TensionStatus::Active
-                    && t.horizon
-                        .as_ref()
-                        .map(|h| h.is_past(now))
-                        .unwrap_or(false);
+                    && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
                 serde_json::json!({
                     "id": t.id,
                     "short_code": t.short_code,
@@ -932,11 +1037,10 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "List tensions with rich filtering and sorting. Filter by status (all/urgent/neglected/stagnant), overdue, approaching deadline, stale, held, positioned, root, parent, has_deadline, or changed_since. Sort by urgency (default), name, or deadline.")]
-    async fn list(
-        &self,
-        Parameters(p): Parameters<ListParam>,
-    ) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "List tensions with rich filtering and sorting. Filter by status (all/urgent/neglected/stagnant), overdue, approaching deadline, stale, held, positioned, root, parent, has_deadline, or changed_since. Sort by urgency (default), name, or deadline."
+    )]
+    async fn list(&self, Parameters(p): Parameters<ListParam>) -> Result<CallToolResult, McpError> {
         let (_ws, store) = open_store()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let now = Utc::now();
@@ -956,23 +1060,16 @@ impl WerkServer {
                         && store
                             .get_mutations(&t.id)
                             .ok()
-                            .and_then(|m| m.last().map(|l| {
-                                (now - l.timestamp()).num_days() > 7
-                            }))
+                            .and_then(|m| m.last().map(|l| (now - l.timestamp()).num_days() > 7))
                             .unwrap_or(false)
                 }
                 Some("stagnant") => {
                     t.status == TensionStatus::Active
-                        && t.horizon
-                            .as_ref()
-                            .map(|h| h.is_past(now))
-                            .unwrap_or(false)
+                        && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
                         && store
                             .get_mutations(&t.id)
                             .ok()
-                            .and_then(|m| m.last().map(|l| {
-                                (now - l.timestamp()).num_days() > 3
-                            }))
+                            .and_then(|m| m.last().map(|l| (now - l.timestamp()).num_days() > 3))
                             .unwrap_or(false)
                 }
                 _ => t.status == TensionStatus::Active,
@@ -980,10 +1077,7 @@ impl WerkServer {
             .map(|t| {
                 let urgency = compute_urgency(t, now);
                 let overdue = t.status == TensionStatus::Active
-                    && t.horizon
-                        .as_ref()
-                        .map(|h| h.is_past(now))
-                        .unwrap_or(false);
+                    && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
                 serde_json::json!({
                     "id": t.id,
                     "short_code": t.short_code,
@@ -1021,7 +1115,9 @@ impl WerkServer {
         json_result(&serde_json::json!({ "tensions": items }))
     }
 
-    #[tool(description = "Search tensions by content using FrankenSearch hybrid retrieval. Returns results ranked by relevance — finds tensions by meaning, not just exact keywords. Use for natural language queries like 'tensions about revenue' or 'anything related to temporal signals'.")]
+    #[tool(
+        description = "Search tensions by content using FrankenSearch hybrid retrieval. Returns results ranked by relevance — finds tensions by meaning, not just exact keywords. Use for natural language queries like 'tensions about revenue' or 'anything related to temporal signals'."
+    )]
     async fn search(
         &self,
         Parameters(p): Parameters<SearchParam>,
@@ -1029,31 +1125,36 @@ impl WerkServer {
         let (_ws, store) = open_store()?;
         let limit = p.limit.unwrap_or(20);
 
-        let index = sd_core::SearchIndex::build(&store)
-            .ok_or_else(|| err("failed to build search index (empty store or no workspace path)"))?;
+        let index = werk_core::SearchIndex::build(&store).ok_or_else(|| {
+            err("failed to build search index (empty store or no workspace path)")
+        })?;
 
         let hits = index.search(&p.query, limit);
         let now = Utc::now();
 
-        let results: Vec<serde_json::Value> = hits.iter().filter_map(|hit| {
-            let t = store.get_tension(&hit.doc_id).ok()??;
-            let urgency = compute_urgency(&t, now).map(|u| u.value);
-            let display_id = t.short_code
-                .map(|c| format!("#{c}"))
-                .unwrap_or_else(|| t.id[..8].to_string());
-            Some(serde_json::json!({
-                "id": t.id,
-                "display_id": display_id,
-                "short_code": t.short_code,
-                "desired": t.desired,
-                "actual": t.actual,
-                "status": format!("{:?}", t.status),
-                "relevance_score": hit.score,
-                "urgency": urgency,
-                "horizon": t.horizon.as_ref().map(|h| h.to_string()),
-                "parent_id": t.parent_id,
-            }))
-        }).collect();
+        let results: Vec<serde_json::Value> = hits
+            .iter()
+            .filter_map(|hit| {
+                let t = store.get_tension(&hit.doc_id).ok()??;
+                let urgency = compute_urgency(&t, now).map(|u| u.value);
+                let display_id = t
+                    .short_code
+                    .map(|c| format!("#{c}"))
+                    .unwrap_or_else(|| t.id[..8].to_string());
+                Some(serde_json::json!({
+                    "id": t.id,
+                    "display_id": display_id,
+                    "short_code": t.short_code,
+                    "desired": t.desired,
+                    "actual": t.actual,
+                    "status": format!("{:?}", t.status),
+                    "relevance_score": hit.score,
+                    "urgency": urgency,
+                    "horizon": t.horizon.as_ref().map(|h| h.to_string()),
+                    "parent_id": t.parent_id,
+                }))
+            })
+            .collect();
 
         json_result(&serde_json::json!({
             "query": p.query,
@@ -1062,8 +1163,9 @@ impl WerkServer {
         }))
     }
 
-
-    #[tool(description = "Field-level summaries, aggregates, and analysis. Default: vitals only. Pass sections array to include: temporal, attention, changes, trajectory, engagement (with activity-by-weekday), drift, health, or 'all'. The sole analysis surface for field-wide queries.")]
+    #[tool(
+        description = "Field-level summaries, aggregates, and analysis. Default: vitals only. Pass sections array to include: temporal, attention, changes, trajectory, engagement (with activity-by-weekday), drift, health, or 'all'. The sole analysis surface for field-wide queries."
+    )]
     async fn stats(
         &self,
         Parameters(p): Parameters<StatsParam>,
@@ -1079,20 +1181,48 @@ impl WerkServer {
         let has = |name: &str| show_all || sections.iter().any(|s| s == name);
 
         // Vitals (always)
-        let active = tensions.iter().filter(|t| t.status == TensionStatus::Active).count();
-        let resolved = tensions.iter().filter(|t| t.status == TensionStatus::Resolved).count();
-        let released = tensions.iter().filter(|t| t.status == TensionStatus::Released).count();
+        let active = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active)
+            .count();
+        let resolved = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Resolved)
+            .count();
+        let released = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Released)
+            .count();
         let deadlined = tensions.iter().filter(|t| t.horizon.is_some()).count();
-        let overdue_count = tensions.iter().filter(|t| {
-            t.status == TensionStatus::Active && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
-        }).count();
-        let positioned = tensions.iter().filter(|t| t.status == TensionStatus::Active && t.position.is_some()).count();
-        let held = tensions.iter().filter(|t| t.status == TensionStatus::Active && t.position.is_none()).count();
+        let overdue_count = tensions
+            .iter()
+            .filter(|t| {
+                t.status == TensionStatus::Active
+                    && t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false)
+            })
+            .count();
+        let positioned = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active && t.position.is_some())
+            .count();
+        let held = tensions
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active && t.position.is_none())
+            .count();
 
-        let recent: Vec<&Mutation> = all_mutations.iter().filter(|m| m.timestamp() >= cutoff).collect();
+        let recent: Vec<&Mutation> = all_mutations
+            .iter()
+            .filter(|m| m.timestamp() >= cutoff)
+            .collect();
         let mut touched = std::collections::HashSet::new();
-        for m in &recent { touched.insert(m.tension_id()); }
-        let avg = if p.days > 0 { recent.len() as f64 / p.days as f64 } else { 0.0 };
+        for m in &recent {
+            touched.insert(m.tension_id());
+        }
+        let avg = if p.days > 0 {
+            recent.len() as f64 / p.days as f64
+        } else {
+            0.0
+        };
 
         let mut result = serde_json::json!({
             "vitals": {
@@ -1105,14 +1235,22 @@ impl WerkServer {
         });
 
         if has("temporal") {
-            let forest = Forest::from_tensions(tensions.to_vec()).map_err(|e| err(e.to_string()))?;
+            let forest =
+                Forest::from_tensions(tensions.to_vec()).map_err(|e| err(e.to_string()))?;
             let sig = load_signal_thresholds(&ws);
             let frame_end = now + chrono::Duration::days(sig.approaching_days);
 
             let mut approaching: Vec<serde_json::Value> = Vec::new();
-            for t in tensions.iter().filter(|t| t.status == TensionStatus::Active) {
+            for t in tensions
+                .iter()
+                .filter(|t| t.status == TensionStatus::Active)
+            {
                 if let Some(u) = compute_urgency(t, now) {
-                    let close = u.value > sig.approaching_urgency || t.horizon.as_ref().map(|h| h.range_end() <= frame_end).unwrap_or(false);
+                    let close = u.value > sig.approaching_urgency
+                        || t.horizon
+                            .as_ref()
+                            .map(|h| h.range_end() <= frame_end)
+                            .unwrap_or(false);
                     let past = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
                     if close || past {
                         approaching.push(serde_json::json!({
@@ -1123,15 +1261,26 @@ impl WerkServer {
                     }
                 }
             }
-            approaching.sort_by(|a, b| b["urgency"].as_f64().unwrap_or(0.0).partial_cmp(&a["urgency"].as_f64().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+            approaching.sort_by(|a, b| {
+                b["urgency"]
+                    .as_f64()
+                    .unwrap_or(0.0)
+                    .partial_cmp(&a["urgency"].as_f64().unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             approaching.truncate(10);
 
-            let root_ids: Vec<String> = tensions.iter().filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active).map(|t| t.id.clone()).collect();
-            let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
+            let root_ids: Vec<String> = tensions
+                .iter()
+                .filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active)
+                .map(|t| t.id.clone())
+                .collect();
+            let tension_map: std::collections::HashMap<String, &werk_core::Tension> =
+                tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
             let mut critical_path: Vec<serde_json::Value> = Vec::new();
             for rid in &root_ids {
-                for cp in sd_core::detect_critical_path_recursive(&forest, rid, now) {
+                for cp in werk_core::detect_critical_path_recursive(&forest, rid, now) {
                     let child = tension_map.get(&cp.tension_id);
                     let parent = tension_map.get(&cp.parent_id);
                     critical_path.push(serde_json::json!({
@@ -1144,42 +1293,73 @@ impl WerkServer {
             }
 
             if let Some(obj) = result.as_object_mut() {
-                obj.insert("temporal".to_string(), serde_json::json!({
-                    "approaching": approaching,
-                    "critical_path": critical_path,
-                }));
+                obj.insert(
+                    "temporal".to_string(),
+                    serde_json::json!({
+                        "approaching": approaching,
+                        "critical_path": critical_path,
+                    }),
+                );
             }
         }
 
         if has("attention") {
-            let roots: Vec<&sd_core::Tension> = tensions.iter().filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active).collect();
+            let roots: Vec<&werk_core::Tension> = tensions
+                .iter()
+                .filter(|t| t.parent_id.is_none() && t.status == TensionStatus::Active)
+                .collect();
             let mut root_data: Vec<serde_json::Value> = Vec::new();
 
             for root in &roots {
                 let mut total = 0usize;
                 let mut desc_touched = 0usize;
-                let children: Vec<&sd_core::Tension> = tensions.iter().filter(|t| t.parent_id.as_deref() == Some(&root.id) && t.status == TensionStatus::Active).collect();
+                let children: Vec<&werk_core::Tension> = tensions
+                    .iter()
+                    .filter(|t| {
+                        t.parent_id.as_deref() == Some(&root.id)
+                            && t.status == TensionStatus::Active
+                    })
+                    .collect();
                 let mut branches: Vec<serde_json::Value> = Vec::new();
 
                 for child in &children {
-                    let desc_ids = store.get_descendant_ids(&child.id).map_err(|e| err(e.to_string()))?;
+                    let desc_ids = store
+                        .get_descendant_ids(&child.id)
+                        .map_err(|e| err(e.to_string()))?;
                     let mut bm = 0usize;
                     let mut bt = 0usize;
-                    let child_muts = store.get_mutations(&child.id).map_err(|e| err(e.to_string()))?;
-                    let cr = child_muts.iter().filter(|m| m.timestamp() >= cutoff).count();
-                    if cr > 0 { bm += cr; bt += 1; }
+                    let child_muts = store
+                        .get_mutations(&child.id)
+                        .map_err(|e| err(e.to_string()))?;
+                    let cr = child_muts
+                        .iter()
+                        .filter(|m| m.timestamp() >= cutoff)
+                        .count();
+                    if cr > 0 {
+                        bm += cr;
+                        bt += 1;
+                    }
                     for did in &desc_ids {
                         let dm = store.get_mutations(did).map_err(|e| err(e.to_string()))?;
                         let dr = dm.iter().filter(|m| m.timestamp() >= cutoff).count();
-                        if dr > 0 { bm += dr; bt += 1; }
+                        if dr > 0 {
+                            bm += dr;
+                            bt += 1;
+                        }
                     }
-                    total += bm; desc_touched += bt;
+                    total += bm;
+                    desc_touched += bt;
                     branches.push(serde_json::json!({
                         "short_code": child.short_code, "desired": child.desired,
                         "mutations": bm, "tensions_touched": bt,
                     }));
                 }
-                branches.sort_by(|a, b| b["mutations"].as_u64().unwrap_or(0).cmp(&a["mutations"].as_u64().unwrap_or(0)));
+                branches.sort_by(|a, b| {
+                    b["mutations"]
+                        .as_u64()
+                        .unwrap_or(0)
+                        .cmp(&a["mutations"].as_u64().unwrap_or(0))
+                });
 
                 root_data.push(serde_json::json!({
                     "short_code": root.short_code, "desired": root.desired,
@@ -1187,10 +1367,18 @@ impl WerkServer {
                     "branches": branches,
                 }));
             }
-            root_data.sort_by(|a, b| b["total_mutations"].as_u64().unwrap_or(0).cmp(&a["total_mutations"].as_u64().unwrap_or(0)));
+            root_data.sort_by(|a, b| {
+                b["total_mutations"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .cmp(&a["total_mutations"].as_u64().unwrap_or(0))
+            });
 
             if let Some(obj) = result.as_object_mut() {
-                obj.insert("attention".to_string(), serde_json::json!({ "roots": root_data }));
+                obj.insert(
+                    "attention".to_string(),
+                    serde_json::json!({ "roots": root_data }),
+                );
             }
         }
 
@@ -1208,28 +1396,34 @@ impl WerkServer {
             }).collect();
 
             if let Some(obj) = result.as_object_mut() {
-                obj.insert("trajectory".to_string(), serde_json::json!({
-                    "distribution": buckets.map(|b| serde_json::json!({
-                        "resolving": b.resolving, "drifting": b.drifting,
-                        "stalling": b.stalling, "oscillating": b.oscillating,
-                    })),
-                    "collisions": collisions,
-                }));
+                obj.insert(
+                    "trajectory".to_string(),
+                    serde_json::json!({
+                        "distribution": buckets.map(|b| serde_json::json!({
+                            "resolving": b.resolving, "drifting": b.drifting,
+                            "stalling": b.stalling, "oscillating": b.oscillating,
+                        })),
+                        "collisions": collisions,
+                    }),
+                );
             }
         }
 
         if has("engagement") {
-            let mut per_tension: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            let mut per_tension: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
             let mut activity_by_weekday = [0usize; 7];
             for m in &recent {
                 *per_tension.entry(m.tension_id().to_string()).or_default() += 1;
                 let wd = m.timestamp().weekday().num_days_from_monday() as usize;
                 activity_by_weekday[wd] += 1;
             }
-            let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
+            let tension_map: std::collections::HashMap<String, &werk_core::Tension> =
+                tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
             let most = per_tension.iter().max_by_key(|(_, c)| *c);
-            let least = tensions.iter()
+            let least = tensions
+                .iter()
                 .filter(|t| t.status == TensionStatus::Active && t.horizon.is_some())
                 .min_by_key(|t| per_tension.get(&t.id).copied().unwrap_or(0));
 
@@ -1257,7 +1451,10 @@ impl WerkServer {
 
         if has("drift") {
             let mut drifts: Vec<serde_json::Value> = Vec::new();
-            for t in tensions.iter().filter(|t| t.status == TensionStatus::Active && t.horizon.is_some()) {
+            for t in tensions
+                .iter()
+                .filter(|t| t.status == TensionStatus::Active && t.horizon.is_some())
+            {
                 let muts = store.get_mutations(&t.id).map_err(|e| err(e.to_string()))?;
                 let drift = detect_horizon_drift(&t.id, &muts);
                 let dtype = format!("{:?}", drift.drift_type);
@@ -1275,22 +1472,32 @@ impl WerkServer {
         }
 
         if has("health") {
-            let noop = store.count_noop_mutations().map_err(|e| err(e.to_string()))?;
+            let noop = store
+                .count_noop_mutations()
+                .map_err(|e| err(e.to_string()))?;
             if let Some(obj) = result.as_object_mut() {
-                obj.insert("health".to_string(), serde_json::json!({ "noop_mutations": noop }));
+                obj.insert(
+                    "health".to_string(),
+                    serde_json::json!({ "noop_mutations": noop }),
+                );
             }
         }
 
         if has("changes") {
-            let recent_mutations = store.mutations_between(cutoff, now).map_err(|e| err(e.to_string()))?;
-            let tension_map: std::collections::HashMap<String, &sd_core::Tension> = tensions.iter().map(|t| (t.id.clone(), t)).collect();
+            let recent_mutations = store
+                .mutations_between(cutoff, now)
+                .map_err(|e| err(e.to_string()))?;
+            let tension_map: std::collections::HashMap<String, &werk_core::Tension> =
+                tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
             let mut epochs_list: Vec<serde_json::Value> = Vec::new();
             for t in &tensions {
                 let eps = store.get_epochs(&t.id).map_err(|e| err(e.to_string()))?;
                 for ep in &eps {
                     if ep.timestamp >= cutoff {
-                        epochs_list.push(serde_json::json!({"short_code": t.short_code, "desired": t.desired}));
+                        epochs_list.push(
+                            serde_json::json!({"short_code": t.short_code, "desired": t.desired}),
+                        );
                     }
                 }
             }
@@ -1305,7 +1512,10 @@ impl WerkServer {
                 let sc = t.and_then(|t| t.short_code);
                 let des = t.map(|t| t.desired.as_str()).unwrap_or("(deleted)");
 
-                if m.field() == "status" && (m.new_value() == "Resolved" || m.new_value() == "Released") && seen_r.insert(m.tension_id().to_string()) {
+                if m.field() == "status"
+                    && (m.new_value() == "Resolved" || m.new_value() == "Released")
+                    && seen_r.insert(m.tension_id().to_string())
+                {
                     resolutions.push(serde_json::json!({"short_code": sc, "desired": des}));
                 }
                 if m.field() == "created" && seen_c.insert(m.tension_id().to_string()) {
@@ -1325,11 +1535,10 @@ impl WerkServer {
 
     // ── Gesture tools (mutating) ────────────────────────────────
 
-    #[tool(description = "Create a new tension with desired outcome and current reality. Optionally set parent and horizon.")]
-    async fn add(
-        &self,
-        Parameters(p): Parameters<AddParam>,
-    ) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Create a new tension with desired outcome and current reality. Optionally set parent and horizon."
+    )]
+    async fn add(&self, Parameters(p): Parameters<AddParam>) -> Result<CallToolResult, McpError> {
         if p.desired.is_empty() {
             return Err(err("desired state cannot be empty"));
         }
@@ -1355,7 +1564,12 @@ impl WerkServer {
 
         let _ = store.begin_gesture(Some("create tension"));
         let tension = store
-            .create_tension_full(&p.desired, &p.actual, parent_id.clone(), horizon_parsed.clone())
+            .create_tension_full(
+                &p.desired,
+                &p.actual,
+                parent_id.clone(),
+                horizon_parsed.clone(),
+            )
             .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
         // Post-hooks fire automatically via the HookBridge
@@ -1387,7 +1601,9 @@ impl WerkServer {
         json_result(&result)
     }
 
-    #[tool(description = "Compose up: create a parent for existing tensions. Reveals implicit coherence by composing structure upward.")]
+    #[tool(
+        description = "Compose up: create a parent for existing tensions. Reveals implicit coherence by composing structure upward."
+    )]
     async fn compose(
         &self,
         Parameters(p): Parameters<ComposeParam>,
@@ -1448,7 +1664,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Update the current reality of a tension. Reality updates are epoch boundaries by default.")]
+    #[tool(
+        description = "Update the current reality of a tension. Reality updates are epoch boundaries by default."
+    )]
     async fn reality(
         &self,
         Parameters(p): Parameters<RealityParam>,
@@ -1463,8 +1681,15 @@ impl WerkServer {
         let old_actual = tension.actual.clone();
         let tension_id = tension.id.clone();
 
-        let event =
-            HookEvent::mutation(&tension_id, &tension.desired, Some(&old_actual), tension.parent_id.as_deref(), "actual", Some(&old_actual), &p.value);
+        let event = HookEvent::mutation(
+            &tension_id,
+            &tension.desired,
+            Some(&old_actual),
+            tension.parent_id.as_deref(),
+            "actual",
+            Some(&old_actual),
+            &p.value,
+        );
         if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
@@ -1518,7 +1743,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Update the desired state of a tension. Desire updates are epoch boundaries by default.")]
+    #[tool(
+        description = "Update the desired state of a tension. Desire updates are epoch boundaries by default."
+    )]
     async fn desire(
         &self,
         Parameters(p): Parameters<DesireParam>,
@@ -1595,7 +1822,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Mark a tension as resolved. Optionally specify when resolution actually happened.")]
+    #[tool(
+        description = "Mark a tension as resolved. Optionally specify when resolution actually happened."
+    )]
     async fn resolve(
         &self,
         Parameters(p): Parameters<ResolveParam>,
@@ -1612,7 +1841,13 @@ impl WerkServer {
             )));
         }
 
-        let event = HookEvent::status_change(&tension_id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Resolved");
+        let event = HookEvent::status_change(
+            &tension_id,
+            &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
+            "Resolved",
+        );
         if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
@@ -1657,7 +1892,13 @@ impl WerkServer {
             )));
         }
 
-        let event = HookEvent::status_change(&tension_id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Released");
+        let event = HookEvent::status_change(
+            &tension_id,
+            &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
+            "Released",
+        );
         if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
@@ -1704,7 +1945,13 @@ impl WerkServer {
             return Err(err("tension is already Active"));
         }
 
-        let event = HookEvent::status_change(&tension_id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Active");
+        let event = HookEvent::status_change(
+            &tension_id,
+            &tension.desired,
+            Some(&tension.actual),
+            tension.parent_id.as_deref(),
+            "Active",
+        );
         if !hook_handle.runner.pre_mutation(&event) {
             return Err(err("blocked by pre_mutation hook"));
         }
@@ -1737,7 +1984,10 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Reparent a tension. Omit parent to make it a root tension.", name = "move")]
+    #[tool(
+        description = "Reparent a tension. Omit parent to make it a root tension.",
+        name = "move"
+    )]
     async fn move_tension(
         &self,
         Parameters(p): Parameters<MoveParam>,
@@ -1763,7 +2013,11 @@ impl WerkServer {
 
         // Detect containment palettes after reparenting
         let (signals, applied) = if new_parent_id.is_some() {
-            mcp_check_containment(engine.store_mut(), &tension_id, p.palette_response.as_deref())?
+            mcp_check_containment(
+                engine.store_mut(),
+                &tension_id,
+                p.palette_response.as_deref(),
+            )?
         } else {
             (vec![], None)
         };
@@ -1784,10 +2038,7 @@ impl WerkServer {
     }
 
     #[tool(description = "Remove a tension from the sequence (set to held/unpositioned).")]
-    async fn hold(
-        &self,
-        Parameters(p): Parameters<IdParam>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn hold(&self, Parameters(p): Parameters<IdParam>) -> Result<CallToolResult, McpError> {
         let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
@@ -1807,7 +2058,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Set position in the order of operations (1-based, higher = earlier in sequence).")]
+    #[tool(
+        description = "Set position in the order of operations (1-based, higher = earlier in sequence)."
+    )]
     async fn position(
         &self,
         Parameters(p): Parameters<PositionParam>,
@@ -1825,11 +2078,8 @@ impl WerkServer {
         store.end_gesture();
 
         // Detect sequencing palettes, optionally apply pre-selected response
-        let (signals, applied) = mcp_check_sequencing(
-            &mut store,
-            &tension_id,
-            p.palette_response.as_deref(),
-        )?;
+        let (signals, applied) =
+            mcp_check_sequencing(&mut store, &tension_id, p.palette_response.as_deref())?;
 
         autoflush(&workspace);
 
@@ -1847,7 +2097,9 @@ impl WerkServer {
         json_result(&result)
     }
 
-    #[tool(description = "Set or clear the deadline (horizon) of a tension. Omit value to display current. Use 'none' to clear.")]
+    #[tool(
+        description = "Set or clear the deadline (horizon) of a tension. Omit value to display current. Use 'none' to clear."
+    )]
     async fn horizon(
         &self,
         Parameters(p): Parameters<HorizonParam>,
@@ -1914,10 +2166,7 @@ impl WerkServer {
     }
 
     #[tool(description = "Delete a tension (reparents children to grandparent).")]
-    async fn rm(
-        &self,
-        Parameters(p): Parameters<IdParam>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn rm(&self, Parameters(p): Parameters<IdParam>) -> Result<CallToolResult, McpError> {
         let (workspace, mut store, _hh) = open_store_with_hooks()?;
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
@@ -1972,7 +2221,12 @@ impl WerkServer {
         let (tension_id, display, t_actual, t_parent) = if let Some(ref id_prefix) = p.id {
             let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
             let tension = resolve_id(&tensions, id_prefix)?;
-            (tension.id.clone(), Some(tension.desired.clone()), Some(tension.actual.clone()), tension.parent_id.clone())
+            (
+                tension.id.clone(),
+                Some(tension.desired.clone()),
+                Some(tension.actual.clone()),
+                tension.parent_id.clone(),
+            )
         } else {
             (WORKSPACE_NOTE_TENSION_ID.to_string(), None, None, None)
         };
@@ -1991,7 +2245,9 @@ impl WerkServer {
         }
 
         let _ = store.begin_gesture(Some(&format!("note {}", &tension_id)));
-        store.record_note(&tension_id, &p.text).map_err(|e| err(e.to_string()))?;
+        store
+            .record_note(&tension_id, &p.text)
+            .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
         autoflush(&workspace);
 
@@ -2015,7 +2271,11 @@ impl WerkServer {
         let (tension_id, t_actual, t_parent) = if let Some(ref id_prefix) = p.id {
             let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
             let tension = resolve_id(&tensions, id_prefix)?;
-            (tension.id.clone(), Some(tension.actual.clone()), tension.parent_id.clone())
+            (
+                tension.id.clone(),
+                Some(tension.actual.clone()),
+                tension.parent_id.clone(),
+            )
         } else {
             (WORKSPACE_NOTE_TENSION_ID.to_string(), None, None)
         };
@@ -2032,9 +2292,7 @@ impl WerkServer {
 
         let active_notes: Vec<&Mutation> = mutations
             .iter()
-            .filter(|m| {
-                m.field() == "note" && !retracted.contains(&m.timestamp().to_rfc3339())
-            })
+            .filter(|m| m.field() == "note" && !retracted.contains(&m.timestamp().to_rfc3339()))
             .collect();
 
         if p.index > active_notes.len() {
@@ -2063,7 +2321,9 @@ impl WerkServer {
         }
 
         let _ = store.begin_gesture(Some(&format!("retract note {}", &tension_id)));
-        store.retract_note(&tension_id, &note_text, &note_ts).map_err(|e| err(e.to_string()))?;
+        store
+            .retract_note(&tension_id, &note_text, &note_ts)
+            .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
         autoflush(&workspace);
 
@@ -2101,9 +2361,7 @@ impl WerkServer {
 
         let notes: Vec<serde_json::Value> = mutations
             .iter()
-            .filter(|m| {
-                m.field() == "note" && !retracted.contains(&m.timestamp().to_rfc3339())
-            })
+            .filter(|m| m.field() == "note" && !retracted.contains(&m.timestamp().to_rfc3339()))
             .enumerate()
             .map(|(i, m)| {
                 serde_json::json!({
@@ -2122,7 +2380,9 @@ impl WerkServer {
 
     // ── Snooze / Recur ──────────────────────────────────────────
 
-    #[tool(description = "Snooze a tension until a future date (+3d, +2w, +1m, or YYYY-MM-DD). Use clear=true to unsnooze.")]
+    #[tool(
+        description = "Snooze a tension until a future date (+3d, +2w, +1m, or YYYY-MM-DD). Use clear=true to unsnooze."
+    )]
     async fn snooze(
         &self,
         Parameters(p): Parameters<SnoozeParam>,
@@ -2152,9 +2412,10 @@ impl WerkServer {
             }));
         }
 
-        let date = p.date.as_deref().ok_or_else(|| {
-            err("date is required when not clearing snooze")
-        })?;
+        let date = p
+            .date
+            .as_deref()
+            .ok_or_else(|| err("date is required when not clearing snooze"))?;
 
         store
             .record_mutation(&Mutation::new(
@@ -2175,7 +2436,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Set or clear a recurrence interval (+1d, +1w, +2w, +1m). Use clear=true to remove recurrence.")]
+    #[tool(
+        description = "Set or clear a recurrence interval (+1d, +1w, +2w, +1m). Use clear=true to remove recurrence."
+    )]
     async fn recur(
         &self,
         Parameters(p): Parameters<RecurParam>,
@@ -2205,9 +2468,10 @@ impl WerkServer {
             }));
         }
 
-        let interval = p.interval.as_deref().ok_or_else(|| {
-            err("interval is required when not clearing recurrence")
-        })?;
+        let interval = p
+            .interval
+            .as_deref()
+            .ok_or_else(|| err("interval is required when not clearing recurrence"))?;
 
         store
             .record_mutation(&Mutation::new(
@@ -2317,7 +2581,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Show what happened during a specific epoch (mutations on tension + descendants).")]
+    #[tool(
+        description = "Show what happened during a specific epoch (mutations on tension + descendants)."
+    )]
     async fn epoch_show(
         &self,
         Parameters(p): Parameters<EpochShowParam>,
@@ -2330,11 +2596,14 @@ impl WerkServer {
         let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
         let tension = resolve_id(&tensions, &p.id)?;
 
-        let epochs = store.get_epochs(&tension.id).map_err(|e| err(e.to_string()))?;
+        let epochs = store
+            .get_epochs(&tension.id)
+            .map_err(|e| err(e.to_string()))?;
         if p.epoch > epochs.len() {
             return Err(err(format!(
                 "epoch #{} does not exist ({} epochs)",
-                p.epoch, epochs.len()
+                p.epoch,
+                epochs.len()
             )));
         }
 
@@ -2352,13 +2621,15 @@ impl WerkServer {
 
         let mutation_entries: Vec<serde_json::Value> = mutations
             .iter()
-            .map(|m| serde_json::json!({
-                "tension_id": m.tension_id(),
-                "timestamp": m.timestamp().to_rfc3339(),
-                "field": m.field(),
-                "old_value": m.old_value(),
-                "new_value": m.new_value(),
-            }))
+            .map(|m| {
+                serde_json::json!({
+                    "tension_id": m.tension_id(),
+                    "timestamp": m.timestamp().to_rfc3339(),
+                    "field": m.field(),
+                    "old_value": m.old_value(),
+                    "new_value": m.new_value(),
+                })
+            })
             .collect();
 
         json_result(&serde_json::json!({
@@ -2374,7 +2645,9 @@ impl WerkServer {
 
     // ── Logbase query ──────────────────────────────────────────
 
-    #[tool(description = "Query the logbase — the searchable substrate of all prior epochs. Returns epoch history for a tension (with provenance), cross-tension timeline, or filtered results. Accepts addresses (#42~e3, #42@2026-03). Use compare=true for ghost geometry (desire-reality evolution).")]
+    #[tool(
+        description = "Query the logbase — the searchable substrate of all prior epochs. Returns epoch history for a tension (with provenance), cross-tension timeline, or filtered results. Accepts addresses (#42~e3, #42@2026-03). Use compare=true for ghost geometry (desire-reality evolution)."
+    )]
     async fn query_logbase(
         &self,
         Parameters(p): Parameters<LogParam>,
@@ -2390,7 +2663,9 @@ impl WerkServer {
             };
             let mut entries: Vec<serde_json::Value> = Vec::new();
             for tension in &tensions {
-                let epochs = store.get_epochs(&tension.id).map_err(|e| err(e.to_string()))?;
+                let epochs = store
+                    .get_epochs(&tension.id)
+                    .map_err(|e| err(e.to_string()))?;
                 for (i, epoch) in epochs.iter().enumerate() {
                     if epoch.timestamp >= cutoff {
                         entries.push(serde_json::json!({
@@ -2412,7 +2687,9 @@ impl WerkServer {
         let resolver = PrefixResolver::new(tensions.clone());
         let tension = resolver.resolve(&id_str).map_err(|e| err(e.to_string()))?;
 
-        let mut epochs = store.get_epochs(&tension.id).map_err(|e| err(e.to_string()))?;
+        let mut epochs = store
+            .get_epochs(&tension.id)
+            .map_err(|e| err(e.to_string()))?;
 
         if let Some(ref since) = p.since {
             let cutoff = parse_mcp_timespec(since).map_err(|e| err(e))?;
@@ -2427,18 +2704,24 @@ impl WerkServer {
         }
 
         // Provenance
-        let edges = store.get_edges_for_tension(&tension.id).map_err(|e| err(e.to_string()))?;
+        let edges = store
+            .get_edges_for_tension(&tension.id)
+            .map_err(|e| err(e.to_string()))?;
         let provenance = build_mcp_provenance(&edges, &tension.id, &tensions);
 
         if p.compare {
-            let entries: Vec<serde_json::Value> = epochs.iter().enumerate().map(|(i, e)| {
-                serde_json::json!({
-                    "number": i + 1,
-                    "timestamp": e.timestamp.to_rfc3339(),
-                    "desire_snapshot": e.desire_snapshot,
-                    "reality_snapshot": e.reality_snapshot,
+            let entries: Vec<serde_json::Value> = epochs
+                .iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    serde_json::json!({
+                        "number": i + 1,
+                        "timestamp": e.timestamp.to_rfc3339(),
+                        "desire_snapshot": e.desire_snapshot,
+                        "reality_snapshot": e.reality_snapshot,
+                    })
                 })
-            }).collect();
+                .collect();
             return json_result(&serde_json::json!({
                 "tension_id": tension.id,
                 "short_code": tension.short_code,
@@ -2448,16 +2731,20 @@ impl WerkServer {
             }));
         }
 
-        let epoch_entries: Vec<serde_json::Value> = epochs.iter().enumerate().map(|(i, e)| {
-            serde_json::json!({
-                "number": i + 1,
-                "id": e.id,
-                "timestamp": e.timestamp.to_rfc3339(),
-                "desire_snapshot": e.desire_snapshot,
-                "reality_snapshot": e.reality_snapshot,
-                "epoch_type": e.epoch_type,
+        let epoch_entries: Vec<serde_json::Value> = epochs
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                serde_json::json!({
+                    "number": i + 1,
+                    "id": e.id,
+                    "timestamp": e.timestamp.to_rfc3339(),
+                    "desire_snapshot": e.desire_snapshot,
+                    "reality_snapshot": e.reality_snapshot,
+                    "epoch_type": e.epoch_type,
+                })
             })
-        }).collect();
+            .collect();
 
         json_result(&serde_json::json!({
             "tension_id": tension.id,
@@ -2470,7 +2757,9 @@ impl WerkServer {
 
     // ── Split ─────────────────────────────────────────────────────
 
-    #[tool(description = "Split a tension into N new tensions with provenance. Creates split_from edges and cross-tension epochs. Source is resolved by default (set keep=true to keep active). If source has children, provide child assignment via assign array, children_to_parent, or children_to.")]
+    #[tool(
+        description = "Split a tension into N new tensions with provenance. Creates split_from edges and cross-tension epochs. Source is resolved by default (set keep=true to keep active). If source has children, provide child assignment via assign array, children_to_parent, or children_to."
+    )]
     async fn split(
         &self,
         Parameters(p): Parameters<SplitParam>,
@@ -2488,21 +2777,41 @@ impl WerkServer {
             return Err(err(format!("cannot split {} tension", source.status)));
         }
 
-        let children = store.get_children(&source.id).map_err(|e| err(e.to_string()))?;
+        let children = store
+            .get_children(&source.id)
+            .map_err(|e| err(e.to_string()))?;
 
         // Parse assignments
-        let mut assignments: std::collections::HashMap<i32, usize> = std::collections::HashMap::new();
+        let mut assignments: std::collections::HashMap<i32, usize> =
+            std::collections::HashMap::new();
         for a in &p.assign {
             let parts: Vec<&str> = a.split('=').collect();
-            if parts.len() != 2 { return Err(err(format!("invalid assign: '{}'", a))); }
-            let cc: i32 = parts[0].trim_start_matches('#').parse().map_err(|_| err(format!("invalid child: '{}'", parts[0])))?;
-            let target: usize = parts[1].parse().map_err(|_| err(format!("invalid target: '{}'", parts[1])))?;
+            if parts.len() != 2 {
+                return Err(err(format!("invalid assign: '{}'", a)));
+            }
+            let cc: i32 = parts[0]
+                .trim_start_matches('#')
+                .parse()
+                .map_err(|_| err(format!("invalid child: '{}'", parts[0])))?;
+            let target: usize = parts[1]
+                .parse()
+                .map_err(|_| err(format!("invalid target: '{}'", parts[1])))?;
             assignments.insert(cc, target);
         }
 
-        if !children.is_empty() && assignments.is_empty() && !p.children_to_parent && p.children_to.is_none() {
-            let child_list: Vec<String> = children.iter().map(|c| format!("#{}", c.short_code.unwrap_or(0))).collect();
-            return Err(err(format!("source has children that need assignment: {}. Use assign, children_to_parent, or children_to.", child_list.join(", "))));
+        if !children.is_empty()
+            && assignments.is_empty()
+            && !p.children_to_parent
+            && p.children_to.is_none()
+        {
+            let child_list: Vec<String> = children
+                .iter()
+                .map(|c| format!("#{}", c.short_code.unwrap_or(0)))
+                .collect();
+            return Err(err(format!(
+                "source has children that need assignment: {}. Use assign, children_to_parent, or children_to.",
+                child_list.join(", ")
+            )));
         }
 
         if p.dry_run {
@@ -2515,36 +2824,66 @@ impl WerkServer {
             }));
         }
 
-        let gesture_id = store.begin_gesture(Some("split")).map_err(|e| err(e.to_string()))?;
+        let gesture_id = store
+            .begin_gesture(Some("split"))
+            .map_err(|e| err(e.to_string()))?;
 
-        store.create_epoch_typed(&source.id, &source.desired, &source.actual, None, Some(&gesture_id), Some("split_source"))
+        store
+            .create_epoch_typed(
+                &source.id,
+                &source.desired,
+                &source.actual,
+                None,
+                Some(&gesture_id),
+                Some("split_source"),
+            )
             .map_err(|e| err(e.to_string()))?;
 
         let mut new_tensions = Vec::new();
         for desire in &p.desires {
-            let t = store.create_tension_with_parent(desire, "", source.parent_id.clone())
+            let t = store
+                .create_tension_with_parent(desire, "", source.parent_id.clone())
                 .map_err(|e| err(e.to_string()))?;
-            store.create_edge(&t.id, &source.id, sd_core::EDGE_SPLIT_FROM).map_err(|e| err(e.to_string()))?;
-            store.create_epoch_typed(&t.id, desire, "", None, Some(&gesture_id), Some("split_target"))
+            store
+                .create_edge(&t.id, &source.id, werk_core::EDGE_SPLIT_FROM)
+                .map_err(|e| err(e.to_string()))?;
+            store
+                .create_epoch_typed(
+                    &t.id,
+                    desire,
+                    "",
+                    None,
+                    Some(&gesture_id),
+                    Some("split_target"),
+                )
                 .map_err(|e| err(e.to_string()))?;
             new_tensions.push(t);
         }
 
         for child in &children {
             let cc = child.short_code.unwrap_or(0);
-            let target_idx = if let Some(&t) = assignments.get(&cc) { Some(t - 1) }
-                else if p.children_to_parent { None }
-                else if let Some(t) = p.children_to { Some(t - 1) }
-                else { None };
+            let target_idx = if let Some(&t) = assignments.get(&cc) {
+                Some(t - 1)
+            } else if p.children_to_parent {
+                None
+            } else if let Some(t) = p.children_to {
+                Some(t - 1)
+            } else {
+                None
+            };
             let new_parent = match target_idx {
                 Some(idx) => Some(new_tensions[idx].id.as_str()),
                 None => source.parent_id.as_deref(),
             };
-            store.update_parent(&child.id, new_parent).map_err(|e| err(e.to_string()))?;
+            store
+                .update_parent(&child.id, new_parent)
+                .map_err(|e| err(e.to_string()))?;
         }
 
         if !p.keep {
-            store.update_status(&source.id, TensionStatus::Resolved).map_err(|e| err(e.to_string()))?;
+            store
+                .update_status(&source.id, TensionStatus::Resolved)
+                .map_err(|e| err(e.to_string()))?;
         }
 
         store.end_gesture();
@@ -2564,13 +2903,17 @@ impl WerkServer {
 
     // ── Merge ─────────────────────────────────────────────────────
 
-    #[tool(description = "Merge tensions with provenance. Asymmetric (into=id, one survives) or symmetric (as_desire='text', both absorbed into new). Creates merged_into edges and cross-tension epochs.")]
+    #[tool(
+        description = "Merge tensions with provenance. Asymmetric (into=id, one survives) or symmetric (as_desire='text', both absorbed into new). Creates merged_into edges and cross-tension epochs."
+    )]
     async fn merge(
         &self,
         Parameters(p): Parameters<MergeParam>,
     ) -> Result<CallToolResult, McpError> {
         if p.into.is_none() && p.as_desire.is_none() {
-            return Err(err("merge requires either 'into' (asymmetric) or 'as_desire' (symmetric)"));
+            return Err(err(
+                "merge requires either 'into' (asymmetric) or 'as_desire' (symmetric)",
+            ));
         }
 
         let (workspace, mut store, _hh) = open_store_with_hooks()?;
@@ -2580,10 +2923,16 @@ impl WerkServer {
         let t1 = resolver.resolve(&p.id1).map_err(|e| err(e.to_string()))?;
         let t2 = resolver.resolve(&p.id2).map_err(|e| err(e.to_string()))?;
 
-        if t1.id == t2.id { return Err(err("cannot merge a tension with itself")); }
+        if t1.id == t2.id {
+            return Err(err("cannot merge a tension with itself"));
+        }
         for t in [&t1, &t2] {
             if t.status != TensionStatus::Active {
-                return Err(err(format!("cannot merge {} tension #{}", t.status, t.short_code.unwrap_or(0))));
+                return Err(err(format!(
+                    "cannot merge {} tension #{}",
+                    t.status,
+                    t.short_code.unwrap_or(0)
+                )));
             }
         }
 
@@ -2595,21 +2944,44 @@ impl WerkServer {
             }));
         }
 
-        let gesture_id = store.begin_gesture(Some("merge")).map_err(|e| err(e.to_string()))?;
+        let gesture_id = store
+            .begin_gesture(Some("merge"))
+            .map_err(|e| err(e.to_string()))?;
 
         if let Some(ref as_desire) = p.as_desire {
             // Symmetric
             for t in [&t1, &t2] {
-                store.create_epoch_typed(&t.id, &t.desired, &t.actual, None, Some(&gesture_id), Some("merge_source"))
+                store
+                    .create_epoch_typed(
+                        &t.id,
+                        &t.desired,
+                        &t.actual,
+                        None,
+                        Some(&gesture_id),
+                        Some("merge_source"),
+                    )
                     .map_err(|e| err(e.to_string()))?;
             }
-            let new_t = store.create_tension_with_parent(as_desire, "", t1.parent_id.clone())
+            let new_t = store
+                .create_tension_with_parent(as_desire, "", t1.parent_id.clone())
                 .map_err(|e| err(e.to_string()))?;
-            store.create_epoch_typed(&new_t.id, as_desire, "", None, Some(&gesture_id), Some("merge_target"))
+            store
+                .create_epoch_typed(
+                    &new_t.id,
+                    as_desire,
+                    "",
+                    None,
+                    Some(&gesture_id),
+                    Some("merge_target"),
+                )
                 .map_err(|e| err(e.to_string()))?;
             for t in [&t1, &t2] {
-                store.create_edge(&t.id, &new_t.id, sd_core::EDGE_MERGED_INTO).map_err(|e| err(e.to_string()))?;
-                store.update_status(&t.id, TensionStatus::Resolved).map_err(|e| err(e.to_string()))?;
+                store
+                    .create_edge(&t.id, &new_t.id, werk_core::EDGE_MERGED_INTO)
+                    .map_err(|e| err(e.to_string()))?;
+                store
+                    .update_status(&t.id, TensionStatus::Resolved)
+                    .map_err(|e| err(e.to_string()))?;
             }
             store.end_gesture();
             autoflush(&workspace);
@@ -2629,26 +3001,60 @@ impl WerkServer {
         if into_resolved.id != t1.id && into_resolved.id != t2.id {
             return Err(err("--into must be one of the merge arguments"));
         }
-        let (survivor, absorbed) = if into_resolved.id == t1.id { (&t1, &t2) } else { (&t2, &t1) };
+        let (survivor, absorbed) = if into_resolved.id == t1.id {
+            (&t1, &t2)
+        } else {
+            (&t2, &t1)
+        };
 
-        store.create_epoch_typed(&absorbed.id, &absorbed.desired, &absorbed.actual, None, Some(&gesture_id), Some("merge_source"))
+        store
+            .create_epoch_typed(
+                &absorbed.id,
+                &absorbed.desired,
+                &absorbed.actual,
+                None,
+                Some(&gesture_id),
+                Some("merge_source"),
+            )
             .map_err(|e| err(e.to_string()))?;
-        store.create_epoch_typed(&survivor.id, &survivor.desired, &survivor.actual, None, Some(&gesture_id), Some("merge_target"))
+        store
+            .create_epoch_typed(
+                &survivor.id,
+                &survivor.desired,
+                &survivor.actual,
+                None,
+                Some(&gesture_id),
+                Some("merge_target"),
+            )
             .map_err(|e| err(e.to_string()))?;
-        store.create_edge(&absorbed.id, &survivor.id, sd_core::EDGE_MERGED_INTO).map_err(|e| err(e.to_string()))?;
+        store
+            .create_edge(&absorbed.id, &survivor.id, werk_core::EDGE_MERGED_INTO)
+            .map_err(|e| err(e.to_string()))?;
 
         if let Some(ref d) = p.desire {
-            store.update_desired(&survivor.id, d).map_err(|e| err(e.to_string()))?;
+            store
+                .update_desired(&survivor.id, d)
+                .map_err(|e| err(e.to_string()))?;
         }
 
         // Reparent absorbed children
-        let absorbed_children = store.get_children(&absorbed.id).map_err(|e| err(e.to_string()))?;
+        let absorbed_children = store
+            .get_children(&absorbed.id)
+            .map_err(|e| err(e.to_string()))?;
         for child in &absorbed_children {
-            let new_parent = if p.children_to_parent { absorbed.parent_id.as_deref() } else { Some(survivor.id.as_str()) };
-            store.update_parent(&child.id, new_parent).map_err(|e| err(e.to_string()))?;
+            let new_parent = if p.children_to_parent {
+                absorbed.parent_id.as_deref()
+            } else {
+                Some(survivor.id.as_str())
+            };
+            store
+                .update_parent(&child.id, new_parent)
+                .map_err(|e| err(e.to_string()))?;
         }
 
-        store.update_status(&absorbed.id, TensionStatus::Resolved).map_err(|e| err(e.to_string()))?;
+        store
+            .update_status(&absorbed.id, TensionStatus::Resolved)
+            .map_err(|e| err(e.to_string()))?;
         store.end_gesture();
         autoflush(&workspace);
 
@@ -2662,7 +3068,9 @@ impl WerkServer {
 
     // ── Edge queries ──────────────────────────────────────────────
 
-    #[tool(description = "Query typed edges (structural relationships). Returns edges for a tension or all edges of a given type. Edge types: contains (parent-child), split_from (provenance), merged_into (provenance).")]
+    #[tool(
+        description = "Query typed edges (structural relationships). Returns edges for a tension or all edges of a given type. Edge types: contains (parent-child), split_from (provenance), merged_into (provenance)."
+    )]
     async fn edges(
         &self,
         Parameters(p): Parameters<EdgesParam>,
@@ -2673,9 +3081,13 @@ impl WerkServer {
             let tensions = store.list_tensions().map_err(|e| err(e.to_string()))?;
             let resolver = PrefixResolver::new(tensions);
             let t = resolver.resolve(id).map_err(|e| err(e.to_string()))?;
-            store.get_edges_for_tension(&t.id).map_err(|e| err(e.to_string()))?
+            store
+                .get_edges_for_tension(&t.id)
+                .map_err(|e| err(e.to_string()))?
         } else if let Some(ref edge_type) = p.edge_type {
-            store.get_edges_by_type(edge_type).map_err(|e| err(e.to_string()))?
+            store
+                .get_edges_by_type(edge_type)
+                .map_err(|e| err(e.to_string()))?
         } else {
             store.get_all_edges().map_err(|e| err(e.to_string()))?
         };
@@ -2687,23 +3099,28 @@ impl WerkServer {
             }
         }
 
-        let entries: Vec<serde_json::Value> = filtered.iter().map(|e| {
-            serde_json::json!({
-                "id": e.id,
-                "from_id": e.from_id,
-                "to_id": e.to_id,
-                "edge_type": e.edge_type,
-                "created_at": e.created_at.to_rfc3339(),
-                "gesture_id": e.gesture_id,
+        let entries: Vec<serde_json::Value> = filtered
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.id,
+                    "from_id": e.from_id,
+                    "to_id": e.to_id,
+                    "edge_type": e.edge_type,
+                    "created_at": e.created_at.to_rfc3339(),
+                    "gesture_id": e.gesture_id,
+                })
             })
-        }).collect();
+            .collect();
 
         json_result(&serde_json::json!({ "edges": entries, "count": entries.len() }))
     }
 
     // ── Batch tool ──────────────────────────────────────────────
 
-    #[tool(description = "Apply batch mutations from YAML. Supports create_child, update_actual, update_desired, update_status, add_note, set_horizon, move_tension, create_parent.")]
+    #[tool(
+        description = "Apply batch mutations from YAML. Supports create_child, update_actual, update_desired, update_status, add_note, set_horizon, move_tension, create_parent."
+    )]
     async fn batch(
         &self,
         Parameters(p): Parameters<BatchParam>,
@@ -2727,9 +3144,10 @@ impl WerkServer {
         let mut engine = Engine::with_store(store);
 
         if !p.dry_run {
-            let _ = engine.store_mut().begin_gesture(
-                Some(&format!("batch apply ({} mutations)", mutations.len())),
-            );
+            let _ = engine.store_mut().begin_gesture(Some(&format!(
+                "batch apply ({} mutations)",
+                mutations.len()
+            )));
         }
 
         let mut applied = 0usize;
@@ -2790,7 +3208,9 @@ impl WerkServer {
         }))
     }
 
-    #[tool(description = "Undo a gesture by reversing all its mutations. Creates an append-only reversal gesture. Supports redo by undoing the undo gesture. Returns error if fields have been changed by other gestures since (conflict detection).")]
+    #[tool(
+        description = "Undo a gesture by reversing all its mutations. Creates an append-only reversal gesture. Supports redo by undoing the undo gesture. Returns error if fields have been changed by other gestures since (conflict detection)."
+    )]
     async fn undo_gesture(
         &self,
         Parameters(p): Parameters<UndoGestureParam>,
@@ -2808,7 +3228,9 @@ impl WerkServer {
             return Err(err("provide gesture_id or set last=true"));
         };
 
-        let undo_id = store.undo_gesture(&gesture_id).map_err(|e| err(e.to_string()))?;
+        let undo_id = store
+            .undo_gesture(&gesture_id)
+            .map_err(|e| err(e.to_string()))?;
         autoflush(&workspace);
 
         json_result(&serde_json::json!({
@@ -2823,14 +3245,12 @@ impl WerkServer {
 #[tool_handler]
 impl ServerHandler for WerkServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(
-                "werk is an operative instrument for structural dynamics practice. \
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "werk is an operative instrument for structural dynamics practice. \
                  It manages tensions (desire-reality pairs) organized in a tree structure. \
                  Use read tools (show, tree, list, stats) to understand the current state, \
                  and gesture tools (add, resolve, reality, desire, etc.) to mutate it."
-                    .to_string(),
-            )
+                .to_string(),
+        )
     }
 }
-

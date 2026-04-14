@@ -6,8 +6,8 @@
 
 use crate::error::WerkError;
 use crate::output::Output;
-use sd_core::Store;
 use std::io::{self, BufRead, Write as IoWrite};
+use werk_core::Store;
 // Re-export shared types so command handlers can use `palette::Palette`.
 pub use werk_shared::palette::{Palette, PaletteChoice};
 
@@ -93,7 +93,10 @@ pub fn check_containment_after_horizon(
             // Determine if this choice will modify a parent's horizon (triggers cascade)
             let extends_parent = matches!(
                 (&choice, &ctx),
-                (PaletteChoice::Selected(2), werk_shared::PaletteContext::Containment { parent: _, .. })
+                (
+                    PaletteChoice::Selected(2),
+                    werk_shared::PaletteContext::Containment { parent: _, .. }
+                )
             );
 
             if extends_parent {

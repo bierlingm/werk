@@ -25,7 +25,7 @@ pub fn cmd_hold(output: &Output, id: String) -> Result<(), WerkError> {
     let _ = store.begin_gesture(Some(&format!("hold {}", &tension.id)));
     store
         .update_position(&tension.id, None)
-        .map_err(WerkError::SdError)?;
+        .map_err(WerkError::CoreError)?;
     store.end_gesture();
 
     let result = HoldResult {
@@ -41,12 +41,19 @@ pub fn cmd_hold(output: &Output, id: String) -> Result<(), WerkError> {
         match old_position {
             Some(p) => {
                 output
-                    .success(&format!("Held tension {} (was position {})", werk_shared::display_id(tension.short_code, &tension.id), p))
+                    .success(&format!(
+                        "Held tension {} (was position {})",
+                        werk_shared::display_id(tension.short_code, &tension.id),
+                        p
+                    ))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
             None => {
                 output
-                    .success(&format!("Tension {} is already held", werk_shared::display_id(tension.short_code, &tension.id)))
+                    .success(&format!(
+                        "Tension {} is already held",
+                        werk_shared::display_id(tension.short_code, &tension.id)
+                    ))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
         }

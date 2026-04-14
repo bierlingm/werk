@@ -5,7 +5,7 @@
 //! tensions (no parent, no children) appear as isolated roots.
 
 use fnx_classes::digraph::DiGraph;
-use fnx_runtime::{CompatibilityMode, CgseValue};
+use fnx_runtime::{CgseValue, CompatibilityMode};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -156,12 +156,12 @@ impl Forest {
             graph.add_node(&tension.id);
         }
         for tension in tensions.iter() {
-            if let Some(ref parent_id) = tension.parent_id {
-                if tension_ids.contains(parent_id.as_str()) {
-                    // Parent→child edge (containment flows outward).
-                    // Unwrap is safe: both nodes were just added above.
-                    let _ = graph.add_edge(parent_id.as_str(), &tension.id);
-                }
+            if let Some(ref parent_id) = tension.parent_id
+                && tension_ids.contains(parent_id.as_str())
+            {
+                // Parent→child edge (containment flows outward).
+                // Unwrap is safe: both nodes were just added above.
+                let _ = graph.add_edge(parent_id.as_str(), &tension.id);
             }
         }
         forest.graph = graph;
@@ -207,10 +207,10 @@ impl Forest {
 
         // First pass: create all nodes and check for self-references
         for tension in tensions.iter() {
-            if let Some(ref parent_id) = tension.parent_id {
-                if parent_id == &tension.id {
-                    return Err(TreeError::SelfReference(tension.id.clone()));
-                }
+            if let Some(ref parent_id) = tension.parent_id
+                && parent_id == &tension.id
+            {
+                return Err(TreeError::SelfReference(tension.id.clone()));
             }
             let node = Node::new(tension.clone());
             forest.nodes.insert(tension.id.clone(), node);
@@ -288,10 +288,7 @@ impl Forest {
         edges
             .into_iter()
             .filter(|(from, to)| {
-                self.graph
-                    .edge_attrs(from, to)
-                    .and_then(|a| a.get("type"))
-                    == Some(&target)
+                self.graph.edge_attrs(from, to).and_then(|a| a.get("type")) == Some(&target)
             })
             .map(|(_, to)| to.to_owned())
             .collect()
@@ -304,10 +301,7 @@ impl Forest {
         edges
             .into_iter()
             .filter(|(from, to)| {
-                self.graph
-                    .edge_attrs(from, to)
-                    .and_then(|a| a.get("type"))
-                    == Some(&target)
+                self.graph.edge_attrs(from, to).and_then(|a| a.get("type")) == Some(&target)
             })
             .map(|(from, _)| from.to_owned())
             .collect()

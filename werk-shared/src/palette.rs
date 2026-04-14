@@ -6,10 +6,8 @@
 //! (choice → store mutation).
 
 use crate::error::WerkError;
-use sd_core::{
-    ContainmentViolation, Forest, SequencingPressure, Store, Tension,
-};
 use serde::Serialize;
+use werk_core::{ContainmentViolation, Forest, SequencingPressure, Store, Tension};
 
 // ── Data types ─────────────────────────────────────────────────────────
 
@@ -72,9 +70,15 @@ pub fn containment_palette(
 
     // Promote option: reparent child to grandparent (or root if parent is root)
     let promote_label = if parent.parent_id.is_some() {
-        format!("Promote {} to sibling of {} (reparent under grandparent)", child_display, parent_display)
+        format!(
+            "Promote {} to sibling of {} (reparent under grandparent)",
+            child_display, parent_display
+        )
     } else {
-        format!("Promote {} to root (escape containment frame)", child_display)
+        format!(
+            "Promote {} to root (escape containment frame)",
+            child_display
+        )
     };
 
     Palette {
@@ -139,7 +143,7 @@ pub fn apply_containment_choice(
                 )));
                 store
                     .update_horizon(&child.id, Some(parent_h.clone()))
-                    .map_err(WerkError::SdError)?;
+                    .map_err(WerkError::CoreError)?;
                 store.end_gesture();
                 let child_display = crate::display_id(child.short_code, &child.id);
                 Ok(Some(format!(
@@ -159,7 +163,7 @@ pub fn apply_containment_choice(
                 )));
                 store
                     .update_horizon(&parent.id, Some(child_h.clone()))
-                    .map_err(WerkError::SdError)?;
+                    .map_err(WerkError::CoreError)?;
                 store.end_gesture();
                 let parent_display = crate::display_id(parent.short_code, &parent.id);
                 Ok(Some(format!(
@@ -179,7 +183,7 @@ pub fn apply_containment_choice(
             )));
             store
                 .update_parent(&child.id, new_parent)
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
             store.end_gesture();
             let child_display = crate::display_id(child.short_code, &child.id);
             let parent_display = crate::display_id(parent.short_code, &parent.id);
@@ -188,27 +192,18 @@ pub fn apply_containment_choice(
                     "Promoted {} to sibling of {}",
                     child_display, parent_display
                 ))),
-                None => Ok(Some(format!(
-                    "Promoted {} to root",
-                    child_display
-                ))),
+                None => Ok(Some(format!("Promoted {} to root", child_display))),
             }
         }
         PaletteChoice::Selected(4) => {
             // Remove child deadline entirely
-            let _ = store.begin_gesture(Some(&format!(
-                "palette: remove {} deadline",
-                &child.id
-            )));
+            let _ = store.begin_gesture(Some(&format!("palette: remove {} deadline", &child.id)));
             store
                 .update_horizon(&child.id, None)
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
             store.end_gesture();
             let child_display = crate::display_id(child.short_code, &child.id);
-            Ok(Some(format!(
-                "Removed {} deadline",
-                child_display
-            )))
+            Ok(Some(format!("Removed {} deadline", child_display)))
         }
         _ => Ok(None),
     }
@@ -295,10 +290,10 @@ pub fn apply_sequencing_choice(
                 )));
                 store
                     .update_position(&tension.id, Some(pp))
-                    .map_err(WerkError::SdError)?;
+                    .map_err(WerkError::CoreError)?;
                 store
                     .update_position(&predecessor.id, Some(tp))
-                    .map_err(WerkError::SdError)?;
+                    .map_err(WerkError::CoreError)?;
                 store.end_gesture();
                 let t_display = crate::display_id(tension.short_code, &tension.id);
                 let p_display = crate::display_id(predecessor.short_code, &predecessor.id);
@@ -321,16 +316,19 @@ pub fn apply_sequencing_choice(
                 )));
                 store
                     .update_position(&tension.id, Some(pp))
-                    .map_err(WerkError::SdError)?;
+                    .map_err(WerkError::CoreError)?;
                 store
                     .update_position(&predecessor.id, Some(pp + 1))
-                    .map_err(WerkError::SdError)?;
+                    .map_err(WerkError::CoreError)?;
                 store.end_gesture();
                 let t_display = crate::display_id(tension.short_code, &tension.id);
                 let p_display = crate::display_id(predecessor.short_code, &predecessor.id);
                 Ok(Some(format!(
                     "Moved {} to position {}, {} shifted to {}",
-                    t_display, pp, p_display, pp + 1
+                    t_display,
+                    pp,
+                    p_display,
+                    pp + 1
                 )))
             } else {
                 Ok(None)
@@ -338,19 +336,13 @@ pub fn apply_sequencing_choice(
         }
         PaletteChoice::Selected(3) => {
             // Hold tension (remove position)
-            let _ = store.begin_gesture(Some(&format!(
-                "palette: hold {}",
-                &tension.id
-            )));
+            let _ = store.begin_gesture(Some(&format!("palette: hold {}", &tension.id)));
             store
                 .update_position(&tension.id, None)
-                .map_err(WerkError::SdError)?;
+                .map_err(WerkError::CoreError)?;
             store.end_gesture();
             let t_display = crate::display_id(tension.short_code, &tension.id);
-            Ok(Some(format!(
-                "Held {} (removed position)",
-                t_display
-            )))
+            Ok(Some(format!("Held {} (removed position)", t_display)))
         }
         _ => Ok(None),
     }
@@ -370,8 +362,8 @@ pub fn detect_containment_palettes(
     tension_id: &str,
 ) -> Result<Vec<(Palette, PaletteContext)>, WerkError> {
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-    let forest = Forest::from_tensions(tensions.clone())
-        .map_err(|e| WerkError::IoError(e.to_string()))?;
+    let forest =
+        Forest::from_tensions(tensions.clone()).map_err(|e| WerkError::IoError(e.to_string()))?;
 
     let tension = match tensions.iter().find(|t| t.id == tension_id) {
         Some(t) => t,
@@ -382,23 +374,23 @@ pub fn detect_containment_palettes(
 
     // Check if this tension's deadline violates its parent's
     if let Some(ref parent_id) = tension.parent_id {
-        let violations = sd_core::detect_containment_violations(&forest, parent_id);
+        let violations = werk_core::detect_containment_violations(&forest, parent_id);
         for v in &violations {
-            if v.tension_id == tension_id {
-                if let Some(parent) = tensions.iter().find(|t| t.id == *parent_id) {
-                    let palette = containment_palette(v, tension, parent);
-                    let ctx = PaletteContext::Containment {
-                        child: tension.clone(),
-                        parent: parent.clone(),
-                    };
-                    results.push((palette, ctx));
-                }
+            if v.tension_id == tension_id
+                && let Some(parent) = tensions.iter().find(|t| t.id == *parent_id)
+            {
+                let palette = containment_palette(v, tension, parent);
+                let ctx = PaletteContext::Containment {
+                    child: tension.clone(),
+                    parent: parent.clone(),
+                };
+                results.push((palette, ctx));
             }
         }
     }
 
     // Check if this tension is a parent whose children now violate
-    let violations = sd_core::detect_containment_violations(&forest, tension_id);
+    let violations = werk_core::detect_containment_violations(&forest, tension_id);
     for v in &violations {
         if let Some(child) = tensions.iter().find(|t| t.id == v.tension_id) {
             let palette = containment_palette(v, child, tension);
@@ -419,8 +411,8 @@ pub fn detect_sequencing_palettes(
     tension_id: &str,
 ) -> Result<Vec<(Palette, PaletteContext)>, WerkError> {
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-    let forest = Forest::from_tensions(tensions.clone())
-        .map_err(|e| WerkError::IoError(e.to_string()))?;
+    let forest =
+        Forest::from_tensions(tensions.clone()).map_err(|e| WerkError::IoError(e.to_string()))?;
 
     let tension = match tensions.iter().find(|t| t.id == tension_id) {
         Some(t) => t,
@@ -430,17 +422,17 @@ pub fn detect_sequencing_palettes(
     let mut results = Vec::new();
 
     if let Some(ref parent_id) = tension.parent_id {
-        let pressures = sd_core::detect_sequencing_pressure(&forest, parent_id);
+        let pressures = werk_core::detect_sequencing_pressure(&forest, parent_id);
         for p in &pressures {
-            if p.tension_id == tension_id {
-                if let Some(predecessor) = tensions.iter().find(|t| t.id == p.predecessor_id) {
-                    let palette = sequencing_palette(p, tension, predecessor);
-                    let ctx = PaletteContext::Sequencing {
-                        tension: tension.clone(),
-                        predecessor: predecessor.clone(),
-                    };
-                    results.push((palette, ctx));
-                }
+            if p.tension_id == tension_id
+                && let Some(predecessor) = tensions.iter().find(|t| t.id == p.predecessor_id)
+            {
+                let palette = sequencing_palette(p, tension, predecessor);
+                let ctx = PaletteContext::Sequencing {
+                    tension: tension.clone(),
+                    predecessor: predecessor.clone(),
+                };
+                results.push((palette, ctx));
             }
         }
     }
@@ -481,7 +473,7 @@ pub fn apply_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sd_core::{Horizon, Store};
+    use werk_core::{Horizon, Store};
 
     /// Helper: create a parent with deadline and a child with deadline, return their IDs.
     fn setup_containment_scenario(
@@ -490,10 +482,20 @@ mod tests {
         child_horizon: &str,
     ) -> (String, String) {
         let parent = store
-            .create_tension_full("parent desired", "parent actual", None, Some(Horizon::parse(parent_horizon).unwrap()))
+            .create_tension_full(
+                "parent desired",
+                "parent actual",
+                None,
+                Some(Horizon::parse(parent_horizon).unwrap()),
+            )
             .unwrap();
         let child = store
-            .create_tension_full("child desired", "child actual", Some(parent.id.clone()), Some(Horizon::parse(child_horizon).unwrap()))
+            .create_tension_full(
+                "child desired",
+                "child actual",
+                Some(parent.id.clone()),
+                Some(Horizon::parse(child_horizon).unwrap()),
+            )
             .unwrap();
         (parent.id, child.id)
     }
@@ -507,14 +509,29 @@ mod tests {
         c2_horizon: &str,
     ) -> (String, String, String) {
         let parent = store
-            .create_tension_full("parent", "parent actual", None, Some(Horizon::parse("2026-12").unwrap()))
+            .create_tension_full(
+                "parent",
+                "parent actual",
+                None,
+                Some(Horizon::parse("2026-12").unwrap()),
+            )
             .unwrap();
         let c1 = store
-            .create_tension_full("child1", "c1 actual", Some(parent.id.clone()), Some(Horizon::parse(c1_horizon).unwrap()))
+            .create_tension_full(
+                "child1",
+                "c1 actual",
+                Some(parent.id.clone()),
+                Some(Horizon::parse(c1_horizon).unwrap()),
+            )
             .unwrap();
         store.update_position(&c1.id, Some(c1_pos)).unwrap();
         let c2 = store
-            .create_tension_full("child2", "c2 actual", Some(parent.id.clone()), Some(Horizon::parse(c2_horizon).unwrap()))
+            .create_tension_full(
+                "child2",
+                "c2 actual",
+                Some(parent.id.clone()),
+                Some(Horizon::parse(c2_horizon).unwrap()),
+            )
             .unwrap();
         store.update_position(&c2.id, Some(c2_pos)).unwrap();
         (parent.id, c1.id, c2.id)
@@ -527,7 +544,11 @@ mod tests {
         let mut store = Store::new_in_memory().unwrap();
         let (parent_id, child_id) = setup_containment_scenario(&mut store, "2026-06", "2026-09");
         let palettes = detect_containment_palettes(&store, &child_id).unwrap();
-        assert_eq!(palettes.len(), 1, "should detect exactly one containment violation");
+        assert_eq!(
+            palettes.len(),
+            1,
+            "should detect exactly one containment violation"
+        );
         let (palette, _) = &palettes[0];
         assert_eq!(palette.signal, "containment_violation");
         assert_eq!(palette.options.len(), 5);
@@ -548,14 +569,22 @@ mod tests {
         let mut store = Store::new_in_memory().unwrap();
         let (_parent_id, child_id) = setup_containment_scenario(&mut store, "2026-12", "2026-06");
         let palettes = detect_containment_palettes(&store, &child_id).unwrap();
-        assert!(palettes.is_empty(), "no violation when child deadline is within parent");
+        assert!(
+            palettes.is_empty(),
+            "no violation when child deadline is within parent"
+        );
     }
 
     #[test]
     fn no_containment_palette_for_root_tension() {
         let store = Store::new_in_memory().unwrap();
         let t = store
-            .create_tension_full("root", "actual", None, Some(Horizon::parse("2026-06").unwrap()))
+            .create_tension_full(
+                "root",
+                "actual",
+                None,
+                Some(Horizon::parse("2026-06").unwrap()),
+            )
             .unwrap();
         let palettes = detect_containment_palettes(&store, &t.id).unwrap();
         assert!(palettes.is_empty(), "root tension has no parent to violate");
@@ -621,13 +650,28 @@ mod tests {
     fn promote_child_reparents_to_grandparent() {
         let mut store = Store::new_in_memory().unwrap();
         let grandparent = store
-            .create_tension_full("grandparent", "gp actual", None, Some(Horizon::parse("2026-12").unwrap()))
+            .create_tension_full(
+                "grandparent",
+                "gp actual",
+                None,
+                Some(Horizon::parse("2026-12").unwrap()),
+            )
             .unwrap();
         let parent = store
-            .create_tension_full("parent", "p actual", Some(grandparent.id.clone()), Some(Horizon::parse("2026-06").unwrap()))
+            .create_tension_full(
+                "parent",
+                "p actual",
+                Some(grandparent.id.clone()),
+                Some(Horizon::parse("2026-06").unwrap()),
+            )
             .unwrap();
         let child = store
-            .create_tension_full("child", "c actual", Some(parent.id.clone()), Some(Horizon::parse("2026-09").unwrap()))
+            .create_tension_full(
+                "child",
+                "c actual",
+                Some(parent.id.clone()),
+                Some(Horizon::parse("2026-09").unwrap()),
+            )
             .unwrap();
 
         let palettes = detect_containment_palettes(&store, &child.id).unwrap();
@@ -639,7 +683,10 @@ mod tests {
         assert!(result.unwrap().contains("Promoted"));
 
         let updated_child = store.get_tension(&child.id).unwrap().unwrap();
-        assert_eq!(updated_child.parent_id.as_deref(), Some(grandparent.id.as_str()));
+        assert_eq!(
+            updated_child.parent_id.as_deref(),
+            Some(grandparent.id.as_str())
+        );
     }
 
     #[test]
@@ -699,7 +746,10 @@ mod tests {
         let (_parent_id, _c1_id, c2_id) =
             setup_sequencing_scenario(&mut store, 1, "2026-03", 2, "2026-09");
         let palettes = detect_sequencing_palettes(&store, &c2_id).unwrap();
-        assert!(palettes.is_empty(), "no pressure when order matches deadlines");
+        assert!(
+            palettes.is_empty(),
+            "no pressure when order matches deadlines"
+        );
     }
 
     // ── Sequencing applicator tests ───────────────────────────────────
@@ -789,13 +839,21 @@ mod tests {
     fn tension_without_deadline_no_containment_palette() {
         let store = Store::new_in_memory().unwrap();
         let parent = store
-            .create_tension_full("parent", "actual", None, Some(Horizon::parse("2026-06").unwrap()))
+            .create_tension_full(
+                "parent",
+                "actual",
+                None,
+                Some(Horizon::parse("2026-06").unwrap()),
+            )
             .unwrap();
         let child = store
             .create_tension_full("child", "actual", Some(parent.id.clone()), None)
             .unwrap();
         let palettes = detect_containment_palettes(&store, &child.id).unwrap();
-        assert!(palettes.is_empty(), "no violation when child has no deadline");
+        assert!(
+            palettes.is_empty(),
+            "no violation when child has no deadline"
+        );
     }
 
     #[test]
@@ -805,10 +863,18 @@ mod tests {
             .create_tension_full("parent", "actual", None, None)
             .unwrap();
         let child = store
-            .create_tension_full("child", "actual", Some(parent.id.clone()), Some(Horizon::parse("2026-06").unwrap()))
+            .create_tension_full(
+                "child",
+                "actual",
+                Some(parent.id.clone()),
+                Some(Horizon::parse("2026-06").unwrap()),
+            )
             .unwrap();
         let palettes = detect_containment_palettes(&store, &child.id).unwrap();
-        assert!(palettes.is_empty(), "no violation when parent has no deadline");
+        assert!(
+            palettes.is_empty(),
+            "no violation when parent has no deadline"
+        );
     }
 
     #[test]
@@ -818,7 +884,12 @@ mod tests {
             .create_tension_full("parent", "actual", None, None)
             .unwrap();
         let child = store
-            .create_tension_full("child", "actual", Some(parent.id.clone()), Some(Horizon::parse("2026-03").unwrap()))
+            .create_tension_full(
+                "child",
+                "actual",
+                Some(parent.id.clone()),
+                Some(Horizon::parse("2026-03").unwrap()),
+            )
             .unwrap();
         // child has no position — should not trigger sequencing pressure
         let palettes = detect_sequencing_palettes(&store, &child.id).unwrap();

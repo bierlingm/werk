@@ -19,8 +19,8 @@ pub mod log;
 pub mod merge;
 pub mod move_cmd;
 pub mod note;
-pub mod position;
 pub mod nuke;
+pub mod position;
 pub mod reality;
 pub mod recur;
 pub mod release;
@@ -34,13 +34,13 @@ pub mod stats;
 pub mod tree;
 pub mod undo;
 
-use clap::Subcommand;
 use batch::BatchCommand;
+use clap::Subcommand;
 use werk_shared::{AnalysisThresholds, Config, SignalThresholds, Workspace};
 
-/// Convert AnalysisThresholds to sd-core's ProjectionThresholds.
-pub fn to_projection_thresholds(a: &AnalysisThresholds) -> sd_core::ProjectionThresholds {
-    sd_core::ProjectionThresholds {
+/// Convert AnalysisThresholds to werk-core's ProjectionThresholds.
+pub fn to_projection_thresholds(a: &AnalysisThresholds) -> werk_core::ProjectionThresholds {
+    werk_core::ProjectionThresholds {
         pattern_window_seconds: a.pattern_window_days * 86400,
         neglect_frequency_threshold: a.neglect_frequency,
         oscillation_gap_variance: a.oscillation_variance,
@@ -78,7 +78,7 @@ pub fn analysis_thresholds_from(workspace: &Workspace) -> AnalysisThresholds {
 /// CLI subcommands.
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Initialize a workspace (creates .werk/ directory with sd.db).
+    /// Initialize a workspace (creates .werk/ directory with werk.db).
     Init {
         /// Use global workspace (~/.werk/) instead of local.
         #[arg(short, long)]
@@ -119,10 +119,13 @@ Examples:
     /// The inverse of decomposing — reveals implicit coherence by
     /// composing existing structure upward. All specified children
     /// must share the same current parent (or all be roots).
-    #[command(name = "compose", after_help = "\
+    #[command(
+        name = "compose",
+        after_help = "\
 Examples:
   werk compose \"Product launch\" \"Components ready\" 42 43 44
-  werk compose \"Q2 goals\" \"Planning complete\" 10 13 15")]
+  werk compose \"Q2 goals\" \"Planning complete\" 10 13 15"
+    )]
     Compose {
         /// Desired outcome for the new parent tension.
         desired: String,
@@ -200,11 +203,14 @@ Examples:
     },
 
     /// Set or display the deadline of a tension.
-    #[command(alias = "deadline", after_help = "\
+    #[command(
+        alias = "deadline",
+        after_help = "\
 Examples:
   werk horizon 42                    Show current horizon and urgency
   werk horizon 42 2026-06            Set deadline to June 2026
-  werk horizon 42 none               Clear the deadline")]
+  werk horizon 42 none               Clear the deadline"
+    )]
     Horizon {
         /// Tension ID or prefix.
         id: String,
@@ -236,11 +242,14 @@ Examples:
     ///
     /// Opens $EDITOR if value is omitted and a TTY is available.
     /// Fails with an error if no value and no TTY (non-interactive use).
-    #[command(alias = "actual", after_help = "\
+    #[command(
+        alias = "actual",
+        after_help = "\
 Examples:
   werk reality 42 \"Draft complete, 60k words\"
   werk reality 42 --no-epoch \"Fix typo in status\"
-  werk reality 42                    Opens $EDITOR with current value")]
+  werk reality 42                    Opens $EDITOR with current value"
+    )]
     Reality {
         /// Tension ID or prefix.
         id: String,

@@ -3,15 +3,15 @@
 // werk: Operative instrument for structural dynamics
 //
 // The practitioner's workspace. Practice, presence, oracle.
-// Built on sd-core. Maximally opinionated.
+// Built on werk-core. Maximally opinionated.
 
 pub mod commands;
+pub mod editor;
 pub mod hints;
 pub mod mutation_echo;
+pub mod output;
 pub mod palette;
 pub mod serialize;
-pub mod editor;
-pub mod output;
 
 // Re-export shared types from werk-shared for backward compatibility
 pub mod error {
@@ -27,8 +27,8 @@ pub mod prefix {
 }
 
 pub use editor::edit_content;
-pub use werk_shared::error::WerkError;
-pub use werk_shared::Config;
 pub use output::Output;
+pub use werk_shared::Config;
 pub use werk_shared::PrefixResolver;
 pub use werk_shared::Workspace;
+pub use werk_shared::error::WerkError;

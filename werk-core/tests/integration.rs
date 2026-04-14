@@ -1,15 +1,14 @@
-//! Integration tests for sd-core.
+//! Integration tests for werk-core.
 //!
 //! Tests full cross-module flows: store operations, forest building,
 //! urgency computation, horizon drift detection, temporal signals.
 
 use chrono::Utc;
-use sd_core::{
-    Engine, Event, EventBus, Forest, Store, Tension, TensionStatus,
-    compute_urgency, detect_horizon_drift,
-};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use werk_core::{
+    Engine, EventBus, Forest, Store, Tension, TensionStatus, compute_urgency, detect_horizon_drift,
+};
 
 // ============================================================================
 // Full Tension Lifecycle
@@ -20,7 +19,9 @@ fn test_full_tension_lifecycle() {
     let mut engine = Engine::new_in_memory().unwrap();
 
     // Create a tension
-    let t = engine.create_tension("write a novel", "have an outline").unwrap();
+    let t = engine
+        .create_tension("write a novel", "have an outline")
+        .unwrap();
     assert_eq!(t.status, TensionStatus::Active);
 
     // Update actual
@@ -56,7 +57,7 @@ fn test_store_emits_events_through_engine() {
     let _t = engine.create_tension("goal", "reality").unwrap();
 
     // Store operations should also be visible
-    assert!(count.load(Ordering::SeqCst) >= 0); // Events may or may not fire from store
+    assert!(count.load(Ordering::SeqCst) > 0);
 }
 
 // ============================================================================
@@ -65,7 +66,7 @@ fn test_store_emits_events_through_engine() {
 
 #[test]
 fn test_forest_from_store_tensions() {
-    let mut store = Store::new_in_memory().unwrap();
+    let store = Store::new_in_memory().unwrap();
 
     let parent = store.create_tension("big goal", "starting").unwrap();
     let _child1 = store
@@ -94,7 +95,7 @@ fn test_urgency_requires_horizon() {
 
 #[test]
 fn test_urgency_with_horizon() {
-    let h = sd_core::Horizon::new_month(2027, 6).unwrap();
+    let h = werk_core::Horizon::new_month(2027, 6).unwrap();
     let t = Tension::new_full("goal", "reality", None, Some(h)).unwrap();
     let result = compute_urgency(&t, Utc::now());
     assert!(result.is_some());
@@ -110,7 +111,7 @@ fn test_urgency_with_horizon() {
 #[test]
 fn test_horizon_drift_stable_with_no_mutations() {
     let result = detect_horizon_drift("test-id", &[]);
-    assert_eq!(result.drift_type, sd_core::HorizonDriftType::Stable);
+    assert_eq!(result.drift_type, werk_core::HorizonDriftType::Stable);
     assert_eq!(result.change_count, 0);
 }
 
@@ -120,22 +121,27 @@ fn test_horizon_drift_stable_with_no_mutations() {
 
 #[test]
 fn test_temporal_signals_with_forest() {
-    let mut store = Store::new_in_memory().unwrap();
+    let store = Store::new_in_memory().unwrap();
 
-    let h_parent = sd_core::Horizon::new_month(2026, 12).unwrap();
+    let h_parent = werk_core::Horizon::new_month(2026, 12).unwrap();
     let parent = store
         .create_tension_full("big goal", "starting", None, Some(h_parent))
         .unwrap();
 
-    let h_child = sd_core::Horizon::new_month(2026, 6).unwrap();
+    let h_child = werk_core::Horizon::new_month(2026, 6).unwrap();
     let _child = store
-        .create_tension_full("sub goal", "sub reality", Some(parent.id.clone()), Some(h_child))
+        .create_tension_full(
+            "sub goal",
+            "sub reality",
+            Some(parent.id.clone()),
+            Some(h_child),
+        )
         .unwrap();
 
     let tensions = store.list_tensions().unwrap();
     let forest = Forest::from_tensions(tensions).unwrap();
 
-    let signals = sd_core::compute_temporal_signals(&forest, &parent.id, Utc::now());
+    let signals = werk_core::compute_temporal_signals(&forest, &parent.id, Utc::now());
     // Parent with child deadline well before parent deadline should have critical path info
     assert!(signals.critical_path.len() <= 1); // may or may not be critical depending on timing
 }
@@ -156,5 +162,8 @@ fn test_engine_captures_parent_snapshots() {
     // Child should have parent snapshots
     let loaded = engine.store().get_tension(&child.id).unwrap().unwrap();
     assert_eq!(loaded.parent_desired_snapshot.as_deref(), Some("big goal"));
-    assert_eq!(loaded.parent_actual_snapshot.as_deref(), Some("starting point"));
+    assert_eq!(
+        loaded.parent_actual_snapshot.as_deref(),
+        Some("starting point")
+    );
 }

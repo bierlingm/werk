@@ -8,8 +8,8 @@ use crate::error::WerkError;
 use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use sd_core::tension::TensionStatus;
 use serde::Serialize;
+use werk_core::tension::TensionStatus;
 
 #[derive(Serialize)]
 struct MergeResult {
@@ -81,7 +81,16 @@ pub fn cmd_merge(
 
     if let Some(ref as_d) = as_desire {
         // Symmetric merge: both absorbed into a new tension
-        cmd_merge_symmetric(output, &mut store, &t1, &t2, as_d, &assign, children_to_parent, dry_run)
+        cmd_merge_symmetric(
+            output,
+            &mut store,
+            &t1,
+            &t2,
+            as_d,
+            &assign,
+            children_to_parent,
+            dry_run,
+        )
     } else {
         // Asymmetric merge: --into specifies the survivor
         let into_id = into.unwrap();
@@ -101,15 +110,24 @@ pub fn cmd_merge(
             (&t2, &t1)
         };
 
-        cmd_merge_asymmetric(output, &mut store, survivor, absorbed, desire.as_deref(), &assign, children_to_parent, dry_run)
+        cmd_merge_asymmetric(
+            output,
+            &mut store,
+            survivor,
+            absorbed,
+            desire.as_deref(),
+            &assign,
+            children_to_parent,
+            dry_run,
+        )
     }
 }
 
 fn cmd_merge_asymmetric(
     output: &Output,
-    store: &mut sd_core::Store,
-    survivor: &sd_core::Tension,
-    absorbed: &sd_core::Tension,
+    store: &mut werk_core::Store,
+    survivor: &werk_core::Tension,
+    absorbed: &werk_core::Tension,
     new_desire: Option<&str>,
     assign: &[String],
     children_to_parent: bool,
@@ -130,7 +148,13 @@ fn cmd_merge_asymmetric(
     if !absorbed_children.is_empty() && assignments.is_empty() && !children_to_parent {
         let child_list: Vec<String> = absorbed_children
             .iter()
-            .map(|c| format!("  #{} {}", c.short_code.unwrap_or(0), werk_shared::truncate(&c.desired, 50)))
+            .map(|c| {
+                format!(
+                    "  #{} {}",
+                    c.short_code.unwrap_or(0),
+                    werk_shared::truncate(&c.desired, 50)
+                )
+            })
             .collect();
         return Err(WerkError::InvalidInput(format!(
             "{} has {} children that need assignment:\n{}\n\nUse --children-to-parent or --assign CHILD=survivor",
@@ -141,12 +165,19 @@ fn cmd_merge_asymmetric(
     }
 
     if dry_run {
-        println!("Dry run: would merge {} into {}.", absorbed_display, survivor_display);
+        println!(
+            "Dry run: would merge {} into {}.",
+            absorbed_display, survivor_display
+        );
         if let Some(d) = new_desire {
             println!("  Survivor desire updated to: {}", d);
         }
         if !absorbed_children.is_empty() {
-            println!("  {} children of {} reparented.", absorbed_children.len(), absorbed_display);
+            println!(
+                "  {} children of {} reparented.",
+                absorbed_children.len(),
+                absorbed_display
+            );
         }
         println!("  {} would be resolved.", absorbed_display);
         return Ok(());
@@ -154,7 +185,10 @@ fn cmd_merge_asymmetric(
 
     // Execute
     let gesture_id = store
-        .begin_gesture(Some(&format!("merge {} into {}", absorbed_display, survivor_display)))
+        .begin_gesture(Some(&format!(
+            "merge {} into {}",
+            absorbed_display, survivor_display
+        )))
         .map_err(WerkError::StoreError)?;
 
     // Epoch on absorbed (merge_source)
@@ -183,7 +217,7 @@ fn cmd_merge_asymmetric(
 
     // Create merged_into edge: absorbed → survivor
     store
-        .create_edge(&absorbed.id, &survivor.id, sd_core::EDGE_MERGED_INTO)
+        .create_edge(&absorbed.id, &survivor.id, werk_core::EDGE_MERGED_INTO)
         .map_err(WerkError::StoreError)?;
 
     // Reparent absorbed children
@@ -217,7 +251,7 @@ fn cmd_merge_asymmetric(
 
     // Record merge mutation
     store
-        .record_mutation(&sd_core::Mutation::new(
+        .record_mutation(&werk_core::Mutation::new(
             survivor.id.clone(),
             chrono::Utc::now(),
             "merge".to_owned(),
@@ -267,9 +301,9 @@ fn cmd_merge_asymmetric(
 
 fn cmd_merge_symmetric(
     output: &Output,
-    store: &mut sd_core::Store,
-    t1: &sd_core::Tension,
-    t2: &sd_core::Tension,
+    store: &mut werk_core::Store,
+    t1: &werk_core::Tension,
+    t2: &werk_core::Tension,
     new_desire: &str,
     _assign: &[String],
     children_to_parent: bool,
@@ -286,7 +320,13 @@ fn cmd_merge_symmetric(
     if !all_children.is_empty() && !children_to_parent {
         let child_list: Vec<String> = all_children
             .iter()
-            .map(|c| format!("  #{} {}", c.short_code.unwrap_or(0), werk_shared::truncate(&c.desired, 50)))
+            .map(|c| {
+                format!(
+                    "  #{} {}",
+                    c.short_code.unwrap_or(0),
+                    werk_shared::truncate(&c.desired, 50)
+                )
+            })
             .collect();
         return Err(WerkError::InvalidInput(format!(
             "merged tensions have {} children that need assignment:\n{}\n\nUse --children-to-parent to float to parents, or the new tension will adopt them.",
@@ -296,9 +336,15 @@ fn cmd_merge_symmetric(
     }
 
     if dry_run {
-        println!("Dry run: would merge {} and {} into new tension:", t1_display, t2_display);
+        println!(
+            "Dry run: would merge {} and {} into new tension:",
+            t1_display, t2_display
+        );
         println!("  Desire: {}", new_desire);
-        println!("  Both {} and {} would be resolved.", t1_display, t2_display);
+        println!(
+            "  Both {} and {} would be resolved.",
+            t1_display, t2_display
+        );
         if !all_children.is_empty() {
             println!("  {} children reassigned.", all_children.len());
         }
@@ -309,7 +355,10 @@ fn cmd_merge_symmetric(
     let parent_id = t1.parent_id.clone();
 
     let gesture_id = store
-        .begin_gesture(Some(&format!("merge {} + {} into new", t1_display, t2_display)))
+        .begin_gesture(Some(&format!(
+            "merge {} + {} into new",
+            t1_display, t2_display
+        )))
         .map_err(WerkError::StoreError)?;
 
     // Epochs on both sources
@@ -346,7 +395,7 @@ fn cmd_merge_symmetric(
     // Create merged_into edges: both → new
     for t in [t1, t2] {
         store
-            .create_edge(&t.id, &new_t.id, sd_core::EDGE_MERGED_INTO)
+            .create_edge(&t.id, &new_t.id, werk_core::EDGE_MERGED_INTO)
             .map_err(WerkError::StoreError)?;
     }
 
@@ -389,7 +438,7 @@ fn cmd_merge_symmetric(
 
     // Record merge mutation on new tension
     store
-        .record_mutation(&sd_core::Mutation::new(
+        .record_mutation(&werk_core::Mutation::new(
             new_t.id.clone(),
             chrono::Utc::now(),
             "merge".to_owned(),
@@ -447,7 +496,9 @@ fn cmd_merge_symmetric(
     Ok(())
 }
 
-fn parse_assignments(assign: &[String]) -> Result<std::collections::HashMap<i32, String>, WerkError> {
+fn parse_assignments(
+    assign: &[String],
+) -> Result<std::collections::HashMap<i32, String>, WerkError> {
     let mut result = std::collections::HashMap::new();
     for a in assign {
         let parts: Vec<&str> = a.split('=').collect();

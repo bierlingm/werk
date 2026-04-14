@@ -3,14 +3,14 @@
 
 //! werk-app: Tauri 2.0 desktop app for the werk structural dynamics instrument.
 //!
-//! sd-core's Store is !Send (fsqlite uses Rc internally). We handle this by
+//! werk-core's Store is !Send (fsqlite uses Rc internally). We handle this by
 //! running all store operations on a dedicated OS thread, communicating via
 //! std::sync::mpsc channels. This is the same pattern used by werk-web.
 
-use sd_core::{Horizon, Tension, TensionStatus};
 use serde::{Deserialize, Serialize};
-use std::sync::{mpsc, Mutex};
+use std::sync::{Mutex, mpsc};
 use tauri::State;
+use werk_core::{Horizon, Tension, TensionStatus};
 
 // ─── Store Actor ────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ impl StoreHandle {
         std::thread::Builder::new()
             .name("werk-store".into())
             .spawn(move || {
-                let mut store = match sd_core::Store::init(&store_path) {
+                let mut store = match werk_core::Store::init(&store_path) {
                     Ok(s) => s,
                     Err(e) => {
                         eprintln!("failed to open store: {}", e);
@@ -75,11 +75,15 @@ impl StoreHandle {
                 while let Ok(cmd) = rx.recv() {
                     match cmd {
                         StoreCmd::ListTensions { reply } => {
-                            let _ = reply.send(
-                                store.list_tensions().map_err(|e| e.to_string()),
-                            );
+                            let _ = reply.send(store.list_tensions().map_err(|e| e.to_string()));
                         }
-                        StoreCmd::CreateTension { desired, actual, parent_id, horizon, reply } => {
+                        StoreCmd::CreateTension {
+                            desired,
+                            actual,
+                            parent_id,
+                            horizon,
+                            reply,
+                        } => {
                             let _ = store.begin_gesture(Some("app: create tension"));
                             let result = store
                                 .create_tension_full(&desired, &actual, parent_id, horizon)
@@ -89,13 +93,15 @@ impl StoreHandle {
                         }
                         StoreCmd::UpdateDesired { id, value, reply } => {
                             let _ = store.begin_gesture(Some("app: update desired"));
-                            let result = store.update_desired(&id, &value).map_err(|e| e.to_string());
+                            let result =
+                                store.update_desired(&id, &value).map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
                         StoreCmd::UpdateReality { id, value, reply } => {
                             let _ = store.begin_gesture(Some("app: update reality"));
-                            let result = store.update_actual(&id, &value).map_err(|e| e.to_string());
+                            let result =
+                                store.update_actual(&id, &value).map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
@@ -106,18 +112,23 @@ impl StoreHandle {
                                 TensionStatus::Released => "app: release",
                             };
                             let _ = store.begin_gesture(Some(label));
-                            let result = store.update_status(&id, status).map_err(|e| e.to_string());
+                            let result =
+                                store.update_status(&id, status).map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
                         StoreCmd::GetTension { id, reply } => {
-                            let _ = reply.send(
-                                store.get_tension(&id).map_err(|e| e.to_string()),
-                            );
+                            let _ = reply.send(store.get_tension(&id).map_err(|e| e.to_string()));
                         }
-                        StoreCmd::UpdatePosition { id, position, reply } => {
+                        StoreCmd::UpdatePosition {
+                            id,
+                            position,
+                            reply,
+                        } => {
                             let _ = store.begin_gesture(Some("app: reposition"));
-                            let result = store.update_position(&id, position).map_err(|e| e.to_string());
+                            let result = store
+                                .update_position(&id, position)
+                                .map_err(|e| e.to_string());
                             store.end_gesture();
                             let _ = reply.send(result);
                         }
@@ -131,7 +142,9 @@ impl StoreHandle {
 
     fn list_tensions(&self) -> StoreResult<Vec<Tension>> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
+        self.tx
+            .lock()
+            .unwrap()
             .send(StoreCmd::ListTensions { reply })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
@@ -145,15 +158,25 @@ impl StoreHandle {
         horizon: Option<Horizon>,
     ) -> StoreResult<Tension> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
-            .send(StoreCmd::CreateTension { desired, actual, parent_id, horizon, reply })
+        self.tx
+            .lock()
+            .unwrap()
+            .send(StoreCmd::CreateTension {
+                desired,
+                actual,
+                parent_id,
+                horizon,
+                reply,
+            })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
     }
 
     fn update_desired(&self, id: String, value: String) -> StoreResult<()> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
+        self.tx
+            .lock()
+            .unwrap()
             .send(StoreCmd::UpdateDesired { id, value, reply })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
@@ -161,7 +184,9 @@ impl StoreHandle {
 
     fn update_reality(&self, id: String, value: String) -> StoreResult<()> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
+        self.tx
+            .lock()
+            .unwrap()
             .send(StoreCmd::UpdateReality { id, value, reply })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
@@ -169,7 +194,9 @@ impl StoreHandle {
 
     fn update_status(&self, id: String, status: TensionStatus) -> StoreResult<()> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
+        self.tx
+            .lock()
+            .unwrap()
             .send(StoreCmd::UpdateStatus { id, status, reply })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
@@ -177,7 +204,9 @@ impl StoreHandle {
 
     fn get_tension(&self, id: String) -> StoreResult<Option<Tension>> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
+        self.tx
+            .lock()
+            .unwrap()
             .send(StoreCmd::GetTension { id, reply })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
@@ -185,8 +214,14 @@ impl StoreHandle {
 
     fn update_position(&self, id: String, position: Option<i32>) -> StoreResult<bool> {
         let (reply, rx) = mpsc::sync_channel(1);
-        self.tx.lock().unwrap()
-            .send(StoreCmd::UpdatePosition { id, position, reply })
+        self.tx
+            .lock()
+            .unwrap()
+            .send(StoreCmd::UpdatePosition {
+                id,
+                position,
+                reply,
+            })
             .map_err(|e| e.to_string())?;
         rx.recv().map_err(|e| e.to_string())?
     }
@@ -263,13 +298,25 @@ struct TreeResponse {
 fn get_tree(store: State<'_, StoreHandle>) -> Result<TreeResponse, String> {
     let all = store.list_tensions()?;
     let summary = SummaryJson {
-        active: all.iter().filter(|t| t.status == TensionStatus::Active).count(),
-        resolved: all.iter().filter(|t| t.status == TensionStatus::Resolved).count(),
-        released: all.iter().filter(|t| t.status == TensionStatus::Released).count(),
+        active: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active)
+            .count(),
+        resolved: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Resolved)
+            .count(),
+        released: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Released)
+            .count(),
         total: all.len(),
     };
     let tension_jsons: Vec<TensionJson> = all.iter().map(TensionJson::from_tension).collect();
-    Ok(TreeResponse { tensions: tension_jsons, summary })
+    Ok(TreeResponse {
+        tensions: tension_jsons,
+        summary,
+    })
 }
 
 #[derive(Deserialize)]
@@ -281,7 +328,10 @@ struct CreateTensionArgs {
 }
 
 #[tauri::command]
-fn create_tension(store: State<'_, StoreHandle>, args: CreateTensionArgs) -> Result<TensionJson, String> {
+fn create_tension(
+    store: State<'_, StoreHandle>,
+    args: CreateTensionArgs,
+) -> Result<TensionJson, String> {
     let horizon = if let Some(ref h) = args.horizon {
         if h.is_empty() {
             None
@@ -305,13 +355,21 @@ fn create_tension(store: State<'_, StoreHandle>, args: CreateTensionArgs) -> Res
 }
 
 #[tauri::command]
-fn update_reality(store: State<'_, StoreHandle>, id: String, new_reality: String) -> Result<(), String> {
+fn update_reality(
+    store: State<'_, StoreHandle>,
+    id: String,
+    new_reality: String,
+) -> Result<(), String> {
     let tension_id = store.resolve_id(&id)?;
     store.update_reality(tension_id, new_reality)
 }
 
 #[tauri::command]
-fn update_desired(store: State<'_, StoreHandle>, id: String, new_desired: String) -> Result<(), String> {
+fn update_desired(
+    store: State<'_, StoreHandle>,
+    id: String,
+    new_desired: String,
+) -> Result<(), String> {
     let tension_id = store.resolve_id(&id)?;
     store.update_desired(tension_id, new_desired)
 }
@@ -336,7 +394,11 @@ fn get_tension(store: State<'_, StoreHandle>, id: String) -> Result<Option<Tensi
 }
 
 #[tauri::command]
-fn position_tension(store: State<'_, StoreHandle>, id: String, position: Option<i32>) -> Result<bool, String> {
+fn position_tension(
+    store: State<'_, StoreHandle>,
+    id: String,
+    position: Option<i32>,
+) -> Result<bool, String> {
     let tension_id = store.resolve_id(&id)?;
     store.update_position(tension_id, position)
 }
@@ -375,8 +437,7 @@ fn discover_store_path() -> std::path::PathBuf {
 fn main() {
     let store_path = discover_store_path();
 
-    let store_handle = StoreHandle::spawn(store_path)
-        .expect("failed to initialize store");
+    let store_handle = StoreHandle::spawn(store_path).expect("failed to initialize store");
 
     tauri::Builder::default()
         .manage(store_handle)

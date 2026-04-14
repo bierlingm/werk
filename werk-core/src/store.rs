@@ -7,8 +7,8 @@
 //! # Directory Discovery
 //!
 //! `Store::open()` walks up from the current working directory looking for
-//! a `.werk/` directory containing `sd.db`. If not found, it falls back to
-//! `~/.werk/sd.db`.
+//! a `.werk/` directory containing `werk.db`. If not found, it falls back to
+//! `~/.werk/werk.db`.
 //!
 //! # Schema
 //!
@@ -78,7 +78,7 @@ use chrono::{DateTime, Utc};
 use fsqlite::Connection;
 use fsqlite_types::value::SqliteValue;
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// Maximum retries for transient MVCC conflicts (e.g., SQLITE_BUSY_SNAPSHOT).
@@ -89,7 +89,7 @@ const CONCURRENT_COMMIT_BASE_DELAY_MS: u64 = 5;
 use crate::events::{Event, EventBuilder, EventBus};
 use crate::horizon::Horizon;
 use crate::mutation::Mutation;
-use crate::tension::{SdError, Tension, TensionStatus};
+use crate::tension::{CoreError, Tension, TensionStatus};
 
 /// Errors specific to store operations.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -119,10 +119,10 @@ pub enum StoreError {
     TransactionRolledBack(String),
 }
 
-/// Convert StoreError to SdError for use in operations that return SdError.
-impl From<StoreError> for SdError {
+/// Convert StoreError to CoreError for use in operations that return CoreError.
+impl From<StoreError> for CoreError {
     fn from(e: StoreError) -> Self {
-        SdError::ValidationError(e.to_string())
+        CoreError::ValidationError(e.to_string())
     }
 }
 
@@ -153,9 +153,25 @@ pub struct Store {
 }
 
 impl Store {
+    fn migrate_legacy_db(werk_dir: &Path, db_path: &Path) -> Result<(), StoreError> {
+        let old_db_path = werk_dir.join("sd.db");
+        if !old_db_path.exists() || db_path.exists() {
+            return Ok(());
+        }
+
+        match std::fs::rename(&old_db_path, db_path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && db_path.exists() => Ok(()),
+            Err(e) => Err(StoreError::IoError(format!(
+                "failed to migrate sd.db to werk.db: {}",
+                e
+            ))),
+        }
+    }
+
     /// Initialize a new store at the given path.
     ///
-    /// Creates `.werk/sd.db` with the correct schema. Idempotent —
+    /// Creates `.werk/werk.db` with the correct schema. Idempotent —
     /// opening an existing database preserves data.
     ///
     /// Enables MVCC concurrent writers so multiple processes (CLI, TUI,
@@ -170,7 +186,8 @@ impl Store {
             }
         })?;
 
-        let db_path = werk_dir.join("sd.db");
+        let db_path = werk_dir.join("werk.db");
+        Self::migrate_legacy_db(&werk_dir, &db_path)?;
 
         // Back up the database before opening (rotates, keeps last 10)
         if db_path.exists() {
@@ -207,7 +224,8 @@ impl Store {
             }
         })?;
 
-        let db_path = werk_dir.join("sd.db");
+        let db_path = werk_dir.join("werk.db");
+        Self::migrate_legacy_db(&werk_dir, &db_path)?;
         let db_path_str = db_path.to_string_lossy().into_owned();
         let conn = Connection::open(db_path_str)
             .map_err(|e| StoreError::DatabaseError(format!("failed to open database: {:?}", e)))?;
@@ -226,7 +244,7 @@ impl Store {
 
     /// Open an existing store, discovering .werk/ by walking up from CWD.
     ///
-    /// Falls back to ~/.werk/sd.db if no local .werk/ found.
+    /// Falls back to ~/.werk/werk.db if no local .werk/ found.
     pub fn open() -> Result<Self, StoreError> {
         let path = Self::discover_werk_dir()?;
         Self::init(&path)
@@ -278,9 +296,11 @@ impl Store {
     /// `BEGIN CONCURRENT` allows page-level MVCC with Serializable Snapshot
     /// Isolation — multiple processes can write simultaneously.
     fn enable_concurrent_mode(conn: &Connection) -> Result<(), StoreError> {
-        conn.execute("PRAGMA fsqlite.concurrent_mode=ON;").map(|_| ()).map_err(|e| {
-            StoreError::DatabaseError(format!("failed to enable concurrent mode: {:?}", e))
-        })
+        conn.execute("PRAGMA fsqlite.concurrent_mode=ON;")
+            .map(|_| ())
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("failed to enable concurrent mode: {:?}", e))
+            })
     }
 
     /// Commit with retry for transient MVCC conflicts.
@@ -288,7 +308,7 @@ impl Store {
     /// When concurrent writers contend for the WAL write lock, the loser gets
     /// a transient Busy error. The transaction's writes are still valid — we
     /// just need to wait for the lock and retry COMMIT.
-    fn commit_with_retry(conn: &Connection) -> Result<(), SdError> {
+    fn commit_with_retry(conn: &Connection) -> Result<(), CoreError> {
         for attempt in 0..CONCURRENT_COMMIT_MAX_RETRIES {
             match conn.execute("COMMIT;") {
                 Ok(_) => return Ok(()),
@@ -298,12 +318,15 @@ impl Store {
                 }
                 Err(e) => {
                     let _ = conn.execute("ROLLBACK;");
-                    return Err(SdError::ValidationError(format!("commit failed: {:?}", e)));
+                    return Err(CoreError::ValidationError(format!(
+                        "commit failed: {:?}",
+                        e
+                    )));
                 }
             }
         }
         let _ = conn.execute("ROLLBACK;");
-        Err(SdError::ValidationError(
+        Err(CoreError::ValidationError(
             "commit failed after max retries — concurrent write contention".to_owned(),
         ))
     }
@@ -312,14 +335,18 @@ impl Store {
         let backup_dir = werk_dir.join("backups");
         let _ = std::fs::create_dir_all(&backup_dir);
         let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
-        let backup_path = backup_dir.join(format!("sd.db.{}", timestamp));
+        let backup_path = backup_dir.join(format!("werk.db.{}", timestamp));
         if !backup_path.exists() {
             let _ = std::fs::copy(db_path, &backup_path);
         }
         if let Ok(entries) = std::fs::read_dir(&backup_dir) {
             let mut db_backups: Vec<_> = entries
                 .filter_map(|e| e.ok())
-                .filter(|e| e.file_name().to_string_lossy().starts_with("sd.db."))
+                .filter(|e| {
+                    let name = e.file_name();
+                    let name_str = name.to_string_lossy();
+                    name_str.starts_with("werk.db.") || name_str.starts_with("sd.db.")
+                })
                 .collect();
             db_backups.sort_by_key(|e| e.file_name());
             if db_backups.len() > 10 {
@@ -418,30 +445,22 @@ impl Store {
                 UNIQUE(from_id, to_id, edge_type)
             )",
         )
-        .map_err(|e| {
-            StoreError::DatabaseError(format!("failed to create edges table: {:?}", e))
-        })?;
+        .map_err(|e| StoreError::DatabaseError(format!("failed to create edges table: {:?}", e)))?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id)",
-        )
-        .map_err(|e| {
-            StoreError::DatabaseError(format!("failed to create edges from index: {:?}", e))
-        })?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id)")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("failed to create edges from index: {:?}", e))
+            })?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_id)",
-        )
-        .map_err(|e| {
-            StoreError::DatabaseError(format!("failed to create edges to index: {:?}", e))
-        })?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_id)")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("failed to create edges to index: {:?}", e))
+            })?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)",
-        )
-        .map_err(|e| {
-            StoreError::DatabaseError(format!("failed to create edges type index: {:?}", e))
-        })?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("failed to create edges type index: {:?}", e))
+            })?;
 
         // Migration: Add horizon column to existing databases
         // Check if the column exists, and if not, add it
@@ -493,11 +512,17 @@ impl Store {
         if !has_parent_desired_snapshot {
             conn.execute("ALTER TABLE tensions ADD COLUMN parent_desired_snapshot TEXT")
                 .map_err(|e| {
-                    StoreError::DatabaseError(format!("failed to add parent_desired_snapshot column: {:?}", e))
+                    StoreError::DatabaseError(format!(
+                        "failed to add parent_desired_snapshot column: {:?}",
+                        e
+                    ))
                 })?;
             conn.execute("ALTER TABLE tensions ADD COLUMN parent_actual_snapshot TEXT")
                 .map_err(|e| {
-                    StoreError::DatabaseError(format!("failed to add parent_actual_snapshot column: {:?}", e))
+                    StoreError::DatabaseError(format!(
+                        "failed to add parent_actual_snapshot column: {:?}",
+                        e
+                    ))
                 })?;
         }
 
@@ -516,9 +541,13 @@ impl Store {
                     StoreError::DatabaseError(format!("failed to add short_code column: {:?}", e))
                 })?;
             // Backfill short_codes for existing tensions
-            let existing = conn.query("SELECT id FROM tensions ORDER BY created_at ASC")
+            let existing = conn
+                .query("SELECT id FROM tensions ORDER BY created_at ASC")
                 .map_err(|e| {
-                    StoreError::DatabaseError(format!("failed to query tensions for backfill: {:?}", e))
+                    StoreError::DatabaseError(format!(
+                        "failed to query tensions for backfill: {:?}",
+                        e
+                    ))
                 })?;
             for (i, row) in existing.iter().enumerate() {
                 if let Some(SqliteValue::Text(tid)) = row.get(0) {
@@ -528,7 +557,8 @@ impl Store {
                             SqliteValue::Integer((i + 1) as i64),
                             SqliteValue::Text(tid.to_string().into()),
                         ],
-                    ).map_err(|e| {
+                    )
+                    .map_err(|e| {
                         StoreError::DatabaseError(format!("failed to backfill short_code: {:?}", e))
                     })?;
                 }
@@ -547,7 +577,10 @@ impl Store {
         if !has_parent_snapshot_json {
             conn.execute("ALTER TABLE tensions ADD COLUMN parent_snapshot_json TEXT")
                 .map_err(|e| {
-                    StoreError::DatabaseError(format!("failed to add parent_snapshot_json column: {:?}", e))
+                    StoreError::DatabaseError(format!(
+                        "failed to add parent_snapshot_json column: {:?}",
+                        e
+                    ))
                 })?;
         }
 
@@ -595,12 +628,13 @@ impl Store {
             StoreError::DatabaseError(format!("failed to create mutations index: {:?}", e))
         })?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tensions_parent_id ON tensions(parent_id)",
-        )
-        .map_err(|e| {
-            StoreError::DatabaseError(format!("failed to create tensions parent index: {:?}", e))
-        })?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tensions_parent_id ON tensions(parent_id)")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!(
+                    "failed to create tensions parent index: {:?}",
+                    e
+                ))
+            })?;
 
         // Migration: Add epoch_type to epochs
         let epoch_columns: Vec<fsqlite::Row> =
@@ -679,9 +713,7 @@ impl Store {
         // Check if edges are already populated by looking for any contains edges.
         let edge_count: Vec<fsqlite::Row> = conn
             .query("SELECT COUNT(*) FROM edges WHERE edge_type = 'contains'")
-            .map_err(|e| {
-                StoreError::DatabaseError(format!("failed to count edges: {:?}", e))
-            })?;
+            .map_err(|e| StoreError::DatabaseError(format!("failed to count edges: {:?}", e)))?;
 
         let has_edges = match edge_count.first().and_then(|r| r.get(0)) {
             Some(SqliteValue::Integer(n)) => *n > 0,
@@ -691,9 +723,7 @@ impl Store {
         if !has_edges {
             // Migrate parent_id relationships to contains edges
             let parent_rows: Vec<fsqlite::Row> = conn
-                .query(
-                    "SELECT id, parent_id FROM tensions WHERE parent_id IS NOT NULL",
-                )
+                .query("SELECT id, parent_id FROM tensions WHERE parent_id IS NOT NULL")
                 .map_err(|e| {
                     StoreError::DatabaseError(format!(
                         "failed to query tensions for edge migration: {:?}",
@@ -733,7 +763,7 @@ impl Store {
     ///
     /// Generates a ULID id, persists the tension, and records a "created" mutation.
     /// The horizon defaults to None.
-    pub fn create_tension(&self, desired: &str, actual: &str) -> Result<Tension, SdError> {
+    pub fn create_tension(&self, desired: &str, actual: &str) -> Result<Tension, CoreError> {
         self.create_tension_with_parent(desired, actual, None)
     }
 
@@ -745,7 +775,7 @@ impl Store {
         desired: &str,
         actual: &str,
         parent_id: Option<String>,
-    ) -> Result<Tension, SdError> {
+    ) -> Result<Tension, CoreError> {
         self.create_tension_full(desired, actual, parent_id, None)
     }
 
@@ -760,21 +790,23 @@ impl Store {
         actual: &str,
         parent_id: Option<String>,
         horizon: Option<Horizon>,
-    ) -> Result<Tension, SdError> {
-
+    ) -> Result<Tension, CoreError> {
         let mut tension = Tension::new_full(desired, actual, parent_id, horizon)?;
 
         // Auto-assign short_code
         tension.short_code = Some(self.next_short_code()?);
 
         // Auto-capture parent snapshots if creating a child
-        if let Some(ref pid) = tension.parent_id {
-            if let Ok(Some(parent)) = self.get_tension(pid) {
-                tension.parent_desired_snapshot = Some(parent.desired.clone());
-                tension.parent_actual_snapshot = Some(parent.actual.clone());
-                // Build full JSON snapshot with children state
-                if let Ok(siblings) = self.get_children(pid) {
-                    let children_json: Vec<serde_json::Value> = siblings.iter().map(|c| {
+        if let Some(ref pid) = tension.parent_id
+            && let Ok(Some(parent)) = self.get_tension(pid)
+        {
+            tension.parent_desired_snapshot = Some(parent.desired.clone());
+            tension.parent_actual_snapshot = Some(parent.actual.clone());
+            // Build full JSON snapshot with children state
+            if let Ok(siblings) = self.get_children(pid) {
+                let children_json: Vec<serde_json::Value> = siblings
+                    .iter()
+                    .map(|c| {
                         serde_json::json!({
                             "id": c.id,
                             "desired": c.desired,
@@ -783,16 +815,16 @@ impl Store {
                             "position": c.position,
                             "horizon": c.horizon.as_ref().map(|h| h.to_string()),
                         })
-                    }).collect();
-                    let snapshot = serde_json::json!({
-                        "desired": parent.desired,
-                        "actual": parent.actual,
-                        "status": parent.status.to_string(),
-                        "horizon": parent.horizon.as_ref().map(|h| h.to_string()),
-                        "children": children_json,
-                    });
-                    tension.parent_snapshot_json = serde_json::to_string(&snapshot).ok();
-                }
+                    })
+                    .collect();
+                let snapshot = serde_json::json!({
+                    "desired": parent.desired,
+                    "actual": parent.actual,
+                    "status": parent.status.to_string(),
+                    "horizon": parent.horizon.as_ref().map(|h| h.to_string()),
+                    "children": children_json,
+                });
+                tension.parent_snapshot_json = serde_json::to_string(&snapshot).ok();
             }
         }
 
@@ -835,6 +867,7 @@ impl Store {
     /// Create a new tension with all fields including parent snapshots and position.
     ///
     /// Used when creating child tensions that need to capture parent state.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_tension_full_with_snapshots(
         &self,
         desired: &str,
@@ -845,8 +878,7 @@ impl Store {
         parent_desired_snapshot: Option<String>,
         parent_actual_snapshot: Option<String>,
         parent_snapshot_json: Option<String>,
-    ) -> Result<Tension, SdError> {
-
+    ) -> Result<Tension, CoreError> {
         let mut tension = Tension::new_full_with_snapshots(
             desired,
             actual,
@@ -894,7 +926,7 @@ impl Store {
         Ok(tension)
     }
 
-    fn persist_tension(&self, tension: &Tension) -> Result<(), SdError> {
+    fn persist_tension(&self, tension: &Tension) -> Result<(), CoreError> {
         let conn = self.conn.borrow();
         conn.execute_with_params(
             "INSERT INTO tensions (id, desired, actual, parent_id, created_at, status, horizon, position, parent_desired_snapshot, parent_actual_snapshot, parent_snapshot_json, short_code) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -934,7 +966,7 @@ impl Store {
                 },
             ],
         )
-        .map_err(|e| SdError::ValidationError(format!("failed to persist tension: {:?}", e)))?;
+        .map_err(|e| CoreError::ValidationError(format!("failed to persist tension: {:?}", e)))?;
         Ok(())
     }
 
@@ -942,15 +974,14 @@ impl Store {
     ///
     /// This is a low-level method for recording arbitrary mutations.
     /// Most operations automatically record appropriate mutations.
-    pub fn record_mutation(&self, mutation: &Mutation) -> Result<(), SdError> {
-
+    pub fn record_mutation(&self, mutation: &Mutation) -> Result<(), CoreError> {
         // Use the mutation's gesture_id if set, otherwise fall back to store's active gesture
-        let effective_gesture_id = mutation.gesture_id()
+        let effective_gesture_id = mutation
+            .gesture_id()
             .map(|g| g.to_owned())
             .or_else(|| self.active_gesture_id.clone());
         // Use the mutation's actual_at if set, otherwise fall back to store's pending actual_at
-        let effective_actual_at = mutation.actual_at()
-            .or(self.pending_actual_at);
+        let effective_actual_at = mutation.actual_at().or(self.pending_actual_at);
 
         let conn = self.conn.borrow();
         conn.execute_with_params(
@@ -974,12 +1005,12 @@ impl Store {
                 },
             ],
         )
-        .map_err(|e| SdError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
+        .map_err(|e| CoreError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
         Ok(())
     }
 
     /// Record a note on a tension and emit NoteTaken event.
-    pub fn record_note(&self, tension_id: &str, text: &str) -> Result<(), SdError> {
+    pub fn record_note(&self, tension_id: &str, text: &str) -> Result<(), CoreError> {
         self.record_mutation(&Mutation::new(
             tension_id.to_owned(),
             Utc::now(),
@@ -995,7 +1026,12 @@ impl Store {
     }
 
     /// Record a note retraction on a tension and emit NoteRetracted event.
-    pub fn retract_note(&self, tension_id: &str, note_text: &str, note_timestamp: &str) -> Result<(), SdError> {
+    pub fn retract_note(
+        &self,
+        tension_id: &str,
+        note_text: &str,
+        note_timestamp: &str,
+    ) -> Result<(), CoreError> {
         self.record_mutation(&Mutation::new(
             tension_id.to_owned(),
             Utc::now(),
@@ -1012,11 +1048,11 @@ impl Store {
 
     /// Count no-op position mutations where old_value equals new_value.
     /// Use this to preview before purging.
-    pub fn count_noop_mutations(&self) -> Result<usize, SdError> {
+    pub fn count_noop_mutations(&self) -> Result<usize, CoreError> {
         let conn = self.conn.borrow();
         let rows = conn
             .query("SELECT COUNT(*) FROM mutations WHERE field = 'position' AND old_value IS NOT NULL AND old_value = new_value")
-            .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
+            .map_err(|e| CoreError::ValidationError(format!("query failed: {:?}", e)))?;
         match rows.first().and_then(|r| r.get(0)) {
             Some(SqliteValue::Integer(n)) => Ok(*n as usize),
             _ => Ok(0),
@@ -1026,12 +1062,12 @@ impl Store {
     /// Delete no-op position mutations where old_value equals new_value.
     /// Scoped to position mutations only — other fields are left untouched.
     /// Returns the number of deleted rows.
-    pub fn purge_noop_mutations(&self) -> Result<usize, SdError> {
+    pub fn purge_noop_mutations(&self) -> Result<usize, CoreError> {
         let count = self.count_noop_mutations()?;
         if count > 0 {
             let conn = self.conn.borrow();
             conn.execute("DELETE FROM mutations WHERE field = 'position' AND old_value IS NOT NULL AND old_value = new_value")
-                .map_err(|e| SdError::ValidationError(format!("delete failed: {:?}", e)))?;
+                .map_err(|e| CoreError::ValidationError(format!("delete failed: {:?}", e)))?;
         }
         Ok(count)
     }
@@ -1190,13 +1226,27 @@ impl Store {
             .query("SELECT COUNT(*) FROM tensions WHERE status = 'Active'")
             .map_err(|e| StoreError::DatabaseError(format!("count query failed: {:?}", e)))?;
 
-        let total = total_rows.first()
+        let total = total_rows
+            .first()
             .and_then(|r| r.get(0))
-            .and_then(|v| if let SqliteValue::Integer(n) = v { Some(*n as usize) } else { None })
+            .and_then(|v| {
+                if let SqliteValue::Integer(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
             .unwrap_or(0);
-        let active = active_rows.first()
+        let active = active_rows
+            .first()
             .and_then(|r| r.get(0))
-            .and_then(|v| if let SqliteValue::Integer(n) = v { Some(*n as usize) } else { None })
+            .and_then(|v| {
+                if let SqliteValue::Integer(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
             .unwrap_or(0);
 
         Ok((total, active))
@@ -1204,7 +1254,10 @@ impl Store {
 
     /// Check which tension IDs have children, returning a set of parent IDs.
     /// Count children per parent for a batch of tension IDs.
-    pub fn count_children_by_parent(&self, parent_ids: &[&str]) -> Result<std::collections::HashMap<String, usize>, StoreError> {
+    pub fn count_children_by_parent(
+        &self,
+        parent_ids: &[&str],
+    ) -> Result<std::collections::HashMap<String, usize>, StoreError> {
         if parent_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
@@ -1214,14 +1267,19 @@ impl Store {
             "SELECT parent_id, COUNT(*) FROM tensions WHERE parent_id IN ({}) GROUP BY parent_id",
             placeholders.join(", ")
         );
-        let params: Vec<SqliteValue> = parent_ids.iter().map(|id| SqliteValue::Text(id.to_string().into())).collect();
-        let rows = conn
-            .query_with_params(&sql, &params)
-            .map_err(|e| StoreError::DatabaseError(format!("batch children count failed: {:?}", e)))?;
+        let params: Vec<SqliteValue> = parent_ids
+            .iter()
+            .map(|id| SqliteValue::Text(id.to_string().into()))
+            .collect();
+        let rows = conn.query_with_params(&sql, &params).map_err(|e| {
+            StoreError::DatabaseError(format!("batch children count failed: {:?}", e))
+        })?;
 
         let mut result = std::collections::HashMap::new();
         for row in &rows {
-            if let (Some(SqliteValue::Text(pid)), Some(SqliteValue::Integer(count))) = (row.get(0), row.get(1)) {
+            if let (Some(SqliteValue::Text(pid)), Some(SqliteValue::Integer(count))) =
+                (row.get(0), row.get(1))
+            {
                 result.insert(pid.to_string(), *count as usize);
             }
         }
@@ -1229,32 +1287,44 @@ impl Store {
     }
 
     /// Get last mutation timestamp per tension for a batch of tension IDs, filtered by field.
-    pub fn get_last_mutation_timestamps(&self, tension_ids: &[&str], fields: &[&str]) -> Result<std::collections::HashMap<String, chrono::DateTime<chrono::Utc>>, StoreError> {
+    pub fn get_last_mutation_timestamps(
+        &self,
+        tension_ids: &[&str],
+        fields: &[&str],
+    ) -> Result<std::collections::HashMap<String, chrono::DateTime<chrono::Utc>>, StoreError> {
         if tension_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
         let conn = self.conn.borrow();
-        let id_placeholders: Vec<String> = (1..=tension_ids.len()).map(|i| format!("?{}", i)).collect();
-        let field_placeholders: Vec<String> = (tension_ids.len()+1..=tension_ids.len()+fields.len()).map(|i| format!("?{}", i)).collect();
+        let id_placeholders: Vec<String> =
+            (1..=tension_ids.len()).map(|i| format!("?{}", i)).collect();
+        let field_placeholders: Vec<String> = (tension_ids.len() + 1
+            ..=tension_ids.len() + fields.len())
+            .map(|i| format!("?{}", i))
+            .collect();
         let sql = format!(
             "SELECT tension_id, MAX(timestamp) FROM mutations WHERE tension_id IN ({}) AND field IN ({}) GROUP BY tension_id",
             id_placeholders.join(", "),
             field_placeholders.join(", ")
         );
-        let mut params: Vec<SqliteValue> = tension_ids.iter().map(|id| SqliteValue::Text(id.to_string().into())).collect();
+        let mut params: Vec<SqliteValue> = tension_ids
+            .iter()
+            .map(|id| SqliteValue::Text(id.to_string().into()))
+            .collect();
         for f in fields {
             params.push(SqliteValue::Text(f.to_string().into()));
         }
-        let rows = conn
-            .query_with_params(&sql, &params)
-            .map_err(|e| StoreError::DatabaseError(format!("batch mutation query failed: {:?}", e)))?;
+        let rows = conn.query_with_params(&sql, &params).map_err(|e| {
+            StoreError::DatabaseError(format!("batch mutation query failed: {:?}", e))
+        })?;
 
         let mut result = std::collections::HashMap::new();
         for row in &rows {
-            if let (Some(SqliteValue::Text(tid)), Some(SqliteValue::Text(ts))) = (row.get(0), row.get(1)) {
-                if let Ok(dt) = ts.parse::<chrono::DateTime<chrono::Utc>>() {
-                    result.insert(tid.to_string(), dt);
-                }
+            if let (Some(SqliteValue::Text(tid)), Some(SqliteValue::Text(ts))) =
+                (row.get(0), row.get(1))
+                && let Ok(dt) = ts.parse::<chrono::DateTime<chrono::Utc>>()
+            {
+                result.insert(tid.to_string(), dt);
             }
         }
         Ok(result)
@@ -1471,14 +1541,14 @@ impl Store {
     /// Update the desired state of a tension.
     ///
     /// Persists the change and records a mutation.
-    pub fn update_desired(&self, id: &str, new_desired: &str) -> Result<(), SdError> {
+    pub fn update_desired(&self, id: &str, new_desired: &str) -> Result<(), CoreError> {
         self.update_field(id, "desired", new_desired)
     }
 
     /// Update the actual state of a tension.
     ///
     /// Persists the change and records a mutation.
-    pub fn update_actual(&self, id: &str, new_actual: &str) -> Result<(), SdError> {
+    pub fn update_actual(&self, id: &str, new_actual: &str) -> Result<(), CoreError> {
         self.update_field(id, "actual", new_actual)
     }
 
@@ -1486,21 +1556,20 @@ impl Store {
     ///
     /// For use within an already-active transaction. Call `begin_transaction()`
     /// before using this method, and `commit_transaction()` after all updates.
-    pub fn update_actual_no_tx(&self, id: &str, new_actual: &str) -> Result<(), SdError> {
-
+    pub fn update_actual_no_tx(&self, id: &str, new_actual: &str) -> Result<(), CoreError> {
         if new_actual.is_empty() {
-            return Err(SdError::ValidationError(
+            return Err(CoreError::ValidationError(
                 "actual cannot be empty".to_owned(),
             ));
         }
 
         let mut tension = self
             .get_tension(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?
-            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?
+            .ok_or_else(|| CoreError::ValidationError(format!("tension not found: {}", id)))?;
 
         if tension.status != TensionStatus::Active {
-            return Err(SdError::UpdateOnInactiveTension(tension.status));
+            return Err(CoreError::UpdateOnInactiveTension(tension.status));
         }
 
         let old_value = tension.update_actual(new_actual)?;
@@ -1524,12 +1593,11 @@ impl Store {
     /// Update the parent_id of a tension.
     ///
     /// Persists the change and records a mutation.
-    pub fn update_parent(&self, id: &str, new_parent_id: Option<&str>) -> Result<(), SdError> {
-
+    pub fn update_parent(&self, id: &str, new_parent_id: Option<&str>) -> Result<(), CoreError> {
         let mut tension = self
             .get_tension(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?
-            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?
+            .ok_or_else(|| CoreError::ValidationError(format!("tension not found: {}", id)))?;
 
         let old_parent = tension.parent_id.clone();
         let new_parent = new_parent_id.map(|s| s.to_owned());
@@ -1539,7 +1607,7 @@ impl Store {
         {
             let conn = self.conn.borrow();
             conn.execute("BEGIN CONCURRENT;").map_err(|e| {
-                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+                CoreError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
             let result = self
@@ -1594,16 +1662,15 @@ impl Store {
     /// - The tension is not Active (Resolved or Released)
     ///
     /// The new_horizon can be None to clear the horizon.
-    pub fn update_horizon(&self, id: &str, new_horizon: Option<Horizon>) -> Result<(), SdError> {
-
+    pub fn update_horizon(&self, id: &str, new_horizon: Option<Horizon>) -> Result<(), CoreError> {
         let mut tension = self
             .get_tension(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?
-            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?
+            .ok_or_else(|| CoreError::ValidationError(format!("tension not found: {}", id)))?;
 
         // Validate that the tension is Active
         if tension.status != TensionStatus::Active {
-            return Err(SdError::UpdateOnInactiveTension(tension.status));
+            return Err(CoreError::UpdateOnInactiveTension(tension.status));
         }
 
         let old_horizon = tension.horizon.clone();
@@ -1613,7 +1680,7 @@ impl Store {
         {
             let conn = self.conn.borrow();
             conn.execute("BEGIN CONCURRENT;").map_err(|e| {
-                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+                CoreError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
             let result = self
@@ -1662,12 +1729,11 @@ impl Store {
     /// When a tension is resolved or released and has children, all children
     /// are atomically reparented to null (becoming roots) and a parent_id
     /// mutation is recorded for each child.
-    pub fn update_status(&self, id: &str, new_status: TensionStatus) -> Result<(), SdError> {
-
+    pub fn update_status(&self, id: &str, new_status: TensionStatus) -> Result<(), CoreError> {
         let mut tension = self
             .get_tension(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?
-            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?
+            .ok_or_else(|| CoreError::ValidationError(format!("tension not found: {}", id)))?;
 
         let old_status = tension.status;
         if old_status == new_status {
@@ -1681,7 +1747,7 @@ impl Store {
             (TensionStatus::Resolved, TensionStatus::Active) => {}
             (TensionStatus::Released, TensionStatus::Active) => {}
             _ => {
-                return Err(SdError::InvalidStatusTransition {
+                return Err(CoreError::InvalidStatusTransition {
                     from: old_status,
                     to: new_status,
                 });
@@ -1693,14 +1759,15 @@ impl Store {
         // Check if this tension has children that need auto-resolving
         let children = self
             .get_children(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?;
         let needs_child_resolve = !children.is_empty()
             && (new_status == TensionStatus::Resolved || new_status == TensionStatus::Released);
 
         // Collect all active children (and their descendants) for recursive resolution
         let mut children_to_resolve: Vec<Tension> = Vec::new();
         if needs_child_resolve {
-            let mut stack: Vec<Tension> = children.iter()
+            let mut stack: Vec<Tension> = children
+                .iter()
                 .filter(|c| c.status == TensionStatus::Active)
                 .cloned()
                 .collect();
@@ -1721,7 +1788,7 @@ impl Store {
         {
             let conn = self.conn.borrow();
             conn.execute("BEGIN CONCURRENT;").map_err(|e| {
-                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+                CoreError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
             // Update the tension status
@@ -1752,7 +1819,7 @@ impl Store {
                                 ],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to resolve child: {:?}",
                                     e
                                 ))
@@ -1807,10 +1874,9 @@ impl Store {
         Ok(())
     }
 
-    fn update_field(&self, id: &str, field: &str, new_value: &str) -> Result<(), SdError> {
-
+    fn update_field(&self, id: &str, field: &str, new_value: &str) -> Result<(), CoreError> {
         if new_value.is_empty() {
-            return Err(SdError::ValidationError(format!(
+            return Err(CoreError::ValidationError(format!(
                 "{} cannot be empty",
                 field
             )));
@@ -1818,18 +1884,18 @@ impl Store {
 
         let mut tension = self
             .get_tension(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?
-            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?
+            .ok_or_else(|| CoreError::ValidationError(format!("tension not found: {}", id)))?;
 
         if tension.status != TensionStatus::Active {
-            return Err(SdError::UpdateOnInactiveTension(tension.status));
+            return Err(CoreError::UpdateOnInactiveTension(tension.status));
         }
 
         let old_value = match field {
             "desired" => tension.update_desired(new_value)?,
             "actual" => tension.update_actual(new_value)?,
             _ => {
-                return Err(SdError::ValidationError(format!(
+                return Err(CoreError::ValidationError(format!(
                     "unknown field: {}",
                     field
                 )));
@@ -1841,7 +1907,7 @@ impl Store {
         {
             let conn = self.conn.borrow();
             conn.execute("BEGIN CONCURRENT;").map_err(|e| {
-                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+                CoreError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
             let result = self
@@ -1896,7 +1962,7 @@ impl Store {
         &self,
         conn: &Connection,
         tension: &Tension,
-    ) -> Result<(), SdError> {
+    ) -> Result<(), CoreError> {
         conn.execute_with_params(
             "UPDATE tensions SET desired = ?1, actual = ?2, parent_id = ?3, status = ?4, horizon = ?5 WHERE id = ?6",
             &[
@@ -1914,7 +1980,7 @@ impl Store {
                 SqliteValue::Text(tension.id.to_string().into()),
             ],
         )
-        .map_err(|e| SdError::ValidationError(format!("failed to update tension: {:?}", e)))?;
+        .map_err(|e| CoreError::ValidationError(format!("failed to update tension: {:?}", e)))?;
         Ok(())
     }
 
@@ -1922,12 +1988,12 @@ impl Store {
         &self,
         conn: &Connection,
         mutation: &Mutation,
-    ) -> Result<(), SdError> {
-        let effective_gesture_id = mutation.gesture_id()
+    ) -> Result<(), CoreError> {
+        let effective_gesture_id = mutation
+            .gesture_id()
             .map(|g| g.to_owned())
             .or_else(|| self.active_gesture_id.clone());
-        let effective_actual_at = mutation.actual_at()
-            .or(self.pending_actual_at);
+        let effective_actual_at = mutation.actual_at().or(self.pending_actual_at);
 
         conn.execute_with_params(
             "INSERT INTO mutations (tension_id, timestamp, field, old_value, new_value, gesture_id, actual_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -1950,7 +2016,7 @@ impl Store {
                 },
             ],
         )
-        .map_err(|e| SdError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
+        .map_err(|e| CoreError::ValidationError(format!("failed to record mutation: {:?}", e)))?;
         Ok(())
     }
 
@@ -2051,11 +2117,9 @@ impl Store {
             };
 
             let actual_at = match row.get(6) {
-                Some(SqliteValue::Text(s)) => {
-                    DateTime::parse_from_rfc3339(s)
-                        .map(|dt| Some(dt.with_timezone(&Utc)))
-                        .unwrap_or(None)
-                }
+                Some(SqliteValue::Text(s)) => DateTime::parse_from_rfc3339(s)
+                    .map(|dt| Some(dt.with_timezone(&Utc)))
+                    .unwrap_or(None),
                 Some(SqliteValue::Null) | None => None,
                 _ => None,
             };
@@ -2139,11 +2203,13 @@ impl Store {
     }
 
     /// Get the next available short_code for a new tension.
-    fn next_short_code(&self) -> Result<i32, SdError> {
+    fn next_short_code(&self) -> Result<i32, CoreError> {
         let conn = self.conn.borrow();
         let rows = conn
             .query("SELECT MAX(short_code) FROM tensions")
-            .map_err(|e| SdError::ValidationError(format!("failed to get max short_code: {:?}", e)))?;
+            .map_err(|e| {
+                CoreError::ValidationError(format!("failed to get max short_code: {:?}", e))
+            })?;
         match rows.first().and_then(|r| r.get(0)) {
             Some(SqliteValue::Integer(n)) => Ok((*n as i32) + 1),
             Some(SqliteValue::Null) | None => Ok(1),
@@ -2172,9 +2238,8 @@ impl Store {
     /// Commit the current transaction with retry for MVCC conflicts.
     pub fn commit_transaction(&self) -> Result<(), StoreError> {
         let conn = self.conn.borrow();
-        Self::commit_with_retry(&conn).map_err(|e| {
-            StoreError::DatabaseError(format!("failed to commit transaction: {}", e))
-        })
+        Self::commit_with_retry(&conn)
+            .map_err(|e| StoreError::DatabaseError(format!("failed to commit transaction: {}", e)))
     }
 
     /// Rollback the current transaction.
@@ -2197,18 +2262,17 @@ impl Store {
     /// - A parent_id mutation is recorded for each child that was reparented
     ///
     /// Returns an error if the tension doesn't exist.
-    pub fn delete_tension(&self, id: &str) -> Result<(), SdError> {
-
+    pub fn delete_tension(&self, id: &str) -> Result<(), CoreError> {
         // Get the tension to delete
         let tension = self
             .get_tension(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?
-            .ok_or_else(|| SdError::ValidationError(format!("tension not found: {}", id)))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?
+            .ok_or_else(|| CoreError::ValidationError(format!("tension not found: {}", id)))?;
 
         // Get all children of this tension
         let children = self
             .get_children(id)
-            .map_err(|e| SdError::ValidationError(e.to_string()))?;
+            .map_err(|e| CoreError::ValidationError(e.to_string()))?;
 
         // The grandparent is the deleted tension's parent_id
         let grandparent_id = tension.parent_id.clone();
@@ -2217,7 +2281,7 @@ impl Store {
         {
             let conn = self.conn.borrow();
             conn.execute("BEGIN CONCURRENT;").map_err(|e| {
-                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+                CoreError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
             let now = Utc::now();
@@ -2237,7 +2301,7 @@ impl Store {
                         ],
                     )
                     .map_err(|e| {
-                        SdError::ValidationError(format!("failed to reparent child: {:?}", e))
+                        CoreError::ValidationError(format!("failed to reparent child: {:?}", e))
                     })?;
 
                     // Record parent_id mutation for the child
@@ -2259,7 +2323,7 @@ impl Store {
                     &[SqliteValue::Text(tension.id.to_string().into())],
                 )
                 .map_err(|e| {
-                    SdError::ValidationError(format!("failed to delete tension: {:?}", e))
+                    CoreError::ValidationError(format!("failed to delete tension: {:?}", e))
                 })?;
 
                 // Record deletion mutation for the deleted tension
@@ -2321,8 +2385,7 @@ impl Store {
     ///
     /// Records a mutation and persists the change.
     /// Returns true if the position was actually changed, false if it was already the target value.
-    pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<bool, SdError> {
-
+    pub fn update_position(&self, id: &str, new_position: Option<i32>) -> Result<bool, CoreError> {
         let conn = self.conn.borrow();
 
         // Get existing tension
@@ -2331,10 +2394,13 @@ impl Store {
                 "SELECT position FROM tensions WHERE id = ?1",
                 &[SqliteValue::Text(id.to_owned().into())],
             )
-            .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
+            .map_err(|e| CoreError::ValidationError(format!("query failed: {:?}", e)))?;
 
         if rows.is_empty() {
-            return Err(SdError::ValidationError(format!("tension not found: {}", id)));
+            return Err(CoreError::ValidationError(format!(
+                "tension not found: {}",
+                id
+            )));
         }
 
         let old_position = match rows[0].get(0) {
@@ -2358,7 +2424,7 @@ impl Store {
                 SqliteValue::Text(id.to_owned().into()),
             ],
         )
-        .map_err(|e| SdError::ValidationError(format!("failed to update position: {:?}", e)))?;
+        .map_err(|e| CoreError::ValidationError(format!("failed to update position: {:?}", e)))?;
 
         // Record mutation
         self.record_mutation(&crate::mutation::Mutation::new(
@@ -2366,7 +2432,9 @@ impl Store {
             Utc::now(),
             "position".to_owned(),
             old_position.map(|p| p.to_string()),
-            new_position.map(|p| p.to_string()).unwrap_or_else(|| "null".to_string()),
+            new_position
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "null".to_string()),
         ))?;
 
         Ok(true)
@@ -2376,7 +2444,7 @@ impl Store {
     ///
     /// Takes a list of tension IDs in the desired order. Assigns sequential
     /// positions starting from 1. Records a mutation for each position change.
-    pub fn reorder_siblings(&self, ordered_ids: &[String]) -> Result<(), SdError> {
+    pub fn reorder_siblings(&self, ordered_ids: &[String]) -> Result<(), CoreError> {
         for (i, id) in ordered_ids.iter().enumerate() {
             let position = (i + 1) as i32;
             self.update_position(id, Some(position))?;
@@ -2425,7 +2493,9 @@ impl Store {
     pub fn active_session(&self) -> Result<Option<String>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
-            .query("SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1")
+            .query(
+                "SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+            )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
         if rows.is_empty() {
             return Ok(None);
@@ -2444,7 +2514,6 @@ impl Store {
         session_id: Option<&str>,
         description: Option<&str>,
     ) -> Result<String, StoreError> {
-
         let id = ulid::Ulid::new().to_string();
         let now = Utc::now();
         let conn = self.conn.borrow();
@@ -2507,7 +2576,7 @@ impl Store {
     /// # Returns
     ///
     /// The undo gesture ID on success.
-    pub fn undo_gesture(&self, gesture_id: &str) -> Result<String, SdError> {
+    pub fn undo_gesture(&self, gesture_id: &str) -> Result<String, CoreError> {
         use crate::edge;
         use crate::tension::TensionStatus;
 
@@ -2518,10 +2587,10 @@ impl Store {
                 "SELECT id, undone_gesture_id FROM gestures WHERE id = ?1",
                 &[SqliteValue::Text(gesture_id.to_owned().into())],
             )
-            .map_err(|e| SdError::ValidationError(format!("failed to query gesture: {:?}", e)))?;
+            .map_err(|e| CoreError::ValidationError(format!("failed to query gesture: {:?}", e)))?;
 
         if gesture_rows.is_empty() {
-            return Err(SdError::ValidationError(format!(
+            return Err(CoreError::ValidationError(format!(
                 "gesture not found: {}",
                 gesture_id
             )));
@@ -2533,10 +2602,12 @@ impl Store {
                 "SELECT id FROM gestures WHERE undone_gesture_id = ?1",
                 &[SqliteValue::Text(gesture_id.to_owned().into())],
             )
-            .map_err(|e| SdError::ValidationError(format!("failed to check undo status: {:?}", e)))?;
+            .map_err(|e| {
+                CoreError::ValidationError(format!("failed to check undo status: {:?}", e))
+            })?;
 
         if !already_undone.is_empty() {
-            return Err(SdError::ValidationError(format!(
+            return Err(CoreError::ValidationError(format!(
                 "gesture {} is already undone",
                 gesture_id
             )));
@@ -2544,12 +2615,12 @@ impl Store {
         drop(conn);
 
         // 2. Get all mutations for this gesture
-        let mutations = self
-            .get_gesture_mutations(gesture_id)
-            .map_err(|e| SdError::ValidationError(format!("failed to get gesture mutations: {}", e)))?;
+        let mutations = self.get_gesture_mutations(gesture_id).map_err(|e| {
+            CoreError::ValidationError(format!("failed to get gesture mutations: {}", e))
+        })?;
 
         if mutations.is_empty() {
-            return Err(SdError::ValidationError(format!(
+            return Err(CoreError::ValidationError(format!(
                 "gesture {} has no mutations",
                 gesture_id
             )));
@@ -2576,7 +2647,7 @@ impl Store {
                                     SqliteValue::Text(gesture_id.to_owned().into()),
                                 ],
                             )
-                            .map_err(|e| SdError::ValidationError(format!("query failed: {:?}", e)))?;
+                            .map_err(|e| CoreError::ValidationError(format!("query failed: {:?}", e)))?;
                         let count = match other_mutations.first().and_then(|r| r.get(0)) {
                             Some(SqliteValue::Integer(n)) => *n,
                             _ => 0,
@@ -2603,15 +2674,12 @@ impl Store {
             // Read current value from the tension
             let tension = self
                 .get_tension(m.tension_id())
-                .map_err(|e| SdError::ValidationError(e.to_string()))?;
+                .map_err(|e| CoreError::ValidationError(e.to_string()))?;
 
             let tension = match tension {
                 Some(t) => t,
                 None => {
-                    conflicts.push(format!(
-                        "tension {} no longer exists",
-                        m.tension_id()
-                    ));
+                    conflicts.push(format!("tension {} no longer exists", m.tension_id()));
                     continue;
                 }
             };
@@ -2621,7 +2689,11 @@ impl Store {
                 "actual" => tension.actual.clone(),
                 "status" => tension.status.to_string(),
                 "parent_id" => tension.parent_id.clone().unwrap_or_default(),
-                "horizon" => tension.horizon.as_ref().map(|h| h.to_string()).unwrap_or_default(),
+                "horizon" => tension
+                    .horizon
+                    .as_ref()
+                    .map(|h| h.to_string())
+                    .unwrap_or_default(),
                 "position" => tension.position.map(|p| p.to_string()).unwrap_or_default(),
                 _ => continue,
             };
@@ -2638,7 +2710,7 @@ impl Store {
         }
 
         if !conflicts.is_empty() {
-            return Err(SdError::ValidationError(format!(
+            return Err(CoreError::ValidationError(format!(
                 "undo conflict — fields changed since gesture:\n  {}",
                 conflicts.join("\n  ")
             )));
@@ -2651,10 +2723,10 @@ impl Store {
         {
             let conn = self.conn.borrow();
             conn.execute("BEGIN CONCURRENT;").map_err(|e| {
-                SdError::ValidationError(format!("failed to begin transaction: {:?}", e))
+                CoreError::ValidationError(format!("failed to begin transaction: {:?}", e))
             })?;
 
-            let result = (|| -> Result<usize, SdError> {
+            let result = (|| -> Result<usize, CoreError> {
                 // Create the undo gesture with undone_gesture_id set
                 conn.execute_with_params(
                     "INSERT INTO gestures (id, timestamp, description, undone_gesture_id) VALUES (?1, ?2, ?3, ?4)",
@@ -2665,7 +2737,7 @@ impl Store {
                         SqliteValue::Text(gesture_id.to_owned().into()),
                     ],
                 )
-                .map_err(|e| SdError::ValidationError(format!("failed to create undo gesture: {:?}", e)))?;
+                .map_err(|e| CoreError::ValidationError(format!("failed to create undo gesture: {:?}", e)))?;
 
                 let mut reversed_count = 0;
 
@@ -2677,7 +2749,7 @@ impl Store {
                     match field {
                         "deleted" => {
                             // Already rejected in conflict detection
-                            return Err(SdError::ValidationError(
+                            return Err(CoreError::ValidationError(
                                 "undo of deletion is not supported in v1".to_owned(),
                             ));
                         }
@@ -2689,7 +2761,7 @@ impl Store {
                                 &[SqliteValue::Text(tension_id.to_owned().into())],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to delete tension on undo-create: {:?}",
                                     e
                                 ))
@@ -2743,7 +2815,7 @@ impl Store {
                                 ],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to revert {}: {:?}",
                                     field, e
                                 ))
@@ -2781,7 +2853,7 @@ impl Store {
                                 ],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to revert status: {:?}",
                                     e
                                 ))
@@ -2821,7 +2893,7 @@ impl Store {
                                 ],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to revert parent_id: {:?}",
                                     e
                                 ))
@@ -2856,7 +2928,7 @@ impl Store {
                                 ],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to revert horizon: {:?}",
                                     e
                                 ))
@@ -2894,7 +2966,7 @@ impl Store {
                                 ],
                             )
                             .map_err(|e| {
-                                SdError::ValidationError(format!(
+                                CoreError::ValidationError(format!(
                                     "failed to revert position: {:?}",
                                     e
                                 ))
@@ -2927,7 +2999,7 @@ impl Store {
                     &[SqliteValue::Text(gesture_id.to_owned().into())],
                 )
                 .map_err(|e| {
-                    SdError::ValidationError(format!(
+                    CoreError::ValidationError(format!(
                         "failed to delete edges for gesture: {:?}",
                         e
                     ))
@@ -2939,7 +3011,7 @@ impl Store {
                     &[SqliteValue::Text(gesture_id.to_owned().into())],
                 )
                 .map_err(|e| {
-                    SdError::ValidationError(format!(
+                    CoreError::ValidationError(format!(
                         "failed to delete epochs for gesture: {:?}",
                         e
                     ))
@@ -2964,7 +3036,11 @@ impl Store {
         for m in &mutations {
             if m.field() == "parent_id" {
                 let old_parent = m.old_value().filter(|v| !v.is_empty());
-                let new_parent_was = if m.new_value().is_empty() { None } else { Some(m.new_value()) };
+                let new_parent_was = if m.new_value().is_empty() {
+                    None
+                } else {
+                    Some(m.new_value())
+                };
 
                 // The revert set parent_id back to old_parent.
                 // Remove the edge that was pointing from new_parent -> tension
@@ -2999,7 +3075,6 @@ impl Store {
         children_snapshot_json: Option<&str>,
         trigger_gesture_id: Option<&str>,
     ) -> Result<String, StoreError> {
-
         let id = ulid::Ulid::new().to_string();
         let now = Utc::now();
         let conn = self.conn.borrow();
@@ -3043,22 +3118,40 @@ impl Store {
             };
             let tid = match row.get(1) {
                 Some(SqliteValue::Text(s)) => s.to_string(),
-                _ => return Err(StoreError::DatabaseError("invalid epoch tension_id".to_owned())),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid epoch tension_id".to_owned(),
+                    ));
+                }
             };
             let ts_str = match row.get(2) {
                 Some(SqliteValue::Text(s)) => s.to_string(),
-                _ => return Err(StoreError::DatabaseError("invalid epoch timestamp".to_owned())),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid epoch timestamp".to_owned(),
+                    ));
+                }
             };
             let timestamp = DateTime::parse_from_rfc3339(&ts_str)
                 .map(|dt| dt.with_timezone(&Utc))
-                .map_err(|e| StoreError::DatabaseError(format!("invalid epoch timestamp: {}", e)))?;
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("invalid epoch timestamp: {}", e))
+                })?;
             let desire = match row.get(3) {
                 Some(SqliteValue::Text(s)) => s.to_string(),
-                _ => return Err(StoreError::DatabaseError("invalid epoch desire_snapshot".to_owned())),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid epoch desire_snapshot".to_owned(),
+                    ));
+                }
             };
             let reality = match row.get(4) {
                 Some(SqliteValue::Text(s)) => s.to_string(),
-                _ => return Err(StoreError::DatabaseError("invalid epoch reality_snapshot".to_owned())),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid epoch reality_snapshot".to_owned(),
+                    ));
+                }
             };
             let children_json = match row.get(5) {
                 Some(SqliteValue::Text(s)) => Some(s.to_string()),
@@ -3089,7 +3182,10 @@ impl Store {
     }
 
     /// Get the timestamp of the last epoch for a tension (lightweight, no full record load).
-    pub fn get_last_epoch_timestamp(&self, tension_id: &str) -> Result<Option<DateTime<Utc>>, StoreError> {
+    pub fn get_last_epoch_timestamp(
+        &self,
+        tension_id: &str,
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
@@ -3098,13 +3194,13 @@ impl Store {
             )
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
-        if let Some(row) = rows.first() {
-            if let Some(SqliteValue::Text(ts)) = row.get(0) {
-                let dt = DateTime::parse_from_rfc3339(ts)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .map_err(|e| StoreError::DatabaseError(format!("invalid timestamp: {}", e)))?;
-                return Ok(Some(dt));
-            }
+        if let Some(row) = rows.first()
+            && let Some(SqliteValue::Text(ts)) = row.get(0)
+        {
+            let dt = DateTime::parse_from_rfc3339(ts)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::DatabaseError(format!("invalid timestamp: {}", e)))?;
+            return Ok(Some(dt));
         }
         Ok(None)
     }
@@ -3241,10 +3337,7 @@ impl Store {
     }
 
     /// Get all edges of a specific type.
-    pub fn get_edges_by_type(
-        &self,
-        edge_type: &str,
-    ) -> Result<Vec<crate::edge::Edge>, StoreError> {
+    pub fn get_edges_by_type(&self, edge_type: &str) -> Result<Vec<crate::edge::Edge>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
             .query_with_params(
@@ -3305,7 +3398,10 @@ impl Store {
         Ok(ids)
     }
 
-    fn parse_edge_rows(&self, rows: Vec<fsqlite::Row>) -> Result<Vec<crate::edge::Edge>, StoreError> {
+    fn parse_edge_rows(
+        &self,
+        rows: Vec<fsqlite::Row>,
+    ) -> Result<Vec<crate::edge::Edge>, StoreError> {
         let mut edges = Vec::new();
         for row in &rows {
             let id = match row.get(0) {
@@ -3322,11 +3418,19 @@ impl Store {
             };
             let edge_type = match row.get(3) {
                 Some(SqliteValue::Text(s)) => s.to_string(),
-                _ => return Err(StoreError::DatabaseError("invalid edge edge_type".to_owned())),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid edge edge_type".to_owned(),
+                    ));
+                }
             };
             let created_at_str = match row.get(4) {
                 Some(SqliteValue::Text(s)) => s.to_string(),
-                _ => return Err(StoreError::DatabaseError("invalid edge created_at".to_owned())),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid edge created_at".to_owned(),
+                    ));
+                }
             };
             let created_at = DateTime::parse_from_rfc3339(&created_at_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -4299,7 +4403,11 @@ mod tests {
         let result = store.undo_gesture(&g1);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("conflict"), "Error should mention conflict: {}", err);
+        assert!(
+            err.contains("conflict"),
+            "Error should mention conflict: {}",
+            err
+        );
     }
 
     #[test]
@@ -4395,18 +4503,32 @@ mod tests {
             .unwrap();
 
         let _ = store.begin_gesture(Some("resolve parent"));
-        store.update_status(&parent.id, TensionStatus::Resolved).unwrap();
+        store
+            .update_status(&parent.id, TensionStatus::Resolved)
+            .unwrap();
         let gid = store.end_gesture().unwrap();
 
         // Both should be resolved
-        assert_eq!(store.get_tension(&parent.id).unwrap().unwrap().status, TensionStatus::Resolved);
-        assert_eq!(store.get_tension(&child.id).unwrap().unwrap().status, TensionStatus::Resolved);
+        assert_eq!(
+            store.get_tension(&parent.id).unwrap().unwrap().status,
+            TensionStatus::Resolved
+        );
+        assert_eq!(
+            store.get_tension(&child.id).unwrap().unwrap().status,
+            TensionStatus::Resolved
+        );
 
         // Undo should restore both to Active
         store.undo_gesture(&gid).unwrap();
 
-        assert_eq!(store.get_tension(&parent.id).unwrap().unwrap().status, TensionStatus::Active);
-        assert_eq!(store.get_tension(&child.id).unwrap().unwrap().status, TensionStatus::Active);
+        assert_eq!(
+            store.get_tension(&parent.id).unwrap().unwrap().status,
+            TensionStatus::Active
+        );
+        assert_eq!(
+            store.get_tension(&child.id).unwrap().unwrap().status,
+            TensionStatus::Active
+        );
     }
 
     #[test]
@@ -4444,7 +4566,11 @@ mod tests {
         let result = store.undo_gesture(&g1);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("mutations from other gestures"), "Error: {}", err);
+        assert!(
+            err.contains("mutations from other gestures"),
+            "Error: {}",
+            err
+        );
     }
 
     #[test]
@@ -4468,21 +4594,24 @@ mod tests {
         let t = store.create_tension("goal", "reality").unwrap();
 
         let _ = store.begin_gesture(Some("add note"));
-        store.record_mutation(&Mutation::new(
-            t.id.clone(),
-            Utc::now(),
-            "note".to_owned(),
-            None,
-            "my observation".to_owned(),
-        )).unwrap();
+        store
+            .record_mutation(&Mutation::new(
+                t.id.clone(),
+                Utc::now(),
+                "note".to_owned(),
+                None,
+                "my observation".to_owned(),
+            ))
+            .unwrap();
         let gid = store.end_gesture().unwrap();
 
         let undo_id = store.undo_gesture(&gid).unwrap();
 
         // Check that a note_retracted mutation was recorded
-        let undo_mutations = store.get_gesture_mutations(&undo_id)
-            .unwrap();
-        let retraction = undo_mutations.iter().find(|m| m.field() == "note_retracted");
+        let undo_mutations = store.get_gesture_mutations(&undo_id).unwrap();
+        let retraction = undo_mutations
+            .iter()
+            .find(|m| m.field() == "note_retracted");
         assert!(retraction.is_some(), "Should have note_retracted mutation");
         assert_eq!(retraction.unwrap().old_value(), Some("my observation"));
     }
@@ -4496,17 +4625,27 @@ mod tests {
         // A gesture that creates an edge AND a mutation (edges alone don't count as mutations)
         let _ = store.begin_gesture(Some("split with edge"));
         store.update_actual(&t1.id, "r1 updated").unwrap();
-        store.create_edge(&t1.id, &t2.id, crate::edge::EDGE_SPLIT_FROM).unwrap();
+        store
+            .create_edge(&t1.id, &t2.id, crate::edge::EDGE_SPLIT_FROM)
+            .unwrap();
         let gid = store.end_gesture().unwrap();
 
         // Edge should exist
         let edges = store.get_edges_for_tension(&t1.id).unwrap();
-        assert!(edges.iter().any(|e| e.edge_type == crate::edge::EDGE_SPLIT_FROM));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.edge_type == crate::edge::EDGE_SPLIT_FROM)
+        );
 
         // Undo should delete the edge (and revert the mutation)
         store.undo_gesture(&gid).unwrap();
         let edges_after = store.get_edges_for_tension(&t1.id).unwrap();
-        assert!(!edges_after.iter().any(|e| e.edge_type == crate::edge::EDGE_SPLIT_FROM));
+        assert!(
+            !edges_after
+                .iter()
+                .any(|e| e.edge_type == crate::edge::EDGE_SPLIT_FROM)
+        );
 
         // Mutation should also be reverted
         let t1_after = store.get_tension(&t1.id).unwrap().unwrap();
@@ -4522,13 +4661,7 @@ mod tests {
         store.update_actual(&t.id, "new reality").unwrap();
         let gid = store.active_gesture().map(|s| s.to_owned());
         // Create an epoch linked to this gesture
-        let _ = store.create_epoch(
-            &t.id,
-            "goal",
-            "new reality",
-            None,
-            gid.as_deref(),
-        );
+        let _ = store.create_epoch(&t.id, "goal", "new reality", None, gid.as_deref());
         let gid = store.end_gesture().unwrap();
 
         // Undo should remove the epoch
@@ -4536,10 +4669,12 @@ mod tests {
 
         // Verify epoch was cleaned up by checking the tension's epochs
         let conn = store.conn.borrow();
-        let rows = conn.query_with_params(
-            "SELECT COUNT(*) FROM epochs WHERE trigger_gesture_id = ?1",
-            &[fsqlite::SqliteValue::Text(gid.into())],
-        ).unwrap();
+        let rows = conn
+            .query_with_params(
+                "SELECT COUNT(*) FROM epochs WHERE trigger_gesture_id = ?1",
+                &[fsqlite::SqliteValue::Text(gid.into())],
+            )
+            .unwrap();
         let count = match rows.first().and_then(|r| r.get(0)) {
             Some(fsqlite::SqliteValue::Integer(n)) => *n,
             _ => 0,
@@ -5390,7 +5525,7 @@ mod tests {
         use fsqlite::Connection;
 
         // For a proper legacy DB test, we need to use a file-based database
-        // Store::init() expects a directory and creates .werk/sd.db inside it
+        // Create a legacy database file (sd.db) to test migration path
         let temp_base = std::env::temp_dir().join("werk_migration_test_dir");
         let werk_dir = temp_base.join(".werk");
 
@@ -5515,7 +5650,11 @@ mod tests {
 
         let gesture_mutations = store.get_gesture_mutations(&gesture_id).unwrap();
         assert_eq!(gesture_mutations.len(), 2);
-        assert!(gesture_mutations.iter().all(|m| m.gesture_id() == Some(gesture_id.as_str())));
+        assert!(
+            gesture_mutations
+                .iter()
+                .all(|m| m.gesture_id() == Some(gesture_id.as_str()))
+        );
     }
 
     #[test]
@@ -5540,7 +5679,9 @@ mod tests {
         let session_id = store.start_session().unwrap();
         assert_eq!(store.active_session().unwrap(), Some(session_id.clone()));
 
-        store.end_session(&session_id, Some("good session")).unwrap();
+        store
+            .end_session(&session_id, Some("good session"))
+            .unwrap();
         assert!(store.active_session().unwrap().is_none());
     }
 
@@ -5565,13 +5706,9 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
         let t = store.create_tension("goal", "reality").unwrap();
 
-        let epoch_id = store.create_epoch(
-            &t.id,
-            "goal",
-            "reality",
-            Some(r#"{"children":[]}"#),
-            None,
-        ).unwrap();
+        let epoch_id = store
+            .create_epoch(&t.id, "goal", "reality", Some(r#"{"children":[]}"#), None)
+            .unwrap();
 
         let epochs = store.get_epochs(&t.id).unwrap();
         assert_eq!(epochs.len(), 1);
@@ -5579,7 +5716,10 @@ mod tests {
         assert_eq!(epochs[0].tension_id, t.id);
         assert_eq!(epochs[0].desire_snapshot, "goal");
         assert_eq!(epochs[0].reality_snapshot, "reality");
-        assert_eq!(epochs[0].children_snapshot_json, Some(r#"{"children":[]}"#.to_string()));
+        assert_eq!(
+            epochs[0].children_snapshot_json,
+            Some(r#"{"children":[]}"#.to_string())
+        );
     }
 
     #[test]
@@ -5591,13 +5731,9 @@ mod tests {
         store.update_actual(&t.id, "new reality").unwrap();
         store.end_gesture();
 
-        let epoch_id = store.create_epoch(
-            &t.id,
-            "goal",
-            "new reality",
-            None,
-            Some(&gesture_id),
-        ).unwrap();
+        let epoch_id = store
+            .create_epoch(&t.id, "goal", "new reality", None, Some(&gesture_id))
+            .unwrap();
 
         let epochs = store.get_epochs(&t.id).unwrap();
         assert_eq!(epochs.len(), 1);
@@ -5610,8 +5746,12 @@ mod tests {
         let store = Store::new_in_memory().unwrap();
         let t = store.create_tension("goal", "reality").unwrap();
 
-        let e1 = store.create_epoch(&t.id, "goal v1", "reality v1", None, None).unwrap();
-        let e2 = store.create_epoch(&t.id, "goal v2", "reality v2", None, None).unwrap();
+        let e1 = store
+            .create_epoch(&t.id, "goal v1", "reality v1", None, None)
+            .unwrap();
+        let e2 = store
+            .create_epoch(&t.id, "goal v2", "reality v2", None, None)
+            .unwrap();
 
         let epochs = store.get_epochs(&t.id).unwrap();
         assert_eq!(epochs.len(), 2);

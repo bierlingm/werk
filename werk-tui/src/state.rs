@@ -1,6 +1,6 @@
 //! Core state types for the Operative Instrument TUI.
 
-use sd_core::TensionStatus;
+use werk_core::TensionStatus;
 
 /// A tension as displayed in the Field.
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ pub struct FieldEntry {
 
 impl FieldEntry {
     pub fn from_tension(
-        tension: &sd_core::Tension,
+        tension: &werk_core::Tension,
         last_reality_update: chrono::DateTime<chrono::Utc>,
         child_count: usize,
         last_status_change: chrono::DateTime<chrono::Utc>,
@@ -96,7 +96,9 @@ pub enum InputMode {
     Reordering {
         tension_id: String,
     },
-    Help { from: ViewOrientation },
+    Help {
+        from: ViewOrientation,
+    },
     Pathway,
 }
 
@@ -153,4 +155,3 @@ pub enum AlertKind {
     HorizonPast { days: i64 },
     MultipleRoots { count: usize },
 }
-

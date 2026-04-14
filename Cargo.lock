@@ -6490,7 +6490,6 @@ dependencies = [
  "owo-colors",
  "predicates",
  "regex",
- "sd-core",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -6513,11 +6512,32 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
- "sd-core",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "werk-core",
+]
+
+[[package]]
+name = "werk-core"
+version = "1.5.0"
+dependencies = [
+ "asupersync",
+ "chrono",
+ "dirs 5.0.1",
+ "fnx-algorithms",
+ "fnx-classes",
+ "fnx-runtime",
+ "frankensearch",
+ "fsqlite",
+ "fsqlite-error",
+ "fsqlite-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "ulid",
 ]
 
 [[package]]
@@ -6544,13 +6564,13 @@ dependencies = [
  "chrono",
  "dirs 6.0.0",
  "owo-colors",
- "sd-core",
  "serde",
  "serde_json",
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
  "toml 0.8.23",
+ "werk-core",
 ]
 
 [[package]]
@@ -6562,10 +6582,10 @@ dependencies = [
  "ftui",
  "ftui-runtime",
  "notify",
- "sd-core",
  "serde",
  "serde_json",
  "serde_yaml",
+ "werk-core",
  "werk-shared",
  "which",
 ]
@@ -6577,12 +6597,12 @@ dependencies = [
  "axum",
  "chrono",
  "futures-core",
- "sd-core",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
  "tower-http",
+ "werk-core",
  "werk-shared",
 ]
 

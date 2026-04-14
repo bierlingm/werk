@@ -10,7 +10,10 @@ use std::collections::{HashMap, HashSet};
 use crate::error::WerkError;
 use crate::output::Output;
 use crate::workspace::Workspace;
-use sd_core::{compute_temporal_signals, compute_urgency, detect_horizon_drift, Forest, HorizonDriftType, Tension, TensionStatus};
+use werk_core::{
+    Forest, HorizonDriftType, Tension, TensionStatus, compute_temporal_signals, compute_urgency,
+    detect_horizon_drift,
+};
 use werk_shared::cli_display::glyphs;
 use werk_shared::truncate;
 
@@ -196,7 +199,9 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
                 count: 0,
                 since: None,
             };
-            output.print_structured(&result).map_err(WerkError::IoError)?;
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
             output
                 .info("No tensions found")
@@ -214,7 +219,9 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     // If --changed, parse the since value and find changed tension IDs
     let (since_dt, changed_tension_fields) = if let Some(ref since_str) = params.changed {
         let dt = parse_since(since_str, now)?;
-        let mutations = store.mutations_between(dt, now).map_err(WerkError::StoreError)?;
+        let mutations = store
+            .mutations_between(dt, now)
+            .map_err(WerkError::StoreError)?;
         let mut changed: HashMap<String, Vec<String>> = HashMap::new();
         for m in &mutations {
             changed
@@ -233,9 +240,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     };
 
     // If --stale, compute last mutation timestamps
-    let stale_threshold = params.stale.map(|days| {
-        now - chrono::Duration::days(days)
-    });
+    let stale_threshold = params.stale.map(|days| now - chrono::Duration::days(days));
 
     let last_mutation_ts: Option<HashMap<String, DateTime<Utc>>> = if stale_threshold.is_some() {
         let ids: Vec<&str> = tensions.iter().map(|t| t.id.as_str()).collect();
@@ -357,18 +362,26 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             }
             if !temporal.containment_violations.is_empty() && !temporal.has_containment_violation {
                 row.signal_glyphs.push(glyphs::SIGNAL_CONTAINMENT);
-                row.signal_labels.push("containment_violation_parent".to_string());
+                row.signal_labels
+                    .push("containment_violation_parent".to_string());
             }
 
             // Horizon drift — only RepeatedPostponement and Oscillating in list (noise threshold)
-            if let Some(horizon) = tensions.iter().find(|t| t.id == row.id).and_then(|t| t.horizon.as_ref()) {
+            if let Some(horizon) = tensions
+                .iter()
+                .find(|t| t.id == row.id)
+                .and_then(|t| t.horizon.as_ref())
+            {
                 let _ = horizon; // confirm horizon exists
-                let mutations = store.get_mutations(&row.id).map_err(WerkError::StoreError)?;
+                let mutations = store
+                    .get_mutations(&row.id)
+                    .map_err(WerkError::StoreError)?;
                 let drift = detect_horizon_drift(&row.id, &mutations);
                 match drift.drift_type {
                     HorizonDriftType::RepeatedPostponement | HorizonDriftType::Oscillating => {
                         row.signal_glyphs.push(glyphs::SIGNAL_DRIFT);
-                        row.signal_labels.push(format!("drift:{:?}", drift.drift_type));
+                        row.signal_labels
+                            .push(format!("drift:{:?}", drift.drift_type));
                     }
                     _ => {}
                 }
@@ -388,7 +401,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
                 return Err(WerkError::InvalidInput(format!(
                     "unknown status '{}'. Use active, resolved, or released.",
                     status_filter
-                )))
+                )));
             }
         };
         rows.retain(|r| r.status == target);
@@ -459,7 +472,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     // relevance score (overrides the normal sort).
     let search_active = params.search.is_some();
     if let Some(ref query) = params.search {
-        let index = sd_core::SearchIndex::build(&store);
+        let index = werk_core::SearchIndex::build(&store);
         if let Some(ref idx) = index {
             let hits = idx.search(query, 100);
             let hit_order: std::collections::HashMap<String, (usize, f32)> = hits
@@ -477,8 +490,7 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             // Fallback: substring filter when index unavailable
             let q = query.to_lowercase();
             rows.retain(|r| {
-                r.desired.to_lowercase().contains(&q)
-                    || r.actual.to_lowercase().contains(&q)
+                r.desired.to_lowercase().contains(&q) || r.actual.to_lowercase().contains(&q)
             });
         }
     }
@@ -488,55 +500,57 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     if search_active {
         // Search already sorted by relevance — don't re-sort unless
         // the user explicitly asked for a different sort.
-    } else { match params.sort.as_str() {
-        "urgency" => {
-            rows.sort_by(|a, b| {
-                let ua = a.urgency.unwrap_or(-1.0);
-                let ub = b.urgency.unwrap_or(-1.0);
-                ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        }
-        "name" => {
-            rows.sort_by(|a, b| a.desired.to_lowercase().cmp(&b.desired.to_lowercase()));
-        }
-        "deadline" | "horizon" => {
-            rows.sort_by(|a, b| match (&a.horizon_raw, &b.horizon_raw) {
-                (Some(ha), Some(hb)) => ha.cmp(hb),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            });
-        }
-        "created" => {
-            // Sort by short_code as proxy for creation order
-            rows.sort_by(|a, b| a.short_code.cmp(&b.short_code));
-        }
-        "updated" => {
-            // Would need last mutation timestamp; fall back to urgency if not available
-            if let Some(ref ts_map) = last_mutation_ts {
+    } else {
+        match params.sort.as_str() {
+            "urgency" => {
                 rows.sort_by(|a, b| {
-                    let ta = ts_map.get(&a.id);
-                    let tb = ts_map.get(&b.id);
-                    tb.cmp(&ta)
+                    let ua = a.urgency.unwrap_or(-1.0);
+                    let ub = b.urgency.unwrap_or(-1.0);
+                    ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            }
+            "name" => {
+                rows.sort_by(|a, b| a.desired.to_lowercase().cmp(&b.desired.to_lowercase()));
+            }
+            "deadline" | "horizon" => {
+                rows.sort_by(|a, b| match (&a.horizon_raw, &b.horizon_raw) {
+                    (Some(ha), Some(hb)) => ha.cmp(hb),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                });
+            }
+            "created" => {
+                // Sort by short_code as proxy for creation order
+                rows.sort_by(|a, b| a.short_code.cmp(&b.short_code));
+            }
+            "updated" => {
+                // Would need last mutation timestamp; fall back to urgency if not available
+                if let Some(ref ts_map) = last_mutation_ts {
+                    rows.sort_by(|a, b| {
+                        let ta = ts_map.get(&a.id);
+                        let tb = ts_map.get(&b.id);
+                        tb.cmp(&ta)
+                    });
+                }
+            }
+            "position" => {
+                rows.sort_by(|a, b| {
+                    let pa = a.position.unwrap_or(i32::MAX);
+                    let pb = b.position.unwrap_or(i32::MAX);
+                    pa.cmp(&pb)
+                });
+            }
+            _ => {
+                // Default: urgency
+                rows.sort_by(|a, b| {
+                    let ua = a.urgency.unwrap_or(-1.0);
+                    let ub = b.urgency.unwrap_or(-1.0);
+                    ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
                 });
             }
         }
-        "position" => {
-            rows.sort_by(|a, b| {
-                let pa = a.position.unwrap_or(i32::MAX);
-                let pb = b.position.unwrap_or(i32::MAX);
-                pa.cmp(&pb)
-            });
-        }
-        _ => {
-            // Default: urgency
-            rows.sort_by(|a, b| {
-                let ua = a.urgency.unwrap_or(-1.0);
-                let ub = b.urgency.unwrap_or(-1.0);
-                ub.partial_cmp(&ua).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        }
-    } }
+    }
 
     if params.reverse {
         rows.reverse();
@@ -547,10 +561,8 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     if params.tree {
         // Compute depth for retained rows, then sort by tree order
         let _retained_ids: HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
-        let tension_map: HashMap<String, &Tension> = tensions
-            .iter()
-            .map(|t| (t.id.clone(), t))
-            .collect();
+        let tension_map: HashMap<String, &Tension> =
+            tensions.iter().map(|t| (t.id.clone(), t)).collect();
 
         // Compute depths
         for row in &mut rows {
@@ -600,7 +612,9 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             count,
             since: since_dt.map(|dt| dt.to_rfc3339()),
         };
-        output.print_structured(&result).map_err(WerkError::IoError)?;
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
     } else {
         if rows.is_empty() {
             output
@@ -662,7 +676,8 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
         } else if params.long {
             "`werk show <id>` for the full picture, `werk list` for compact rows".to_string()
         } else {
-            "`werk show <id>` for one tension, `werk list --long` for more detail per row".to_string()
+            "`werk show <id>` for one tension, `werk list --long` for more detail per row"
+                .to_string()
         };
         crate::hints::print_hint(&palette, &hint);
     }
@@ -790,7 +805,12 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, 
             TensionStatus::Released => "released",
         };
 
-        let header = format!("{} [{}] {}", id_display, status, truncate(&row.desired, title_col));
+        let header = format!(
+            "{} [{}] {}",
+            id_display,
+            status,
+            truncate(&row.desired, title_col)
+        );
         println!("{}", body_colorize(palette, row, &header));
         println!(
             "  {} {}",
@@ -824,7 +844,12 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, 
     }
 }
 
-fn print_changed_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, term_width: usize) {
+fn print_changed_rows(
+    rows: &[TensionRow],
+    _now: DateTime<Utc>,
+    palette: &Palette,
+    term_width: usize,
+) {
     // id (6) + gap (2) + desire (variable) + gap (2) + [fields] (up to ~25)
     const FIXED_CHROME: usize = 6 + 2 + 2;
     const FIELDS_RESERVE: usize = 25;

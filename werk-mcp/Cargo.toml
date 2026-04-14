@@ -5,7 +5,7 @@ edition = "2024"
 description = "MCP server for werk — exposes operative gestures as protocol tools"
 
 [dependencies]
-sd-core = { path = "../sd-core" }
+werk-core = { path = "../werk-core" }
 werk-shared = { path = "../werk-shared" }
 rmcp = { version = "1", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }

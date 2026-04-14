@@ -1,14 +1,14 @@
 //! Import tensions from tensions.json into a fresh SD database.
 //! Usage: cargo run --example import_json
 
-use sd_core::{Store, TensionStatus, Horizon};
 use std::collections::HashMap;
+use werk_core::{Horizon, Store, TensionStatus};
 
 fn main() {
     let json_str = std::fs::read_to_string("tensions.json").expect("read tensions.json");
     let data: serde_json::Value = serde_json::from_str(&json_str).expect("parse JSON");
 
-    // Init store at workspace root (creates .werk/sd.db)
+    // Init store at workspace root (creates .werk/werk.db)
     let store = Store::init(std::path::Path::new(".")).expect("create store");
 
     let tensions = data["tensions"].as_array().expect("tensions array");
@@ -29,18 +29,22 @@ fn main() {
         let mapped_parent = parent_id.and_then(|pid| old_to_new.get(pid));
 
         let new_tension = if let Some(new_pid) = mapped_parent {
-            store.create_tension_with_parent(desired, actual, Some(new_pid.clone())).expect("create child")
+            store
+                .create_tension_with_parent(desired, actual, Some(new_pid.clone()))
+                .expect("create child")
         } else {
-            store.create_tension(desired, actual).expect("create tension")
+            store
+                .create_tension(desired, actual)
+                .expect("create tension")
         };
 
         let new_id = new_tension.id.clone();
 
         // Set horizon
-        if let Some(h_str) = t["horizon"].as_str() {
-            if let Ok(h) = Horizon::parse(h_str) {
-                let _ = store.update_horizon(&new_id, Some(h));
-            }
+        if let Some(h_str) = t["horizon"].as_str()
+            && let Ok(h) = Horizon::parse(h_str)
+        {
+            let _ = store.update_horizon(&new_id, Some(h));
         }
 
         // Set position
@@ -50,13 +54,22 @@ fn main() {
 
         // Set status
         match t["status"].as_str().unwrap() {
-            "Resolved" => { let _ = store.update_status(&new_id, TensionStatus::Resolved); }
-            "Released" => { let _ = store.update_status(&new_id, TensionStatus::Released); }
+            "Resolved" => {
+                let _ = store.update_status(&new_id, TensionStatus::Resolved);
+            }
+            "Released" => {
+                let _ = store.update_status(&new_id, TensionStatus::Released);
+            }
             _ => {}
         }
 
         let sc = t["short_code"].as_i64().unwrap_or(-1);
-        println!("#{} -> #{} ({})", sc, new_tension.short_code.unwrap_or(-1), &new_id[..8]);
+        println!(
+            "#{} -> #{} ({})",
+            sc,
+            new_tension.short_code.unwrap_or(-1),
+            &new_id[..8]
+        );
 
         old_to_new.insert(old_id, new_id);
     }

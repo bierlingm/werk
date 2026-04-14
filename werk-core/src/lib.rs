@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-// sd-core: Core computation and storage layer for werk.
+// werk-core: Core computation and storage layer for werk.
 //
 // Provides: tension model, tree/forest, store, temporal computations,
 // urgency, horizon drift, mutations, events, projections.
@@ -24,9 +24,14 @@ pub mod tension;
 pub mod tree;
 
 // Re-export commonly used types
-pub use frontier::{ClosureProgress, Frontier, FrontierStep, compute_frontier};
+pub use address::{Address, AddressParseError, parse_address};
+pub use edge::{EDGE_CONTAINS, EDGE_MERGED_INTO, EDGE_SPLIT_FROM, Edge};
 pub use engine::Engine;
 pub use events::{Event, EventBuilder, EventBus, SubscriptionHandle};
+pub use frontier::{ClosureProgress, Frontier, FrontierStep, compute_frontier};
+pub use graph::{
+    ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
+};
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
 pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
 pub use projection::{
@@ -34,19 +39,14 @@ pub use projection::{
     Trajectory, TrajectoryBuckets, UrgencyCollision, estimate_time_to_resolution,
     extract_mutation_pattern, project_field, project_frequency_at, project_gap_at, project_tension,
 };
-pub use address::{Address, AddressParseError, parse_address};
-pub use edge::{Edge, EDGE_CONTAINS, EDGE_SPLIT_FROM, EDGE_MERGED_INTO};
+pub use search::{SearchHit, SearchIndex};
 pub use store::{EpochRecord, Store, StoreError};
 pub use temporal::{
     ContainmentViolation, CriticalPath, HorizonDrift, HorizonDriftType, ImpliedWindow,
-    SequencingPressure, TemporalSignals, Urgency,
-    compute_implied_windows, compute_temporal_signals, compute_urgency,
-    detect_containment_violations, detect_critical_path, detect_critical_path_recursive,
-    detect_horizon_drift, detect_sequencing_pressure, gap_magnitude,
+    SequencingPressure, TemporalSignals, Urgency, compute_implied_windows,
+    compute_temporal_signals, compute_urgency, detect_containment_violations, detect_critical_path,
+    detect_critical_path_recursive, detect_horizon_drift, detect_sequencing_pressure,
+    gap_magnitude,
 };
-pub use tension::{SdError, Tension, TensionStatus};
-pub use graph::{
-    ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
-};
-pub use search::{SearchHit, SearchIndex};
+pub use tension::{CoreError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};

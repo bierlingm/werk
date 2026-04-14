@@ -21,9 +21,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::temporal::HorizonDriftType;
 
-#[cfg(test)]
-use crate::tension::TensionStatus;
-
 // ============================================================================
 // Event Types
 // ============================================================================
@@ -188,8 +185,7 @@ impl Event {
     pub fn is_commandable(&self) -> bool {
         !matches!(
             self,
-            Event::UrgencyThresholdCrossed { .. }
-                | Event::HorizonDriftDetected { .. }
+            Event::UrgencyThresholdCrossed { .. } | Event::HorizonDriftDetected { .. }
         )
     }
 
@@ -362,42 +358,60 @@ impl EventBuilder {
         horizon: Option<String>,
     ) -> Event {
         Event::TensionCreated {
-            tension_id, desired, actual, parent_id, horizon,
+            tension_id,
+            desired,
+            actual,
+            parent_id,
+            horizon,
             timestamp: Utc::now(),
         }
     }
 
     pub fn reality_confronted(tension_id: String, old_actual: String, new_actual: String) -> Event {
         Event::RealityConfronted {
-            tension_id, old_actual, new_actual,
+            tension_id,
+            old_actual,
+            new_actual,
             timestamp: Utc::now(),
         }
     }
 
     pub fn desire_revised(tension_id: String, old_desired: String, new_desired: String) -> Event {
         Event::DesireRevised {
-            tension_id, old_desired, new_desired,
+            tension_id,
+            old_desired,
+            new_desired,
             timestamp: Utc::now(),
         }
     }
 
-    pub fn tension_resolved(tension_id: String, final_desired: String, final_actual: String) -> Event {
+    pub fn tension_resolved(
+        tension_id: String,
+        final_desired: String,
+        final_actual: String,
+    ) -> Event {
         Event::TensionResolved {
-            tension_id, final_desired, final_actual,
+            tension_id,
+            final_desired,
+            final_actual,
             timestamp: Utc::now(),
         }
     }
 
     pub fn tension_released(tension_id: String, desired: String, actual: String) -> Event {
         Event::TensionReleased {
-            tension_id, desired, actual,
+            tension_id,
+            desired,
+            actual,
             timestamp: Utc::now(),
         }
     }
 
     pub fn tension_deleted(tension_id: String, desired: String, actual: String) -> Event {
         Event::TensionDeleted {
-            tension_id, desired, actual,
+            tension_id,
+            desired,
+            actual,
             timestamp: Utc::now(),
         }
     }
@@ -408,7 +422,9 @@ impl EventBuilder {
         new_parent_id: Option<String>,
     ) -> Event {
         Event::StructureChanged {
-            tension_id, old_parent_id, new_parent_id,
+            tension_id,
+            old_parent_id,
+            new_parent_id,
             timestamp: Utc::now(),
         }
     }
@@ -419,7 +435,9 @@ impl EventBuilder {
         new_horizon: Option<String>,
     ) -> Event {
         Event::HorizonChanged {
-            tension_id, old_horizon, new_horizon,
+            tension_id,
+            old_horizon,
+            new_horizon,
             timestamp: Utc::now(),
         }
     }
@@ -432,21 +450,27 @@ impl EventBuilder {
         crossed_above: bool,
     ) -> Event {
         Event::UrgencyThresholdCrossed {
-            tension_id, old_urgency, new_urgency, threshold, crossed_above,
+            tension_id,
+            old_urgency,
+            new_urgency,
+            threshold,
+            crossed_above,
             timestamp: Utc::now(),
         }
     }
 
     pub fn note_taken(tension_id: String, text: String) -> Event {
         Event::NoteTaken {
-            tension_id, text,
+            tension_id,
+            text,
             timestamp: Utc::now(),
         }
     }
 
     pub fn note_retracted(tension_id: String, text: String) -> Event {
         Event::NoteRetracted {
-            tension_id, text,
+            tension_id,
+            text,
             timestamp: Utc::now(),
         }
     }
@@ -457,7 +481,9 @@ impl EventBuilder {
         reversed_mutation_count: usize,
     ) -> Event {
         Event::GestureUndone {
-            gesture_id, undo_gesture_id, reversed_mutation_count,
+            gesture_id,
+            undo_gesture_id,
+            reversed_mutation_count,
             timestamp: Utc::now(),
         }
     }
@@ -468,7 +494,9 @@ impl EventBuilder {
         change_count: usize,
     ) -> Event {
         Event::HorizonDriftDetected {
-            tension_id, drift_type, change_count,
+            tension_id,
+            drift_type,
+            change_count,
             timestamp: Utc::now(),
         }
     }
@@ -488,31 +516,47 @@ mod tests {
     fn test_event_serialization_roundtrip() {
         let events = vec![
             EventBuilder::tension_created(
-                "01ABC".to_owned(), "goal".to_owned(), "reality".to_owned(), None, None,
+                "01ABC".to_owned(),
+                "goal".to_owned(),
+                "reality".to_owned(),
+                None,
+                None,
             ),
             EventBuilder::reality_confronted(
-                "01ABC".to_owned(), "old reality".to_owned(), "new reality".to_owned(),
+                "01ABC".to_owned(),
+                "old reality".to_owned(),
+                "new reality".to_owned(),
             ),
             EventBuilder::desire_revised(
-                "01ABC".to_owned(), "old goal".to_owned(), "new goal".to_owned(),
+                "01ABC".to_owned(),
+                "old goal".to_owned(),
+                "new goal".to_owned(),
             ),
             EventBuilder::tension_resolved(
-                "01ABC".to_owned(), "final goal".to_owned(), "final reality".to_owned(),
+                "01ABC".to_owned(),
+                "final goal".to_owned(),
+                "final reality".to_owned(),
             ),
             EventBuilder::tension_released(
-                "01DEF".to_owned(), "goal".to_owned(), "reality".to_owned(),
+                "01DEF".to_owned(),
+                "goal".to_owned(),
+                "reality".to_owned(),
             ),
             EventBuilder::structure_changed(
-                "01ABC".to_owned(), Some("parent1".to_owned()), Some("parent2".to_owned()),
+                "01ABC".to_owned(),
+                Some("parent1".to_owned()),
+                Some("parent2".to_owned()),
             ),
             EventBuilder::horizon_changed(
-                "01ABC".to_owned(), Some("2026-05".to_owned()), Some("2026-06".to_owned()),
+                "01ABC".to_owned(),
+                Some("2026-05".to_owned()),
+                Some("2026-06".to_owned()),
             ),
-            EventBuilder::urgency_threshold_crossed(
-                "01ABC".to_owned(), 0.4, 0.6, 0.5, true,
-            ),
+            EventBuilder::urgency_threshold_crossed("01ABC".to_owned(), 0.4, 0.6, 0.5, true),
             EventBuilder::horizon_drift_detected(
-                "01ABC".to_owned(), HorizonDriftType::Postponement, 2,
+                "01ABC".to_owned(),
+                HorizonDriftType::Postponement,
+                2,
             ),
         ];
 
@@ -526,7 +570,11 @@ mod tests {
     #[test]
     fn test_event_tagged_serialization() {
         let event = EventBuilder::tension_created(
-            "01ABC".to_owned(), "goal".to_owned(), "reality".to_owned(), None, None,
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            None,
         );
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"tension_created\""));
@@ -535,7 +583,11 @@ mod tests {
     #[test]
     fn test_event_tension_id() {
         let event = EventBuilder::tension_created(
-            "01ABC".to_owned(), "goal".to_owned(), "reality".to_owned(), None, None,
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            None,
         );
         assert_eq!(event.tension_id(), Some("01ABC"));
     }
@@ -544,7 +596,11 @@ mod tests {
     fn test_event_timestamp() {
         let before = Utc::now();
         let event = EventBuilder::tension_created(
-            "01ABC".to_owned(), "goal".to_owned(), "reality".to_owned(), None, None,
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            None,
         );
         let after = Utc::now();
 
@@ -564,7 +620,11 @@ mod tests {
         });
 
         let event = EventBuilder::tension_created(
-            "01ABC".to_owned(), "goal".to_owned(), "reality".to_owned(), None, None,
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            None,
         );
         bus.emit(&event);
         bus.emit(&event);
@@ -583,7 +643,11 @@ mod tests {
         });
 
         let event = EventBuilder::tension_created(
-            "01ABC".to_owned(), "goal".to_owned(), "reality".to_owned(), None, None,
+            "01ABC".to_owned(),
+            "goal".to_owned(),
+            "reality".to_owned(),
+            None,
+            None,
         );
         bus.emit(&event);
         assert_eq!(count.load(Ordering::SeqCst), 1);
@@ -598,10 +662,16 @@ mod tests {
         let bus = EventBus::new();
 
         bus.emit(&EventBuilder::tension_created(
-            "01A".to_owned(), "g1".to_owned(), "r1".to_owned(), None, None,
+            "01A".to_owned(),
+            "g1".to_owned(),
+            "r1".to_owned(),
+            None,
+            None,
         ));
         bus.emit(&EventBuilder::reality_confronted(
-            "01A".to_owned(), "r1".to_owned(), "r2".to_owned(),
+            "01A".to_owned(),
+            "r1".to_owned(),
+            "r2".to_owned(),
         ));
 
         let history = bus.history();

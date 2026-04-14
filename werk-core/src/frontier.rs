@@ -149,11 +149,7 @@ pub fn compute_frontier(
     let mut remaining = Vec::new();
 
     for t in &positioned {
-        let is_overdue = t
-            .horizon
-            .as_ref()
-            .map(|h| h.is_past(now))
-            .unwrap_or(false);
+        let is_overdue = t.horizon.as_ref().map(|h| h.is_past(now)).unwrap_or(false);
 
         if next_step.is_none() {
             // First unresolved positioned child is the next step
@@ -178,11 +174,8 @@ pub fn compute_frontier(
     });
 
     // Recently resolved: resolved children whose resolution happened after the recency boundary
-    let recently_resolved = classify_recently_resolved(
-        &all_resolved,
-        child_mutations,
-        recency_boundary,
-    );
+    let recently_resolved =
+        classify_recently_resolved(&all_resolved, child_mutations, recency_boundary);
 
     let total = children.len();
     let active = total - released_count;
@@ -388,7 +381,7 @@ mod tests {
         let now = Utc::now();
         let past_horizon = {
             let d = (now - Duration::days(5)).date_naive();
-            crate::Horizon::new_day(d.year(), d.month(), d.day() as u32).unwrap()
+            crate::Horizon::new_day(d.year(), d.month(), d.day()).unwrap()
         };
         let c1 = make_tension_with_horizon("c1", TensionStatus::Active, Some(1), past_horizon);
 
@@ -407,7 +400,7 @@ mod tests {
         let now = Utc::now();
         let past_horizon = {
             let d = (now - Duration::days(5)).date_naive();
-            crate::Horizon::new_day(d.year(), d.month(), d.day() as u32).unwrap()
+            crate::Horizon::new_day(d.year(), d.month(), d.day()).unwrap()
         };
 
         let c1 = make_tension("c1", TensionStatus::Active, Some(1)); // next, not overdue
