@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-14T14:53:49Z",
+  "flushed_at": "2026-04-14T17:09:37Z",
   "summary": {
-    "active": 55,
+    "active": 48,
     "released": 63,
-    "resolved": 124,
+    "resolved": 131,
     "total": 242
   },
   "tensions": [
@@ -2560,18 +2560,18 @@
       "status": "Active"
     },
     {
-      "actual": "sd-core is the crate name, sd_core is the module prefix used 434 times across 61 files, SdError appears 179 times across 23 files, sd.db appears 35 times across 10 files. The crate directory is sd-core/. All six consuming crates (werk-cli, werk-shared, werk-tui, werk-web, werk-mcp, werk-app) depend on sd-core by path.",
+      "actual": "Rename complete: werk-core is the crate/directory name, active code uses werk_core:: and CoreError, werk.db is primary with idempotent legacy sd.db migration, validators passed, and user-facing README/spec mappings now reference werk-core.",
       "created_at": "2026-04-14T13:48:21.004170+00:00",
-      "desired": "sd-core is renamed to werk-core — crate name, module prefix (sd_core → werk_core), error types (SdError → WerkError), and database filename (sd.db → werk.db) all align under the werk identity",
+      "desired": "sd-core is renamed to werk-core — crate name, module prefix (sd_core → werk_core), error type (SdError → CoreError), and database filename (sd.db → werk.db) all align under the werk identity",
       "horizon": null,
       "id": "01KP64034C0Y3F2JVQH0SKEA13",
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 243,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "sd-core/ exists, Cargo.toml members list includes 'sd-core'",
+      "actual": "sd-core/ was renamed to werk-core/, workspace members were updated, and the old sd-core/ tree was deleted.",
       "created_at": "2026-04-14T13:49:01.971260+00:00",
       "desired": "rename sd-core/ directory to werk-core/ and update Cargo.toml members list",
       "horizon": null,
@@ -2579,10 +2579,10 @@
       "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
       "position": null,
       "short_code": 244,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "6 Cargo.toml files reference sd-core = { path = \"../sd-core\" }",
+      "actual": "werk-core/Cargo.toml and all consuming path dependencies were updated across werk-cli, werk-shared, werk-tui, werk-web, werk-mcp, and werk-app; Cargo.lock was refreshed.",
       "created_at": "2026-04-14T13:49:09.874638+00:00",
       "desired": "update crate name in werk-core/Cargo.toml and all path dependencies in consuming crates (werk-cli, werk-shared, werk-tui, werk-web, werk-mcp, werk-app)",
       "horizon": null,
@@ -2590,10 +2590,10 @@
       "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
       "position": null,
       "short_code": 245,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "434 references across 61 .rs files",
+      "actual": "Active code now uses werk_core:: throughout; no active sd_core:: references remain outside historical docs/spec notes.",
       "created_at": "2026-04-14T13:49:21.293411+00:00",
       "desired": "rename all sd_core:: references to werk_core:: across the codebase",
       "horizon": null,
@@ -2601,10 +2601,10 @@
       "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
       "position": null,
       "short_code": 246,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "SdError is the core library error type in tension.rs, wrapped by werk-shared WerkError via #[from]",
+      "actual": "SdError was renamed to CoreError across the core crate and its consumers; werk-shared::WerkError now wraps werk_core::CoreError.",
       "created_at": "2026-04-14T13:49:30.481600+00:00",
       "desired": "rename SdError to CoreError and update all 179 references across 23 files",
       "horizon": null,
@@ -2612,10 +2612,10 @@
       "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
       "position": null,
       "short_code": 247,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "35 references to sd.db across 10 files",
+      "actual": "werk.db is now the primary database. Legacy sd.db transparently migrates to werk.db, and the migration path is idempotent under parallel test races.",
       "created_at": "2026-04-14T13:49:39.812264+00:00",
       "desired": "rename sd.db to werk.db with transparent migration — check for werk.db first, fall back to sd.db and rename if found",
       "horizon": null,
@@ -2623,10 +2623,10 @@
       "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
       "position": null,
       "short_code": 248,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "not started",
+      "actual": "cargo check, cargo test --workspace, and cargo clippy all passed after the rename and follow-up fixes.",
       "created_at": "2026-04-14T13:49:47.745708+00:00",
       "desired": "validate rename with cargo check, cargo test, and cargo clippy — fix any breakage",
       "horizon": null,
@@ -2634,7 +2634,7 @@
       "parent_id": "01KP64034C0Y3F2JVQH0SKEA13",
       "position": null,
       "short_code": 249,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "workspace discovery walks UP from CWD and falls back to ~/.werk/. No -g or -w flags. No space registry. werk -g currently just means 'use the global workspace' but there is no registry awareness behind it.",

@@ -145,7 +145,7 @@ Any MCP client (Claude Desktop, Cursor, or custom harnesses) connects the same w
 ## Architecture
 
 ```
-sd-core          Structural dynamics engine (Rust library)
+werk-core        Structural dynamics engine (Rust library)
   ├── tension    Desire-reality pairs, status, children
   ├── mutation   Append-only change log with gesture grouping
   ├── store      SQLite persistence

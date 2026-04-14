@@ -40,10 +40,10 @@ impl PrefixResolver {
     /// - Multiple tensions match the prefix (ambiguous)
     pub fn resolve(&self, prefix: &str) -> Result<&Tension> {
         // Try short code first (pure numeric input)
-        if let Ok(code) = prefix.parse::<i32>() {
-            if let Some(t) = self.tensions.iter().find(|t| t.short_code == Some(code)) {
-                return Ok(t);
-            }
+        if let Ok(code) = prefix.parse::<i32>()
+            && let Some(t) = self.tensions.iter().find(|t| t.short_code == Some(code))
+        {
+            return Ok(t);
             // If no short code match, fall through to ULID prefix matching
         }
 

@@ -56,10 +56,10 @@ not how it's achieved. The mapping:
 
 | Quint | Rust |
 |-------|------|
-| `types::Tension` | `sd_core::tension::Tension` |
-| `types::TensionStatus` | `sd_core::tension::TensionStatus` |
-| `types::Edge` | `sd_core::edge::Edge` |
-| `types::Horizon` | `sd_core::horizon::Horizon` |
+| `types::Tension` | `werk_core::tension::Tension` |
+| `types::TensionStatus` | `werk_core::tension::TensionStatus` |
+| `types::Edge` | `werk_core::edge::Edge` |
+| `types::Horizon` | `werk_core::horizon::Horizon` |
 | `tension::canTransition` | `Tension::resolve/release/reopen` |
 | `forest::singleParent` | `TreeError::CircularReference` check |
 | `timeCalculus::urgency` | `temporal::compute_urgency` |

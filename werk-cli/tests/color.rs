@@ -15,21 +15,6 @@ fn has_ansi_codes(output: &str) -> bool {
     output.contains("\x1b[") || output.contains("\u{1b}[")
 }
 
-/// Extract a ULID from werk output.
-fn extract_ulid(output: &str) -> Option<String> {
-    let chars: Vec<char> = output.chars().collect();
-    for i in 0..chars.len().saturating_sub(25) {
-        let slice: String = chars[i..i + 26].iter().collect();
-        if slice
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
-        {
-            return Some(slice);
-        }
-    }
-    None
-}
-
 // =============================================================================
 // VAL-FMT-001: Plain text output has no ANSI codes (colors removed)
 // =============================================================================

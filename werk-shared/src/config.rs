@@ -116,16 +116,16 @@ impl Config {
             .ok_or_else(|| WerkError::IoError("config path not set, cannot save".to_string()))?;
 
         // Create parent directories if needed
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    if e.kind() == std::io::ErrorKind::PermissionDenied {
-                        WerkError::PermissionDenied(format!("{}", parent.display()))
-                    } else {
-                        WerkError::IoError(format!("failed to create config directory: {}", e))
-                    }
-                })?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    WerkError::PermissionDenied(format!("{}", parent.display()))
+                } else {
+                    WerkError::IoError(format!("failed to create config directory: {}", e))
+                }
+            })?;
         }
 
         // Convert back to TOML structure
@@ -301,10 +301,10 @@ fn parse_toml_value(value: &str) -> toml::Value {
     let trimmed = value.trim();
     if trimmed.starts_with('[') && trimmed.ends_with(']') {
         // Parse as TOML array
-        if let Ok(parsed) = toml::from_str::<toml::Value>(&format!("arr = {}", trimmed)) {
-            if let Some(arr) = parsed.get("arr") {
-                return arr.clone();
-            }
+        if let Ok(parsed) = toml::from_str::<toml::Value>(&format!("arr = {}", trimmed))
+            && let Some(arr) = parsed.get("arr")
+        {
+            return arr.clone();
         }
     }
 

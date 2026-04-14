@@ -1,6 +1,6 @@
 // types.qnt — Core domain types for the werk specification.
 //
-// These mirror the Rust types in sd-core but at the specification level:
+// These mirror the Rust types in werk-core but at the specification level:
 // we model what matters for invariants, not serialization details.
 
 module types {
