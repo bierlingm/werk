@@ -336,6 +336,7 @@ fn main() {
                 ),
             }
         }
+        Commands::Field { attention } => werk::commands::field::cmd_field(&output, attention),
         Commands::Batch { command } => werk::commands::batch::cmd_batch(&output, &command),
         Commands::Hooks { command } => {
             use werk::commands::HooksCommand;
