@@ -6414,7 +6414,6 @@ dependencies = [
  "fnx-runtime",
  "frankensearch",
  "fsqlite",
- "fsqlite-error",
  "fsqlite-types",
  "serde",
  "serde_json",
