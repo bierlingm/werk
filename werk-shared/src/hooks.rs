@@ -267,7 +267,9 @@ impl HookEvent {
         }
     }
 
-    /// Legacy factory: build a mutation HookEvent manually (for pre-hooks at command level).
+    /// Build a mutation HookEvent manually — used by pre-hooks at the
+    /// command level, before the Store mutation runs. The post-hook path
+    /// uses `HookEvent::from_event` on a bus-emitted `Event`.
     pub fn mutation(
         tension_id: &str,
         tension_desired: &str,
@@ -291,7 +293,7 @@ impl HookEvent {
         }
     }
 
-    /// Legacy factory: build a status change HookEvent manually (for pre-hooks).
+    /// Build a status-change HookEvent manually (for pre-hooks).
     pub fn status_change(
         tension_id: &str,
         tension_desired: &str,
@@ -313,7 +315,7 @@ impl HookEvent {
         }
     }
 
-    /// Legacy factory: build a create HookEvent manually (for pre-hooks).
+    /// Build a create HookEvent manually (for pre-hooks).
     pub fn create(
         tension_id: &str,
         tension_desired: &str,
@@ -696,31 +698,16 @@ impl HookRunner {
         self.log.lock().map(|l| l.clone()).unwrap_or_default()
     }
 
-    // === Legacy convenience methods (used by existing CLI pre-hook code) ===
+    // === Pre-hook helper used at the command level ===
+    //
+    // Post-hooks fire automatically through `HookBridge` when the `EventBus`
+    // emits an `Event`; they do not go through a wrapper here. Pre-hooks
+    // have to be checked *before* the Store mutation, so commands call
+    // `pre_mutation` directly.
 
     /// Run pre_mutation hook. Returns false if blocked.
     pub fn pre_mutation(&self, event: &HookEvent) -> bool {
         self.run_pre_hook("mutation", event).unwrap_or(true)
-    }
-
-    /// Run post_mutation hook (fire-and-forget).
-    pub fn post_mutation(&self, event: &HookEvent) {
-        self.run_post_hooks(event);
-    }
-
-    /// Run post_resolve hook.
-    pub fn post_resolve(&self, event: &HookEvent) {
-        self.run_post_hooks(event);
-    }
-
-    /// Run post_release hook.
-    pub fn post_release(&self, event: &HookEvent) {
-        self.run_post_hooks(event);
-    }
-
-    /// Run post_create hook.
-    pub fn post_create(&self, event: &HookEvent) {
-        self.run_post_hooks(event);
     }
 
     /// Check if any hooks are configured.
