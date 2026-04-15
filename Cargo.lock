@@ -6481,7 +6481,7 @@ dependencies = [
 
 [[package]]
 name = "werk"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -6521,7 +6521,7 @@ dependencies = [
 
 [[package]]
 name = "werk-core"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "asupersync",
  "chrono",
@@ -6542,7 +6542,7 @@ dependencies = [
 
 [[package]]
 name = "werk-mcp"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "chrono",
  "rmcp",
@@ -6559,7 +6559,7 @@ dependencies = [
 
 [[package]]
 name = "werk-shared"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
@@ -6575,7 +6575,7 @@ dependencies = [
 
 [[package]]
 name = "werk-tui"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "chrono",
  "crossterm 0.28.1",
@@ -6592,7 +6592,7 @@ dependencies = [
 
 [[package]]
 name = "werk-web"
-version = "1.5.0"
+version = "1.6.0"
 dependencies = [
  "axum",
  "chrono",
