@@ -548,7 +548,10 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                         "oscillating{} ({} shifts, net {}{}d)",
                         since, drift.change_count, direction, net_days
                     ),
-                    HorizonDriftType::Stable => unreachable!(),
+                    // Guarded above: `horizon_drift` is only Some when drift_type != Stable.
+                    HorizonDriftType::Stable => unreachable!(
+                        "horizon_drift is only Some(_) when drift_type != Stable (see L189)"
+                    ),
                 };
                 println!(
                     "  {} {}      {}",
