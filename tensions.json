@@ -1,5 +1,5 @@
 {
-  "flushed_at": "2026-04-15T17:56:56Z",
+  "flushed_at": "2026-04-15T18:07:39Z",
   "summary": {
     "active": 55,
     "released": 63,
@@ -8,7 +8,7 @@
   },
   "tensions": [
     {
-      "actual": "v1.5+dev: Source ahead of installed binary. Conceptual foundation complete (#13 resolved — 13/14 children, all subsystems delivered). CLI complete (#10 resolved — 5 reading commands, all operative gestures, JSON on everything, help by framework). Three interface surfaces operational: TUI (survey V1.3, deck, logbase Phase 1, FrankenSearch palette, undo/redo), CLI (logbase + structural gestures + search + undo), MCP (35+ tools). FrankenSuite: FNX graph substrate, fsqlite MVCC, FrankenSearch core, ftui structural foundation. User-defined signal thresholds. Gesture undo. Quint formal specifications. Cooperative dynamics unexplored.",
+      "actual": "v1.6.0. Individual practice is solid — every operative gesture available across TUI, CLI, MCP, web, and desktop; signals, logbase, undo, and world-class config all shipped. A global space at ~/.werk/ and aggregate field command center let one practitioner tend many spaces. Cooperative practice remains the open gap: no multi-participant model, no shared-state mechanism. Substrate for the next horizon (generic edges #154, cross-space addressing #100, browser new-tab frontier #269) is designed, not user-facing.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
       "horizon": "2026-08",
