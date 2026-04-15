@@ -7,10 +7,11 @@
 //! running all store operations on a dedicated OS thread, communicating via
 //! std::sync::mpsc channels. This is the same pattern used by werk-web.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::{Mutex, mpsc};
 use tauri::State;
 use werk_core::{Horizon, Tension, TensionStatus};
+use werk_shared::dto::{CreateTensionRequest, SummaryDto, TensionDto};
 
 // ─── Store Actor ────────────────────────────────────────────────────
 
@@ -242,54 +243,16 @@ impl StoreHandle {
 }
 
 // ─── JSON Types ─────────────────────────────────────────────────────
-
-#[derive(Serialize, Clone)]
-struct TensionJson {
-    id: String,
-    short_code: Option<i32>,
-    desired: String,
-    actual: String,
-    status: String,
-    parent_id: Option<String>,
-    horizon: Option<String>,
-    position: Option<i32>,
-    created_at: String,
-    overdue: bool,
-}
-
-impl TensionJson {
-    fn from_tension(t: &Tension) -> Self {
-        let overdue = match (&t.horizon, &t.status) {
-            (Some(h), TensionStatus::Active) => h.is_past(chrono::Utc::now()),
-            _ => false,
-        };
-        Self {
-            id: t.id.clone(),
-            short_code: t.short_code,
-            desired: t.desired.clone(),
-            actual: t.actual.clone(),
-            status: t.status.to_string(),
-            parent_id: t.parent_id.clone(),
-            horizon: t.horizon.as_ref().map(|h| h.to_string()),
-            position: t.position,
-            created_at: t.created_at.to_rfc3339(),
-            overdue,
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct SummaryJson {
-    active: usize,
-    resolved: usize,
-    released: usize,
-    total: usize,
-}
+//
+// TensionDto, SummaryDto, CreateTensionRequest are defined in
+// `werk_shared::dto` so the Tauri, Web and CLI surfaces share the
+// same wire format.  Only the app-specific `TreeResponse` envelope
+// lives here.
 
 #[derive(Serialize)]
 struct TreeResponse {
-    tensions: Vec<TensionJson>,
-    summary: SummaryJson,
+    tensions: Vec<TensionDto>,
+    summary: SummaryDto,
 }
 
 // ─── Tauri Commands ─────────────────────────────────────────────────
@@ -297,41 +260,19 @@ struct TreeResponse {
 #[tauri::command]
 fn get_tree(store: State<'_, StoreHandle>) -> Result<TreeResponse, String> {
     let all = store.list_tensions()?;
-    let summary = SummaryJson {
-        active: all
-            .iter()
-            .filter(|t| t.status == TensionStatus::Active)
-            .count(),
-        resolved: all
-            .iter()
-            .filter(|t| t.status == TensionStatus::Resolved)
-            .count(),
-        released: all
-            .iter()
-            .filter(|t| t.status == TensionStatus::Released)
-            .count(),
-        total: all.len(),
-    };
-    let tension_jsons: Vec<TensionJson> = all.iter().map(TensionJson::from_tension).collect();
+    let summary = SummaryDto::from_tensions(&all);
+    let tension_jsons: Vec<TensionDto> = all.iter().map(TensionDto::from_tension).collect();
     Ok(TreeResponse {
         tensions: tension_jsons,
         summary,
     })
 }
 
-#[derive(Deserialize)]
-struct CreateTensionArgs {
-    desired: String,
-    actual: Option<String>,
-    parent_id: Option<String>,
-    horizon: Option<String>,
-}
-
 #[tauri::command]
 fn create_tension(
     store: State<'_, StoreHandle>,
-    args: CreateTensionArgs,
-) -> Result<TensionJson, String> {
+    args: CreateTensionRequest,
+) -> Result<TensionDto, String> {
     let horizon = if let Some(ref h) = args.horizon {
         if h.is_empty() {
             None
@@ -351,7 +292,7 @@ fn create_tension(
     };
 
     let t = store.create_tension(args.desired, actual, parent_id, horizon)?;
-    Ok(TensionJson::from_tension(&t))
+    Ok(TensionDto::from_tension(&t))
 }
 
 #[tauri::command]
@@ -387,10 +328,10 @@ fn reopen_tension(store: State<'_, StoreHandle>, id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn get_tension(store: State<'_, StoreHandle>, id: String) -> Result<Option<TensionJson>, String> {
+fn get_tension(store: State<'_, StoreHandle>, id: String) -> Result<Option<TensionDto>, String> {
     let tension_id = store.resolve_id(&id)?;
     let t = store.get_tension(tension_id)?;
-    Ok(t.as_ref().map(TensionJson::from_tension))
+    Ok(t.as_ref().map(TensionDto::from_tension))
 }
 
 #[tauri::command]

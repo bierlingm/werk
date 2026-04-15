@@ -6399,6 +6399,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "werk-core",
+ "werk-shared",
 ]
 
 [[package]]
