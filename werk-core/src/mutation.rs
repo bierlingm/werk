@@ -10,6 +10,127 @@ use serde::{Deserialize, Serialize};
 use crate::horizon::Horizon;
 use crate::tension::{Tension, TensionStatus};
 
+/// The kind of a mutation field, strongly typed.
+///
+/// The wire format (SQLite `mutations.field` TEXT column, JSON `"field":"..."`)
+/// is preserved — this enum is a parsed *view* over the underlying string
+/// obtained via `Mutation::field_kind()`. Readers that used to compare strings
+/// like `m.field() == "status"` can use `matches!(m.field_kind(), MutationFieldKind::Status)`
+/// for a compile-time-checked comparison.
+///
+/// The `Other(String)` variant preserves forward compatibility with new field
+/// kinds that might appear in stored mutations.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MutationFieldKind {
+    /// The initial creation event for a tension.
+    Created,
+    /// A change to `Tension::desired`.
+    Desired,
+    /// A change to `Tension::actual`.
+    Actual,
+    /// A change to `Tension::parent_id`. Empty string new_value means cleared.
+    ParentId,
+    /// A lifecycle status transition (Active ↔ Resolved ↔ Released).
+    Status,
+    /// A change to `Tension::horizon`. Empty string new_value means cleared.
+    Horizon,
+    /// A change to `Tension::position`.
+    Position,
+    /// A note was appended. Narrative, doesn't mutate tension state.
+    Note,
+    /// A note was retracted. Narrative, doesn't mutate tension state.
+    NoteRetracted,
+    /// A soft-delete marker.
+    Deleted,
+    /// A split gesture produced this tension (or from this tension).
+    Split,
+    /// A merge gesture absorbed/produced this tension.
+    Merge,
+    /// A release reason was recorded.
+    ReleaseReason,
+    /// A reopen reason was recorded.
+    ReopenReason,
+    /// A recurrence pattern was set.
+    Recurrence,
+    /// A recurrence pattern was cleared.
+    RecurrenceCleared,
+    /// A snooze deadline was set.
+    SnoozedUntil,
+    /// A snooze was cleared.
+    SnoozeCleared,
+    /// A generic "cleared" marker.
+    Cleared,
+    /// A literal "none" field name (used in some edge/no-op mutations).
+    None,
+    /// An unrecognized field kind. Carries the raw string so the wire format
+    /// roundtrips even when the stored value predates or post-dates this enum.
+    Other(String),
+}
+
+impl MutationFieldKind {
+    /// The canonical string representation, identical to the stored value.
+    pub fn as_str(&self) -> &str {
+        match self {
+            MutationFieldKind::Created => "created",
+            MutationFieldKind::Desired => "desired",
+            MutationFieldKind::Actual => "actual",
+            MutationFieldKind::ParentId => "parent_id",
+            MutationFieldKind::Status => "status",
+            MutationFieldKind::Horizon => "horizon",
+            MutationFieldKind::Position => "position",
+            MutationFieldKind::Note => "note",
+            MutationFieldKind::NoteRetracted => "note_retracted",
+            MutationFieldKind::Deleted => "deleted",
+            MutationFieldKind::Split => "split",
+            MutationFieldKind::Merge => "merge",
+            MutationFieldKind::ReleaseReason => "release_reason",
+            MutationFieldKind::ReopenReason => "reopen_reason",
+            MutationFieldKind::Recurrence => "recurrence",
+            MutationFieldKind::RecurrenceCleared => "recurrence_cleared",
+            MutationFieldKind::SnoozedUntil => "snoozed_until",
+            MutationFieldKind::SnoozeCleared => "snooze_cleared",
+            MutationFieldKind::Cleared => "cleared",
+            MutationFieldKind::None => "none",
+            MutationFieldKind::Other(s) => s.as_str(),
+        }
+    }
+
+    /// Parse a raw field string into its typed kind.
+    ///
+    /// Unknown strings are preserved in `Other` — never fails.
+    pub fn from_raw(field: &str) -> Self {
+        match field {
+            "created" => MutationFieldKind::Created,
+            "desired" => MutationFieldKind::Desired,
+            "actual" => MutationFieldKind::Actual,
+            "parent_id" => MutationFieldKind::ParentId,
+            "status" => MutationFieldKind::Status,
+            "horizon" => MutationFieldKind::Horizon,
+            "position" => MutationFieldKind::Position,
+            "note" => MutationFieldKind::Note,
+            "note_retracted" => MutationFieldKind::NoteRetracted,
+            "deleted" => MutationFieldKind::Deleted,
+            "split" => MutationFieldKind::Split,
+            "merge" => MutationFieldKind::Merge,
+            "release_reason" => MutationFieldKind::ReleaseReason,
+            "reopen_reason" => MutationFieldKind::ReopenReason,
+            "recurrence" => MutationFieldKind::Recurrence,
+            "recurrence_cleared" => MutationFieldKind::RecurrenceCleared,
+            "snoozed_until" => MutationFieldKind::SnoozedUntil,
+            "snooze_cleared" => MutationFieldKind::SnoozeCleared,
+            "cleared" => MutationFieldKind::Cleared,
+            "none" => MutationFieldKind::None,
+            other => MutationFieldKind::Other(other.to_owned()),
+        }
+    }
+}
+
+impl std::fmt::Display for MutationFieldKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Reconstructed tension state from mutation replay.
 ///
 /// This struct contains the tension field values that can be reconstructed
@@ -165,14 +286,15 @@ fn apply_mutation(
     tension: &mut ReconstructedTension,
     mutation: &Mutation,
 ) -> Result<(), ReplayError> {
-    match mutation.field() {
-        "desired" => {
+    use MutationFieldKind as F;
+    match mutation.field_kind() {
+        F::Desired => {
             tension.desired = mutation.new_value().to_owned();
         }
-        "actual" => {
+        F::Actual => {
             tension.actual = mutation.new_value().to_owned();
         }
-        "parent_id" => {
+        F::ParentId => {
             // Empty string represents null
             tension.parent_id = if mutation.new_value().is_empty() {
                 None
@@ -180,7 +302,7 @@ fn apply_mutation(
                 Some(mutation.new_value().to_owned())
             };
         }
-        "status" => {
+        F::Status => {
             tension.status = match mutation.new_value() {
                 "Active" => TensionStatus::Active,
                 "Resolved" => TensionStatus::Resolved,
@@ -188,7 +310,7 @@ fn apply_mutation(
                 _ => return Err(ReplayError::InvalidStatus(mutation.new_value().to_owned())),
             };
         }
-        "horizon" => {
+        F::Horizon => {
             // Empty string represents None; otherwise parse as Horizon
             tension.horizon =
                 if mutation.new_value().is_empty() {
@@ -199,20 +321,29 @@ fn apply_mutation(
                     })?)
                 };
         }
-        "created" => {
+        F::Created => {
             // Creation should only appear as the first mutation
             return Err(ReplayError::UnexpectedCreation);
         }
-        // Notes are first-class narrative mutations — they don't change tension fields
-        "note" => {}
-        // Note retraction — testimony retracted, doesn't change tension fields
-        "note_retracted" => {}
-        // Position changes don't affect reconstructed tension state
-        "position" => {}
-        // Deleted marker — doesn't change reconstructed state
-        "deleted" => {}
-        field => {
-            return Err(ReplayError::UnknownField(field.to_owned()));
+        // Narrative and structural-event mutations don't change reconstructed
+        // tension field values. Explicitly listed here so the exhaustiveness
+        // check catches newly introduced field kinds at compile time.
+        F::Note
+        | F::NoteRetracted
+        | F::Position
+        | F::Deleted
+        | F::Split
+        | F::Merge
+        | F::ReleaseReason
+        | F::ReopenReason
+        | F::Recurrence
+        | F::RecurrenceCleared
+        | F::SnoozedUntil
+        | F::SnoozeCleared
+        | F::Cleared
+        | F::None => {}
+        F::Other(field) => {
+            return Err(ReplayError::UnknownField(field));
         }
     }
     Ok(())
@@ -327,9 +458,17 @@ impl Mutation {
         self.timestamp
     }
 
-    /// Which field was changed.
+    /// Which field was changed, as a raw string (wire format).
     pub fn field(&self) -> &str {
         &self.field
+    }
+
+    /// Which field was changed, as a strongly-typed enum.
+    ///
+    /// Prefer this over string-matching on `field()`: the enum is exhaustive
+    /// and unknown values are preserved in `MutationFieldKind::Other`.
+    pub fn field_kind(&self) -> MutationFieldKind {
+        MutationFieldKind::from_raw(&self.field)
     }
 
     /// The previous value (None for creation events).
@@ -754,6 +893,111 @@ mod tests {
         )];
         let result = super::replay_mutations(&mutations);
         assert!(result.is_err());
+    }
+
+    // ── MutationFieldKind ─────────────────────────────────────────
+
+    #[test]
+    fn test_mutation_field_kind_roundtrip() {
+        let cases = [
+            "created",
+            "desired",
+            "actual",
+            "parent_id",
+            "status",
+            "horizon",
+            "position",
+            "note",
+            "note_retracted",
+            "deleted",
+            "split",
+            "merge",
+            "release_reason",
+            "reopen_reason",
+            "recurrence",
+            "recurrence_cleared",
+            "snoozed_until",
+            "snooze_cleared",
+            "cleared",
+            "none",
+        ];
+        for case in cases {
+            let kind = MutationFieldKind::from_raw(case);
+            assert_eq!(kind.as_str(), case, "roundtrip failed for {}", case);
+            assert!(
+                !matches!(kind, MutationFieldKind::Other(_)),
+                "expected known variant for {}",
+                case
+            );
+        }
+    }
+
+    #[test]
+    fn test_mutation_field_kind_other_preserves_unknown() {
+        let kind = MutationFieldKind::from_raw("some_future_field");
+        assert_eq!(kind, MutationFieldKind::Other("some_future_field".to_owned()));
+        assert_eq!(kind.as_str(), "some_future_field");
+    }
+
+    #[test]
+    fn test_mutation_field_kind_wire_format_unchanged() {
+        let now = Utc::now();
+        let m = Mutation::new(
+            "01ABC".to_owned(),
+            now,
+            "status".to_owned(),
+            Some("Active".to_owned()),
+            "Resolved".to_owned(),
+        );
+        // field() returns the raw string (unchanged).
+        assert_eq!(m.field(), "status");
+        // field_kind() returns the strongly typed enum.
+        assert_eq!(m.field_kind(), MutationFieldKind::Status);
+        // JSON wire format preserves "field":"status".
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("\"field\":\"status\""));
+    }
+
+    #[test]
+    fn test_replay_noop_fields_do_not_error() {
+        // Fields that are valid mutations but don't change reconstructed state
+        // must not trigger ReplayError::UnknownField. This was a bug prior to
+        // the MutationFieldKind enum — "split", "merge", "release_reason",
+        // "reopen_reason", "recurrence", "recurrence_cleared", "snoozed_until",
+        // "snooze_cleared", "cleared", "none" were all rejected.
+        let now = Utc::now();
+        let noop_fields = [
+            "split",
+            "merge",
+            "release_reason",
+            "reopen_reason",
+            "recurrence",
+            "recurrence_cleared",
+            "snoozed_until",
+            "snooze_cleared",
+            "cleared",
+            "none",
+        ];
+        for field in noop_fields {
+            let mutations = vec![
+                Mutation::new(
+                    "01ABC".to_owned(),
+                    now,
+                    "created".to_owned(),
+                    None,
+                    "desired='g';actual='r'".to_owned(),
+                ),
+                Mutation::new(
+                    "01ABC".to_owned(),
+                    now + chrono::Duration::seconds(1),
+                    field.to_owned(),
+                    None,
+                    "some value".to_owned(),
+                ),
+            ];
+            let result = super::replay_mutations(&mutations);
+            assert!(result.is_ok(), "noop field {} should not error, got {:?}", field, result.err());
+        }
     }
 
     #[test]
