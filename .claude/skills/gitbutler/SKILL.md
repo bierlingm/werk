@@ -16,6 +16,32 @@ Use GitButler CLI (`but`) as the default version-control interface.
 3. Use CLI IDs from `but status -fv` / `but diff` / `but show`; never hardcode IDs.
 4. Start with `but status -fv` before mutations so IDs and stack state are current.
 5. Create a branch for new work with `but branch new <name>` when needed.
+6. **Verify every commit lands non-empty.** `but commit` can exit 0 and report `✓ Created commit` while actually producing an empty commit (see Symptoms → Fix: empty commit). After every commit, either inspect `--status-after` output for the new commit's file list, or run `git show --stat <hash>`. If empty, stop and recover — do not retry the same command.
+
+## Symptoms → Fix
+
+Consult this table *first* when something looks wrong. Each entry points to the full recipe below.
+
+| Symptom | Likely cause | Jump to |
+|---|---|---|
+| `Warning: Some selected changes could not be committed.` + empty commit hash | Dependency (hunk-range) lock — changes depend on a commit on another branch | [Dependency lock recovery](#stacked-dependency--commit-lock-recovery) |
+| File stays in `unassignedChanges` / `zz` after `but commit ... --changes <id>` | Same as above | [Dependency lock recovery](#stacked-dependency--commit-lock-recovery) |
+| `'<hunk-id>' is assigned to a different stack. Use 'but rub <id> zz' to unassign it first.` | You used `-p <hunk-id>`; hunk already claimed by another stack | Run `but rub <id> zz` then retry, *or* use [Dependency lock recovery](#stacked-dependency--commit-lock-recovery) |
+| `Failed to uncommit. Source '<hash>' not found. ... try running 'but status'` | Previous `uncommit`/`squash`/`move` rebased the stack; hash you captured is stale | Re-read the new hash from `but status -fv` before the next mutation. Never carry commit hashes across mutations. |
+| `but commit` on `gitbutler/workspace` directly via `git commit` → hook blocks with `GITBUTLER_ERROR: Cannot commit directly to gitbutler/workspace branch.` | You bypassed `but`; the hook is doing its job | Use `but commit <branch> --changes <id>` instead. Never use raw `git commit` in the workspace. |
+| `but teardown` + `git checkout <branch>` shows a tree missing recent files | Branch forked from a `main` predating those files; working-tree changes don't belong to that tree | Do **not** teardown to escape. Use [Dependency lock recovery](#stacked-dependency--commit-lock-recovery) instead. |
+| `but commit -m ...` without `--changes` swept in files you didn't want | Bare `but commit` commits *all* uncommitted changes on the branch | Always pass `--changes <id>` (or `--only` after explicit `but stage`) for precise commits |
+| Merge conflict markers appear after `but move`/`but pull` | Rebase produced a conflicted commit | [Resolve conflicts after reorder/move](#resolve-conflicts-after-reordermove) |
+| `but absorb` placed changes somewhere unexpected | Absorb follows hunk-range locks to their anchor commits, not to your active branch | Run `but absorb <file-id> --dry-run` first; if the target is wrong, use [Dependency lock recovery](#stacked-dependency--commit-lock-recovery) |
+
+## What NOT to do when stuck
+
+These moves look tempting but deepen the hole:
+
+- **Do not `but uncommit --discard` to "reset"** — if a prior op rebased the stack, the hash you think is the bad commit may actually be your good commit. Recovery is possible via `git reflog` but costly.
+- **Do not `but teardown` + `git checkout`** — you'll land on a raw git branch whose tree may not match the workspace you just left. Stash-pop conflicts follow.
+- **Do not raw `git commit` (or `git commit --no-verify`)** — the pre-commit hook blocks it on `gitbutler/workspace` by design. If you're tempted, the correct move is `but move <branch> <dependency-branch>`.
+- **Do not retry the same `but commit` expecting a different result** — if it produced an empty commit once with no input change, it will again. Stop, diagnose, apply the dependency-lock recipe.
 
 ## Core Flow
 
@@ -57,7 +83,18 @@ but <mutation> ... --status-after
 2. Find the CLI ID for each file you want to commit.
 3. `but commit <branch> -m "<msg>" --changes <id1>,<id2> --status-after`
    Use `-c` to create the branch if it doesn't exist. Omit IDs you don't want committed.
-4. **Check the `--status-after` output** for remaining uncommitted changes. If the file still appears as unassigned or assigned to another branch after commit, it may be dependency-locked. See "Stacked dependency / commit-lock recovery" below.
+4. **Verify the commit is non-empty.** Read two things from the `--status-after` output:
+   (a) the target files left `unassignedChanges` / `zz` (they're now committed); (b) no `Warning: Some selected changes could not be committed.` message appears. If either check fails, do NOT retry the same command — jump to [Dependency lock recovery](#stacked-dependency--commit-lock-recovery). For extra safety, `git show --stat <hash>` confirms the commit contains real diffs.
+
+### Preflight: detect dependency locks before committing
+
+If you're unsure whether your changes will land on the branch you want (e.g., you're committing to a new branch while unrelated branches were recently active), run this one-liner *before* `but commit`:
+
+```bash
+but absorb --dry-run <file-id>
+```
+
+If the dry-run target commit sits on a branch other than the one you intended to commit to, those hunks are dependency-locked to that other branch. Either stack your branch (preferred — see recipe below) or commit to the locked branch. This check costs nothing and prevents the empty-commit spiral.
 
 ### Amend into existing commit
 
@@ -160,3 +197,5 @@ If `but move` causes conflicts (conflicted commits in status):
 - For command syntax and flags: `references/reference.md`
 - For workspace model: `references/concepts.md`
 - For workflow examples: `references/examples.md`
+- For session preflight + post-commit verification: `sanity-check.sh` (run `.claude/skills/gitbutler/sanity-check.sh start` to assert the workspace is healthy, `... verify-commit <branch>` after any commit)
+- For the agent-centric mental model, failure taxonomy, and multi-session playbook: `../../../designs/gitbutler-agent-workflow.md`
