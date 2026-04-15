@@ -33,5 +33,5 @@ pub use palette::{
     sequencing_palette,
 };
 pub use prefix::PrefixResolver;
-pub use util::{display_id, display_id_named, format_timestamp, relative_time, truncate};
+pub use util::{display_id, display_id_named, format_datetime_compact, format_short_code, format_timestamp, relative_time, truncate};
 pub use workspace::Workspace;

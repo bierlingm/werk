@@ -23,6 +23,25 @@ pub fn display_id(short_code: Option<i32>, ulid: &str) -> String {
     }
 }
 
+/// Render just the `#N` short-code form, or an empty string when absent.
+///
+/// This is the "chrome" variant of [`display_id`]: use it in contexts where
+/// an empty slot is preferable to a ULID fallback (e.g. alignment columns
+/// in `stats` output, match-ambiguity lists, downstream sites that render
+/// their own placeholder).
+pub fn format_short_code(short_code: Option<i32>) -> String {
+    short_code.map(|c| format!("#{}", c)).unwrap_or_default()
+}
+
+/// Compact calendar form of a UTC timestamp: `YYYY-MM-DD HH:MM:SS`.
+///
+/// Equivalent to truncating RFC3339 to 19 chars and swapping `T` for a space.
+/// Use for activity/epoch/note display where a machine-like, sortable stamp
+/// is wanted (as opposed to the relative/date heuristic in [`format_timestamp`]).
+pub fn format_datetime_compact(dt: DateTime<Utc>) -> String {
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
 /// Tension identifier with truncated desired state for structural context.
 ///
 /// Example: `#52 — CLI is ergonomic, forgiving, and self-docum...`
@@ -148,5 +167,27 @@ mod tests {
         let now = Utc::now();
         let dt = now + Duration::hours(1);
         assert_eq!(relative_time(dt, now), "just now");
+    }
+
+    // === format_short_code tests ===
+
+    #[test]
+    fn test_format_short_code_some() {
+        assert_eq!(format_short_code(Some(42)), "#42");
+    }
+
+    #[test]
+    fn test_format_short_code_none() {
+        assert_eq!(format_short_code(None), "");
+    }
+
+    // === format_datetime_compact tests ===
+
+    #[test]
+    fn test_format_datetime_compact() {
+        let dt = DateTime::parse_from_rfc3339("2026-04-15T12:34:56+00:00")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(format_datetime_compact(dt), "2026-04-15 12:34:56");
     }
 }
