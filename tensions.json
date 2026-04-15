@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-15T11:21:44Z",
+  "flushed_at": "2026-04-15T15:25:39Z",
   "summary": {
     "active": 64,
     "released": 63,
-    "resolved": 148,
-    "total": 275
+    "resolved": 151,
+    "total": 278
   },
   "tensions": [
     {
@@ -2549,7 +2549,7 @@
       "status": "Active"
     },
     {
-      "actual": "design resolved through reasoning session. Key decisions: (1) the global space is a normal space at ~/.werk/ with registry awareness — not a new ontological entity, (2) spaces are unified — directory-bound or pure, same struct with optional dir binding, (3) 'space' is the term (not workspace, domain, field), (4) discovery: three-tier (explicit flag > UP walk > global fallback), (5) cross-space references are generalized edges (#154), (6) the global space's command center IS the aggregate view across spaces (#90 at wider scope). No implementation yet.",
+      "actual": "Three of note 20's four pieces exist and compose. Registry (#252 ✓), `werk spaces` commands including scan (#251 ✓), multi-store read capability landed across three surfaces (#286/#287/#288 all resolved): CLI `werk field`, daemon /api/field/vitals + /api/field/attention, werk-tab Field toggle. Shared primitive at werk-shared::aggregate (5 unit tests). Locality preserved by API shape — only sums and per-item space tags, no cross-space rankings or blocked inference. Stale registry entries (lost .werk/) skip silently with skipped[] reporting. The fourth piece (cross-workspace address resolution) is deliberately deferred to #100 — current session's [space:#N] tags are display annotations, and felt demand from the field view will pull #100 naturally. Also not yet shipped: a field-scope 'Recent' zone (#90's third zone at wider scope) — current field view is Vitals + Attention only. When #100 resolves and a Recent band lands, #242's desire is fully met.",
       "created_at": "2026-04-14T11:16:45.530803+00:00",
       "desired": "the global space exists — a space at ~/.werk/ that serves as the registry of all other spaces, holds its own general-purpose tensions, and provides the aggregate command center view across all registered spaces. Spaces are unified: same struct, same operations, same addressing, with an optional directory binding. CLI: werk -g (global), werk -w <name> (specific space), bare werk (location-detected or global fallback). Cross-space addressing and references are edge types within the generalized edge substrate (#154).",
       "horizon": null,
@@ -3030,6 +3030,39 @@
       "parent_id": "01KP8CPEC91SC3VVT787G0FW6N",
       "position": null,
       "short_code": 285,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Shipped. `werk field` renders vitals grid + totals, --attention adds pooled overdue/next-up/held bands tagged [space:#N], --json emits structured output. --days not wired because nothing windowed is shown in the current output (no 'recent' band at field scope — #90's Recent zone is a follow-up if needed). Shared primitive in werk-shared::aggregate with 5 unit tests. Verified live: 2 spaces (global + werk), vitals and attention both render correctly; global's DB corruption tolerated via init_unlocked (silent skip, not wedge).",
+      "created_at": "2026-04-15T12:14:41.396236+00:00",
+      "desired": "the `werk field` CLI command exists — one invocation shows the practitioner's structural situation pooled across every registered space (per-space vitals grid + totals; with --attention, pooled overdue/next-up/held bands tagged [space:#N]). Flags mirror stats where sensible: --attention, --json, --days. Skipped spaces (lost .werk/) drop silently with a one-line stderr warning in text mode and a skipped[] array in JSON.",
+      "horizon": null,
+      "id": "01KP8H1A7MZY09NBRS1KQT45YN",
+      "parent_id": "01KP5VAGTT6MMRGFNTSND9GDS3",
+      "position": 1,
+      "short_code": 286,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Shipped. GET /api/field/vitals and GET /api/field/attention both live-verified — vitals returns per-space counts + totals + skipped[]; attention returns pooled overdue/next_up/held with space tags. AppState holds field_pool: Arc<RwLock<HashMap<PathBuf, StoreHandle>>> with lazy get-or-spawn. The active workspace's handle is seeded into the pool at startup so its thread is reused. StoreHandle grew ComputeVitals and ComputeAttention commands that call the werk_shared::aggregate primitives on the store's own thread — extends the existing thread-per-store pattern without changing the !Send constraint. Fan-out is currently sequential (simple, fine at N=2-35); can parallelize later if observed latency warrants.",
+      "created_at": "2026-04-15T12:14:49.611984+00:00",
+      "desired": "the daemon exposes field endpoints — GET /api/field/vitals and GET /api/field/attention return aggregate JSON across every registered space. AppState holds a lazy StoreHandle pool keyed by absolute path; handles spawn on first access and persist, extending the existing thread-per-store pattern. Fan-out is parallel (each store's thread computes independently) with skipped spaces surfaced in the response.",
+      "horizon": null,
+      "id": "01KP8H1J8BTYGBC351J2MP0YJV",
+      "parent_id": "01KP5VAGTT6MMRGFNTSND9GDS3",
+      "position": 2,
+      "short_code": 287,
+      "status": "Resolved"
+    },
+    {
+      "actual": "Shipped. Field toggle added to werk-tab header (pill-style button next to the workspace switcher). When pressed: hides space-mode bands, renders a per-space vitals table with totals + pooled overdue/next-up/held bands with [space:#N] tags. fetch() of /api/field/vitals and /api/field/attention runs in parallel (Promise.all). Skipped spaces surface as a one-line footer note. Port range extended to 3762 to probe daemons on non-default ports. JS syntax validated; JSON shape validated against the live daemon's response. Full browser end-to-end test requires loading the extension via chrome://extensions — not automated here.",
+      "created_at": "2026-04-15T12:14:58.681900+00:00",
+      "desired": "werk-tab has a field view toggle — alongside the existing space switcher dropdown, a Field toggle switches the tab from single-workspace mode to pooled field mode. Field mode renders a per-space vitals grid at top and the three pooled bands (overdue/next-up/held) below, each item labelled [space:#N]. Consumes /api/field/vitals and /api/field/attention. The single-workspace switcher still works for drilling into one space.",
+      "horizon": null,
+      "id": "01KP8H1V3SK6F2R10CYVCBVW3W",
+      "parent_id": "01KP5VAGTT6MMRGFNTSND9GDS3",
+      "position": 3,
+      "short_code": 288,
       "status": "Resolved"
     }
   ]
