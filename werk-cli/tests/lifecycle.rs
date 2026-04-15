@@ -28,7 +28,6 @@ fn test_resolve_active_tension() {
         .assert()
         .success();
 
-    // Create a tension
     let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "reality").unwrap();
     let tension_id = tension.id.clone();

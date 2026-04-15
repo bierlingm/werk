@@ -184,7 +184,6 @@ pub fn cmd_split(
         return Ok(());
     }
 
-    // Execute the split
     let gesture_id = store
         .begin_gesture(Some(&format!("split {}", source_display)))
         .map_err(WerkError::StoreError)?;

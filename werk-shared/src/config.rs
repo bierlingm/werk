@@ -56,7 +56,6 @@ impl Config {
             });
         }
 
-        // Read the file
         let content = std::fs::read_to_string(path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 WerkError::PermissionDenied(format!("{}", path.display()))

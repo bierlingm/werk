@@ -2317,7 +2317,6 @@ impl Store {
                     )?;
                 }
 
-                // Delete the tension
                 conn.execute_with_params(
                     "DELETE FROM tensions WHERE id = ?1",
                     &[SqliteValue::Text(tension.id.to_string().into())],

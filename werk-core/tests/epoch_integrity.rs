@@ -111,7 +111,6 @@ fn test_epoch_snapshot_after_child_resolve() {
         .create_tension_with_parent("task", "todo", Some(parent.id.clone()))
         .unwrap();
 
-    // Resolve the child
     store
         .update_status(&child.id, TensionStatus::Resolved)
         .unwrap();

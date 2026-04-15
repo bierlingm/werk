@@ -271,7 +271,6 @@ mod tests {
         let werk_dir = dir.path().join(".werk");
         std::fs::create_dir_all(&werk_dir).unwrap();
 
-        // Create a subdirectory
         let subdir = dir.path().join("a").join("b").join("c");
         std::fs::create_dir_all(&subdir).unwrap();
 
