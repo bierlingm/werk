@@ -1,11 +1,19 @@
-//! `werk daemon` — OS-supervised background `werk serve --global`.
+//! `werk daemon` — OS-supervised background `werk serve` for the new-tab surface.
 //!
 //! Two platform backends: launchd on macOS, systemd --user on Linux. Both
-//! install a unit that runs `werk serve --global --port-range <range>` at
-//! login, restarts it if it dies, and writes logs to `~/.werk/daemon.log`.
+//! install a unit that runs `werk serve --daemon-target --port-range <range>`
+//! at login, restarts it on crash, and writes logs to `~/.werk/daemon.log`.
 //!
-//! The extension discovers the bound port by probing the range — we avoid
-//! writing a .port file the extension can't read from the browser sandbox.
+//! `--daemon-target` reads the active workspace from `~/.werk/config.toml`
+//! (set by `werk daemon point`), which defaults to the global space `~/.werk/`
+//! when unset. This is why `daemon install` doesn't bake a workspace path into
+//! the plist: the operator's selection needs to survive both `daemon install
+//! --force` and `daemon point <path>` without editing the plist by hand.
+//!
+//! The daemon writes its bound port to `<werk_dir>/daemon.port` for CLI
+//! introspection (`werk daemon status`). The browser extension rediscovers the
+//! port by probing the range on load and on SSE reconnect — it can't read
+//! filesystem paths from the sandbox.
 
 use std::path::PathBuf;
 

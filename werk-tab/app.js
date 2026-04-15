@@ -1,5 +1,7 @@
+// Canonical port range — must match `werk_shared::daemon_net::DEFAULT_PORT_RANGE`.
+// Asserted by werk-cli/tests/port_range_parity.rs in CI.
 const PORT_RANGE_START = 3749;
-const PORT_RANGE_END = 3762;
+const PORT_RANGE_END = 3759;
 const PROBE_TIMEOUT_MS = 800;
 const MAX_NEXT = 5;
 const MAX_HELD = 5;
@@ -169,11 +171,21 @@ async function discoverApi() {
     if (res) {
       lastGoodPort = port;
       API = `http://localhost:${port}`;
+      updateFooterLink();
       return res;
     }
   }
   API = null;
+  updateFooterLink();
   return null;
+}
+
+function updateFooterLink() {
+  const footerLink = document.querySelector("footer .link");
+  if (!footerLink) return;
+  // When we know the API, make the href real so middle-click / copy-link-address
+  // both work. When we don't, keep it inert.
+  footerLink.href = API || "#";
 }
 
 async function load() {
@@ -495,13 +507,5 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") load();
 });
 
-// Footer link needs to adapt to discovered port.
-const footerLink = document.querySelector("footer .link");
-if (footerLink) {
-  footerLink.addEventListener("click", (e) => {
-    if (API) {
-      e.preventDefault();
-      window.location.href = API;
-    }
-  });
-}
+// Footer link: href is maintained by updateFooterLink() as API is discovered/lost.
+// Normal click (target=_blank) opens a new tab; no custom handler needed.

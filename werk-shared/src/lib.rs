@@ -9,6 +9,7 @@ pub mod batch_mutation;
 pub mod cli_display;
 pub mod config;
 pub mod config_registry;
+pub mod daemon_net;
 pub mod daemon_workspaces;
 pub mod duration;
 pub mod value_labels;

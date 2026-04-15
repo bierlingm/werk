@@ -22,19 +22,22 @@ Each row shows `#short_code`, desired, actual, and meta (horizon · position). C
 
 ## Requires
 
-`werk daemon` running (or `werk serve --global` launched manually). The preferred setup is:
+`werk daemon` running (or `werk serve` launched manually). The preferred setup is:
 
 ```bash
 werk daemon install
 ```
 
-This installs a launchd agent (macOS) or systemd user unit (Linux) that keeps `werk serve --global` running across reboots, against the global workspace at `~/.werk/`.
+This installs a launchd agent (macOS) or systemd user unit (Linux) that runs
+`werk serve --daemon-target --port-range <range>` at login and respawns it on
+crash. The active workspace is read from `~/.werk/config.toml` so the in-tab
+switcher and `werk daemon point` both take effect on restart.
 
 When nothing is running, the page shows a quiet offline state and silently retries.
 
 ## How it fetches
 
-- Probes ports `3749-3759` on load; first one that answers `/api/tensions` becomes the API base.
+- Probes the canonical port range on load; first one that answers `/api/tensions` becomes the API base. The canonical range is defined in `werk_shared::daemon_net::DEFAULT_PORT_RANGE` and asserted in sync with `app.js` by a Rust parity test.
 - Re-probes from scratch on SSE disconnect, tab focus, or 5s after a failure — so daemon restarts on a new port are picked up automatically.
 - `GET /api/events` (SSE) for live updates — any event triggers a reload.
 

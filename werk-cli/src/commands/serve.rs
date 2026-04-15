@@ -1,13 +1,21 @@
 //! `werk serve` — launch the Axum-backed web interface.
 //!
-//! Supports:
-//! - `--port <N>` — single fixed port (default behavior, 3749 fallback)
-//! - `--port-range start-end` — scan and bind the first free port in the range
-//! - `--global` / `-g` — target `~/.werk/` regardless of CWD (down-payment on #250)
+//! Workspace selection is exclusive across three flags:
+//! - `--global` / `-g` — target `~/.werk/` regardless of CWD
+//! - `--daemon-target` — read the active path from `~/.werk/config.toml`
+//!   (written by `werk daemon point`). This is what the installed launchd
+//!   plist / systemd unit uses so that `werk daemon point` persists across
+//!   daemon restarts and `daemon install --force` reinstalls without losing
+//!   the operator's workspace selection.
+//! - `--workspace-path <PATH>` — explicit path (for scripts and tests)
 //!
-//! On successful bind, writes the chosen port to `<werk_dir>/daemon.port` so
-//! the browser extension (and any other local consumer) can discover it without
-//! hardcoding.
+//! Port selection is exclusive across two flags:
+//! - `--port <N>` — single fixed port (default: `DEFAULT_PORT`)
+//! - `--port-range start-end` — scan inclusively and bind the first free port
+//!
+//! On successful bind, writes the chosen port to `<werk_dir>/daemon.port` for
+//! CLI introspection (`werk daemon status`). The browser extension rediscovers
+//! via port probing since it can't read filesystem paths from the sandbox.
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -18,11 +26,8 @@ use werk_shared::daemon_workspaces;
 use crate::commands::{config_default, config_default_string};
 use crate::error::WerkError;
 
-/// Default port range used by `werk daemon` and accepted via `--port-range`.
-pub const DEFAULT_PORT_RANGE: (u16, u16) = (3749, 3759);
-
-/// Name of the file the daemon writes its bound port to, under `<werk_dir>/`.
-pub const PORT_FILE_NAME: &str = "daemon.port";
+// Re-export so call sites under `werk::commands::serve::*` keep working.
+pub use werk_shared::daemon_net::{DEFAULT_PORT, DEFAULT_PORT_RANGE, PORT_FILE_NAME};
 
 pub fn cmd_serve(
     port: Option<u16>,
@@ -49,7 +54,7 @@ pub fn cmd_serve(
                 bind_in_range(ip, start, end).await?
             }
             None => {
-                let p = port.unwrap_or_else(|| config_default("serve.port", 3749));
+                let p = port.unwrap_or_else(|| config_default("serve.port", DEFAULT_PORT));
                 let addr = SocketAddr::new(ip, p);
                 let listener = tokio::net::TcpListener::bind(addr)
                     .await

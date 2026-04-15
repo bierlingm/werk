@@ -858,17 +858,21 @@ Examples:
         command: SpacesCommand,
     },
 
-    /// Manage the background `werk serve --global` process.
+    /// Manage the background `werk serve` process that powers the new-tab surface.
     ///
     /// Installs an OS-level supervisor (launchd on macOS, systemd --user on Linux)
-    /// that keeps the global web API running so the browser extension and other
-    /// local consumers always find werk at a known address.
+    /// that keeps the web API running so the browser extension and other local
+    /// consumers always find werk at a known address. The supervised process
+    /// reads its workspace from `~/.werk/config.toml` (see `werk daemon point`),
+    /// so `install --force` and re-`point` gestures don't require editing the
+    /// plist / unit file.
     #[command(after_help = "\
 Examples:
-  werk daemon install         Install and start the daemon
-  werk daemon status          Check if the daemon is running
-  werk daemon logs            Tail the daemon log
-  werk daemon uninstall       Stop and remove the daemon")]
+  werk daemon install              Install and start the daemon (global workspace)
+  werk daemon point <path>         Switch the supervised workspace and restart
+  werk daemon status               Check whether the daemon is running
+  werk daemon logs -f              Follow the daemon log
+  werk daemon uninstall            Stop and remove the daemon")]
     Daemon {
         #[command(subcommand)]
         command: DaemonCommand,
@@ -877,11 +881,12 @@ Examples:
     /// Launch the web interface (browser-based structural dynamics instrument).
     Serve {
         /// Port to listen on.
-        /// Defaults to `serve.port` in config (fallback: 3749).
+        /// Defaults to `serve.port` in config (fallback: the canonical werk port).
+        /// See `werk_shared::daemon_net::DEFAULT_PORT`.
         #[arg(short, long, conflicts_with = "port_range")]
         port: Option<u16>,
 
-        /// Port range to scan (e.g. "3749-3759"). Binds the first free port.
+        /// Port range to scan (inclusive, e.g. "3749-3759"). Binds the first free port.
         /// Used by `werk daemon` so the server stays up when the default port is taken.
         #[arg(long, value_name = "RANGE")]
         port_range: Option<String>,
@@ -1054,7 +1059,10 @@ pub enum SpacesCommand {
 pub enum DaemonCommand {
     /// Install and start the daemon (launchd on macOS, systemd --user on Linux).
     Install {
-        /// Port range to scan. Defaults to 3749-3759.
+        /// Port range the daemon scans on start (inclusive).
+        /// Defaults to `werk_shared::daemon_net::DEFAULT_PORT_RANGE`. The
+        /// browser extension probes the same range — if you widen it here,
+        /// update `werk-tab/app.js` (CI will catch any divergence).
         #[arg(long, value_name = "RANGE")]
         port_range: Option<String>,
 
