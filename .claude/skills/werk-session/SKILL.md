@@ -1,7 +1,7 @@
 ---
 name: werk-session
 description: "Generate a comprehensive session prompt for working on specific werk tensions. Reads the tension tree, maps code locations, grounds in the conceptual foundation, and produces a clipboard-ready prompt with theory of closure. Use when you've decided what to work on and need a thorough brief."
-disable-model-invocation: true
+disable-model-invocation: false
 allowed-tools: Bash, Read, Grep, Glob, Agent
 argument-hint: "<tension-id> [additional tension IDs...] [\"custom instructions\"]"
 ---
