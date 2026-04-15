@@ -2,6 +2,65 @@
 
 Real-world examples of common workflows.
 
+## Example 0: Empty-commit dependency lock (recovery walkthrough)
+
+**Scenario:** You created `aggregate-field` for new work, committed 3 files cleanly, then edited 7 more files. Every subsequent `but commit aggregate-field -m "..."` returns exit 0 with `✓ Created commit <hash>` but the commit is empty. Warning: `Some selected changes could not be committed.` appears but isn't explained. ~15 empty commits accumulate before you notice.
+
+**Root cause:** Those 7 files had been touched earlier on a different applied branch (say `world-class-config`). GitButler's hunk-range tracker locked their hunks to the earlier branch's tip commit. `aggregate-field` wasn't stacked on `world-class-config`, so the commit silently dropped the locked hunks and landed empty.
+
+**Diagnosis (30 seconds):**
+
+```bash
+# 1. Confirm the empty-commit pattern
+git show --stat <last-hash>   # zero files → confirmed empty
+
+# 2. Ask GitButler where the hunks actually want to go
+but absorb --dry-run <file-id>
+# → "Would amend into commit <hash> on branch world-class-config"
+```
+
+If the dry-run's target branch is not the branch you wanted to commit to, those hunks are dependency-locked.
+
+**Recovery (single command path):**
+
+```bash
+# Stack your branch on top of the branch that owns the locks
+but move aggregate-field world-class-config --status-after
+
+# Now commit — the hunks are no longer cross-branch
+but commit aggregate-field -m "..." --changes <id1>,<id2>,<id3> --status-after
+
+# Verify non-empty
+git show --stat <new-hash>   # should list all the files you passed
+```
+
+**What NOT to do here:**
+- Don't retry the same `but commit` — it will keep producing empty commits.
+- Don't `but uncommit --discard` the empty commits. If any intervening operation rebased the stack, the hash you captured may now point to your good commit. Wait until after the recovery, then use `but clean` for stranded empty branches.
+- Don't `but teardown` + `git checkout aggregate-field`. The branch may fork from an older `main` that predates some of your edited files — you'll land on a stale tree and stash-pop will conflict.
+- Don't raw `git commit`. The `pre-commit` hook blocks it on `gitbutler/workspace`, and bypassing the hook would land commits on the workspace branch instead of your stack.
+
+**The observable signature, for quick pattern-match later:**
+
+```
+$ but commit aggregate-field -m "..." --changes ab,cd --status-after
+✓ Created commit c56e894
+Warning: Some selected changes could not be committed.
+... (status still shows ab,cd as unassigned)
+
+$ git show --stat c56e894
+commit c56e894...
+Author: ...
+Date: ...
+
+    ...
+    (zero files listed)
+```
+
+If you see that signature, stop and run `but absorb --dry-run <file-id>`.
+
+
+
 **Note on CLI IDs:** Examples below use illustrative IDs like `bu`, `c3`, `a1` to keep commands readable. In practice, **always read actual IDs from `but status -fv`** — they are generated per-session and will differ from these examples. Branch IDs are derived from unique substrings of the branch name (e.g., `fe` from `feature-x`), commit IDs use short hex prefixes (e.g., `1b`, `8f`), and file/hunk/stack IDs are auto-generated (e.g., `g0`, `h0`). All IDs are unique across entity types.
 
 ## Example 1: Starting Independent Parallel Work
