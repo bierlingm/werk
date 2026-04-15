@@ -1,4 +1,4 @@
-//! Toast notification system — replaces TransientMessage.
+//! Toast notification system.
 //!
 //! Wraps ftui's NotificationQueue with convenience methods for gesture feedback.
 //! Toasts auto-dismiss after 3 seconds, stack in bottom-right, max 3 visible.

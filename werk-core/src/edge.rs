@@ -3,7 +3,8 @@
 //! All structural relationships between tensions are edges in a directed graph.
 //! Edge types distinguish the nature of the relationship:
 //!
-//! - `contains` — parent→child containment (replaces the old parent_id column)
+//! - `contains` — parent→child containment (source of truth for hierarchy;
+//!   the `parent_id` column on `tensions` is retained only for backward compat)
 //! - `split_from` — provenance: this tension was split from another
 //! - `merged_into` — provenance: this tension was merged into another
 //!

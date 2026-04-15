@@ -167,7 +167,7 @@ pub struct InstrumentApp {
     // Theme — resolved at startup for the detected terminal mode.
     pub styles: crate::theme::InstrumentStyles,
 
-    // Toast notifications — replaces TransientMessage.
+    // Toast notifications for transient user feedback.
     pub toasts: crate::toast::ToastQueue,
 
     // Gesture undo/redo — stores gesture IDs, backed by Engine::undo_gesture.
@@ -1329,7 +1329,7 @@ impl InstrumentApp {
         }
     }
 
-    /// Push a toast notification (replaces old TransientMessage).
+    /// Push a transient info toast.
     pub fn set_transient(&mut self, text: impl Into<String>) {
         self.toasts.push_info(&text.into());
     }

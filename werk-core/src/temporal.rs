@@ -22,14 +22,13 @@ use crate::tension::{Tension, TensionStatus};
 use crate::tree::Forest;
 
 // ============================================================================
-// Gap Detection (honest — binary, not text-similarity)
+// Gap Detection
 // ============================================================================
 
 /// Returns 1.0 if desired != actual, 0.0 if identical.
 ///
-/// This replaces the former text-similarity based magnitude computation
-/// which pretended to quantify "how different" two text strings were.
-/// The honest answer: either there's a gap or there isn't.
+/// Binary by design: string similarity would be an arbitrary quantification of
+/// something that is semantically present-or-absent.
 pub fn gap_magnitude(desired: &str, actual: &str) -> f64 {
     if desired == actual { 0.0 } else { 1.0 }
 }

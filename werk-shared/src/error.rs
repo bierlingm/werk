@@ -131,11 +131,13 @@ impl WerkError {
     }
 
     /// Create a no workspace error with path context.
+    ///
+    /// Path arguments are accepted for caller ergonomics but not yet threaded
+    /// into the message — `NoWorkspace`'s Display already describes the situation.
     pub fn no_workspace_with_context(
         cwd: &std::path::Path,
         home: Option<&std::path::Path>,
     ) -> Self {
-        // For now, just return the basic error. The message already explains the situation.
         let _ = (cwd, home);
         WerkError::NoWorkspace
     }

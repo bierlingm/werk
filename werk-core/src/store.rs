@@ -3360,8 +3360,10 @@ impl Store {
         self.parse_edge_rows(rows)
     }
 
-    /// Get the parent ID for a tension (from contains edges).
-    /// This replaces direct parent_id column reads.
+    /// Get the parent ID for a tension from the `contains` edges table.
+    ///
+    /// Edges are the source of truth for structural relationships; the
+    /// `parent_id` column on `tensions` is retained only for backward compat.
     pub fn get_parent_id_from_edges(&self, tension_id: &str) -> Result<Option<String>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
@@ -3377,8 +3379,7 @@ impl Store {
         }
     }
 
-    /// Get children IDs for a tension (from contains edges).
-    /// This replaces direct parent_id = ? queries.
+    /// Get children IDs for a tension from the `contains` edges table.
     pub fn get_children_ids_from_edges(&self, parent_id: &str) -> Result<Vec<String>, StoreError> {
         let conn = self.conn.borrow();
         let rows = conn
