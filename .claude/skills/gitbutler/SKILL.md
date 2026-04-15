@@ -43,6 +43,20 @@ These moves look tempting but deepen the hole:
 - **Do not raw `git commit` (or `git commit --no-verify`)** — the pre-commit hook blocks it on `gitbutler/workspace` by design. If you're tempted, the correct move is `but move <branch> <dependency-branch>`.
 - **Do not retry the same `but commit` expecting a different result** — if it produced an empty commit once with no input change, it will again. Stop, diagnose, apply the dependency-lock recipe.
 
+## Forge configuration (for `but pr new`)
+
+`but pr new` delegates to GitButler's forge integration (GitHub/GitLab OAuth), which is separate from `gh auth`. If `but config forge` shows `No forge accounts configured`, `but pr new` will fail.
+
+**One-time setup (interactive, opens a browser):**
+
+```bash
+but config forge auth
+```
+
+**Fallback when you can't run interactive commands (e.g., non-TTY agent sessions):** use `gh pr create --base <base> --head <head> --title "..." --body "..."`. The PR is real and functions identically; `but branch list --review` will enrich it once forge auth is later configured.
+
+Prefer `but pr new` when forge is configured — it keeps `but status` and `but branch list --review` in sync.
+
 ## Core Flow
 
 **Every write task** should follow this sequence.

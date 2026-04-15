@@ -51,8 +51,9 @@ case "$mode" in
     fi
 
     # 5. Forge configured? (non-fatal warning)
-    if but config 2>/dev/null | grep -q "Forge:.*Not configured"; then
-      warn "forge not configured — 'but pr new' will fail; run 'but config forge auth' when needed"
+    if but config 2>/dev/null | grep -q "Forge:.*Not configured" \
+       || but config forge 2>/dev/null | grep -qi "No forge accounts"; then
+      warn "forge not configured — 'but pr new' will fail; run 'but config forge auth' for GitHub OAuth, or use 'gh pr create' as fallback"
     fi
 
     # 6. Any conflicted commits? (fatal — must resolve before new work)
