@@ -8,7 +8,6 @@ description = "MCP server for werk — exposes operative gestures as protocol to
 werk-core = { path = "../werk-core" }
 werk-shared = { path = "../werk-shared" }
 rmcp = { version = "1", features = ["server", "transport-io"] }
-tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
