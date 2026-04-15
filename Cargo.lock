@@ -6396,7 +6396,6 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "werk-core",
