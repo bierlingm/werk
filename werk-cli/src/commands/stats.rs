@@ -16,7 +16,7 @@ use werk_core::{
     project_field,
 };
 use werk_shared::cli_display::{Palette, glyphs};
-use werk_shared::truncate;
+use werk_shared::{format_short_code, truncate};
 
 // ── JSON output ────────────────────────────────────────────────────
 
@@ -558,7 +558,7 @@ fn print_temporal(t: &TemporalJson, _tensions: &[werk_core::Tension], palette: &
     if !t.approaching.is_empty() {
         println!("  Approaching (next 14 days)");
         for a in &t.approaching {
-            let sc = a.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let sc = format_short_code(a.short_code);
             println!(
                 "    {:<6} {} [{}]  urgency {:.0}%",
                 sc,
@@ -572,14 +572,8 @@ fn print_temporal(t: &TemporalJson, _tensions: &[werk_core::Tension], palette: &
     if !t.critical_path.is_empty() {
         println!("  Critical path");
         for cp in &t.critical_path {
-            let psc = cp
-                .parent_short_code
-                .map(|c| format!("#{}", c))
-                .unwrap_or_default();
-            let csc = cp
-                .child_short_code
-                .map(|c| format!("#{}", c))
-                .unwrap_or_default();
+            let psc = format_short_code(cp.parent_short_code);
+            let csc = format_short_code(cp.child_short_code);
             println!(
                 "    {} \u{2192} {}  {} (slack {}d)",
                 psc,
@@ -593,11 +587,8 @@ fn print_temporal(t: &TemporalJson, _tensions: &[werk_core::Tension], palette: &
     if !t.sequencing_pressure.is_empty() {
         println!("  Sequencing pressure");
         for sp in &t.sequencing_pressure {
-            let sc = sp.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
-            let psc = sp
-                .predecessor_short_code
-                .map(|c| format!("#{}", c))
-                .unwrap_or_default();
+            let sc = format_short_code(sp.short_code);
+            let psc = format_short_code(sp.predecessor_short_code);
             println!(
                 "    {}  {} — ordered after {} but due earlier",
                 sc,
@@ -610,11 +601,8 @@ fn print_temporal(t: &TemporalJson, _tensions: &[werk_core::Tension], palette: &
     if !t.containment_violations.is_empty() {
         println!("  Containment violations");
         for v in &t.containment_violations {
-            let sc = v.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
-            let psc = v
-                .parent_short_code
-                .map(|c| format!("#{}", c))
-                .unwrap_or_default();
+            let sc = format_short_code(v.short_code);
+            let psc = format_short_code(v.parent_short_code);
             println!(
                 "    {}  {} exceeds parent {} by {}d",
                 sc,
@@ -751,10 +739,7 @@ fn print_attention(a: &AttentionJson, days: i64, palette: &Palette) {
     );
 
     for root in &a.roots {
-        let sc = root
-            .short_code
-            .map(|c| format!("#{}", c))
-            .unwrap_or_default();
+        let sc = format_short_code(root.short_code);
         println!(
             "  {:<6} {:<35}  {} mutations across {} descendants",
             sc,
@@ -764,10 +749,7 @@ fn print_attention(a: &AttentionJson, days: i64, palette: &Palette) {
         );
 
         for branch in &root.branches {
-            let bsc = branch
-                .short_code
-                .map(|c| format!("#{}", c))
-                .unwrap_or_default();
+            let bsc = format_short_code(branch.short_code);
             let untouched = branch
                 .untouched_children
                 .map(|n| format!(" \u{2190} {} children, none touched", n))
@@ -887,7 +869,7 @@ fn print_changes(c: &ChangesJson, days: i64) {
     if !c.epochs.is_empty() {
         println!("  Epochs");
         for e in &c.epochs {
-            let sc = e.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let sc = format_short_code(e.short_code);
             println!("    {:<6} {}", sc, truncate(&e.desired, 55));
         }
     }
@@ -895,7 +877,7 @@ fn print_changes(c: &ChangesJson, days: i64) {
     if !c.resolutions.is_empty() {
         println!("  Resolutions");
         for r in &c.resolutions {
-            let sc = r.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let sc = format_short_code(r.short_code);
             println!("    {:<6} {}", sc, truncate(&r.desired, 55));
         }
     }
@@ -903,7 +885,7 @@ fn print_changes(c: &ChangesJson, days: i64) {
     if !c.new_tensions.is_empty() {
         println!("  New tensions");
         for n in &c.new_tensions {
-            let sc = n.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let sc = format_short_code(n.short_code);
             println!("    {:<6} {}", sc, truncate(&n.desired, 55));
         }
     }
@@ -911,7 +893,7 @@ fn print_changes(c: &ChangesJson, days: i64) {
     if !c.reality_shifts.is_empty() {
         println!("  Reality shifts");
         for r in &c.reality_shifts {
-            let sc = r.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+            let sc = format_short_code(r.short_code);
             println!("    {:<6} \"{}\"", sc, truncate(&r.preview, 55));
         }
     }
@@ -1089,7 +1071,7 @@ fn print_engagement(e: &EngagementJson, _days: i64, palette: &Palette) {
         e.field_frequency, e.field_trend
     );
     if let Some(ref me) = e.most_engaged {
-        let sc = me.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+        let sc = format_short_code(me.short_code);
         println!(
             "  Most engaged: {} {} ({:.1}/day)",
             sc,
@@ -1098,7 +1080,7 @@ fn print_engagement(e: &EngagementJson, _days: i64, palette: &Palette) {
         );
     }
     if let Some(ref le) = e.least_engaged_with_deadline {
-        let sc = le.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+        let sc = format_short_code(le.short_code);
         let dl = le.deadline.as_deref().unwrap_or("");
         println!(
             "  Least engaged (deadlined): {} {} ({:.1}/day, due {})",
@@ -1181,7 +1163,7 @@ fn print_drift(drifts: &[DriftEntryJson]) {
 
     println!("  Horizon drift");
     for d in drifts {
-        let sc = d.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+        let sc = format_short_code(d.short_code);
         println!(
             "    {:<6} {} \u{2014} {} ({} shifts, net {}d)",
             sc,
