@@ -29,6 +29,9 @@ use werk_shared::aggregate::{
     SpaceVitals, VitalsTotals, compute_attention_for_store, compute_vitals_for_store,
     enumerate_spaces,
 };
+use werk_shared::dto::{
+    ApiError, CreateTensionRequest, SummaryDto, TensionDto, UpdateFieldRequest,
+};
 
 const FRONTEND_HTML: &str = include_str!("../index.html");
 
@@ -351,50 +354,15 @@ struct SseEvent {
 }
 
 // ─── JSON Types ────────────────────────────────────────────────────
-
-/// A JSON-serializable tension for the API.
-#[derive(Serialize, Clone)]
-pub struct TensionJson {
-    id: String,
-    short_code: Option<i32>,
-    desired: String,
-    actual: String,
-    status: String,
-    parent_id: Option<String>,
-    horizon: Option<String>,
-    position: Option<i32>,
-    created_at: String,
-    overdue: bool,
-}
-
-impl TensionJson {
-    fn from_tension(t: &Tension) -> Self {
-        let overdue = match (&t.horizon, &t.status) {
-            (Some(h), TensionStatus::Active) => {
-                let now = chrono::Utc::now();
-                h.is_past(now)
-            }
-            _ => false,
-        };
-        Self {
-            id: t.id.clone(),
-            short_code: t.short_code,
-            desired: t.desired.clone(),
-            actual: t.actual.clone(),
-            status: t.status.to_string(),
-            parent_id: t.parent_id.clone(),
-            horizon: t.horizon.as_ref().map(|h| h.to_string()),
-            position: t.position,
-            created_at: t.created_at.to_rfc3339(),
-            overdue,
-        }
-    }
-}
+//
+// TensionDto, SummaryDto, CreateTensionRequest, UpdateFieldRequest, ApiError
+// are defined in `werk_shared::dto` so the Web, Tauri and CLI surfaces share
+// the same wire format.  Only web-specific envelope types live here.
 
 /// Tree node for structured response.
 #[derive(Serialize)]
 struct TreeNodeJson {
-    tension: TensionJson,
+    tension: TensionDto,
     children: Vec<TreeNodeJson>,
     closure: ClosureJson,
 }
@@ -407,39 +375,13 @@ struct ClosureJson {
 
 #[derive(Serialize)]
 struct TreeResponse {
-    tensions: Vec<TensionJson>,
+    tensions: Vec<TensionDto>,
     roots: Vec<TreeNodeJson>,
-    summary: SummaryJson,
-}
-
-#[derive(Serialize)]
-struct SummaryJson {
-    active: usize,
-    resolved: usize,
-    released: usize,
-    total: usize,
-}
-
-#[derive(Deserialize)]
-pub struct CreateTensionRequest {
-    desired: String,
-    actual: Option<String>,
-    parent_id: Option<String>,
-    horizon: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateFieldRequest {
-    value: String,
-}
-
-#[derive(Serialize)]
-struct ApiError {
-    error: String,
+    summary: SummaryDto,
 }
 
 fn err_response(status: StatusCode, msg: impl Into<String>) -> Response {
-    (status, Json(ApiError { error: msg.into() })).into_response()
+    (status, Json(ApiError::new(msg))).into_response()
 }
 
 // ─── Router ────────────────────────────────────────────────────────
@@ -569,23 +511,9 @@ async fn get_tensions(State(state): State<Arc<AppState>>) -> Response {
         Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
 
-    let summary = SummaryJson {
-        active: all
-            .iter()
-            .filter(|t| t.status == TensionStatus::Active)
-            .count(),
-        resolved: all
-            .iter()
-            .filter(|t| t.status == TensionStatus::Resolved)
-            .count(),
-        released: all
-            .iter()
-            .filter(|t| t.status == TensionStatus::Released)
-            .count(),
-        total: all.len(),
-    };
+    let summary = SummaryDto::from_tensions(&all);
 
-    let tension_jsons: Vec<TensionJson> = all.iter().map(TensionJson::from_tension).collect();
+    let tension_jsons: Vec<TensionDto> = all.iter().map(TensionDto::from_tension).collect();
 
     // Build tree
     let forest = match Forest::from_tensions(all) {
@@ -619,7 +547,7 @@ fn build_tree_node(forest: &Forest, node: &werk_core::tree::Node) -> TreeNodeJso
     let (resolved, total) = count_descendants(forest, &node.tension.id);
 
     TreeNodeJson {
-        tension: TensionJson::from_tension(&node.tension),
+        tension: TensionDto::from_tension(&node.tension),
         closure: ClosureJson { resolved, total },
         children,
     }
@@ -689,7 +617,7 @@ async fn create_tension(
             let _ = state.tx.send(SseEvent {
                 kind: "tension_created".into(),
             });
-            (StatusCode::CREATED, Json(TensionJson::from_tension(&t))).into_response()
+            (StatusCode::CREATED, Json(TensionDto::from_tension(&t))).into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
     }

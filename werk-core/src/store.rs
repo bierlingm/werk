@@ -2317,7 +2317,6 @@ impl Store {
                     )?;
                 }
 
-                // Delete the tension
                 conn.execute_with_params(
                     "DELETE FROM tensions WHERE id = ?1",
                     &[SqliteValue::Text(tension.id.to_string().into())],
@@ -3359,43 +3358,6 @@ impl Store {
             .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
 
         self.parse_edge_rows(rows)
-    }
-
-    /// Get the parent ID for a tension (from contains edges).
-    /// This replaces direct parent_id column reads.
-    pub fn get_parent_id_from_edges(&self, tension_id: &str) -> Result<Option<String>, StoreError> {
-        let conn = self.conn.borrow();
-        let rows = conn
-            .query_with_params(
-                "SELECT from_id FROM edges WHERE to_id = ?1 AND edge_type = 'contains' LIMIT 1",
-                &[SqliteValue::Text(tension_id.to_owned().into())],
-            )
-            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
-
-        match rows.first().and_then(|r| r.get(0)) {
-            Some(SqliteValue::Text(s)) => Ok(Some(s.to_string())),
-            _ => Ok(None),
-        }
-    }
-
-    /// Get children IDs for a tension (from contains edges).
-    /// This replaces direct parent_id = ? queries.
-    pub fn get_children_ids_from_edges(&self, parent_id: &str) -> Result<Vec<String>, StoreError> {
-        let conn = self.conn.borrow();
-        let rows = conn
-            .query_with_params(
-                "SELECT to_id FROM edges WHERE from_id = ?1 AND edge_type = 'contains'",
-                &[SqliteValue::Text(parent_id.to_owned().into())],
-            )
-            .map_err(|e| StoreError::DatabaseError(format!("query failed: {:?}", e)))?;
-
-        let mut ids = Vec::new();
-        for row in &rows {
-            if let Some(SqliteValue::Text(s)) = row.get(0) {
-                ids.push(s.to_string());
-            }
-        }
-        Ok(ids)
     }
 
     fn parse_edge_rows(

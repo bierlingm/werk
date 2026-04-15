@@ -9,8 +9,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 werk-core = { path = "../../werk-core" }
+werk-shared = { path = "../../werk-shared" }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 tauri = { version = "2", features = [] }
 dirs = "5"

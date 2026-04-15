@@ -33,7 +33,9 @@ pub use graph::{
     ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
 };
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
-pub use mutation::{Mutation, ReconstructedTension, ReplayError, replay_mutations};
+pub use mutation::{
+    Mutation, MutationFieldKind, ReconstructedTension, ReplayError, replay_mutations,
+};
 pub use projection::{
     FieldProjection, MutationPattern, ProjectionHorizon, ProjectionThresholds, TensionProjection,
     Trajectory, TrajectoryBuckets, UrgencyCollision, estimate_time_to_resolution,

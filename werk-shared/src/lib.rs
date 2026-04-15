@@ -10,6 +10,7 @@ pub mod cli_display;
 pub mod config;
 pub mod config_registry;
 pub mod daemon_workspaces;
+pub mod dto;
 pub mod duration;
 pub mod value_labels;
 pub mod error;
@@ -22,6 +23,7 @@ pub mod util;
 pub mod workspace;
 
 pub use batch_mutation::BatchMutation;
+pub use dto::{ApiError, CreateTensionRequest, SummaryDto, TensionDto, UpdateFieldRequest};
 pub use config::{AnalysisThresholds, Config, SignalThresholds};
 pub use flush::{flush_to_file, content_equivalent as flush_content_equivalent, FlushOutcome, FLUSH_FILENAME};
 pub use hooks::{GitHooks, HookBridge, HookBridgeHandle, HookEvent, HookFilter, HookLogEntry, HookRunner, ShippedHooks};
@@ -33,5 +35,5 @@ pub use palette::{
     sequencing_palette,
 };
 pub use prefix::PrefixResolver;
-pub use util::{display_id, display_id_named, format_timestamp, relative_time, truncate};
+pub use util::{display_id, display_id_named, format_datetime_compact, format_short_code, format_timestamp, relative_time, truncate};
 pub use workspace::Workspace;

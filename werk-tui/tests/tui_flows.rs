@@ -108,7 +108,6 @@ fn navigate_and_resolve() {
     let mut sim = ProgramSimulator::new(test_app());
     sim.init();
 
-    // Add a tension
     send(&mut sim, Msg::StartAdd);
     type_text(&mut sim, "Task to resolve");
     send(&mut sim, Msg::Submit);
@@ -143,7 +142,6 @@ fn undo_after_add() {
 
     assert!(sim.model().siblings.is_empty());
 
-    // Add a tension
     send(&mut sim, Msg::StartAdd);
     type_text(&mut sim, "Undo me");
     send(&mut sim, Msg::Submit);

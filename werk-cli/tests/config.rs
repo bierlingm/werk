@@ -231,7 +231,6 @@ fn test_config_get_json_output() {
         .assert()
         .success();
 
-    // Set a value
     cargo_bin_cmd!("werk")
         .arg("config")
         .arg("set")

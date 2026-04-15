@@ -73,10 +73,10 @@ pub fn render_inspector(app: &InstrumentApp, frame: &mut Frame<'_>, area: Rect) 
 
     // Parent
     let parent_label = match &app.parent_id {
-        Some(pid) => app.parent_tension.as_ref()
-            .and_then(|t| t.short_code)
-            .map(|c| format!("#{c}"))
-            .unwrap_or_else(|| pid[..8.min(pid.len())].to_string()),
+        Some(pid) => werk_shared::display_id(
+            app.parent_tension.as_ref().and_then(|t| t.short_code),
+            pid,
+        ),
         None => "root".to_string(),
     };
     lines.push(Line::from_spans(vec![

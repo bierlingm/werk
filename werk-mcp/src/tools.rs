@@ -2188,7 +2188,6 @@ impl WerkServer {
                 .map_err(|e| err(e.to_string()))?;
         }
 
-        // Delete the tension
         engine
             .store()
             .delete_tension(&tension_id)

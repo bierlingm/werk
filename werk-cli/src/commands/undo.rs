@@ -74,7 +74,6 @@ pub fn cmd_undo(
         return Ok(());
     }
 
-    // Apply the undo
     let undo_id = store.undo_gesture(&gid).map_err(WerkError::CoreError)?;
 
     let result = UndoResult {

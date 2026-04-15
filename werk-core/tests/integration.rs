@@ -18,7 +18,6 @@ use werk_core::{
 fn test_full_tension_lifecycle() {
     let mut engine = Engine::new_in_memory().unwrap();
 
-    // Create a tension
     let t = engine
         .create_tension("write a novel", "have an outline")
         .unwrap();

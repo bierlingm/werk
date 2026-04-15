@@ -513,7 +513,6 @@ impl Forest {
             }
         }
 
-        // Set the root
         subtree.roots.push(id.to_string());
 
         Some(subtree)

@@ -17,6 +17,7 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::Serialize;
 use werk_core::address::{Address, parse_address};
 use werk_shared::cli_display::glyphs;
+use werk_shared::format_datetime_compact;
 
 // ── JSON output structs ───────────────────────────────────────────
 
@@ -439,8 +440,8 @@ fn cmd_log_epoch_detail(
         println!("  Reality: {}", truncate(&epoch.reality_snapshot, 72));
         println!();
 
-        let start_str = &span_start.to_rfc3339()[..19].replace('T', " ");
-        let end_str = &epoch.timestamp.to_rfc3339()[..19].replace('T', " ");
+        let start_str = format_datetime_compact(span_start);
+        let end_str = format_datetime_compact(epoch.timestamp);
         println!("  Span: {} to {}", start_str, end_str);
 
         if mutations.is_empty() {
@@ -448,7 +449,7 @@ fn cmd_log_epoch_detail(
         } else {
             println!("\n  Mutations ({}):", mutations.len());
             for m in &mutations {
-                let ts = &m.timestamp().to_rfc3339()[..19].replace('T', " ");
+                let ts = format_datetime_compact(m.timestamp());
                 match m.old_value() {
                     Some(old) => println!(
                         "    {} [{}] {} → {}",
@@ -710,7 +711,7 @@ fn cmd_log_gesture(
         );
         println!();
         for m in &gesture_mutations {
-            let ts = &m.timestamp().to_rfc3339()[..19].replace('T', " ");
+            let ts = format_datetime_compact(m.timestamp());
             println!(
                 "  {} [{}] on {} → {}",
                 ts,

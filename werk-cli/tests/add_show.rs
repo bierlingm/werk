@@ -30,7 +30,6 @@ fn test_add_creates_tension() {
         .assert()
         .success();
 
-    // Add a tension
     let output = cargo_bin_cmd!("werk")
         .arg("add")
         .arg("write a novel")
@@ -466,7 +465,6 @@ fn test_show_prefix_too_short() {
         .assert()
         .success();
 
-    // Create a tension
     let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let _tension = store.create_tension("short goal", "short reality").unwrap();
 

@@ -209,7 +209,6 @@ fn test_nuke_deletes_all_data() {
     let mut cmd = cmd_without_global();
     cmd.arg("tree").current_dir(dir.path()).assert().success();
 
-    // Nuke the workspace
     let mut cmd = cmd_without_global();
     cmd.arg("nuke")
         .arg("--confirm")
@@ -230,11 +229,9 @@ fn test_nuke_deletes_all_data() {
 fn test_nuke_from_subdirectory() {
     let dir = TempDir::new().unwrap();
 
-    // Initialize a workspace
     let mut cmd = cmd_without_global();
     cmd.arg("init").current_dir(dir.path()).assert().success();
 
-    // Create a subdirectory
     let subdir = dir.path().join("sub").join("dir");
     std::fs::create_dir_all(&subdir).unwrap();
 

@@ -831,7 +831,6 @@ fn test_error_recovery_reality_on_resolved() {
         .unwrap();
     let prefix = &tension.id[..6];
 
-    // Resolve the tension
     store
         .update_status(&tension.id, werk_core::TensionStatus::Resolved)
         .unwrap();

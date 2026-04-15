@@ -27,7 +27,6 @@ fn test_reality_updates_actual() {
         .assert()
         .success();
 
-    // Create a tension
     let store = werk_core::Store::init_unlocked(dir.path()).unwrap();
     let tension = store.create_tension("goal", "initial reality").unwrap();
     let tension_id = tension.id.clone();

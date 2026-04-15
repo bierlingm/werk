@@ -12,6 +12,7 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use serde::Serialize;
+use werk_shared::format_datetime_compact;
 
 /// JSON output structure for epoch creation.
 #[derive(Serialize)]
@@ -265,8 +266,8 @@ fn cmd_epoch_show(
         println!("    Reality: {}", truncate(&epoch.reality_snapshot, 72));
         println!();
 
-        let start_str = &span_start.to_rfc3339()[..19].replace('T', " ");
-        let end_str = &span_end.to_rfc3339()[..19].replace('T', " ");
+        let start_str = format_datetime_compact(span_start);
+        let end_str = format_datetime_compact(span_end);
         println!("  Span: {} to {}", start_str, end_str);
 
         if mutations.is_empty() {
@@ -288,7 +289,7 @@ fn cmd_epoch_show(
                     println!("\n    {}:", label);
                 }
 
-                let ts = &m.timestamp().to_rfc3339()[..19].replace('T', " ");
+                let ts = format_datetime_compact(m.timestamp());
                 match m.old_value() {
                     Some(old) => {
                         println!(

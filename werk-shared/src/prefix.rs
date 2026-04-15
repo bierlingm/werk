@@ -10,7 +10,7 @@
 //! - If ambiguous, return an error listing matches
 
 use crate::error::{Result, WerkError};
-use crate::util::truncate;
+use crate::util::{format_short_code, truncate};
 use werk_core::Tension;
 
 /// The minimum prefix length required.
@@ -64,7 +64,7 @@ impl PrefixResolver {
                 let match_list = matches
                     .iter()
                     .map(|t| {
-                        let sc = t.short_code.map(|c| format!("#{}", c)).unwrap_or_default();
+                        let sc = format_short_code(t.short_code);
                         format!("  {} {} - {}", t.id, sc, truncate(&t.desired, 40))
                     })
                     .collect::<Vec<_>>()

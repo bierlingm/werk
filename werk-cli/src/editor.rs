@@ -31,7 +31,6 @@ pub fn edit_content(original: &str) -> Result<Option<String>> {
         &env::var("EDITOR").unwrap_or_else(|_| default_editor()),
     );
 
-    // Open the editor
     let exit_status = Command::new(&editor)
         .arg(&file_path)
         .status()

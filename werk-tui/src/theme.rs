@@ -79,9 +79,11 @@ pub fn resolve_color(color: Color) -> PackedRgba {
 // Pre-resolved styles
 // ---------------------------------------------------------------------------
 
-/// All styles resolved to PackedRgba for direct rendering use.
-/// Field names preserve the old `Styles` API so the mechanical replacement
-/// across deck.rs/render.rs/survey.rs is straightforward.
+/// All styles resolved to `PackedRgba` for direct rendering use.
+///
+/// Field names mirror the `Styles` API used across deck.rs, render.rs and
+/// survey.rs so callers can reach for styles by role (amber, selected, dim…)
+/// without knowing about theme resolution.
 pub struct InstrumentStyles {
     // Styles (Style objects for Span/Line rendering)
     pub text: Style,
