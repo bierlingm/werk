@@ -15,7 +15,7 @@ use werk_core::{
     detect_horizon_drift,
 };
 use werk_shared::cli_display::glyphs;
-use werk_shared::truncate;
+use werk_shared::{display_id, truncate};
 
 /// Parse a human-friendly `--changed` value into a `DateTime<Utc>`.
 ///
@@ -794,10 +794,7 @@ fn print_long_rows(rows: &[TensionRow], _now: DateTime<Utc>, palette: &Palette, 
         if i > 0 {
             println!();
         }
-        let id_display = match row.short_code {
-            Some(c) => format!("#{}", c),
-            None => row.id[..8.min(row.id.len())].to_string(),
-        };
+        let id_display = display_id(row.short_code, &row.id);
 
         let status = match row.status {
             TensionStatus::Active => "active",
@@ -887,10 +884,7 @@ fn print_changed_rows(
 
 fn print_tree_rows(rows: &[TensionRow], palette: &Palette, term_width: usize) {
     for row in rows {
-        let id_display = match row.short_code {
-            Some(c) => format!("#{}", c),
-            None => row.id[..8.min(row.id.len())].to_string(),
-        };
+        let id_display = display_id(row.short_code, &row.id);
 
         let indent = "  ".repeat(row.depth);
         let deadline = row.horizon_raw.as_deref().unwrap_or("");

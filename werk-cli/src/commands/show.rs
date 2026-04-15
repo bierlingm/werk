@@ -716,10 +716,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     println!();
                     println!("{}", palette.bold(&palette.structure("Ancestors:")));
                     for a in ancestors {
-                        let sc = a
-                            .short_code
-                            .map(|c| format!("#{}", c))
-                            .unwrap_or_else(|| a.id[..8.min(a.id.len())].to_string());
+                        let sc = display_id(a.short_code, &a.id);
                         println!("  {:<6} {}", sc, truncate(&a.desired, 55));
                     }
                 }
@@ -729,10 +726,7 @@ pub fn cmd_show(output: &Output, id: String, full: bool) -> Result<(), WerkError
                     println!();
                     println!("{}", palette.bold(&palette.structure("Siblings:")));
                     for s in siblings {
-                        let sc = s
-                            .short_code
-                            .map(|c| format!("#{}", c))
-                            .unwrap_or_else(|| s.id[..8.min(s.id.len())].to_string());
+                        let sc = display_id(s.short_code, &s.id);
                         let status_marker = match s.status.as_str() {
                             "Resolved" => format!(" {}", palette.resolved(glyphs::STATUS_RESOLVED)),
                             "Released" => format!(" {}", palette.chrome(glyphs::STATUS_RELEASED)),

@@ -113,7 +113,7 @@ pub fn cmd_compose_up(
                 .iter()
                 .find(|t| &t.id == pid)
                 .map(|t| werk_shared::display_id(t.short_code, &t.id))
-                .unwrap_or_else(|| pid[..8.min(pid.len())].to_string());
+                .unwrap_or_else(|| werk_shared::display_id(None, pid));
             println!("  Under:   {}", parent_display);
         }
     }
