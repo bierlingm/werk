@@ -15,9 +15,48 @@
             <span class="workspace-caret" aria-hidden="true">▾</span>
           </button>
           <ul id="workspace-menu" class="workspace-menu" role="listbox" hidden></ul>
+          <button id="field-toggle" class="field-toggle" type="button" aria-pressed="false" title="Show the aggregate field view across every registered space">field</button>
         </div>
         <div class="summary" id="summary"></div>
       </header>
+
+      <section class="field" id="field" hidden>
+        <table class="field-vitals" id="field-vitals">
+          <thead>
+            <tr>
+              <th class="col-space">space</th>
+              <th class="col-num">active</th>
+              <th class="col-num">overdue</th>
+              <th class="col-num">pos</th>
+              <th class="col-num">held</th>
+              <th class="col-time">last</th>
+            </tr>
+          </thead>
+          <tbody id="field-vitals-body"></tbody>
+          <tfoot id="field-vitals-foot"></tfoot>
+        </table>
+
+        <section class="band band-overdue" id="field-band-overdue" hidden>
+          <h2>overdue</h2>
+          <ul class="list" id="field-list-overdue"></ul>
+        </section>
+
+        <section class="band band-next" id="field-band-next" hidden>
+          <h2>next</h2>
+          <ul class="list" id="field-list-next"></ul>
+        </section>
+
+        <section class="band band-held" id="field-band-held" hidden>
+          <h2>held</h2>
+          <ul class="list" id="field-list-held"></ul>
+        </section>
+
+        <section class="band band-silent" id="field-band-silent" hidden>
+          <p class="silent-msg">no field-level signal. silence is the default.</p>
+        </section>
+
+        <p class="field-skipped" id="field-skipped" hidden></p>
+      </section>
 
       <section class="band band-overdue" id="band-overdue" hidden>
         <h2>overdue</h2>

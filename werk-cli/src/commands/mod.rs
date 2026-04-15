@@ -9,6 +9,7 @@ pub mod compose_up;
 pub mod config;
 pub mod desire;
 pub mod epoch;
+pub mod field;
 pub mod flush;
 pub mod hold;
 pub mod hooks;
@@ -804,6 +805,26 @@ Examples:
         /// Skip confirmation prompt (for --repair).
         #[arg(long)]
         yes: bool,
+    },
+
+    /// The aggregate command center across every registered space.
+    ///
+    /// Field-scope counterpart to `werk stats`: shows vitals for every
+    /// registered space pooled together, tagged by space. With --attention,
+    /// adds the three pooled exception bands (overdue / next-up / held).
+    ///
+    /// Every number shown is the workspace's own standard — the field view
+    /// doesn't infer cross-space priorities. A stale registry entry (lost
+    /// `.werk/`) is skipped silently and reported at the end.
+    #[command(after_help = "\
+Examples:
+  werk field                         Per-space vitals grid + totals
+  werk field --attention             Adds pooled overdue / next-up / held
+  werk field --json                  Structured output for agents")]
+    Field {
+        /// Show pooled overdue / next-up / held bands with items tagged `[space:#N]`.
+        #[arg(short, long)]
+        attention: bool,
     },
 
     /// Batch operations (apply/validate mutations from YAML).

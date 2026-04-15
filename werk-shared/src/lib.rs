@@ -4,6 +4,7 @@
 //
 // Extracted from werk-cli to enable reuse by TUI and other frontends.
 
+pub mod aggregate;
 pub mod batch_mutation;
 pub mod cli_display;
 pub mod config;

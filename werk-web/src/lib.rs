@@ -17,11 +17,18 @@ use axum::{
     routing::{get, patch, post},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::{RwLock, broadcast, oneshot};
 use tokio_stream::StreamExt;
 use tower_http::cors::CorsLayer;
 use werk_core::{Forest, Horizon, Tension, TensionStatus};
+use werk_shared::aggregate::{
+    AttentionItem, DEFAULT_HELD_PER_SPACE, DEFAULT_NEXT_UP_PER_SPACE, SkippedSpace, SpaceRef,
+    SpaceVitals, VitalsTotals, compute_attention_for_store, compute_vitals_for_store,
+    enumerate_spaces,
+};
 
 const FRONTEND_HTML: &str = include_str!("../index.html");
 
@@ -59,6 +66,22 @@ enum StoreCmd {
     GetTension {
         id: String,
         reply: oneshot::Sender<StoreResult<Option<Tension>>>,
+    },
+    /// Compute vitals for this store, tagged with the given space.
+    ComputeVitals {
+        space: SpaceRef,
+        now: chrono::DateTime<chrono::Utc>,
+        reply: oneshot::Sender<StoreResult<SpaceVitals>>,
+    },
+    /// Compute attention bands for this store, tagged with the given space.
+    ComputeAttention {
+        space: SpaceRef,
+        now: chrono::DateTime<chrono::Utc>,
+        next_up_per_space: usize,
+        held_per_space: usize,
+        reply: oneshot::Sender<
+            StoreResult<(Vec<AttentionItem>, Vec<AttentionItem>, Vec<AttentionItem>)>,
+        >,
     },
 }
 
@@ -132,6 +155,30 @@ impl StoreHandle {
                         StoreCmd::GetTension { id, reply } => {
                             let _ = reply.send(store.get_tension(&id).map_err(|e| e.to_string()));
                         }
+                        StoreCmd::ComputeVitals { space, now, reply } => {
+                            let _ = reply.send(
+                                compute_vitals_for_store(space, &store, now)
+                                    .map_err(|e| e.to_string()),
+                            );
+                        }
+                        StoreCmd::ComputeAttention {
+                            space,
+                            now,
+                            next_up_per_space,
+                            held_per_space,
+                            reply,
+                        } => {
+                            let _ = reply.send(
+                                compute_attention_for_store(
+                                    &space,
+                                    &store,
+                                    now,
+                                    next_up_per_space,
+                                    held_per_space,
+                                )
+                                .map_err(|e| e.to_string()),
+                            );
+                        }
                     }
                 }
             })
@@ -199,6 +246,38 @@ impl StoreHandle {
             .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
+
+    async fn compute_vitals(
+        &self,
+        space: SpaceRef,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> StoreResult<SpaceVitals> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCmd::ComputeVitals { space, now, reply })
+            .map_err(|e| e.to_string())?;
+        rx.await.map_err(|e| e.to_string())?
+    }
+
+    async fn compute_attention(
+        &self,
+        space: SpaceRef,
+        now: chrono::DateTime<chrono::Utc>,
+        next_up_per_space: usize,
+        held_per_space: usize,
+    ) -> StoreResult<(Vec<AttentionItem>, Vec<AttentionItem>, Vec<AttentionItem>)> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCmd::ComputeAttention {
+                space,
+                now,
+                next_up_per_space,
+                held_per_space,
+                reply,
+            })
+            .map_err(|e| e.to_string())?;
+        rx.await.map_err(|e| e.to_string())?
+    }
 }
 
 // ─── Shared App State ──────────────────────────────────────────────
@@ -208,6 +287,34 @@ pub struct AppState {
     store: StoreHandle,
     tx: broadcast::Sender<SseEvent>,
     workspace_root: std::path::PathBuf,
+    /// Lazy pool of StoreHandles keyed by absolute workspace path, used by
+    /// `/api/field/*` endpoints to fan out reads across every registered
+    /// space. Handles spawn on first access and persist for the lifetime of
+    /// the server — at the scale of registered spaces (dozens, not thousands)
+    /// a persistent thread-per-store is the simplest shape that respects the
+    /// `!Send` constraint on `werk_core::Store`.
+    field_pool: Arc<RwLock<HashMap<PathBuf, StoreHandle>>>,
+}
+
+impl AppState {
+    /// Get-or-spawn a StoreHandle for the given space path. Returns `Err` on
+    /// spawn failure; the caller should treat that as a skipped space rather
+    /// than failing the whole aggregate.
+    async fn handle_for(&self, path: &std::path::Path) -> Result<StoreHandle, String> {
+        {
+            let pool = self.field_pool.read().await;
+            if let Some(h) = pool.get(path) {
+                return Ok(h.clone());
+            }
+        }
+        let mut pool = self.field_pool.write().await;
+        if let Some(h) = pool.get(path) {
+            return Ok(h.clone());
+        }
+        let handle = StoreHandle::spawn(path.to_path_buf())?;
+        pool.insert(path.to_path_buf(), handle.clone());
+        Ok(handle)
+    }
 }
 
 #[derive(Serialize)]
@@ -341,10 +448,15 @@ fn err_response(status: StatusCode, msg: impl Into<String>) -> Response {
 pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
     let store = StoreHandle::spawn(store_path.clone())?;
     let (tx, _) = broadcast::channel::<SseEvent>(64);
+    let mut pool: HashMap<PathBuf, StoreHandle> = HashMap::new();
+    // Seed the pool with the active workspace's handle so `/api/field/*`
+    // reuses the already-spawned thread when it enumerates the active space.
+    pool.insert(store_path.clone(), store.clone());
     let state = Arc::new(AppState {
         store,
         tx,
         workspace_root: store_path,
+        field_pool: Arc::new(RwLock::new(pool)),
     });
 
     Ok(Router::new()
@@ -359,6 +471,8 @@ pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
         .route("/api/workspace", get(get_workspace))
         .route("/api/workspaces", get(get_workspaces))
         .route("/api/workspace/select", post(select_workspace))
+        .route("/api/field/vitals", get(get_field_vitals))
+        .route("/api/field/attention", get(get_field_attention))
         .route("/api/events", get(sse_handler))
         .layer(CorsLayer::permissive())
         .with_state(state))
@@ -702,6 +816,233 @@ async fn sse_handler(
             Err(_) => None,
         });
     Sse::new(stream)
+}
+
+// ─── Field (aggregate) endpoints ────────────────────────────────────
+
+/// JSON shape of the aggregate vitals response. Mirrors
+/// `werk_shared::aggregate::AggregateVitals` but uses API-friendly
+/// Strings for paths.
+#[derive(Serialize)]
+struct FieldVitalsJson {
+    computed_at: String,
+    spaces: Vec<FieldSpaceVitalsJson>,
+    totals: FieldTotalsJson,
+    skipped: Vec<FieldSkippedJson>,
+}
+
+#[derive(Serialize)]
+struct FieldSpaceVitalsJson {
+    name: String,
+    path: String,
+    is_global: bool,
+    active: usize,
+    resolved: usize,
+    released: usize,
+    deadlined: usize,
+    overdue: usize,
+    positioned: usize,
+    held: usize,
+    last_activity: Option<String>,
+}
+
+#[derive(Serialize, Default)]
+struct FieldTotalsJson {
+    active: usize,
+    resolved: usize,
+    released: usize,
+    deadlined: usize,
+    overdue: usize,
+    positioned: usize,
+    held: usize,
+}
+
+#[derive(Serialize)]
+struct FieldSkippedJson {
+    name: String,
+    path: String,
+    reason: String,
+}
+
+#[derive(Serialize)]
+struct FieldAttentionJson {
+    computed_at: String,
+    overdue: Vec<FieldAttentionItemJson>,
+    next_up: Vec<FieldAttentionItemJson>,
+    held: Vec<FieldAttentionItemJson>,
+    skipped: Vec<FieldSkippedJson>,
+}
+
+#[derive(Serialize)]
+struct FieldAttentionItemJson {
+    space_name: String,
+    short_code: Option<i32>,
+    desired: String,
+    horizon: Option<String>,
+    urgency: Option<f64>,
+    position: Option<i32>,
+}
+
+async fn get_field_vitals(State(state): State<Arc<AppState>>) -> Response {
+    let (spaces, mut skipped) = match enumerate_spaces() {
+        Ok(pair) => pair,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+
+    let now = chrono::Utc::now();
+    let mut per_space: Vec<SpaceVitals> = Vec::new();
+
+    for space in spaces {
+        match state.handle_for(&space.path).await {
+            Ok(handle) => match handle.compute_vitals(space.clone(), now).await {
+                Ok(v) => per_space.push(v),
+                Err(e) => skipped.push(SkippedSpace {
+                    name: space.name,
+                    path: space.path,
+                    reason: format!("read failed: {e}"),
+                }),
+            },
+            Err(e) => skipped.push(SkippedSpace {
+                name: space.name,
+                path: space.path,
+                reason: format!("spawn failed: {e}"),
+            }),
+        }
+    }
+
+    let totals = per_space.iter().fold(VitalsTotals::default(), |mut acc, v| {
+        acc.active += v.active;
+        acc.resolved += v.resolved;
+        acc.released += v.released;
+        acc.deadlined += v.deadlined;
+        acc.overdue += v.overdue;
+        acc.positioned += v.positioned;
+        acc.held += v.held;
+        acc
+    });
+
+    Json(FieldVitalsJson {
+        computed_at: now.to_rfc3339(),
+        spaces: per_space.into_iter().map(to_space_vitals_json).collect(),
+        totals: FieldTotalsJson {
+            active: totals.active,
+            resolved: totals.resolved,
+            released: totals.released,
+            deadlined: totals.deadlined,
+            overdue: totals.overdue,
+            positioned: totals.positioned,
+            held: totals.held,
+        },
+        skipped: skipped.into_iter().map(to_skipped_json).collect(),
+    })
+    .into_response()
+}
+
+async fn get_field_attention(State(state): State<Arc<AppState>>) -> Response {
+    let (spaces, mut skipped) = match enumerate_spaces() {
+        Ok(pair) => pair,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+
+    let now = chrono::Utc::now();
+    let mut overdue: Vec<AttentionItem> = Vec::new();
+    let mut next_up: Vec<AttentionItem> = Vec::new();
+    let mut held: Vec<AttentionItem> = Vec::new();
+
+    for space in &spaces {
+        match state.handle_for(&space.path).await {
+            Ok(handle) => match handle
+                .compute_attention(
+                    space.clone(),
+                    now,
+                    DEFAULT_NEXT_UP_PER_SPACE,
+                    DEFAULT_HELD_PER_SPACE,
+                )
+                .await
+            {
+                Ok((o, n, h)) => {
+                    overdue.extend(o);
+                    next_up.extend(n);
+                    held.extend(h);
+                }
+                Err(e) => skipped.push(SkippedSpace {
+                    name: space.name.clone(),
+                    path: space.path.clone(),
+                    reason: format!("read failed: {e}"),
+                }),
+            },
+            Err(e) => skipped.push(SkippedSpace {
+                name: space.name.clone(),
+                path: space.path.clone(),
+                reason: format!("spawn failed: {e}"),
+            }),
+        }
+    }
+
+    // Locality-safe pooled ordering: overdue by urgency desc, next_up by
+    // position ascending (tie-broken by space for determinism), held by urgency.
+    overdue.sort_by(|a, b| {
+        b.urgency
+            .unwrap_or(0.0)
+            .partial_cmp(&a.urgency.unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    next_up.sort_by(|a, b| {
+        a.position
+            .unwrap_or(i32::MAX)
+            .cmp(&b.position.unwrap_or(i32::MAX))
+            .then_with(|| a.space_name.cmp(&b.space_name))
+    });
+    held.sort_by(|a, b| {
+        b.urgency
+            .unwrap_or(0.0)
+            .partial_cmp(&a.urgency.unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Json(FieldAttentionJson {
+        computed_at: now.to_rfc3339(),
+        overdue: overdue.into_iter().map(to_attention_item_json).collect(),
+        next_up: next_up.into_iter().map(to_attention_item_json).collect(),
+        held: held.into_iter().map(to_attention_item_json).collect(),
+        skipped: skipped.into_iter().map(to_skipped_json).collect(),
+    })
+    .into_response()
+}
+
+fn to_space_vitals_json(v: SpaceVitals) -> FieldSpaceVitalsJson {
+    FieldSpaceVitalsJson {
+        name: v.space.name,
+        path: v.space.path.display().to_string(),
+        is_global: v.space.is_global,
+        active: v.active,
+        resolved: v.resolved,
+        released: v.released,
+        deadlined: v.deadlined,
+        overdue: v.overdue,
+        positioned: v.positioned,
+        held: v.held,
+        last_activity: v.last_activity.map(|t| t.to_rfc3339()),
+    }
+}
+
+fn to_attention_item_json(item: AttentionItem) -> FieldAttentionItemJson {
+    FieldAttentionItemJson {
+        space_name: item.space_name,
+        short_code: item.short_code,
+        desired: item.desired,
+        horizon: item.horizon,
+        urgency: item.urgency,
+        position: item.position,
+    }
+}
+
+fn to_skipped_json(s: SkippedSpace) -> FieldSkippedJson {
+    FieldSkippedJson {
+        name: s.name,
+        path: s.path.display().to_string(),
+        reason: s.reason,
+    }
 }
 
 /// Resolve an ID that might be a short_code number or a full ULID.
