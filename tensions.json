@@ -1,17 +1,17 @@
 {
-  "flushed_at": "2026-04-15T15:25:39Z",
+  "flushed_at": "2026-04-15T22:49:02Z",
   "summary": {
-    "active": 64,
+    "active": 62,
     "released": 63,
-    "resolved": 151,
-    "total": 278
+    "resolved": 162,
+    "total": 287
   },
   "tensions": [
     {
-      "actual": "v1.5+dev: Source ahead of installed binary. Conceptual foundation complete (#13 resolved — 13/14 children, all subsystems delivered). CLI complete (#10 resolved — 5 reading commands, all operative gestures, JSON on everything, help by framework). Three interface surfaces operational: TUI (survey V1.3, deck, logbase Phase 1, FrankenSearch palette, undo/redo), CLI (logbase + structural gestures + search + undo), MCP (35+ tools). FrankenSuite: FNX graph substrate, fsqlite MVCC, FrankenSearch core, ftui structural foundation. User-defined signal thresholds. Gesture undo. Quint formal specifications. Cooperative dynamics unexplored.",
+      "actual": "v1.6.0. Individual practice is solid — every operative gesture available across TUI, CLI, MCP, web, and desktop; signals, logbase, undo, and world-class config all shipped. A global space at ~/.werk/ and aggregate field command center let one practitioner tend many spaces. Cooperative practice remains the open gap: no multi-participant model, no shared-state mechanism. Substrate for the next horizon (generic edges #154, cross-space addressing #100, browser new-tab frontier #269) is designed, not user-facing.",
       "created_at": "2026-03-24T17:52:25.892325+00:00",
       "desired": "werk is a mature tool for practicing structural dynamics — individually and cooperatively",
-      "horizon": "2026-06",
+      "horizon": "2026-08",
       "id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "parent_id": null,
       "position": 1,
@@ -2846,7 +2846,7 @@
       "status": "Active"
     },
     {
-      "actual": "werk-tab extension renders the frontier correctly, but only when werk serve is running manually in the right workspace; nothing supervises the server, nothing targets the global space explicitly, and the extension hardcodes port 3749",
+      "actual": "surface live: launchd-supervised daemon probes canonical port range (werk_shared::daemon_net::DEFAULT_PORT_RANGE), extension matches via CI-asserted parity test; CLI + in-tab workspace switcher persist selection through ~/.werk/config.toml; one-time install (werk daemon install) → zero per-session setup",
       "created_at": "2026-04-15T08:24:25.504704+00:00",
       "desired": "the browser new-tab surface shows the werk frontier with zero per-session setup — after one-time install, opening a tab always reflects the current global space",
       "horizon": "2026-05",
@@ -2854,10 +2854,10 @@
       "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
       "position": null,
       "short_code": 269,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "serve discovers store by walking up from CWD only; no way to pin the global space explicitly (partial down-payment on #250)",
+      "actual": "implemented: --global / --daemon-target / --workspace-path flags on serve, mutually exclusive (werk-cli/src/commands/serve.rs:27-75)",
       "created_at": "2026-04-15T08:24:35.198831+00:00",
       "desired": "werk serve accepts -g/--global flag that forces the ~/.werk/ global store regardless of CWD",
       "horizon": null,
@@ -2865,10 +2865,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 1,
       "short_code": 270,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "no daemon command; serve must be invoked and supervised by hand each session",
+      "actual": "implemented: daemon install/uninstall/status/logs/point subcommands; launchd + systemd backends (werk-cli/src/commands/daemon/{mod,macos,linux}.rs)",
       "created_at": "2026-04-15T08:24:49.295093+00:00",
       "desired": "werk daemon subcommand group exists — install, uninstall, status, logs subcommands manage a background werk serve process targeting the global space",
       "horizon": null,
@@ -2876,10 +2876,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 2,
       "short_code": 271,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "serve fails hard on port conflict with no fallback; extension hardcodes 3749",
+      "actual": "implemented: --port-range scans inclusively, first free port wins; chosen port written to <werk_dir>/daemon.port for CLI introspection; canonical range now lives in werk_shared::daemon_net::DEFAULT_PORT_RANGE with a parity test against werk-tab/app.js",
       "created_at": "2026-04-15T08:24:49.504641+00:00",
       "desired": "daemon picks a free port from a range (default 3749-3759) when the default is taken, and records the chosen port where the extension can find it",
       "horizon": null,
@@ -2887,10 +2887,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 3,
       "short_code": 272,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "no OS-level supervision on macOS",
+      "actual": "implemented: ~/Library/LaunchAgents/dev.werk.daemon.plist with KeepAlive, ProcessType=Background, bootstrap + kickstart (werk-cli/src/commands/daemon/macos.rs)",
       "created_at": "2026-04-15T08:24:49.701249+00:00",
       "desired": "daemon install on macOS writes ~/Library/LaunchAgents/dev.werk.daemon.plist and bootstraps via launchctl — survives reboot, auto-respawns on crash",
       "horizon": null,
@@ -2898,10 +2898,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 4,
       "short_code": 273,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "no OS-level supervision on Linux",
+      "actual": "implemented: ~/.config/systemd/user/werk-daemon.service with Restart=on-failure, RestartSec=3 (werk-cli/src/commands/daemon/linux.rs)",
       "created_at": "2026-04-15T08:24:49.894885+00:00",
       "desired": "daemon install on Linux writes ~/.config/systemd/user/werk-daemon.service and enables via systemctl --user — survives reboot, auto-respawns on crash",
       "horizon": null,
@@ -2909,10 +2909,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 5,
       "short_code": 274,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "extension hardcodes http://localhost:3749; fails opaquely if daemon is on a different port",
+      "actual": "implemented: werk-tab/app.js:159-184 probes canonical range, caches last-good port, re-probes on SSE disconnect / visibility / failure; offline band shows only when nothing responds",
       "created_at": "2026-04-15T08:24:50.116209+00:00",
       "desired": "werk-tab extension probes the daemon port range on load and uses the responding port, showing offline only when nothing responds",
       "horizon": null,
@@ -2920,10 +2920,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 6,
       "short_code": 275,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "the daemon hardcodes the global workspace (~/.werk/); no way to point it elsewhere short of editing the plist by hand and reinstalling. depends on the workspaces registry from #96 for the list of known workspaces",
+      "actual": "switcher live on CLI (werk daemon point) and tab UI (/api/workspace/select); selection persists via ~/.werk/config.toml; supervisor restart applies the change (werk-cli/src/commands/daemon/mod.rs:43-107, werk-shared/src/daemon_workspaces.rs, werk-web/src/lib.rs:481-522, werk-tab/app.js:362-440)",
       "created_at": "2026-04-15T10:41:51.460203+00:00",
       "desired": "the practitioner picks which workspace the new-tab surface displays — selection works from both the CLI and the tab UI itself, and persists across daemon restarts",
       "horizon": null,
@@ -2931,10 +2931,10 @@
       "parent_id": "01KP83VP50Z3DJHTC265YAFSN1",
       "position": 7,
       "short_code": 276,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "no command exists; selection requires editing the plist/unit and reinstalling",
+      "actual": "implemented: werk daemon point <path|name|--global> canonicalizes, validates, persists to ~/.werk/config.toml, kickstarts the supervised process (werk-cli/src/commands/daemon/mod.rs:43-107)",
       "created_at": "2026-04-15T10:42:10.246236+00:00",
       "desired": "werk daemon point <path> sets the daemon's target workspace, persists the choice in ~/.werk/config.toml, and restarts the supervised process so the new selection takes effect immediately",
       "horizon": null,
@@ -2942,10 +2942,10 @@
       "parent_id": "01KP8BQAV4KVEPV7X6D1APATCK",
       "position": 1,
       "short_code": 277,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "serve only knows --global; no API surface for workspace metadata",
+      "actual": "implemented: GET /api/workspace, GET /api/workspaces, POST /api/workspace/select (werk-web/src/lib.rs:471-522); layering active→registry→global→recents (werk-shared/src/daemon_workspaces.rs:98-140); select triggers process exit so supervisor restarts against the new root",
       "created_at": "2026-04-15T10:42:10.518631+00:00",
       "desired": "werk serve honors a configured target workspace (path or registered name) instead of always using --global; new endpoints GET /api/workspace and GET /api/workspaces expose the current selection and the list of known workspaces from the registry",
       "horizon": null,
@@ -2953,10 +2953,10 @@
       "parent_id": "01KP8BQAV4KVEPV7X6D1APATCK",
       "position": 2,
       "short_code": 278,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
-      "actual": "tab header shows only the word 'werk'; no awareness of which workspace is being displayed",
+      "actual": "implemented: header workspace-button + listbox menu (werk-tab/index.html:13-17); selectWorkspace posts /select then reloads in 1.5s (werk-tab/app.js:362-440)",
       "created_at": "2026-04-15T10:42:10.788472+00:00",
       "desired": "werk-tab header shows the current workspace name and offers a switcher (picker over known workspaces); selection from the picker hits the API and the page reloads against the new workspace",
       "horizon": null,
@@ -2964,7 +2964,7 @@
       "parent_id": "01KP8BQAV4KVEPV7X6D1APATCK",
       "position": 3,
       "short_code": 279,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Shipped 2026-04-15 (5/5 children): #281 Enum Kind (IntLevels/FloatLevels, 8 keys with named levels); #282 analysis.sensitivity synthetic StringEnum with cascade through analysis.projection.*; #283 shipped presets (focus/patient/quiet/default) via werk config preset list/show/apply; #284 duration parser (werk-shared/src/duration.rs) threaded through list --approaching, --stale, stats --days; #285 value labels (urgency/drift/staleness bands) wired into show + list --long. Tests: 126 passing in werk-shared (19 new across registry, duration, value_labels).",
@@ -3064,6 +3064,105 @@
       "position": 3,
       "short_code": 288,
       "status": "Resolved"
+    },
+    {
+      "actual": "only parse_range unit tests + port_range_parity integration test cover the daemon surface; install writes a plist and calls launchctl bootstrap with no automated coverage, so a bad xml_escape or a renamed launchctl argument would only surface as a broken install on a user machine",
+      "created_at": "2026-04-15T17:49:35.290797+00:00",
+      "desired": "werk daemon install/uninstall/status paths have smoke-test coverage on both macOS (launchd) and Linux (systemd --user) so plist/unit format regressions fail CI instead of user installs",
+      "horizon": null,
+      "id": "01KP946H5T2RHB7AXX6QBS5G9T",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 289,
+      "status": "Active"
+    },
+    {
+      "actual": "werk add uses positional args only — when agents read 'werk add --help' they see [ACTUAL] as a bare word and have to guess what it maps to; I tripped on --reality in this session because the mental model from every other mutation is 'every field has a named flag'. Named flags would make werk add self-documenting and let scripts compose it without positional brittleness",
+      "created_at": "2026-04-15T17:56:56.190072+00:00",
+      "desired": "werk add takes --desired and --reality named flags; positional <DESIRED> [ACTUAL] stays as a shorthand but the flags become the documented form",
+      "horizon": null,
+      "id": "01KP94KZQYCNABTY55AN43C9CT",
+      "parent_id": "01KMGFKXS4WWAEG87Y6TK9XCBC",
+      "position": null,
+      "short_code": 290,
+      "status": "Active"
+    },
+    {
+      "actual": "v1 grammar exists (tensions, gestures, epochs, typed edges, signals, logbase) and works well for individual practice with early cooperative features. v2 concepts — warranty on every fact, ternary measurement per epoch, engagement as first-class entity, authority/underwriting chains, plugin architecture, grammar-substrate-vs-implementation-layers — explored in conversation (2026-04-15/16) but not yet encoded, tested, or decided as commitments. This is a second stem alongside #2; #2 tends v1 toward maturity, this stem proposes what succeeds or reshapes it.",
+      "created_at": "2026-04-15T22:45:10.263114+00:00",
+      "desired": "werk's operative grammar is a substrate for coordinated work — outcomes first, warranty on every fact, engagement as the unit of attention, authority providers and systems-of-record pluggable underneath, open core with a clear boundary for sovereign institutional layers",
+      "horizon": "2026-06",
+      "id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "parent_id": null,
+      "position": null,
+      "short_code": 291,
+      "status": "Active"
+    },
+    {
+      "actual": "warranty is implicit today: the system doesn't distinguish between 'feels blocked' and 'failing test confirms blocked' — both land in reality as plain strings. no place in the data model records authorship discipline, underwriting, or adversarial survival. the warranty spectrum exists in library/Ternary Logic but hasn't been encoded.",
+      "created_at": "2026-04-15T22:46:06.038182+00:00",
+      "desired": "every tension field, gesture, and edge carries a warranty level — impulsive / honest / truthful / testifiable / testimonial / decidable / scientific — recorded alongside content, queryable, and surfaced in the tree",
+      "horizon": "2026-06",
+      "id": "01KP9N5EYP0C8NJZGKB9MD3HQH",
+      "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "position": null,
+      "short_code": 292,
+      "status": "Active"
+    },
+    {
+      "actual": "epochs today record what mutated (reality, desire, status, split/merge) but not the sign of progress toward closure. there is no measurement layer, no instrument attribution, no boundary test. ternary accounting in Ternary Logic (production/equilibrium/dissipation + plane-failure) gives the shape but is not yet in the data model.",
+      "created_at": "2026-04-15T22:46:44.334174+00:00",
+      "desired": "each epoch records the sign of capitalization change (+/=/−) against a domain-appropriate observable, plus a boundary test against a plane minimum, with the instrument that produced the reading attributed and its warranty captured",
+      "horizon": "2026-06",
+      "id": "01KP9N6MBE06J8QTF1JD3RPFND",
+      "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "position": null,
+      "short_code": 293,
+      "status": "Active"
+    },
+    {
+      "actual": "today werk has tensions and gestures but nothing that represents the live, ongoing 'attention turn' on a tension. branches exist in git (close/<id>-slug), sessions are ephemeral Claude instances, epochs record state changes — but nothing links them into a single owned, trackable entity. there is no concept of mode (close/explore/shape/hold/ground) beyond what we just sketched in /werk-session.",
+      "created_at": "2026-04-15T22:47:20.794507+00:00",
+      "desired": "engagement is a first-class entity — owning mode, scope, branch, sessions, and produced epochs — that makes the turn-of-attention on a tension durable, inspectable, and coordinatable across sessions and participants",
+      "horizon": "2026-06",
+      "id": "01KP9N7QYTQX7V1SSJSJS1MNPA",
+      "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "position": null,
+      "short_code": 294,
+      "status": "Active"
+    },
+    {
+      "actual": "today mutations record a created_at timestamp and a gesture_id but no author identity, no underwriter, no system-of-record. agent writes and human writes are indistinguishable in the log. there's no way to say 'this reality update is underwritten by moritz based on a CI attestation from system X' — everything is flat, authorless, unwarrantied at the authority level.",
+      "created_at": "2026-04-15T22:47:55.276730+00:00",
+      "desired": "every fact records author, underwriter, and system of record — provenance legible, liability non-discretionary, multi-actor (human + agent + instrument) work has integrity by construction",
+      "horizon": "2026-06",
+      "id": "01KP9N8SMC2NYCP9QKPX2B6P5M",
+      "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "position": null,
+      "short_code": 295,
+      "status": "Active"
+    },
+    {
+      "actual": "today the 'outside world' is hardcoded into werk-core and werk-cli: git is assumed, sqlite is assumed, time comes from the system clock, reality updates are string inputs. edge types are already generic (#154) — that's a template for the rest. but there's no plugin trait/interface and no registration surface for third-party extensions.",
+      "created_at": "2026-04-15T22:48:27.331191+00:00",
+      "desired": "werk's core is the operative grammar; everything touching the outside world — authority providers, measurement instruments, edge types, engagement modes, renderers, hooks, storage backends — is a plugin with a specified schema, warranty level, clearing capacity, and identity",
+      "horizon": "2026-06",
+      "id": "01KP9N9RY3PG983M6N7ENFJEHH",
+      "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "position": null,
+      "short_code": 296,
+      "status": "Active"
+    },
+    {
+      "actual": "werk today is single-tenant, personal, open. there's no concept of 'organization,' no tenant isolation, no federation story, no hosted deployment path. the question of whether werk IS a work OS or is the substrate-beneath one is unresolved, and so is the question of whether the future institutional layer is commercial/private/Runcible-and-Oversing-bound.",
+      "created_at": "2026-04-15T22:49:02.116814+00:00",
+      "desired": "the operative grammar is open, auditable, and portable; the institutional layer (multi-tenant hosting, org identity, cross-party federation, enforcement, billing) has its own boundary — personal werk users don't care about the split, institutional deployments ride it deliberately",
+      "horizon": "2026-06",
+      "id": "01KP9NATX46X55W7QKYATH85JH",
+      "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
+      "position": null,
+      "short_code": 297,
+      "status": "Active"
     }
   ]
 }
