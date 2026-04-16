@@ -222,9 +222,19 @@ fn canonicalize_workspace(path: &Path) -> Result<PathBuf> {
     Ok(abs)
 }
 
+/// Minimum length for a space name. Single-char names would collide with
+/// address sigils (`g:`, `s:`), so we require ≥2 characters — every
+/// registered name is addressable via the `name:code` cross-space syntax.
+pub const MIN_NAME_LEN: usize = 2;
+
 fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
         return Err(WerkError::IoError("name cannot be empty".into()));
+    }
+    if name.len() < MIN_NAME_LEN {
+        return Err(WerkError::IoError(format!(
+            "name '{name}' is too short; minimum {MIN_NAME_LEN} characters (single-char names collide with address sigils)"
+        )));
     }
     if name == GLOBAL_NAME {
         return Err(WerkError::IoError(format!(
@@ -271,11 +281,19 @@ mod tests {
         assert!(validate_name("werk").is_ok());
         assert!(validate_name("desk-werk").is_ok());
         assert!(validate_name("a1_b2").is_ok());
+        assert!(validate_name("ab").is_ok()); // minimum valid length
     }
 
     #[test]
     fn test_validate_name_empty() {
         assert!(validate_name("").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_too_short() {
+        assert!(validate_name("g").is_err()); // would collide with g: sigil
+        assert!(validate_name("s").is_err()); // would collide with s: sigil
+        assert!(validate_name("x").is_err()); // any single char
     }
 
     #[test]

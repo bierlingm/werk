@@ -29,7 +29,28 @@ use werk_core::{
     gap_magnitude,
 };
 use werk_shared::cli_display::glyphs;
+use werk_shared::cross_space;
 use werk_shared::{display_id, relative_time, truncate};
+
+/// Resolve a tension ID within the local (CWD-discovered) workspace.
+fn resolve_local(
+    id: &str,
+) -> Result<
+    (
+        crate::workspace::Workspace,
+        werk_core::Store,
+        Vec<werk_core::Tension>,
+        werk_core::Tension,
+    ),
+    WerkError,
+> {
+    let workspace = crate::workspace::Workspace::discover()?;
+    let store = workspace.open_store()?;
+    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
+    let resolver = PrefixResolver::new(all_tensions.clone());
+    let tension = resolver.resolve(id)?.clone();
+    Ok((workspace, store, all_tensions, tension))
+}
 
 /// Content width cap. All text, rules, and alignment targets stay within
 /// this many columns. Wide terminals get a left-aligned block, not a
@@ -119,14 +140,27 @@ struct ChildInfo {
 }
 
 pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), WerkError> {
-    let workspace = crate::workspace::Workspace::discover()?;
-    let store = workspace.open_store()?;
+    // Try parsing as a cross-space address first
+    let (workspace, store, all_tensions, tension) =
+        if let Ok(addr) = werk_core::parse_address(&id) {
+            if let Some((space, inner)) = addr.as_cross_space() {
+                let result =
+                    cross_space::resolve_cross_space(space, inner)?;
+                (
+                    result.workspace,
+                    result.store,
+                    result.all_tensions,
+                    result.tension,
+                )
+            } else {
+                resolve_local(&id)?
+            }
+        } else {
+            resolve_local(&id)?
+        };
+
     let sig = crate::commands::signal_thresholds_from(&workspace);
     let analysis = crate::commands::analysis_thresholds_from(&workspace);
-
-    let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
-    let resolver = PrefixResolver::new(all_tensions.clone());
-    let tension = resolver.resolve(&id)?;
 
     let mutations = store
         .get_mutations(&tension.id)
@@ -193,7 +227,7 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
         .get_epochs(&tension.id)
         .map_err(WerkError::StoreError)?;
     let frontier = compute_frontier(&forest, &tension.id, now, &epochs, &child_mutations);
-    let urgency = compute_urgency(tension, now);
+    let urgency = compute_urgency(&tension, now);
     let overdue = tension.status == TensionStatus::Active
         && tension
             .horizon
@@ -246,7 +280,7 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
             .collect();
         let proj_thresholds = crate::commands::to_projection_thresholds(&analysis);
         let pattern = extract_mutation_pattern(
-            tension,
+            &tension,
             &mutations,
             proj_thresholds.pattern_window_seconds,
             now,
@@ -316,7 +350,7 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
     } else {
         let palette = output.palette();
         render_human(
-            &result, tension, &all_tensions, &mutations, &epochs, &frontier,
+            &result, &tension, &all_tensions, &mutations, &epochs, &frontier,
             &temporal, &structural, &field_structural, &horizon_drift, &urgency,
             overdue, now, &palette, &flags, &sig,
         );

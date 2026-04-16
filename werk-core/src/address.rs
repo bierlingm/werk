@@ -8,6 +8,12 @@
 //! - `#42@2026-03` — tension 42 as of March 2026
 //! - `g:01JQXYZ...` — gesture by ULID
 //! - `s:20260328-1` — session by date and sequence
+//! - `werk:42` — tension 42 in space "werk" (cross-space)
+//! - `journal:7~e3` — epoch 3 of tension 7 in space "journal"
+//!
+//! Cross-space disambiguation: single-char prefixes before `:` are sigils
+//! (`g:`, `s:`). Prefixes of ≥2 characters matching `[a-z0-9][a-z0-9_-]*`
+//! are space names. This is deterministic — no registry lookup at parse time.
 //!
 //! All syntax is shell-safe (no expansion in unquoted contexts).
 
@@ -28,6 +34,11 @@ pub enum Address {
     Gesture(String),
     /// A session by date and sequence: `s:20260328-1`
     Session(String),
+    /// A cross-space address: `werk:42`, `journal:7~e3`
+    ///
+    /// The space name is ≥2 chars matching `[a-z0-9][a-z0-9_-]*`.
+    /// The inner address is any non-CrossSpace variant.
+    CrossSpace { space: String, inner: Box<Address> },
 }
 
 impl fmt::Display for Address {
@@ -39,6 +50,22 @@ impl fmt::Display for Address {
             Address::TensionAt { tension, timespec } => write!(f, "#{}@{}", tension, timespec),
             Address::Gesture(id) => write!(f, "g:{}", id),
             Address::Session(id) => write!(f, "s:{}", id),
+            Address::CrossSpace { space, inner } => write!(f, "{}:{}", space, inner),
+        }
+    }
+}
+
+impl Address {
+    /// Returns true if this is a cross-space address.
+    pub fn is_cross_space(&self) -> bool {
+        matches!(self, Address::CrossSpace { .. })
+    }
+
+    /// If this is a CrossSpace address, returns (space_name, inner_address).
+    pub fn as_cross_space(&self) -> Option<(&str, &Address)> {
+        match self {
+            Address::CrossSpace { space, inner } => Some((space, inner)),
+            _ => None,
         }
     }
 }
@@ -67,6 +94,8 @@ impl std::error::Error for AddressParseError {}
 /// - `#42@2026-03` — temporal
 /// - `g:ULID` — gesture
 /// - `s:DATE-N` — session
+/// - `werk:42` — cross-space tension
+/// - `journal:7~e3` — cross-space epoch (all inner variants compose)
 pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
     let input = input.trim();
 
@@ -77,7 +106,7 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
         });
     }
 
-    // Gesture: g:...
+    // Gesture: g:...  (single-char sigil, checked before cross-space)
     if let Some(rest) = input.strip_prefix("g:") {
         if rest.is_empty() {
             return Err(AddressParseError {
@@ -88,7 +117,7 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
         return Ok(Address::Gesture(rest.to_owned()));
     }
 
-    // Session: s:...
+    // Session: s:...  (single-char sigil, checked before cross-space)
     if let Some(rest) = input.strip_prefix("s:") {
         if rest.is_empty() {
             return Err(AddressParseError {
@@ -99,24 +128,50 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
         return Ok(Address::Session(rest.to_owned()));
     }
 
-    // Tension-based: strip optional # prefix
+    // Cross-space: <name>:<inner> where name is ≥2 chars, [a-z0-9][a-z0-9_-]*
+    // Must be checked before # stripping — `werk:42` has no # prefix.
+    if let Some(colon_pos) = input.find(':') {
+        let candidate = &input[..colon_pos];
+        if is_space_name(candidate) {
+            let rest = &input[colon_pos + 1..];
+            if rest.is_empty() {
+                return Err(AddressParseError {
+                    input: input.to_owned(),
+                    reason: format!("empty address after space name '{}'", candidate),
+                });
+            }
+            let inner = parse_address_inner(rest, input)?;
+            return Ok(Address::CrossSpace {
+                space: candidate.to_owned(),
+                inner: Box::new(inner),
+            });
+        }
+    }
+
+    // Tension-based (local): strip optional # prefix, parse inner
+    parse_address_inner(input, input)
+}
+
+/// Parse the inner (non-cross-space) portion of an address.
+/// `full_input` is carried for error messages.
+fn parse_address_inner(input: &str, full_input: &str) -> Result<Address, AddressParseError> {
     let body = input.strip_prefix('#').unwrap_or(input);
 
     // Find sub-addressing sigil: ~ (epoch), . (note/sub), @ (temporal)
     // Try epoch: ~e<N>
     if let Some(pos) = body.find('~') {
         let (num_part, rest) = body.split_at(pos);
-        let tension = parse_short_code(num_part, input)?;
+        let tension = parse_short_code(num_part, full_input)?;
         let rest = &rest[1..]; // skip ~
         if let Some(epoch_str) = rest.strip_prefix('e') {
             let epoch_num: usize = epoch_str.parse().map_err(|_| AddressParseError {
-                input: input.to_owned(),
+                input: full_input.to_owned(),
                 reason: format!("invalid epoch number: '{}'", epoch_str),
             })?;
             return Ok(Address::Epoch { tension, epoch_num });
         }
         return Err(AddressParseError {
-            input: input.to_owned(),
+            input: full_input.to_owned(),
             reason: format!("unknown sub-address after ~: '{}'", rest),
         });
     }
@@ -124,10 +179,10 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
     // Try note: .n<N>
     if let Some(pos) = body.find(".n") {
         let (num_part, rest) = body.split_at(pos);
-        let tension = parse_short_code(num_part, input)?;
+        let tension = parse_short_code(num_part, full_input)?;
         let note_str = &rest[2..]; // skip .n
         let note_num: usize = note_str.parse().map_err(|_| AddressParseError {
-            input: input.to_owned(),
+            input: full_input.to_owned(),
             reason: format!("invalid note number: '{}'", note_str),
         })?;
         return Ok(Address::Note { tension, note_num });
@@ -136,11 +191,11 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
     // Try temporal: @<timespec>
     if let Some(pos) = body.find('@') {
         let (num_part, rest) = body.split_at(pos);
-        let tension = parse_short_code(num_part, input)?;
+        let tension = parse_short_code(num_part, full_input)?;
         let timespec = &rest[1..]; // skip @
         if timespec.is_empty() {
             return Err(AddressParseError {
-                input: input.to_owned(),
+                input: full_input.to_owned(),
                 reason: "timespec is empty after @".to_owned(),
             });
         }
@@ -151,8 +206,24 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
     }
 
     // Plain tension
-    let tension = parse_short_code(body, input)?;
+    let tension = parse_short_code(body, full_input)?;
     Ok(Address::Tension(tension))
+}
+
+/// Check if a string is a valid space name for cross-space addressing.
+/// Must be ≥2 characters, start with [a-z0-9], rest [a-z0-9_-].
+/// This mirrors registry::validate_name() constraints but is a pure
+/// syntactic check — no I/O, no registry lookup.
+fn is_space_name(s: &str) -> bool {
+    if s.len() < 2 {
+        return false;
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 fn parse_short_code(s: &str, full_input: &str) -> Result<i32, AddressParseError> {
@@ -237,6 +308,134 @@ mod tests {
     }
 
     #[test]
+    fn test_cross_space_tension() {
+        assert_eq!(
+            parse_address("werk:42").unwrap(),
+            Address::CrossSpace {
+                space: "werk".to_owned(),
+                inner: Box::new(Address::Tension(42)),
+            }
+        );
+        assert_eq!(
+            parse_address("journal:3").unwrap(),
+            Address::CrossSpace {
+                space: "journal".to_owned(),
+                inner: Box::new(Address::Tension(3)),
+            }
+        );
+    }
+
+    #[test]
+    fn test_cross_space_with_hash() {
+        // `werk:#42` — hash in inner part
+        assert_eq!(
+            parse_address("werk:#42").unwrap(),
+            Address::CrossSpace {
+                space: "werk".to_owned(),
+                inner: Box::new(Address::Tension(42)),
+            }
+        );
+    }
+
+    #[test]
+    fn test_cross_space_epoch() {
+        assert_eq!(
+            parse_address("werk:42~e3").unwrap(),
+            Address::CrossSpace {
+                space: "werk".to_owned(),
+                inner: Box::new(Address::Epoch {
+                    tension: 42,
+                    epoch_num: 3,
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_cross_space_note() {
+        assert_eq!(
+            parse_address("journal:7.n3").unwrap(),
+            Address::CrossSpace {
+                space: "journal".to_owned(),
+                inner: Box::new(Address::Note {
+                    tension: 7,
+                    note_num: 3,
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_cross_space_temporal() {
+        assert_eq!(
+            parse_address("werk:42@2026-03").unwrap(),
+            Address::CrossSpace {
+                space: "werk".to_owned(),
+                inner: Box::new(Address::TensionAt {
+                    tension: 42,
+                    timespec: "2026-03".to_owned(),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn test_cross_space_with_hyphens_underscores() {
+        assert_eq!(
+            parse_address("desk-werk:10").unwrap(),
+            Address::CrossSpace {
+                space: "desk-werk".to_owned(),
+                inner: Box::new(Address::Tension(10)),
+            }
+        );
+        assert_eq!(
+            parse_address("my_journal:5").unwrap(),
+            Address::CrossSpace {
+                space: "my_journal".to_owned(),
+                inner: Box::new(Address::Tension(5)),
+            }
+        );
+    }
+
+    #[test]
+    fn test_sigil_not_cross_space() {
+        // g: and s: are sigils, not space names (single char)
+        assert_eq!(
+            parse_address("g:01JQXYZ").unwrap(),
+            Address::Gesture("01JQXYZ".to_owned())
+        );
+        assert_eq!(
+            parse_address("s:20260328-1").unwrap(),
+            Address::Session("20260328-1".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_cross_space_empty_inner() {
+        assert!(parse_address("werk:").is_err());
+    }
+
+    #[test]
+    fn test_single_char_not_space_name() {
+        // Single char before colon is not a space name — falls through
+        // to tension parsing which will fail on the colon
+        assert!(parse_address("x:42").is_err());
+    }
+
+    #[test]
+    fn test_cross_space_accessors() {
+        let addr = parse_address("werk:42").unwrap();
+        assert!(addr.is_cross_space());
+        let (space, inner) = addr.as_cross_space().unwrap();
+        assert_eq!(space, "werk");
+        assert_eq!(*inner, Address::Tension(42));
+
+        let local = parse_address("42").unwrap();
+        assert!(!local.is_cross_space());
+        assert!(local.as_cross_space().is_none());
+    }
+
+    #[test]
     fn test_errors() {
         assert!(parse_address("").is_err());
         assert!(parse_address("g:").is_err());
@@ -255,6 +454,10 @@ mod tests {
             "#42@2026-03",
             "g:01JQXYZ",
             "s:20260328-1",
+            "werk:#42",
+            "werk:#42~e3",
+            "journal:#7.n3",
+            "werk:#42@2026-03",
         ];
         for case in cases {
             let addr = parse_address(case).unwrap();

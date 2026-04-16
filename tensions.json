@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-16T08:49:48Z",
+  "flushed_at": "2026-04-16T12:06:02Z",
   "summary": {
-    "active": 65,
+    "active": 64,
     "released": 63,
-    "resolved": 162,
-    "total": 290
+    "resolved": 167,
+    "total": 294
   },
   "tensions": [
     {
@@ -1042,15 +1042,15 @@
       "status": "Resolved"
     },
     {
-      "actual": "short codes work within a single space. No cross-space addressing. ULIDs are internal-only. The design is now resolved in #242: prefixed codes (werk:42) resolve through the global space config registry's [workspaces] section, which maps name → path. The address format, resolution mechanism, and relationship to generalized edges (#154) are defined. No implementation yet.",
+      "actual": "cross-space addressing fully implemented and tested. Four layers landed: (1) Address::CrossSpace variant + parser with sigil disambiguation (is_space_name, ≥2 chars), (2) cross_space.rs resolver opening registry→workspace→store, (3) CLI show command wired end-to-end with all flags working, (4) registry hardened to ≥2-char minimum. werk show werk:42 works. Error messages are clear for unknown spaces and missing tensions. 23 unit tests + full suite green.",
       "created_at": "2026-03-27T17:21:06.352779+00:00",
-      "desired": "cross-space addressing scheme exists — space-prefixed short codes (e.g. werk:42, journal:3) resolve through the global space's config registry. Bare short codes address within the current space; prefixed codes address across spaces. The global space config is the namespace resolution table. Deep addresses extend to sub-entities (#42.n3, #42~e2) and external targets (files, URLs) via generalized edges (#154).",
+      "desired": "cross-space addressing scheme exists — space-prefixed short codes (e.g. werk:42, journal:3) resolve through the global space's config registry. Bare short codes address within the current space; prefixed codes address across spaces. All deep address variants compose with the space prefix: werk:42~e3 (epoch), journal:7.n3 (note), werk:42@2026-03 (temporal). Parser disambiguation: single-char prefix = sigil (g:, s:), ≥2-char prefix = space name. Registry enforces ≥2-char minimum for space names (addressable by construction). Cross-space resolution opens the target store and resolves the full inner address. CLI commands that accept tension IDs transparently handle cross-space IDs.",
       "horizon": null,
       "id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
       "position": 5,
       "short_code": 100,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Entire palette is hardcoded for dark backgrounds in theme.rs. Six RGB colors (CLR_DEFAULT through CLR_GREEN) plus CLR_SELECTED_BG and CLR_BG are all dark-mode values. clear_area_styled now uses TRANSPARENT bg (terminal default) instead of explicit black — first step toward light mode. ftui has no built-in theme detection. Light terminals show invisible white-on-white text, alien dark selection blocks, and generally unusable UI.",
@@ -3196,6 +3196,50 @@
       "position": null,
       "short_code": 300,
       "status": "Active"
+    },
+    {
+      "actual": "Address::CrossSpace { space, inner: Box<Address> } variant added. Parser detects ≥2-char alphanumeric prefix before colon via is_space_name(). Inner parsing extracted to parse_address_inner() shared by both local and cross-space paths. Display roundtrips. 18 tests pass including cross-space tension, epoch, note, temporal, hash prefix, hyphens/underscores, sigil disambiguation, empty inner error, single-char rejection, accessors.",
+      "created_at": "2026-04-16T11:15:10.809372+00:00",
+      "desired": "Address::CrossSpace variant and parser — the address enum has a CrossSpace { space, inner } variant. parse_address() detects ≥2-char alphabetic prefix before colon as space name, composes with all inner variants (tension, epoch, note, temporal). Display roundtrips. g: and s: remain sigils.",
+      "horizon": null,
+      "id": "01KPB012ASPW110A10CX7B7CXD",
+      "parent_id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
+      "position": 1,
+      "short_code": 301,
+      "status": "Resolved"
+    },
+    {
+      "actual": "cross_space.rs created in werk-shared. resolve_cross_space(space, inner) loads registry, opens workspace, opens store, lists tensions, resolves via PrefixResolver, returns CrossSpaceResult { store, tension, all_tensions, workspace, space_name }. tension_short_code() extracts the base tension ID from any inner variant. Rejects gestures, sessions, nested cross-space. 5 tests pass.",
+      "created_at": "2026-04-16T11:15:14.067322+00:00",
+      "desired": "cross-space resolver exists — given a space name and inner Address, opens registry→workspace→store and resolves the full address (tension lookup, epoch retrieval, note retrieval, temporal lookup). Returns owned data. Error paths: unknown space, space path missing, tension not found in space.",
+      "horizon": null,
+      "id": "01KPB015GK552AW3A1VR4E94R4",
+      "parent_id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
+      "position": 3,
+      "short_code": 302,
+      "status": "Resolved"
+    },
+    {
+      "actual": "cmd_show detects cross-space addresses via parse_address() + as_cross_space(). Local resolution extracted to resolve_local() helper. Cross-space path uses cross_space::resolve_cross_space(), which returns store + tension + all_tensions + workspace. Signal/analysis thresholds load from the target workspace's config. All show flags work: --brief, --json, human rendering. Error paths tested: unknown space (clear message listing registered spaces), nonexistent tension in remote space, empty global space.",
+      "created_at": "2026-04-16T11:15:18.309992+00:00",
+      "desired": "CLI commands accept cross-space addresses — werk show werk:42 works end-to-end. The show command detects CrossSpace addresses, opens the target space's store, resolves the full inner address, and renders the briefing. All show flags (--brief, --notes, --route, --activity, --epochs, --context) work against cross-space tensions.",
+      "horizon": null,
+      "id": "01KPB019N5C1A5H7D6VK83YHMW",
+      "parent_id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
+      "position": 4,
+      "short_code": 303,
+      "status": "Resolved"
+    },
+    {
+      "actual": "validate_name() now rejects names shorter than MIN_NAME_LEN (2). Constant MIN_NAME_LEN is pub for use by other modules. Three new test cases: g, s, x all rejected. Existing test updated to assert ab (len 2) passes.",
+      "created_at": "2026-04-16T11:15:20.992835+00:00",
+      "desired": "registry enforces ≥2-char minimum for space names — addressable by construction. No gap between 'registered' and 'addressable via cross-space syntax'. validate_name() rejects single-char names.",
+      "horizon": null,
+      "id": "01KPB01C90ST9NX45CWK18QY14",
+      "parent_id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
+      "position": 2,
+      "short_code": 304,
+      "status": "Resolved"
     }
   ]
 }
