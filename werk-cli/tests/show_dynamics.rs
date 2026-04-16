@@ -44,9 +44,9 @@ fn test_show_displays_tension_magnitude() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show the tension header with desired/reality
+    // Should show the tension ID and both desired/reality text
     assert!(
-        stdout.contains("Tension") && stdout.contains("Desired:") && stdout.contains("Reality:"),
+        stdout.contains("#1") && stdout.contains("write a complete novel") && stdout.contains("have an outline"),
         "Should show tension with desired/reality, got: {}",
         stdout
     );
@@ -78,10 +78,10 @@ fn test_show_displays_phase() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show Status and Activity sections
+    // Should show status (in compact metadata) and Activity section
     assert!(
-        stdout.contains("Status:") && stdout.contains("Activity:"),
-        "Should show Status and Activity, got: {}",
+        stdout.contains("Active") && stdout.contains("Activity"),
+        "Should show status and Activity, got: {}",
         stdout
     );
 }
@@ -156,9 +156,9 @@ fn test_show_displays_movement() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should show last activity fact
+    // Should show last activity info (in compact metadata as "last act")
     assert!(
-        stdout.contains("Last act:"),
+        stdout.contains("last act"),
         "Should show last activity, got: {}",
         stdout
     );
@@ -211,7 +211,7 @@ fn test_show_displays_mutation_history() {
 
     // Should show activity section with mutation history
     assert!(
-        stdout.contains("Activity:"),
+        stdout.contains("Activity"),
         "Should show activity section, got: {}",
         stdout
     );
@@ -252,7 +252,7 @@ fn test_show_limits_mutation_history() {
 
     // Should contain activity section (creation + updates)
     assert!(
-        stdout.contains("Activity:"),
+        stdout.contains("Activity"),
         "Should show activity, got: {}",
         stdout
     );
@@ -370,9 +370,9 @@ fn test_show_new_tension_shows_germination() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // New tension should show status and wave info
+    // New tension should show status and wave info (compact metadata format)
     assert!(
-        stdout.contains("Status:") && stdout.contains("Wave:"),
+        stdout.contains("Active") && stdout.contains("wave"),
         "New tension should show status and wave, got: {}",
         stdout
     );
