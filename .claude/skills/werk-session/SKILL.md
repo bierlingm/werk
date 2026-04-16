@@ -80,8 +80,8 @@ Domain to file mapping:
 
 | Domain | Key files |
 |--------|-----------|
-| Signals / temporal | `sd-core/src/temporal.rs`, `sd-core/src/frontier.rs`, `sd-core/src/projection.rs` |
-| Data model / store | `sd-core/src/store.rs`, `sd-core/src/tension.rs`, `sd-core/src/types.rs` |
+| Signals / temporal | `werk-core/src/temporal.rs`, `werk-core/src/frontier.rs`, `werk-core/src/projection.rs` |
+| Data model / store | `werk-core/src/store.rs`, `werk-core/src/tension.rs`, `werk-core/src/types.rs` |
 | CLI commands | `werk-cli/src/commands/*.rs`, `werk-cli/src/main.rs` |
 | TUI | `werk-tui/src/app.rs`, `werk-tui/src/update.rs`, `werk-tui/src/render.rs` |
 | MCP tools | `werk-mcp/src/tools.rs` |
@@ -123,6 +123,16 @@ Run `werk tree` to see the full tension structure.
 Run `werk show <id>` for each target tension.
 
 Note: use `werk` (the installed binary) for reading structure. Use `cargo run --bin werk --` only if you are modifying werk itself and need to test against your changes.
+
+## Session Branch
+
+Your vbranch: `close/<id>-<slug>` (already applied in the workspace).
+
+All commits name the branch explicitly:
+  but commit close/<id>-<slug> -m "..."
+
+Do not commit to any other vbranch. Do not create new vbranches without
+first surfacing why — see Drift Protocol below.
 ```
 
 ### Section 2: Session Identity
@@ -167,6 +177,17 @@ Relevant design documents:
 | [specific concern] | `path/to/file.rs` | L42-87 | [what this code does] |
 ```
 
+### Section 5b: Scope Declaration
+```
+## Scope Declaration
+
+This session edits files in the Key Code Locations table above. Treat
+that list as a fence — additions require acknowledging the drift
+(see Drift Protocol) before touching a new file.
+
+Out of scope for this session: everything not in the table.
+```
+
 ### Section 6: Session Task with Theory of Closure
 
 If custom instructions were provided in Step 0, they have already shaped all prior sections — the code locations emphasize what the instructions asked about, the conceptual grounding foregrounds the relevant principles, the current reality section addresses the questions raised. Now anchor the session task to those instructions as the primary framing:
@@ -195,7 +216,17 @@ Present this plan for approval before writing code.
 - Update tension reality as ground is covered: `werk reality <id> "new state"`
 - Resolve tensions when done: `werk resolve <id>`
 - Run `werk flush` before commits
-- Commit at logical boundaries with descriptive messages
+- Commit at logical boundaries: `but commit close/<id>-<slug> -m "..."`
+
+### Drift Protocol
+
+If the work requires touching a file outside the Scope Declaration:
+
+- **Trivial drift** (a version bump in Cargo.toml, a type import, a one-line config): make the edit, log it on the tension with `werk note <id> "touched <file>: <reason>"`, continue.
+- **Meaningful drift** (new module, cross-cutting refactor, touching a path another session might own): stop, surface the discovery to the user, re-negotiate scope before proceeding. Don't silently expand.
+- **Blocking drift** (the task cannot proceed without crossing into contested territory): stop, write a note on the tension describing what's needed, hand back to the user.
+
+Sticking to scope is the default; breaking it is a deliberate act.
 
 ### Note-taking
 
@@ -216,19 +247,52 @@ Notes are the session's memory. A good note on a sibling tension can save the ne
 any decisions or caveats recorded. Omit this section if no prior context found.]
 ```
 
-## Step 6: Copy to Clipboard
+## Step 6: Set up the branch and copy to clipboard
+
+### 6a. Derive the branch name
+
+Branch format: `close/<id>-<slug>`
+
+- `<id>` — the primary tension's short code, without the `#` (shell-hostile). For multi-tension sessions, use the umbrella/parent tension's short code.
+- `<slug>` — 2–4 content words, kebab-case, lowercase.
+  - If custom instructions were provided in Step 0, derive the slug from them (they reframe what "closed" means).
+  - Else, derive from the target tension's desired text. Strip filler words (a/the/and/of/to/for/in/on). Take the most salient 2–4 content words.
+  - Cap total branch name at ~50 chars; truncate the slug tail if needed.
+
+Examples:
+- tension #42 "Extract display helpers into werk-shared" → `close/42-extract-display-helpers`
+- tension #46, custom instr "focus on schema migration" → `close/46-schema-migration`
+- tensions #10, #11, #12 under parent #9 "Signals cleanup" → `close/9-signals-cleanup`
+
+### 6b. Create or apply the branch
+
+```bash
+BRANCH="close/<id>-<slug>"
+if but branch list 2>&1 | grep -q " ${BRANCH}\b"; then
+  but apply "$BRANCH"
+else
+  but branch new "$BRANCH"
+fi
+```
+
+`but branch new` creates the branch applied in the workspace. `but apply` brings an existing branch back if a prior session left it unapplied. Either way, the session starts with its branch ready to receive commits.
+
+### 6c. Copy the prompt
 
 ```bash
 echo "<the assembled prompt>" | pbcopy
 ```
 
-Tell the user what's on their clipboard:
+### 6d. Summarize for the user
+
+Tell the user, under 10 lines:
 - Which tensions the prompt targets
+- The branch name (so they know where this session's commits will land)
 - Which code areas it maps
 - Which sacred core principles it highlights
 - How many prior sessions touched this area
 
-Keep this summary under 10 lines. The prompt itself is the deliverable.
+The prompt itself is the deliverable.
 
 ## Quality Checks
 
