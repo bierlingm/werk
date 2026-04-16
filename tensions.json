@@ -1,9 +1,9 @@
 {
-  "flushed_at": "2026-04-16T12:06:02Z",
+  "flushed_at": "2026-04-16T13:15:15Z",
   "summary": {
-    "active": 64,
+    "active": 62,
     "released": 63,
-    "resolved": 167,
+    "resolved": 169,
     "total": 294
   },
   "tensions": [
@@ -2164,7 +2164,7 @@
       "status": "Active"
     },
     {
-      "actual": "CLI has werk log (no ID) producing cross-tension timeline. TUI logbase (L key) is per-tension only. No cross-tension timeline surface in TUI.",
+      "actual": "Recent zone implemented and shipped. Root-level deck shows cross-tension epoch timeline from last 7 days — capped at 8 items, expandable. j/k navigates, Enter descends into the tension, Space peeks the epoch's reality snapshot inline below the item. Data from the same logbase as `werk log` (no ID). Focus graph wired, persistence wired, hints bar context-sensitive. PR #16.",
       "created_at": "2026-04-09T11:29:05.255153+00:00",
       "desired": "Recent zone — navigable cross-tension timeline at root level. Most recent mutations first. Shows timestamp, tension short code, and mutation summary (created, resolved, reality updated, etc.). j/k navigates, Enter descends to that tension. Only visible at root. Sourced from the same logbase data as werk log (no ID).",
       "horizon": null,
@@ -2172,7 +2172,7 @@
       "parent_id": "01KMKJR62B2HDAKYKPR3V190YS",
       "position": null,
       "short_code": 205,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "No zone navigation exists. Root level is a single deck. Shift+J/K are unused keybindings. J/K (epoch nav) are logbase-context only, no conflict.",
@@ -2549,7 +2549,7 @@
       "status": "Active"
     },
     {
-      "actual": "Three of note 20's four pieces exist and compose. Registry (#252 ✓), `werk spaces` commands including scan (#251 ✓), multi-store read capability landed across three surfaces (#286/#287/#288 all resolved): CLI `werk field`, daemon /api/field/vitals + /api/field/attention, werk-tab Field toggle. Shared primitive at werk-shared::aggregate (5 unit tests). Locality preserved by API shape — only sums and per-item space tags, no cross-space rankings or blocked inference. Stale registry entries (lost .werk/) skip silently with skipped[] reporting. The fourth piece (cross-workspace address resolution) is deliberately deferred to #100 — current session's [space:#N] tags are display annotations, and felt demand from the field view will pull #100 naturally. Also not yet shipped: a field-scope 'Recent' zone (#90's third zone at wider scope) — current field view is Vitals + Attention only. When #100 resolves and a Recent band lands, #242's desire is fully met.",
+      "actual": "All four pieces exist and compose. Registry (#252), spaces commands (#251), multi-store read across three surfaces (CLI #286, daemon #287, werk-tab #288 — all resolved), and cross-tension timeline (#205 resolved). Cross-space addressing (#100) resolved. The global space at ~/.werk/ serves as registry, holds general-purpose tensions, and provides the aggregate command center view. Locality preserved — only sums and per-item space tags, no cross-space rankings.",
       "created_at": "2026-04-14T11:16:45.530803+00:00",
       "desired": "the global space exists — a space at ~/.werk/ that serves as the registry of all other spaces, holds its own general-purpose tensions, and provides the aggregate command center view across all registered spaces. Spaces are unified: same struct, same operations, same addressing, with an optional directory binding. CLI: werk -g (global), werk -w <name> (specific space), bare werk (location-detected or global fallback). Cross-space addressing and references are edge types within the generalized edge substrate (#154).",
       "horizon": null,
@@ -2557,7 +2557,7 @@
       "parent_id": "01KMMYXS8G84H2XTF189R4ZQZB",
       "position": 4,
       "short_code": 242,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "Rename complete: werk-core is the crate/directory name, active code uses werk_core:: and CoreError, werk.db is primary with idempotent legacy sd.db migration, validators passed, and user-facing README/spec mappings now reference werk-core.",

@@ -98,6 +98,10 @@ pub struct InstrumentApp {
     pub route_expanded: bool,
     pub held_expanded: bool,
     pub accumulated_expanded: bool,
+    pub recent_expanded: bool,
+
+    // Cross-tension recent activity (root level only).
+    pub recent_entries: Vec<crate::deck::RecentEntry>,
 
     // View orientation — Stream (deck) or Survey (time-first)
     pub view_orientation: crate::state::ViewOrientation,
@@ -273,6 +277,8 @@ impl InstrumentApp {
             route_expanded: false,
             held_expanded: false,
             accumulated_expanded: false,
+            recent_expanded: false,
+            recent_entries: Vec::new(),
             view_orientation: crate::state::ViewOrientation::Stream,
             survey_cursor: 0,
             survey_items: Vec::new(),
@@ -398,6 +404,8 @@ impl InstrumentApp {
             route_expanded: false,
             held_expanded: false,
             accumulated_expanded: false,
+            recent_expanded: false,
+            recent_entries: Vec::new(),
             view_orientation: crate::state::ViewOrientation::Stream,
             survey_cursor: 0,
             survey_items: Vec::new(),
@@ -629,10 +637,18 @@ impl InstrumentApp {
         // Compute alerts
         self.compute_alerts();
 
+        // Load cross-tension recent activity at root level
+        if self.parent_id.is_none() {
+            self.recent_entries = self.load_recent_entries();
+        } else {
+            self.recent_entries.clear();
+        }
+
         // Reset expansion overrides on data change
         self.route_expanded = false;
         self.held_expanded = false;
         self.accumulated_expanded = false;
+        self.recent_expanded = false;
 
         // Recompute cached frontier and rebuild focus graph
         self.recompute_frontier();
@@ -643,6 +659,44 @@ impl InstrumentApp {
 
         // Refresh db_modified so the next Tick doesn't treat our own writes as external changes
         self.refresh_db_modified();
+    }
+
+    /// Load cross-tension recent epoch entries (root level only).
+    /// Same pattern as CLI `werk log` — iterates all tensions and collects recent epochs.
+    fn load_recent_entries(&self) -> Vec<crate::deck::RecentEntry> {
+        let tensions = self.engine.store().list_tensions().unwrap_or_default();
+        let now = chrono::Utc::now();
+        let cutoff = now - chrono::Duration::days(7);
+
+        let mut entries: Vec<crate::deck::RecentEntry> = Vec::new();
+
+        for tension in &tensions {
+            let epochs = self
+                .engine
+                .store()
+                .get_epochs(&tension.id)
+                .unwrap_or_default();
+            for (i, epoch) in epochs.iter().enumerate() {
+                if epoch.timestamp >= cutoff {
+                    entries.push(crate::deck::RecentEntry {
+                        tension_id: tension.id.clone(),
+                        short_code: tension.short_code,
+                        desired: tension.desired.clone(),
+                        timestamp: epoch.timestamp,
+                        age: crate::glyphs::relative_time(epoch.timestamp, now),
+                        epoch_number: i + 1,
+                        epoch_type: epoch.epoch_type.clone(),
+                        parent_id: tension.parent_id.clone(),
+                        reality_snapshot: epoch.reality_snapshot.clone(),
+                    });
+                }
+            }
+        }
+
+        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        // Cap at a reasonable number for TUI display
+        entries.truncate(50);
+        entries
     }
 
     /// Compute stateless alerts from current tension state.
@@ -854,9 +908,10 @@ impl InstrumentApp {
                 self.epoch_boundary,
             )
         };
-        // Root level: children don't display as accumulated
+        // Root level: children don't display as accumulated — show recent activity instead
         if self.parent_id.is_none() {
             frontier.accumulated.clear();
+            frontier.recent = self.recent_entries.clone();
         }
         // Inject parent notes into accumulated zone, interleaved by timestamp
         if !self.parent_notes.is_empty() {
@@ -879,6 +934,9 @@ impl InstrumentApp {
         }
         if self.accumulated_expanded {
             frontier.show_accumulated = frontier.accumulated.len();
+        }
+        if self.recent_expanded {
+            frontier.show_recent = frontier.recent.len();
         }
         // Rebuild focus graph from the new frontier
         let has_desire = frontier.has_desire_anchor;
@@ -1366,6 +1424,7 @@ impl InstrumentApp {
             route_expanded: self.route_expanded,
             held_expanded: self.held_expanded,
             accumulated_expanded: self.accumulated_expanded,
+            recent_expanded: self.recent_expanded,
             collapsed_bands: collapsed,
         };
         crate::persistence::save_workspace(registry, &state);
@@ -1388,6 +1447,7 @@ impl InstrumentApp {
         self.route_expanded = state.route_expanded;
         self.held_expanded = state.held_expanded;
         self.accumulated_expanded = state.accumulated_expanded;
+        self.recent_expanded = state.recent_expanded;
 
         // Restore collapsed bands
         for band in state.collapsed_bands {

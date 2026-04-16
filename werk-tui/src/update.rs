@@ -632,12 +632,28 @@ impl InstrumentApp {
             }
 
             Msg::Char('l') | Msg::Descend => {
-                if let Some(entry) = self.action_target().cloned() {
+                // Recent item: descend into that tension (view its children)
+                if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target() {
+                    if let Some(entry) = self.frontier.recent.get(idx).cloned() {
+                        self.descend(&entry.tension_id);
+                    }
+                } else if let Some(entry) = self.action_target().cloned() {
                     self.descend(&entry.id);
                 }
                 Cmd::none()
             }
             Msg::Submit => {
+                // Recent item: Enter descends to that tension (as #205 desire specifies)
+                if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target() {
+                    // Dismiss any peek first
+                    self.deck_zoom = crate::deck::ZoomLevel::Normal;
+                    self.focused_detail = None;
+                    self.focused_note = None;
+                    if let Some(entry) = self.frontier.recent.get(idx).cloned() {
+                        self.descend(&entry.tension_id);
+                    }
+                    return Cmd::none();
+                }
                 // Enter: if already in Focus, dismiss. If in Peek, upgrade to Focus. Otherwise enter Focus.
                 if self.deck_zoom == crate::deck::ZoomLevel::Focus {
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
@@ -712,6 +728,22 @@ impl InstrumentApp {
                         detail.recent_notes = Vec::new();
                     }
                     self.deck_zoom = crate::deck::ZoomLevel::Peek;
+                } else if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target() {
+                    // Space on Recent: show the epoch's reality snapshot
+                    if let Some(recent) = self.frontier.recent.get(idx) {
+                        let snapshot = if recent.reality_snapshot.is_empty() {
+                            "(no reality at this epoch)".to_string()
+                        } else {
+                            recent.reality_snapshot.clone()
+                        };
+                        self.focused_note = Some(crate::deck::FocusedNote {
+                            acc_index: idx,
+                            text: snapshot,
+                            age: format!("epoch {}", recent.epoch_number),
+                        });
+                        self.focused_detail = None;
+                        self.deck_zoom = crate::deck::ZoomLevel::Peek;
+                    }
                 } else if let Some(entry) = self.action_target().cloned() {
                     let mut detail = self.load_focus_detail(&entry);
                     detail.actual = String::new(); // peek = no reality
@@ -2428,6 +2460,11 @@ impl InstrumentApp {
             }
             crate::deck::CursorTarget::Accumulated => {
                 self.accumulated_expanded = !self.accumulated_expanded;
+                self.recompute_frontier();
+                true
+            }
+            crate::deck::CursorTarget::RecentSummary => {
+                self.recent_expanded = !self.recent_expanded;
                 self.recompute_frontier();
                 true
             }

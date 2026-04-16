@@ -42,6 +42,23 @@ impl AccumulatedItem {
 use crate::app::InstrumentApp;
 use crate::state::FieldEntry;
 
+/// An entry in the Recent zone — a cross-tension epoch transition.
+/// Only populated at root level.
+#[derive(Debug, Clone)]
+pub struct RecentEntry {
+    pub tension_id: String,
+    pub short_code: Option<i32>,
+    pub desired: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub age: String,
+    pub epoch_number: usize,
+    pub epoch_type: Option<String>,
+    /// Parent tension ID (used for descent — navigate to this tension's context).
+    pub parent_id: Option<String>,
+    /// Reality snapshot at this epoch — the ground truth at this moment.
+    pub reality_snapshot: String,
+}
+
 // ---------------------------------------------------------------------------
 // Column layout
 // ---------------------------------------------------------------------------
@@ -208,6 +225,10 @@ pub struct Frontier {
     pub show_held: usize,
     /// How many accumulated items to show individually (0 = compressed indicator only).
     pub show_accumulated: usize,
+    /// Cross-tension recent activity (root level only).
+    pub recent: Vec<RecentEntry>,
+    /// How many recent items to show individually.
+    pub show_recent: usize,
     /// Whether the desire anchor is selectable (true when descended into a parent).
     pub has_desire_anchor: bool,
     /// Whether the reality anchor is selectable (true when descended and reality non-empty).
@@ -454,11 +475,27 @@ impl Frontier {
             let count = self.accumulated.len();
             if free >= count {
                 self.show_accumulated = count;
-                // free -= count - 1; // not needed, last category
+                free -= count - 1;
             } else if free >= 1 {
                 self.show_accumulated = free;
+                free = 0;
             } else {
                 self.show_accumulated = 0;
+            }
+        }
+
+        // Recent (root-only zone, after accumulated — lowest expansion priority)
+        // Capped to avoid dominating the deck. +1 for the header rule.
+        let has_recent = !self.recent.is_empty();
+        if has_recent {
+            const MAX_RECENT_DEFAULT: usize = 8;
+            let cap = self.recent.len().min(MAX_RECENT_DEFAULT);
+            // Reserve 1 for header rule
+            if free > 1 {
+                let items = (free - 1).min(cap); // -1 for header
+                self.show_recent = items;
+            } else {
+                self.show_recent = 0;
             }
         }
     }
@@ -489,6 +526,10 @@ pub enum CursorTarget {
     AccumulatedItem(usize),
     /// An individual accumulated note (expanded, index into accumulated vec).
     NoteItem(usize),
+    /// A recent cross-tension epoch entry (index into frontier.recent vec).
+    RecentItem(usize),
+    /// The recent zone summary (compressed).
+    RecentSummary,
     /// The reality anchor (parent's current ground truth).
     Reality,
 }
@@ -833,6 +874,15 @@ impl InstrumentApp {
                     top += 1;
                 } // summary
             }
+            // Recent (root-only) — header + items + optional summary
+            if !frontier.recent.is_empty() {
+                let sr = frontier.show_recent.min(frontier.recent.len());
+                top += 1; // header rule
+                top += sr;
+                if sr < frontier.recent.len() {
+                    top += 1;
+                } // summary
+            }
             top
         };
 
@@ -914,14 +964,118 @@ impl InstrumentApp {
             None
         };
 
-        // === Bottom-up pass: accumulated items (gravity toward reality) ===
-        // Build accumulated List widget and anchor it to the bottom of middle_zone.
+        // === Bottom-up pass: recent → accumulated (gravity toward reality) ===
+
+        // --- Recent zone (root level only): cross-tension timeline ---
+        let recent_item_count = {
+            let shown = frontier.show_recent.min(frontier.recent.len());
+            let remaining = frontier.recent.len() - shown;
+            1 + shown + if remaining > 0 { 1 } else { 0 } // header + items + optional summary
+        };
+        let mut bottom_cursor = middle_end;
+
+        if !frontier.recent.is_empty() && recent_item_count > 0 {
+            let shown = frontier.show_recent.min(frontier.recent.len());
+
+            // Measure how much extra space the inline note needs
+            let note_lines = if self.deck_zoom.has_detail() {
+                if let CursorTarget::RecentItem(_) = active_target {
+                    if let Some(ref note) = self.focused_note {
+                        let text_w = w.saturating_sub(cols.left + cols.gutter + 4);
+                        word_wrap(&note.text, text_w).len() + 1 // +1 for age/epoch line
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            let total_h = recent_item_count + note_lines;
+            let recent_h = total_h.min((bottom_cursor - middle_start) as usize);
+            let recent_top = bottom_cursor.saturating_sub(recent_h as u16);
+
+            if recent_h > 0 {
+                let mut ry = recent_top;
+
+                // Render recent zone header
+                let header_text = format!("recent \u{00B7} {} epochs", frontier.recent.len());
+                ftui::widgets::rule::Rule::new()
+                    .title(&header_text)
+                    .style(self.styles.dim)
+                    .render(Rect::new(area.x, ry, area.width, 1), frame);
+                ry += 1;
+
+                // Render individual recent items with inline note below focused item
+                let items_to_render = shown.min(recent_h.saturating_sub(1)); // -1 for header
+                let focused_recent = match active_target {
+                    CursorTarget::RecentItem(idx) if self.deck_zoom.has_detail() => Some(idx),
+                    _ => None,
+                };
+
+                for i in 0..items_to_render {
+                    if ry >= bottom_cursor {
+                        break;
+                    }
+                    let entry = &frontier.recent[i];
+                    let is_selected = active_target == CursorTarget::RecentItem(i);
+                    self.render_recent_line(frame, area.x, ry, w, &cols, entry, is_selected);
+                    ry += 1;
+
+                    // Inline note below the focused item
+                    if focused_recent == Some(i) {
+                        if let Some(ref note) = self.focused_note {
+                            let indent = cols.left + cols.gutter + 4;
+                            let text_w = w.saturating_sub(indent);
+                            let indent_str = " ".repeat(indent);
+                            let wrapped = word_wrap(&note.text, text_w);
+                            for line_text in &wrapped {
+                                if ry >= bottom_cursor {
+                                    break;
+                                }
+                                Paragraph::new(Line::from_spans([
+                                    Span::styled(indent_str.clone(), self.styles.subdued),
+                                    Span::styled(line_text.clone(), self.styles.subdued),
+                                ]))
+                                .render(Rect::new(area.x, ry, w as u16, 1), frame);
+                                ry += 1;
+                            }
+                            // Epoch label line
+                            if ry < bottom_cursor {
+                                Paragraph::new(Line::from_spans([
+                                    Span::styled(indent_str, self.styles.dim),
+                                    Span::styled(&note.age, self.styles.dim),
+                                ]))
+                                .render(Rect::new(area.x, ry, w as u16, 1), frame);
+                                ry += 1;
+                            }
+                        }
+                    }
+                }
+
+                // Render summary if there are more items
+                let remaining = frontier.recent.len() - shown;
+                if remaining > 0 && ry < bottom_cursor {
+                    let is_selected = active_target == CursorTarget::RecentSummary;
+                    let text = format!("\u{25B8} {} more epochs", remaining);
+                    self.render_indicator_line(
+                        frame, area.x, ry, w, &cols, &text, is_selected, self.styles.dim, 0,
+                    );
+                }
+
+                bottom_cursor = recent_top;
+            }
+        }
+
+        // Build accumulated List widget and anchor it above recent zone.
         let acc_item_count = {
             let shown = frontier.show_accumulated;
             let remaining = frontier.accumulated.len() - shown;
             shown + if remaining > 0 { 1 } else { 0 } // shown items + summary
         };
-        let mut acc_top = middle_end;
+        let mut acc_top = bottom_cursor;
 
         if !frontier.accumulated.is_empty() && acc_item_count > 0 {
             let shown = frontier.show_accumulated;
@@ -935,9 +1089,9 @@ impl InstrumentApp {
                 &self.styles,
             );
 
-            // Anchor accumulated items to bottom of middle_zone
-            let acc_h = acc_item_count.min((middle_end - middle_start) as usize);
-            acc_top = middle_end.saturating_sub(acc_h as u16);
+            // Anchor accumulated items above recent zone (or bottom of middle_zone)
+            let acc_h = acc_item_count.min((bottom_cursor - middle_start) as usize);
+            acc_top = bottom_cursor.saturating_sub(acc_h as u16);
 
             if acc_h > 0 {
                 ftui::widgets::StatefulWidget::render(
@@ -1450,6 +1604,54 @@ impl InstrumentApp {
         Paragraph::new(Text::from(line)).render(Rect::new(x, y, w as u16, 1), frame);
     }
 
+    /// Render a single recent entry line: age · #short_code · desire (truncated).
+    fn render_recent_line(
+        &self,
+        frame: &mut Frame<'_>,
+        x: u16,
+        y: u16,
+        w: usize,
+        cols: &ColumnLayout,
+        entry: &RecentEntry,
+        is_selected: bool,
+    ) {
+        let base_style = if is_selected {
+            self.styles.selected
+        } else {
+            self.styles.dim
+        };
+
+        let display_id = match entry.short_code {
+            Some(code) => format!("#{}", code),
+            None => "(?)".to_string(),
+        };
+        let type_label = match &entry.epoch_type {
+            Some(t) => format!(" [{}]", t),
+            None => String::new(),
+        };
+
+        let prefix_len = cols.left + cols.gutter;
+        let right_part = format!("{}{}", display_id, type_label);
+        let right_w = right_part.chars().count();
+        let age_w = entry.age.chars().count();
+        // Layout: [left pad] age · #id [type]  desire...
+        let desire_budget = w
+            .saturating_sub(prefix_len + age_w + 3 + right_w + 2)
+            .min(60);
+        let desire_text = truncate_str(&entry.desired, desire_budget);
+
+        let mut spans: Vec<Span> = Vec::new();
+        spans.push(Span::styled(" ".repeat(prefix_len), base_style));
+        spans.push(Span::styled(&entry.age, base_style));
+        spans.push(Span::styled(" \u{00B7} ", base_style));
+        spans.push(Span::styled(&right_part, base_style));
+        spans.push(Span::styled("  ", base_style));
+        spans.push(Span::styled(desire_text, base_style));
+
+        let line = Line::from_spans(spans);
+        Paragraph::new(Text::from(line)).render(Rect::new(x, y, w as u16, 1), frame);
+    }
+
     /// Render an indicator line (held, accumulated) in the deck.
     /// `extra_indent` adds chars before the text (used for held items, Q22).
     fn render_indicator_line(
@@ -1908,6 +2110,8 @@ impl InstrumentApp {
                 CursorTarget::AccumulatedItem(_) => "l descend \u{00B7} Enter focus",
                 CursorTarget::NoteItem(_) => "Enter focus",
                 CursorTarget::InputPoint => "a add \u{00B7} n note \u{00B7} e edit",
+                CursorTarget::RecentItem(_) => "Enter descend \u{00B7} Space peek \u{00B7} l descend",
+                CursorTarget::RecentSummary => "Enter expand \u{00B7} j/k navigate",
                 CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated => {
                     "Enter expand \u{00B7} j/k navigate"
                 }
