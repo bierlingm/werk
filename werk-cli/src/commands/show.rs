@@ -938,43 +938,87 @@ fn render_notes(
     println!();
     println!("{}", section_header("Notes", &format!("{}", notes.len()), palette));
 
-    // Layout: "  {timestamp:>12}  {text}"
-    // Text column starts at position 2 + 12 + 2 = 16.
-    // Continuation lines pad to the same column 16.
-    let ts_col = 12;
-    let text_start = 2 + ts_col + 2; // column where text begins
+    // Layout: "  .n{num}  {text}... · {timestamp}"
+    // Note ref on the left, text fills the middle, timestamp trails the last line.
+    let ref_col = 5; // ".n99 " — up to 5 chars
+    let text_start = 2 + ref_col + 1; // "  " + ref + " "
     let text_width = CONTENT_WIDTH.saturating_sub(text_start).max(40);
 
-    for note in notes.iter().rev() {
-        let ts = relative_time(note.timestamp(), now);
+    let total = notes.len();
+    for (idx, note) in notes.iter().rev().enumerate() {
+        // Notes are chronological (oldest first); reversed for display.
+        // note_num is 1-indexed chronological: n1 = first note added.
+        let note_num = total - idx;
+        let note_ref = format!(".n{}", note_num);
+        let ts = compact_time(note.timestamp(), now);
+        let ts_suffix = format!(" \u{00b7} {}", ts); // " · 3 hours ago"
         let text = note.new_value();
 
-        let (lines, truncated) = if flags.notes {
-            (wrap_text(text, text_width), false)
+        let ts_suffix_len = ts_suffix.chars().count();
+        // The last visible line must reserve space for the timestamp suffix.
+        let last_line_budget = text_width.saturating_sub(ts_suffix_len);
+
+        let lines = if flags.notes {
+            let mut all = wrap_text(text, text_width);
+            // In full-notes mode, truncate only the last line to fit timestamp.
+            if let Some(last) = all.last_mut() {
+                let chars: Vec<char> = last.chars().collect();
+                if chars.len() > last_line_budget {
+                    let trimmed: String = chars[..last_line_budget.saturating_sub(1)].iter().collect();
+                    *last = format!("{}\u{2026}", trimmed);
+                }
+            }
+            all
         } else {
             // Wrap the full text, then take exactly 2 lines.
             let all_lines = wrap_text(text, text_width);
             if all_lines.len() <= 2 {
-                (all_lines, false)
+                // Even when not truncated, the last line must fit the suffix.
+                let mut kept = all_lines;
+                if let Some(last) = kept.last_mut() {
+                    let chars: Vec<char> = last.chars().collect();
+                    if chars.len() > last_line_budget {
+                        let trimmed: String = chars[..last_line_budget.saturating_sub(1)].iter().collect();
+                        *last = format!("{}\u{2026}", trimmed);
+                    }
+                }
+                kept
             } else {
                 let mut kept: Vec<String> = all_lines.into_iter().take(2).collect();
-                // Replace last line's trailing chars with ellipsis
+                // Truncate last line to fit timestamp suffix within text_width.
                 let last = kept.last_mut().unwrap();
                 let chars: Vec<char> = last.chars().collect();
-                if chars.len() >= 2 {
-                    let trimmed: String = chars[..chars.len() - 1].iter().collect();
+                if chars.len() > last_line_budget {
+                    let trimmed: String = chars[..last_line_budget.saturating_sub(1)].iter().collect();
                     *last = format!("{}\u{2026}", trimmed);
                 }
-                (kept, true)
+                kept
             }
         };
-        let _ = truncated;
-        let ts_padded = format!("{:>width$}", ts, width = ts_col);
+
+        let ref_padded = format!("{:<width$}", note_ref, width = ref_col);
+        let last_idx = lines.len().saturating_sub(1);
         for (i, line) in lines.iter().enumerate() {
-            if i == 0 {
+            let is_last = i == last_idx;
+            if i == 0 && is_last {
+                // Single line: ref + text + timestamp
                 println!(
-                    "  {}  {}",
-                    palette.chrome(&ts_padded), palette.testimony(line),
+                    "  {} {}{}",
+                    palette.chrome(&ref_padded),
+                    palette.testimony(line),
+                    palette.chrome(&ts_suffix),
+                );
+            } else if i == 0 {
+                println!(
+                    "  {} {}",
+                    palette.chrome(&ref_padded), palette.testimony(line),
+                );
+            } else if is_last {
+                // Last continuation line: text + timestamp
+                println!(
+                    "{:width$}{}{}",
+                    "", palette.testimony(line), palette.chrome(&ts_suffix),
+                    width = text_start,
                 );
             } else {
                 println!(
@@ -1161,6 +1205,24 @@ fn signal_line(
 ) {
     let padded_label = format!("{:<10}", label);
     println!("  {} {} {}", color_fn(palette, glyph), color_fn(palette, &padded_label), desc);
+}
+
+/// Compact relative timestamp for notes: "now", "5m", "3h", "2d", "1w", "3mo".
+fn compact_time(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let secs = (now - dt).num_seconds().max(0);
+    if secs < 60 {
+        "now".to_string()
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h", secs / 3600)
+    } else if secs < 604800 {
+        format!("{}d", secs / 86400)
+    } else if secs < 2_592_000 {
+        format!("{}w", secs / 604800)
+    } else {
+        format!("{}mo", secs / 2_592_000)
+    }
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {

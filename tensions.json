@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-16T13:15:15Z",
+  "flushed_at": "2026-04-16T15:41:20Z",
   "summary": {
     "active": 62,
     "released": 63,
-    "resolved": 169,
-    "total": 294
+    "resolved": 170,
+    "total": 295
   },
   "tensions": [
     {
@@ -3239,6 +3239,17 @@
       "parent_id": "01KMR50Q9G5ANZ4VD702VY6VGJ",
       "position": 2,
       "short_code": 304,
+      "status": "Resolved"
+    },
+    {
+      "actual": "notes in show output carry deep-address references and compact time suffixes — .n<num> on the left, · 3h trailing the last line, styled as chrome metadata. compact_time() formatter added. Last-line truncation reserves space for the suffix.",
+      "created_at": "2026-04-16T15:41:13.889482+00:00",
+      "desired": "show command displays note references (.n1, .n2) with compact trailing timestamps",
+      "horizon": null,
+      "id": "01KPBF8791XH3GQ2CHN7911JMH",
+      "parent_id": "01KPAESNJBNGK33EX6G7HYQ60X",
+      "position": null,
+      "short_code": 305,
       "status": "Resolved"
     }
   ]
