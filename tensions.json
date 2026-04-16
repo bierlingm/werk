@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-15T22:49:02Z",
+  "flushed_at": "2026-04-16T08:49:48Z",
   "summary": {
-    "active": 62,
+    "active": 65,
     "released": 63,
     "resolved": 162,
-    "total": 287
+    "total": 290
   },
   "tensions": [
     {
@@ -3162,6 +3162,39 @@
       "parent_id": "01KP9N3RFQ8KDRR29AK2ZWDA10",
       "position": null,
       "short_code": 297,
+      "status": "Active"
+    },
+    {
+      "actual": "Implemented. show.rs fully rewritten: desire as title-weight word-wrapped text, reality as paragraph, 3-line compact metadata (status/position/wave | deadline/urgency | closure/parent), signal collapsing for homogeneous CRITICAL/VIOLATION signals, Theory of Closure section replaces Frontier+Children (frontier-zone organization: positioned with ▸N glyphs, held zone, done zone, dashed rules), Notes as separate section from Activity, Activity most-recent-first with same-timestamp grouping and dedup. Seven flags: --brief/-b (card view), --notes/-n (full note text), --route/-r (per-child detail with reality+deadline), --activity/-a (full mutation history), --epochs/-e (expanded snapshots), --context/-c (ancestors/siblings/engagement), --full/-f (all). Composable. All tests pass. textwrap dep added for word wrapping.",
+      "created_at": "2026-04-16T06:14:02.571393+00:00",
+      "desired": "werk show is a world-class CLI briefing — spatial law in layout, frontier-zone children, separated notes, compact metadata, composable section flags (--brief, --notes, --route, --activity, --epochs, --context, --full)",
+      "horizon": null,
+      "id": "01KPAESNJBNGK33EX6G7HYQ60X",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 298,
+      "status": "Active"
+    },
+    {
+      "actual": "show currently dumps all historical data (25 done children, all notes, last 10 mutations). The epoch boundary exists in the data (compute_frontier uses it) but the CLI rendering ignores it. Needs epoch timestamp filtering in render_theory_of_closure, render_notes, render_activity. Also needs a composable history query grammar — a separate design concern from the epoch-scoped default.",
+      "created_at": "2026-04-16T08:49:44.080830+00:00",
+      "desired": "werk show defaults to the present epoch — done/notes/activity filtered to the epoch boundary, with --history restoring the complete picture",
+      "horizon": null,
+      "id": "01KPAQPR4G20YTDCDJYX3AS7SQ",
+      "parent_id": "01KP6YQNZ7C9Q0NPNFVE7AE767",
+      "position": null,
+      "short_code": 299,
+      "status": "Active"
+    },
+    {
+      "actual": "Position numbers accumulate gaps as children resolve (e.g. #2 has positions 1 and 7 with nothing between). The display honestly shows what's stored but a practitioner reads ▸1 and ▸7 as 'two of seven steps' when it means 'two steps, one numbered 7 from history'. Either auto-compact on resolve, warn about gaps, or renumber as a batch gesture.",
+      "created_at": "2026-04-16T08:49:48.746577+00:00",
+      "desired": "positioning logic is coherent — gaps in position numbers are either collapsed or surfaced as a signal, never silently misleading",
+      "horizon": null,
+      "id": "01KPAQPWPA7R99TGBJ067GVY9N",
+      "parent_id": "01KNT6BF1ERTX9DNK11631DMNN",
+      "position": null,
+      "short_code": 300,
       "status": "Active"
     }
   ]
