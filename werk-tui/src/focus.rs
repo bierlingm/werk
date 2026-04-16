@@ -282,6 +282,28 @@ impl FocusState {
             );
         }
 
+        // Recent items (root level only — cross-tension timeline)
+        let shown_recent = frontier.show_recent.min(frontier.recent.len());
+        for i in 0..shown_recent {
+            alloc(
+                CursorTarget::RecentItem(i),
+                &mut self.graph,
+                &mut self.targets,
+                &mut self.next_id,
+                &mut prev,
+            );
+        }
+        // Recent summary (remaining > 0)
+        if frontier.recent.len() > shown_recent {
+            alloc(
+                CursorTarget::RecentSummary,
+                &mut self.graph,
+                &mut self.targets,
+                &mut self.next_id,
+                &mut prev,
+            );
+        }
+
         // Reality anchor
         if has_reality {
             alloc(
@@ -328,6 +350,8 @@ mod tests {
         Frontier {
             route, overdue, next, held, accumulated,
             show_route, show_held, show_accumulated,
+            recent: Vec::new(),
+            show_recent: 0,
             has_desire_anchor: false,
             has_reality_anchor: false,
         }

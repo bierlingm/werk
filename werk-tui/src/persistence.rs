@@ -29,6 +29,8 @@ pub struct WorkspaceState {
     pub route_expanded: bool,
     pub held_expanded: bool,
     pub accumulated_expanded: bool,
+    #[serde(default)]
+    pub recent_expanded: bool,
     pub collapsed_bands: Vec<PersistedTimeBand>,
 }
 
@@ -46,6 +48,8 @@ pub enum PersistedCursorTarget {
     Accumulated,
     AccumulatedItem(usize),
     NoteItem(usize),
+    RecentItem(usize),
+    RecentSummary,
     Reality,
 }
 
@@ -63,6 +67,8 @@ impl From<CursorTarget> for PersistedCursorTarget {
             CursorTarget::Accumulated => Self::Accumulated,
             CursorTarget::AccumulatedItem(i) => Self::AccumulatedItem(i),
             CursorTarget::NoteItem(i) => Self::NoteItem(i),
+            CursorTarget::RecentItem(i) => Self::RecentItem(i),
+            CursorTarget::RecentSummary => Self::RecentSummary,
             CursorTarget::Reality => Self::Reality,
         }
     }
@@ -82,6 +88,8 @@ impl From<PersistedCursorTarget> for CursorTarget {
             PersistedCursorTarget::Accumulated => Self::Accumulated,
             PersistedCursorTarget::AccumulatedItem(i) => Self::AccumulatedItem(i),
             PersistedCursorTarget::NoteItem(i) => Self::NoteItem(i),
+            PersistedCursorTarget::RecentItem(i) => Self::RecentItem(i),
+            PersistedCursorTarget::RecentSummary => Self::RecentSummary,
             PersistedCursorTarget::Reality => Self::Reality,
         }
     }
