@@ -196,7 +196,7 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
             ChildInfo {
                 id: child.id().to_string(),
                 short_code: child.tension.short_code,
-                desired: truncate(&child.tension.desired, 40),
+                desired: truncate(&child.tension.desired, CONTENT_WIDTH.saturating_sub(13)),
                 status: child.tension.status.to_string(),
                 position: child.tension.position,
                 completion_ts,
