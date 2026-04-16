@@ -135,7 +135,7 @@ fn test_full_lifecycle_dynamics_evolution() {
 
     let stdout = String::from_utf8_lossy(&output);
     assert!(
-        stdout.contains("Activity:"),
+        stdout.contains("Activity"),
         "Should show Activity section, got: {}",
         stdout
     );

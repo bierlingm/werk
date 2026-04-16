@@ -559,7 +559,6 @@ fn test_show_with_horizon() {
         .current_dir(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("Deadline:"))
         .stdout(predicate::str::contains("2026-05"));
 }
 

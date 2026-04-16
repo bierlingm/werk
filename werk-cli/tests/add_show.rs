@@ -577,9 +577,9 @@ fn test_show_displays_parent() {
         .clone();
 
     let stdout = String::from_utf8_lossy(&output);
-    // Should show parent reference (short code)
+    // Should show parent reference (in metadata block as "under #N")
     assert!(
-        stdout.contains("Parent:"),
+        stdout.contains("under #1"),
         "Should show parent info, got: {}",
         stdout
     );

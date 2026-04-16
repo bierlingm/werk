@@ -140,7 +140,27 @@ fn main() {
             werk::commands::epoch::cmd_epoch(&output, id, list, show)
         }
         Commands::Horizon { id, value } => werk::commands::horizon::cmd_horizon(&output, id, value),
-        Commands::Show { id, full } => werk::commands::show::cmd_show(&output, id, full),
+        Commands::Show {
+            id,
+            brief,
+            notes,
+            route,
+            activity,
+            epochs,
+            context,
+            full,
+        } => werk::commands::show::cmd_show(
+            &output,
+            id,
+            werk::commands::show::ShowFlags {
+                brief,
+                notes: notes || full,
+                route: route || full,
+                activity: activity || full,
+                epochs: epochs || full,
+                context: context || full,
+            },
+        ),
         Commands::Reality {
             id,
             value,

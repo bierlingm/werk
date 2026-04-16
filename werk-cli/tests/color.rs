@@ -226,20 +226,11 @@ fn test_show_readable() {
 
     let stdout = String::from_utf8_lossy(&output);
 
-    // Should still contain expected fields
+    // Should still contain expected fields (new layout uses title-weight desire,
+    // paragraph reality, compact metadata — no "Desired:"/"Reality:"/"Status:" labels)
     assert!(
-        stdout.contains("Tension"),
-        "Output should contain 'Tension', got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("Desired:"),
-        "Output should contain 'Desired:', got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("Reality:"),
-        "Output should contain 'Reality:', got: {}",
+        stdout.contains("#1"),
+        "Output should contain tension ID, got: {}",
         stdout
     );
     assert!(
@@ -253,18 +244,13 @@ fn test_show_readable() {
         stdout
     );
     assert!(
-        stdout.contains("Status:"),
-        "Output should contain 'Status:', got: {}",
-        stdout
-    );
-    assert!(
         stdout.contains("Active"),
         "Output should show Active status, got: {}",
         stdout
     );
     assert!(
-        stdout.contains("Activity:"),
-        "Output should contain 'Activity:', got: {}",
+        stdout.contains("Activity"),
+        "Output should contain 'Activity' section, got: {}",
         stdout
     );
 }

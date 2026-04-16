@@ -254,16 +254,49 @@ Examples:
     },
 
     /// Display tension details.
+    ///
+    /// Default output is a structured briefing: identity, situation, signals,
+    /// theory of closure (children organized by frontier zone), recent notes,
+    /// and activity. Section flags expand specific areas; --full expands all.
     #[command(after_help = "\
 Examples:
-  werk show 42                       Show by short code
+  werk show 42                       Briefing view
+  werk show 42 --brief               Card view (identity + situation only)
+  werk show 42 --notes               Expand all notes to full text
+  werk show 42 --route               Theory of closure with per-child detail
+  werk show 42 --notes --activity    Compose section expansions
+  werk show 42 --full                Everything expanded
   werk show --json 42                Structured output for scripts")]
     Show {
         /// Tension ID or prefix (4+ characters).
         id: String,
 
-        /// Expanded output: include ancestors, siblings, and engagement metrics.
-        #[arg(long)]
+        /// Card view: identity + situation + signals only. No children, notes, or activity.
+        #[arg(long, short)]
+        brief: bool,
+
+        /// Expand all notes to full text (default shows recent notes truncated).
+        #[arg(long, short)]
+        notes: bool,
+
+        /// Theory of closure focused: children with per-child detail (reality, deadline, urgency).
+        #[arg(long, short)]
+        route: bool,
+
+        /// Full mutation history (default shows last 10).
+        #[arg(long, short)]
+        activity: bool,
+
+        /// Expand all epochs with desire/reality snapshots.
+        #[arg(long, short)]
+        epochs: bool,
+
+        /// Structural neighborhood: ancestors, siblings, engagement metrics.
+        #[arg(long, short)]
+        context: bool,
+
+        /// Everything expanded: all notes, all activity, all epochs, ancestors, siblings, engagement.
+        #[arg(long, short)]
         full: bool,
     },
 
