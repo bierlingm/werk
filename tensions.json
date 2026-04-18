@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-16T15:41:20Z",
+  "flushed_at": "2026-04-18T12:49:32Z",
   "summary": {
-    "active": 62,
+    "active": 67,
     "released": 63,
     "resolved": 170,
-    "total": 295
+    "total": 300
   },
   "tensions": [
     {
@@ -41,7 +41,7 @@
       "status": "Active"
     },
     {
-      "actual": "course is scheduled for end of April 2026; no direct input yet from the structural consulting methodology on cooperative dynamics",
+      "actual": "registered for FST April 2026; course takes place next weekend; no engagement with Foundations for Structural Thinking material has occurred yet; cooperative model remains without external input",
       "created_at": "2026-03-24T17:52:25.973793+00:00",
       "desired": "the Foundations for Structural Thinking course has been completed and its insights on collective structure are integrated into the cooperative model",
       "horizon": "2026-05-01",
@@ -3251,6 +3251,61 @@
       "position": null,
       "short_code": 305,
       "status": "Resolved"
+    },
+    {
+      "actual": "Phase 0 complete: claude@moritzbierling.com reaches werk.moritzbierling.com via service-auth headers, has 11 werk_* tools, auto-sends to operator. cloudflared LaunchDaemon supervised, Litestream-to-R2 not yet, no replica anywhere — laptop is single source of truth.",
+      "created_at": "2026-04-18T12:49:31.704964+00:00",
+      "desired": "agentic-inbox is wired into werk via cloudflared + Cloudflare Access service token",
+      "horizon": null,
+      "id": "01KPGA78HR0GS2BRHCQKTF4CVS",
+      "parent_id": null,
+      "position": null,
+      "short_code": 306,
+      "status": "Active"
+    },
+    {
+      "actual": "DRAFT spec exists at desk/werk/designs/werk-log-1.0-draft-spec.md. Authoritative-log premise not yet committed by Moritz. Op envelope, 1.0 op type set, warranty model, mutator semantics, fractional indexing, and open questions (encoding, signing, compaction, cross-space refs) all specified.",
+      "created_at": "2026-04-18T12:49:31.817920+00:00",
+      "desired": "werk-log/1.0 spec is committed to and published",
+      "horizon": null,
+      "id": "01KPGA78N96J8QHHKT8SP92PRA",
+      "parent_id": null,
+      "position": null,
+      "short_code": 307,
+      "status": "Active"
+    },
+    {
+      "actual": "Currently werk-serve runs on Moritz's laptop only, exposed via cloudflared from /etc/cloudflared/config.yml. No cloud replica, no continuous backup, single point of failure. Hetzner box exists but werk not deployed to it.",
+      "created_at": "2026-04-18T12:49:31.925513+00:00",
+      "desired": "werk-serve runs on Hetzner with Litestream-to-R2 continuous backup",
+      "horizon": null,
+      "id": "01KPGA78RNK3MYC0173RCFTDGA",
+      "parent_id": null,
+      "position": null,
+      "short_code": 308,
+      "status": "Active"
+    },
+    {
+      "actual": "CLI today writes directly to local SQLite via werk-core's Store. No HTTP-client mode exists. Adding --remote (direct HTTP, no local cache) is ~a day; adding full replica mode (local logbase + bidirectional sync) is the larger Phase 4 work in architecture-synthesis.md.",
+      "created_at": "2026-04-18T12:49:32.048585+00:00",
+      "desired": "werk CLI grows --remote and replica modes",
+      "horizon": null,
+      "id": "01KPGA78WGRG0WMQY9R29H541B",
+      "parent_id": null,
+      "position": null,
+      "short_code": 309,
+      "status": "Active"
+    },
+    {
+      "actual": "werk-web /api/* covers tensions list/create + per-tension desired/reality/resolve/release/reopen + workspace get/list/select + field vitals/attention. Missing: note, horizon, snooze, recur, rm, move, split, merge, hold, position, compose, batch. Each is a small mutator; together they unlock claude@ doing structural moves not just capture.",
+      "created_at": "2026-04-18T12:49:32.162510+00:00",
+      "desired": "werk-web exposes the full gesture surface",
+      "horizon": null,
+      "id": "01KPGA7902SR00AFHF83N5SQH4",
+      "parent_id": null,
+      "position": null,
+      "short_code": 310,
+      "status": "Active"
     }
   ]
 }
