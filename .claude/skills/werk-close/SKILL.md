@@ -18,7 +18,7 @@ Gather everything in parallel. You need the full picture before proposing anythi
 
 ### Code changes
 ```bash
-but status -fv
+git status
 git diff --stat HEAD
 git log --oneline HEAD~15..HEAD   # recent commits for context
 ```
@@ -114,37 +114,34 @@ cargo run --bin werk -- note <id> "<text>"
 
 ### Code commits
 
-Use GitButler (`but`), never raw git. Follow the gitbutler skill conventions:
+Plain `git`. Stage explicitly, commit on a feature branch (not directly on `main`):
 
-1. `but status -fv` to get fresh IDs
-2. `but commit <branch> -m "<msg>" --changes <id>,<id> --status-after`
-   - Use `-c` to create a new branch if needed
-   - Verify the `--status-after` output shows the commit landed with files
-3. If tensions.json changed from the tension updates above, amend or commit it too
+1. `git status` and `git diff` to confirm what's about to be committed
+2. `git checkout -b <topic>` if not already on a feature branch
+3. `git add <paths>` (avoid `git add -A` — `.githooks/pre-commit` will flush `tensions.json` and stage it for you)
+4. `git commit -m "<msg>"` — let the pre-commit hook run; don't `--no-verify`
 
 ### Branch operations
 
 ```bash
-but push <branch-id>                    # push unpushed branches
-but pr new <branch-id> -t              # create PR from single-commit branch
-but pr new <branch-id> -m "<msg>"      # create PR with message
-but unapply <branch-id> --status-after  # remove integrated branches
+git push -u origin <branch>             # push and set upstream
+gh pr create --fill                     # PR from single-commit branch (auto-message)
+gh pr create -t "<title>" -b "<body>"  # PR with message
+git branch -d <branch>                  # remove merged local branches
 ```
 
 ### PR merges
 
 ```bash
 gh pr merge <number> --squash --delete-branch
-but pull --status-after                 # sync after merge
+git checkout main && git pull --ff-only
 ```
-
-If `but pull` fails due to stale branches, unapply them first and retry.
 
 ### Post-execution verification
 
 After all actions complete:
 ```bash
-but status -fv                          # confirm clean state
+git status                              # confirm clean state
 cargo run --bin werk -- show <ids>      # confirm tension updates landed
 ```
 
@@ -154,7 +151,7 @@ Report the final state to the user: what was committed, what was pushed, what wa
 
 - **Merge conflicts during pull**: Do NOT auto-resolve. Show the conflict and ask.
 - **Dependency-locked files**: Explain which branch owns the file and propose stacking.
-- **Empty commits**: If `but commit` succeeds but `--status-after` shows no files, flag it — don't retry blindly.
+- **Empty commits**: If `git commit` succeeds but produced no diff, flag it — don't retry blindly.
 - **Failed tests**: Stop before committing. Show the failure and ask.
 - **Integrated but unapplied branches**: Note them in the cleanup section but don't force-delete.
 

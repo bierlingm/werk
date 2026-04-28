@@ -76,20 +76,14 @@ Guideline: `.claude/guidelines/quint-constraints.md` for Quint language limitati
 
 MCP: The `quint-lsp` MCP server provides LSP diagnostics for `.qnt` files via `.mcp.json`.
 
-## Version Control (GitButler)
+## Version Control
 
-We use **GitButler** (`but`) instead of raw git for all write operations. The workspace is on `gitbutler/workspace`.
+Plain `git`. One branch at a time. Use `gh` for PRs.
 
-- **Never use `git add`, `git commit`, `git push`, `git checkout`, `git merge`, `git rebase`.** Use the equivalent `but` commands.
-- **Read-only git is fine.** `git log`, `git blame`, `git diff`, `git show --stat` are allowed for inspection.
-- **Committing:** `but commit <branch> -m "<msg>" --status-after`. Use `-c` to create a new branch inline.
-- **Pushing:** `but push` (pushes all branches with unpushed commits).
-- **PRs:** `but pr new -m "<msg>"` or `but pr new -t` (auto-message from single commit).
-- **Always use `--status-after`** on mutation commands to get post-mutation state in one round-trip.
-- **Always use `--json`** when scripting or in agent context.
-- **Pre-commit hooks** live in `.githooks/pre-commit-user` (GitButler wraps them). They flush `tensions.json` and update README automatically.
-
-See `.claude/skills/gitbutler/` for the full GitButler skill reference.
+- Stage explicitly (`git add <path>`); avoid `git add -A` so you don't sweep in `.werk/`, `codedb.snapshot`, or other ignored-but-still-noise state.
+- Read-only inspection (`git log`, `git blame`, `git diff`, `git show --stat`, `git status`) is always fine.
+- Never force-push, hard-reset, or amend pushed commits without explicit confirmation. Never `--no-verify` to skip hooks.
+- **Pre-commit hook** lives in `.githooks/pre-commit` and flushes `tensions.json` + updates README automatically. `core.hooksPath` is set to `.githooks` in this repo's local config.
 
 ## Code Quality
 

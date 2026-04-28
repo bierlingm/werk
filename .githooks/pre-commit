@@ -1,43 +1,34 @@
-#!/bin/sh
-# GITBUTLER_MANAGED_HOOK_V1
-# This hook is managed by GitButler to prevent accidental commits on the workspace branch.
-# Your original pre-commit hook has been preserved as 'pre-commit-user'.
+#!/usr/bin/env bash
+# Pre-commit hook: flushes tensions.json and updates README.md
+#
+# GitButler-aware: when running on gitbutler/workspace, we skip the
+# `git add` calls and let GitButler pick up the flushed files naturally
+# via `--changes` on `but commit`. This prevents the hook from silently
+# pulling tensions.json into unrelated commits when `--changes` is not
+# used. On plain git, we stage normally so the flushed file lands in
+# the in-flight commit.
+set -euo pipefail
 
-HOOKS_DIR=$(dirname "$0")
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Run user's hook first if it exists - if it fails, stop here
-if [ -x "$HOOKS_DIR/pre-commit-user" ]; then
-    "$HOOKS_DIR/pre-commit-user" "$@" || exit $?
+# Detect GitButler workspace
+IS_GITBUTLER=0
+if [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = "gitbutler/workspace" ]; then
+    IS_GITBUTLER=1
 fi
 
-# Get the current branch name
-BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
-
-if [ "$BRANCH" = "gitbutler/workspace" ]; then
-    echo ""
-    echo "GITBUTLER_ERROR: Cannot commit directly to gitbutler/workspace branch."
-    echo ""
-    echo "GitButler manages commits on this branch. Please use GitButler to commit your changes:"
-    echo "  - Use the GitButler app to create commits"
-    echo "  - Or run 'but commit' from the command line"
-    echo ""
-    echo "If you want to exit GitButler mode and use normal git:"
-    echo "  - Run 'but teardown' to switch to a regular branch"
-    echo "  - Or directly checkout another branch: git checkout <branch>"
-    echo ""
-    echo "If you no longer have the GitButler CLI installed, you can simply remove this hook and checkout another branch:"
-    printf '  rm "%s/pre-commit"\n' "$HOOKS_DIR"
-    echo ""
-    exit 1
+# Flush tensions.json to capture current tree state
+if command -v werk &>/dev/null; then
+    werk flush 2>/dev/null || true
+elif [ -f target/debug/werk ]; then
+    target/debug/werk flush 2>/dev/null || true
+fi
+if [ "$IS_GITBUTLER" = "0" ]; then
+    git add tensions.json 2>/dev/null || true
 fi
 
-# Not on workspace branch - run user's original hook if it exists
-if [ -x "$HOOKS_DIR/pre-commit-user" ]; then
-    echo ""
-    echo "WARNING: GitButler's pre-commit hook is still installed but you're not on gitbutler/workspace."
-    echo "If you're no longer using GitButler, you can restore your original hook:"
-    printf '  mv "%s/pre-commit-user" "%s/pre-commit"\n' "$HOOKS_DIR" "$HOOKS_DIR"
-    echo ""
+# Update README with file tree and tension tree
+python3 "$HOOK_DIR/update-readme-tree.py"
+if [ "$IS_GITBUTLER" = "0" ]; then
+    git add README.md 2>/dev/null || true
 fi
-
-exit 0
