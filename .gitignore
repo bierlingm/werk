@@ -11,3 +11,5 @@ local/
 
 # MCP server state
 codedb.snapshot
+
+.DS_Store
