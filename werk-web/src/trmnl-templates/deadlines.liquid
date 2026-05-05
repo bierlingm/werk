@@ -1,0 +1,49 @@
+<div class="screen">
+  <div class="view view--full">
+
+    {% if is_empty %}
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+        <span class="title title--xlarge">{{ empty_reason }}</span>
+        <span class="label label--gray-out" style="margin-top: 18px;">{{ workspace }} · {{ as_of }}</span>
+      </div>
+    {% else %}
+
+      <div style="display: flex; flex-direction: column; align-items: stretch; height: 100%; padding-top: 12px;">
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+          <div style="width: 22px; border-top: 1px solid black;"></div>
+          <span class="label label--base">deadlines</span>
+          <div style="flex: 1; border-top: 1px solid black;"></div>
+          <span class="label label--small label--gray-out">{{ count }} in 14 days</span>
+          <div style="width: 22px; border-top: 1px solid black;"></div>
+        </div>
+
+        <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin-top: 4px;">
+          {% for it in items %}
+            <div style="display: flex; align-items: baseline; gap: 14px; padding: 8px 4px; border-bottom: 1px solid black; min-width: 0;">
+              <span class="label label--base" style="min-width: 96px; flex-shrink: 0;">
+                {% if it.overdue %}<span class="label label--filled">{{ it.when }}</span>{% else %}{{ it.when }}{% endif %}
+              </span>
+              <span class="label label--base" style="min-width: 60px; flex-shrink: 0;">{{ it.code }}</span>
+              {% if it.deadline_bracket != "" %}
+                <span class="label label--small label--gray-out" style="min-width: 88px; flex-shrink: 0;">{{ it.deadline_bracket }}</span>
+              {% endif %}
+              <span class="description description--base" style="flex: 1 1 auto; min-width: 0; word-break: break-word;">{{ it.desired }}</span>
+              {% if it.urgency_pct %}
+                <span class="label label--small label--gray-out" style="flex-shrink: 0;">{{ it.urgency_str }}</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>
+    {% endif %}
+
+    <div class="title_bar">
+      <img class="image" src="https://usetrmnl.com/images/plugins/trmnl--render.svg">
+      <span class="title">werk · {{ workspace }}</span>
+      <span class="instance">deadlines · {{ as_of }}</span>
+    </div>
+
+  </div>
+</div>

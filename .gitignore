@@ -13,3 +13,6 @@ local/
 codedb.snapshot
 
 .DS_Store
+
+# Local knowledge-base lab
+lab/

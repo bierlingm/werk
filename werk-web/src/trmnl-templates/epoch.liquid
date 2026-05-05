@@ -1,0 +1,41 @@
+<div class="screen">
+  <div class="view view--full">
+
+    {% if is_empty %}
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+        <span class="title title--xlarge">{{ empty_reason }}</span>
+        <span class="label label--gray-out" style="margin-top: 18px;">{{ workspace }} · {{ as_of }}</span>
+      </div>
+    {% else %}
+
+      <div style="display: flex; flex-direction: column; align-items: stretch; height: 100%; padding-top: 12px;">
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+          <div style="width: 22px; border-top: 1px solid black;"></div>
+          <span class="label label--base">epoch</span>
+          <div style="flex: 1; border-top: 1px solid black;"></div>
+          <span class="label label--small label--gray-out">{{ count }} events · last 24h</span>
+          <div style="width: 22px; border-top: 1px solid black;"></div>
+        </div>
+
+        <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin-top: 4px;">
+          {% for it in items %}
+            <div style="display: flex; align-items: baseline; gap: 14px; padding: 6px 4px; min-width: 0;">
+              <span class="label label--small label--gray-out" style="min-width: 92px; flex-shrink: 0; text-align: right;">{{ it.when }}</span>
+              <span class="label label--base" style="min-width: 60px; flex-shrink: 0;">{{ it.code }}</span>
+              <span class="description description--base" style="flex: 1 1 auto; min-width: 0;">{{ it.summary }}</span>
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>
+    {% endif %}
+
+    <div class="title_bar">
+      <img class="image" src="https://usetrmnl.com/images/plugins/trmnl--render.svg">
+      <span class="title">werk · {{ workspace }}</span>
+      <span class="instance">epoch · {{ as_of }}</span>
+    </div>
+
+  </div>
+</div>

@@ -23,7 +23,7 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, oneshot};
 use tokio_stream::StreamExt;
 use tower_http::cors::CorsLayer;
-use werk_core::{Forest, Horizon, Tension, TensionStatus};
+use werk_core::{Forest, Horizon, Tension, TensionStatus, compute_urgency};
 use werk_shared::aggregate::{
     AttentionItem, DEFAULT_HELD_PER_SPACE, DEFAULT_NEXT_UP_PER_SPACE, SkippedSpace, SpaceRef,
     SpaceVitals, VitalsTotals, compute_attention_for_store, compute_vitals_for_store,
@@ -85,6 +85,12 @@ enum StoreCmd {
         reply: oneshot::Sender<
             StoreResult<(Vec<AttentionItem>, Vec<AttentionItem>, Vec<AttentionItem>)>,
         >,
+    },
+    /// List mutations recorded in a time window (used by /api/views/epoch).
+    MutationsBetween {
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+        reply: oneshot::Sender<StoreResult<Vec<werk_core::mutation::Mutation>>>,
     },
 }
 
@@ -162,6 +168,11 @@ impl StoreHandle {
                             let _ = reply.send(
                                 compute_vitals_for_store(space, &store, now)
                                     .map_err(|e| e.to_string()),
+                            );
+                        }
+                        StoreCmd::MutationsBetween { start, end, reply } => {
+                            let _ = reply.send(
+                                store.mutations_between(start, end).map_err(|e| e.to_string()),
                             );
                         }
                         StoreCmd::ComputeAttention {
@@ -258,6 +269,18 @@ impl StoreHandle {
         let (reply, rx) = oneshot::channel();
         self.tx
             .send(StoreCmd::ComputeVitals { space, now, reply })
+            .map_err(|e| e.to_string())?;
+        rx.await.map_err(|e| e.to_string())?
+    }
+
+    async fn mutations_between(
+        &self,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+    ) -> StoreResult<Vec<werk_core::mutation::Mutation>> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCmd::MutationsBetween { start, end, reply })
             .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
@@ -415,6 +438,11 @@ pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
         .route("/api/workspace/select", post(select_workspace))
         .route("/api/field/vitals", get(get_field_vitals))
         .route("/api/field/attention", get(get_field_attention))
+        .route("/api/views/focus", get(get_view_focus))
+        .route("/api/views/horizon", get(get_view_horizon))
+        .route("/api/views/deadlines", get(get_view_deadlines))
+        .route("/api/views/epoch", get(get_view_epoch))
+        .route("/api/views/tree", get(get_view_tree))
         .route("/api/events", get(sse_handler))
         .layer(CorsLayer::permissive())
         .with_state(state))
@@ -971,6 +999,495 @@ fn to_skipped_json(s: SkippedSpace) -> FieldSkippedJson {
         path: s.path.display().to_string(),
         reason: s.reason,
     }
+}
+
+// ─── Views (consumer-agnostic projections) ─────────────────────────
+//
+// `/api/views/*` endpoints emit werk-native shapes for downstream
+// consumers (TRMNL, watch faces, status bars). They do not encode
+// device dimensions, character budgets, or glyphs — that lives in
+// each consumer's adapter.
+
+#[derive(Serialize)]
+struct FocusViewJson {
+    view: &'static str,
+    generated_at: String,
+    workspace: WorkspaceJson,
+    selection_reason: &'static str,
+    tension: Option<FocusTensionJson>,
+}
+
+#[derive(Serialize)]
+struct FocusTensionJson {
+    id: String,
+    short_code: Option<i32>,
+    desired: String,
+    reality: String,
+    status: String,
+    horizon: Option<String>,
+    overdue: bool,
+    urgency: Option<f64>,
+    age_days: i64,
+    parent: Option<FocusParentJson>,
+}
+
+#[derive(Serialize)]
+struct FocusParentJson {
+    short_code: Option<i32>,
+    desired: String,
+}
+
+async fn get_view_focus(State(state): State<Arc<AppState>>) -> Response {
+    let all = match state.store.list_tensions().await {
+        Ok(t) => t,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+
+    let now = chrono::Utc::now();
+    let workspace = WorkspaceJson::from_entry(
+        &werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone()),
+    );
+
+    // Selection: among Active tensions, prefer the one with highest urgency
+    // (deadline-relative pressure). Fall back to most recently created Active
+    // tension if no one has a horizon. Returns None only when nothing is Active.
+    let active: Vec<&Tension> = all
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+        .collect();
+
+    let (chosen, reason): (Option<&Tension>, &'static str) = active
+        .iter()
+        .filter_map(|t| compute_urgency(t, now).map(|u| (*t, u.value)))
+        .max_by(|a, b| {
+            a.1.partial_cmp(&b.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(t, _)| (Some(t), "most-urgent"))
+        .unwrap_or_else(|| {
+            let fallback = active
+                .iter()
+                .max_by_key(|t| t.created_at)
+                .copied();
+            (
+                fallback,
+                if fallback.is_some() {
+                    "newest-active-no-horizon"
+                } else {
+                    "no-active-tensions"
+                },
+            )
+        });
+
+    let tension = chosen.map(|t| {
+        let parent = t
+            .parent_id
+            .as_ref()
+            .and_then(|pid| all.iter().find(|x| &x.id == pid))
+            .map(|p| FocusParentJson {
+                short_code: p.short_code,
+                desired: p.desired.clone(),
+            });
+        let urgency = compute_urgency(t, now).map(|u| u.value);
+        let overdue = matches!(&t.horizon, Some(h) if h.is_past(now));
+        let age_days = (now - t.created_at).num_days();
+        FocusTensionJson {
+            id: t.id.clone(),
+            short_code: t.short_code,
+            desired: t.desired.clone(),
+            reality: t.actual.clone(),
+            status: format!("{:?}", t.status).to_lowercase(),
+            horizon: t.horizon.as_ref().map(|h| h.to_string()),
+            overdue,
+            urgency,
+            age_days,
+            parent,
+        }
+    });
+
+    Json(FocusViewJson {
+        view: "focus",
+        generated_at: now.to_rfc3339(),
+        workspace,
+        selection_reason: reason,
+        tension,
+    })
+    .into_response()
+}
+
+// ─── /api/views/horizon ─────────────────────────────────────────
+//
+// Top-N most-pressing active tensions, ordered by urgency (deadline-
+// relative pressure). Tie-broken by deadline range_end ascending then
+// position. Items without urgency (no horizon) sort last.
+
+const HORIZON_LIMIT: usize = 5;
+
+#[derive(Serialize)]
+struct HorizonViewJson {
+    view: &'static str,
+    generated_at: String,
+    workspace: WorkspaceJson,
+    items: Vec<HorizonItem>,
+}
+
+#[derive(Serialize)]
+struct HorizonItem {
+    id: String,
+    short_code: Option<i32>,
+    desired: String,
+    horizon: Option<String>,
+    overdue: bool,
+    urgency: Option<f64>,
+    parent_short_code: Option<i32>,
+}
+
+async fn get_view_horizon(State(state): State<Arc<AppState>>) -> Response {
+    let all = match state.store.list_tensions().await {
+        Ok(t) => t,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let now = chrono::Utc::now();
+    let workspace = WorkspaceJson::from_entry(
+        &werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone()),
+    );
+
+    let mut active: Vec<&Tension> = all
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+        .collect();
+    active.sort_by(|a, b| {
+        let ua = compute_urgency(a, now).map(|u| u.value);
+        let ub = compute_urgency(b, now).map(|u| u.value);
+        match (ua, ub) {
+            (Some(x), Some(y)) => y.partial_cmp(&x).unwrap_or(std::cmp::Ordering::Equal),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
+    active.truncate(HORIZON_LIMIT);
+
+    let parent_short = |pid: &Option<String>| {
+        pid.as_ref()
+            .and_then(|id| all.iter().find(|t| &t.id == id))
+            .and_then(|p| p.short_code)
+    };
+
+    let items: Vec<HorizonItem> = active
+        .iter()
+        .map(|t| HorizonItem {
+            id: t.id.clone(),
+            short_code: t.short_code,
+            desired: t.desired.clone(),
+            horizon: t.horizon.as_ref().map(|h| h.to_string()),
+            overdue: matches!(&t.horizon, Some(h) if h.is_past(now)),
+            urgency: compute_urgency(t, now).map(|u| u.value),
+            parent_short_code: parent_short(&t.parent_id),
+        })
+        .collect();
+
+    Json(HorizonViewJson {
+        view: "horizon",
+        generated_at: now.to_rfc3339(),
+        workspace,
+        items,
+    })
+    .into_response()
+}
+
+// ─── /api/views/deadlines ───────────────────────────────────────
+//
+// Active tensions whose horizon range_end is within the next 14 days,
+// sorted ascending by due date. The downstream adapter decides how
+// many days to actually show (typically 7).
+
+const DEADLINES_WINDOW_DAYS: i64 = 14;
+
+#[derive(Serialize)]
+struct DeadlinesViewJson {
+    view: &'static str,
+    generated_at: String,
+    workspace: WorkspaceJson,
+    horizon_window_days: i64,
+    items: Vec<DeadlineItem>,
+}
+
+#[derive(Serialize)]
+struct DeadlineItem {
+    id: String,
+    short_code: Option<i32>,
+    desired: String,
+    horizon: String,
+    due_at: String,
+    days_until: i64,
+    urgency: Option<f64>,
+    overdue: bool,
+}
+
+async fn get_view_deadlines(State(state): State<Arc<AppState>>) -> Response {
+    let all = match state.store.list_tensions().await {
+        Ok(t) => t,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let now = chrono::Utc::now();
+    let window_end = now + chrono::Duration::days(DEADLINES_WINDOW_DAYS);
+    let workspace = WorkspaceJson::from_entry(
+        &werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone()),
+    );
+
+    let mut items: Vec<DeadlineItem> = all
+        .iter()
+        .filter(|t| t.status == TensionStatus::Active)
+        .filter_map(|t| {
+            let h = t.horizon.as_ref()?;
+            let due = h.range_end();
+            // Include overdue items (negative days_until) too.
+            if due > window_end {
+                return None;
+            }
+            let days_until = (due - now).num_days();
+            Some(DeadlineItem {
+                id: t.id.clone(),
+                short_code: t.short_code,
+                desired: t.desired.clone(),
+                horizon: h.to_string(),
+                due_at: due.to_rfc3339(),
+                days_until,
+                urgency: compute_urgency(t, now).map(|u| u.value),
+                overdue: h.is_past(now),
+            })
+        })
+        .collect();
+    items.sort_by_key(|i| i.days_until);
+
+    Json(DeadlinesViewJson {
+        view: "deadlines",
+        generated_at: now.to_rfc3339(),
+        workspace,
+        horizon_window_days: DEADLINES_WINDOW_DAYS,
+        items,
+    })
+    .into_response()
+}
+
+// ─── /api/views/epoch ───────────────────────────────────────────
+//
+// Recent meaningful gestures since (now - 24h). One row per mutation
+// with a human-readable summary. The downstream adapter chooses how
+// many to show.
+
+const EPOCH_LOOKBACK_HOURS: i64 = 24;
+const EPOCH_LIMIT: usize = 30;
+
+#[derive(Serialize)]
+struct EpochViewJson {
+    view: &'static str,
+    generated_at: String,
+    workspace: WorkspaceJson,
+    since: String,
+    items: Vec<EpochItem>,
+}
+
+#[derive(Serialize)]
+struct EpochItem {
+    ts: String,
+    tension_id: String,
+    tension_short_code: Option<i32>,
+    field: String,
+    summary: String,
+}
+
+async fn get_view_epoch(State(state): State<Arc<AppState>>) -> Response {
+    let now = chrono::Utc::now();
+    let since = now - chrono::Duration::hours(EPOCH_LOOKBACK_HOURS);
+    let mutations = match state.store.mutations_between(since, now).await {
+        Ok(m) => m,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let all = match state.store.list_tensions().await {
+        Ok(t) => t,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let workspace = WorkspaceJson::from_entry(
+        &werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone()),
+    );
+
+    let short_for = |id: &str| all.iter().find(|t| t.id == id).and_then(|t| t.short_code);
+
+    let mut items: Vec<EpochItem> = mutations
+        .iter()
+        .map(|m| EpochItem {
+            ts: m.timestamp().to_rfc3339(),
+            tension_id: m.tension_id().to_string(),
+            tension_short_code: short_for(m.tension_id()),
+            field: m.field().to_string(),
+            summary: summarize_mutation(m.field()),
+        })
+        .collect();
+    items.sort_by(|a, b| b.ts.cmp(&a.ts));
+    items.truncate(EPOCH_LIMIT);
+
+    Json(EpochViewJson {
+        view: "epoch",
+        generated_at: now.to_rfc3339(),
+        workspace,
+        since: since.to_rfc3339(),
+        items,
+    })
+    .into_response()
+}
+
+fn summarize_mutation(field: &str) -> String {
+    match field {
+        "created" => "created".to_string(),
+        "desired" => "desired updated".to_string(),
+        "actual" | "reality" => "reality updated".to_string(),
+        "status" => "status changed".to_string(),
+        "horizon" => "deadline set".to_string(),
+        "position" => "repositioned".to_string(),
+        "note" => "note added".to_string(),
+        "parent_id" => "moved".to_string(),
+        other => other.to_string(),
+    }
+}
+
+// ─── /api/views/tree ────────────────────────────────────────────
+//
+// Forest summary limited to depth 2, listing root tensions and their
+// direct children. Each item carries depth, parent short_code, and a
+// closure ratio (open vs total descendants). Adapters decide how
+// many to render.
+
+const TREE_MAX_DEPTH: usize = 2;
+const TREE_LIMIT: usize = 30;
+
+#[derive(Serialize)]
+struct TreeViewJson {
+    view: &'static str,
+    generated_at: String,
+    workspace: WorkspaceJson,
+    items: Vec<TreeItem>,
+    totals: TreeTotalsJson,
+}
+
+#[derive(Serialize)]
+struct TreeItem {
+    id: String,
+    short_code: Option<i32>,
+    desired: String,
+    depth: usize,
+    parent_short_code: Option<i32>,
+    direct_children: usize,
+    descendants_total: usize,
+    descendants_resolved: usize,
+}
+
+#[derive(Serialize)]
+struct TreeTotalsJson {
+    active: usize,
+    resolved: usize,
+    released: usize,
+}
+
+async fn get_view_tree(State(state): State<Arc<AppState>>) -> Response {
+    let all = match state.store.list_tensions().await {
+        Ok(t) => t,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let now = chrono::Utc::now();
+    let workspace = WorkspaceJson::from_entry(
+        &werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone()),
+    );
+
+    let totals = TreeTotalsJson {
+        active: all.iter().filter(|t| t.status == TensionStatus::Active).count(),
+        resolved: all.iter().filter(|t| t.status == TensionStatus::Resolved).count(),
+        released: all.iter().filter(|t| t.status == TensionStatus::Released).count(),
+    };
+
+    let forest = match Forest::from_tensions(all.clone()) {
+        Ok(f) => f,
+        Err(e) => return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+
+    let mut items: Vec<TreeItem> = Vec::new();
+    let parent_short = |pid: &Option<String>| {
+        pid.as_ref()
+            .and_then(|id| all.iter().find(|t| &t.id == id))
+            .and_then(|p| p.short_code)
+    };
+
+    fn walk<'a>(
+        forest: &'a Forest,
+        node: &'a werk_core::tree::Node,
+        depth: usize,
+        max_depth: usize,
+        all: &[Tension],
+        parent_short_lookup: &dyn Fn(&Option<String>) -> Option<i32>,
+        out: &mut Vec<TreeItem>,
+    ) {
+        let (resolved, total) = {
+            let mut r = 0usize;
+            let mut t = 0usize;
+            fn rec(forest: &Forest, id: &str, r: &mut usize, t: &mut usize) {
+                if let Some(n) = forest.find(id) {
+                    for child_id in &n.children {
+                        if let Some(c) = forest.find(child_id) {
+                            *t += 1;
+                            if c.tension.status == TensionStatus::Resolved {
+                                *r += 1;
+                            }
+                            rec(forest, child_id, r, t);
+                        }
+                    }
+                }
+            }
+            rec(forest, &node.tension.id, &mut r, &mut t);
+            (r, t)
+        };
+
+        out.push(TreeItem {
+            id: node.tension.id.clone(),
+            short_code: node.tension.short_code,
+            desired: node.tension.desired.clone(),
+            depth,
+            parent_short_code: parent_short_lookup(&node.tension.parent_id),
+            direct_children: node.children.len(),
+            descendants_total: total,
+            descendants_resolved: resolved,
+        });
+
+        if depth >= max_depth {
+            return;
+        }
+        for child_id in &node.children {
+            if let Some(child) = forest.find(child_id) {
+                if child.tension.status == TensionStatus::Active {
+                    walk(forest, child, depth + 1, max_depth, all, parent_short_lookup, out);
+                }
+            }
+        }
+    }
+
+    for root_id in forest.root_ids() {
+        if let Some(root) = forest.find(&root_id) {
+            if root.tension.status == TensionStatus::Active {
+                walk(&forest, root, 0, TREE_MAX_DEPTH, &all, &parent_short, &mut items);
+            }
+        }
+    }
+    items.truncate(TREE_LIMIT);
+
+    let _ = now; // reserved for future per-item urgency annotations
+    Json(TreeViewJson {
+        view: "tree",
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        workspace,
+        items,
+        totals,
+    })
+    .into_response()
 }
 
 /// Resolve an ID that might be a short_code number or a full ULID.

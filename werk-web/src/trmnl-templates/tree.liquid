@@ -1,0 +1,49 @@
+<div class="screen">
+  <div class="view view--full">
+
+    {% if is_empty %}
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+        <span class="title title--xlarge">{{ empty_reason }}</span>
+        <span class="label label--gray-out" style="margin-top: 18px;">{{ workspace }} · {{ as_of }}</span>
+      </div>
+    {% else %}
+
+      <div style="display: flex; flex-direction: column; align-items: stretch; height: 100%; padding: 12px 8px 0 8px; box-sizing: border-box;">
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-width: 0;">
+          <div style="width: 22px; border-top: 1px solid black; flex-shrink: 0;"></div>
+          <span class="label label--base" style="flex-shrink: 0;">tree</span>
+          <div style="flex: 1 1 auto; border-top: 1px solid black; min-width: 0;"></div>
+          <span class="label label--small label--gray-out" style="flex-shrink: 0;">{{ totals_str }}</span>
+          <div style="width: 22px; border-top: 1px solid black; flex-shrink: 0;"></div>
+        </div>
+
+        <div style="flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; margin-top: 4px;">
+          {% for it in items %}
+            <div style="display: flex; align-items: baseline; gap: 12px; padding: {% if it.is_root %}10px 4px 4px 4px{% else %}3px 4px{% endif %}; {% if it.is_root and forloop.index0 != 0 %}border-top: 1px solid black;{% endif %} min-width: 0;">
+              <span style="display: inline-block; width: {{ it.depth | times: 22 }}px; flex-shrink: 0;"></span>
+              {% if it.is_root %}
+                <span class="label label--large" style="min-width: 56px; flex-shrink: 0;">{{ it.code }}</span>
+                <span class="title title--small" style="flex: 1 1 auto; min-width: 0; word-break: break-word;">{{ it.desired }}</span>
+              {% else %}
+                <span class="label label--base label--gray-out" style="min-width: 56px; flex-shrink: 0;">{{ it.code }}</span>
+                <span class="description description--base" style="flex: 1 1 auto; min-width: 0; word-break: break-word;">{{ it.desired }}</span>
+              {% endif %}
+              {% if it.closure_bracket != "" %}
+                <span class="label label--small label--gray-out" style="flex-shrink: 0; min-width: 56px; text-align: right;">{{ it.closure_bracket }}</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>
+    {% endif %}
+
+    <div class="title_bar">
+      <img class="image" src="https://usetrmnl.com/images/plugins/trmnl--render.svg">
+      <span class="title">werk · {{ workspace }}</span>
+      <span class="instance">tree · {{ as_of }}</span>
+    </div>
+
+  </div>
+</div>

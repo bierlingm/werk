@@ -1,0 +1,50 @@
+<div class="screen">
+  <div class="view view--full">
+
+    {% if is_empty %}
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+        <span class="title title--xlarge">No active tensions.</span>
+        <span class="label label--gray-out" style="margin-top: 18px;">{{ workspace }} · {{ as_of }}</span>
+      </div>
+    {% else %}
+
+      <div style="display: flex; flex-direction: column; align-items: stretch; height: 100%; padding: 12px 8px 0 8px; box-sizing: border-box;">
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+          <div style="width: 22px; border-top: 1px solid black;"></div>
+          <span class="label label--base">horizon</span>
+          <div style="flex: 1; border-top: 1px solid black;"></div>
+          <span class="label label--small label--gray-out">pressing {{ count }}</span>
+          <div style="width: 22px; border-top: 1px solid black;"></div>
+        </div>
+
+        <div style="flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: 4px;">
+          {% for it in items %}
+            {% if it.empty %}
+              <div style="flex: 1;"></div>
+            {% else %}
+              <div style="flex: 1; display: flex; align-items: baseline; gap: 12px; padding: 4px 4px; border-bottom: 1px solid black; min-width: 0; box-sizing: border-box;">
+                <span class="label label--large" style="min-width: 64px; flex-shrink: 0;">{{ it.code }}</span>
+                {% if it.deadline_bracket != "" %}
+                  <span class="label label--small label--gray-out" style="min-width: 84px; flex-shrink: 0;">{{ it.deadline_bracket }}</span>
+                {% else %}
+                  <span style="min-width: 84px; flex-shrink: 0;"></span>
+                {% endif %}
+                <span class="description description--base" style="flex: 1 1 auto; min-width: 0; word-break: break-word;">{{ it.desired }}</span>
+                <span class="label label--base" style="min-width: 48px; flex-shrink: 0; text-align: right;">{{ it.urgency_str }}</span>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+      </div>
+    {% endif %}
+
+    <div class="title_bar">
+      <img class="image" src="https://usetrmnl.com/images/plugins/trmnl--render.svg">
+      <span class="title">werk · {{ workspace }}</span>
+      <span class="instance">horizon · {{ as_of }}</span>
+    </div>
+
+  </div>
+</div>

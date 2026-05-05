@@ -1,10 +1,10 @@
 {
-  "flushed_at": "2026-04-27T12:43:42Z",
+  "flushed_at": "2026-05-02T15:43:01Z",
   "summary": {
     "active": 68,
     "released": 63,
-    "resolved": 170,
-    "total": 301
+    "resolved": 171,
+    "total": 302
   },
   "tensions": [
     {
@@ -49,7 +49,7 @@
       "parent_id": "01KMGFKXTZYXZJ6ZQQXB632771",
       "position": null,
       "short_code": 5,
-      "status": "Active"
+      "status": "Resolved"
     },
     {
       "actual": "werk flush command writes tensions.json to workspace root — a git-trackable JSON file containing all tensions as raw structural data; .werk/ remains gitignored; consumers can reconstruct the tree and compute dynamics from the flushed data without the CLI",
@@ -3316,6 +3316,17 @@
       "parent_id": null,
       "position": null,
       "short_code": 311,
+      "status": "Active"
+    },
+    {
+      "actual": "Course completed Apr 23–26, 2026 with comprehensive notes at ~/werk/desk/fritz-fst-2026/report.md. Insights not yet pulled into werk's cooperative model design — addressing/sessions/gestures exploration is the natural integration site.",
+      "created_at": "2026-05-02T15:43:00.744046+00:00",
+      "desired": "FST course insights on collective structure are integrated into werk's cooperative model — multi-participant model design draws on the structural-dynamics-of-groups material from the Apr 2026 course",
+      "horizon": null,
+      "id": "01KQMNPZM8H6SXFRM8M3CXSRDC",
+      "parent_id": "01KMGFKXTZYXZJ6ZQQXB632771",
+      "position": null,
+      "short_code": 312,
       "status": "Active"
     }
   ]

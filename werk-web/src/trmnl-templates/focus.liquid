@@ -1,0 +1,61 @@
+<div class="screen">
+  <div class="view view--full">
+
+    {% if is_empty %}
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+        <span class="title title--xlarge">{{ empty_reason }}</span>
+        <span class="label label--gray-out" style="margin-top: 18px;">{{ workspace }} · {{ as_of }}</span>
+      </div>
+    {% else %}
+
+      <div style="display: flex; flex-direction: column; align-items: stretch; height: 100%; min-height: 0;">
+
+        {% if urgency_pct %}
+          <div style="height: 4px; flex-shrink: 0; margin-bottom: 14px;">
+            <div style="height: 100%; width: {{ urgency_pct }}%; background: black;"></div>
+          </div>
+        {% else %}
+          <div style="height: 18px; flex-shrink: 0;"></div>
+        {% endif %}
+
+        <div style="display: flex; gap: 18px; align-items: baseline; flex-shrink: 0;">
+          <span class="label label--xlarge">{{ code }}</span>
+          {% if deadline != "" %}
+            <span class="label label--gray-out">[{{ deadline }}]</span>
+          {% endif %}
+          {% if parent_label != "" %}
+            <span class="label label--gray-out" style="font-style: italic;">above {{ parent_label }}</span>
+          {% endif %}
+          {% if overdue %}
+            <span class="label label--filled" style="margin-left: auto;">OVERDUE</span>
+          {% endif %}
+        </div>
+
+        <div style="margin-top: 20px; flex: 1 1 auto; min-height: 0; display: flex; gap: 20px; align-items: stretch;">
+          <div style="width: 2px; background: black; flex-shrink: 0;"></div>
+          <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;">
+            <span class="title title--xlarge" style="word-break: break-word;">{{ desired }}</span>
+            <div style="flex: 1 1 auto; min-height: 24px;"></div>
+            <span class="description description--base" style="word-break: break-word;">{{ reality }}</span>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; flex-shrink: 0;">
+          <span class="label label--small label--gray-out" style="letter-spacing: 0.04em;">
+            {{ status }}
+            {% if urgency_label != "" %} · {{ urgency_label }}{% if urgency_pct %} — {{ urgency_pct }}%{% endif %}{% endif %}
+            {% if age != "" %} · {{ age }} old{% endif %}
+          </span>
+        </div>
+
+      </div>
+    {% endif %}
+
+    <div class="title_bar">
+      <img class="image" src="https://usetrmnl.com/images/plugins/trmnl--render.svg">
+      <span class="title">werk · {{ workspace }}</span>
+      <span class="instance">focus · {{ as_of }}</span>
+    </div>
+
+  </div>
+</div>
