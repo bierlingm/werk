@@ -19,8 +19,9 @@ use werk::output::Output;
 ///
 /// Holds structural tensions — the gap between desired outcome and current
 /// reality — and computes temporal facts from the standards you set. The
-/// instrument surfaces signals by exception and does not interpret. It serves
-/// operations (closing gaps), not management (coordinating existing structure).
+/// instrument surfaces signals by exception and does not decide for you. It
+/// serves operations (closing gaps), not management (coordinating existing
+/// structure).
 #[derive(Parser, Debug)]
 #[command(name = "werk")]
 #[command(

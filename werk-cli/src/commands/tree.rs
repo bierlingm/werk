@@ -127,9 +127,22 @@ pub fn cmd_tree(
                 .print_structured(&result)
                 .map_err(WerkError::IoError)?;
         } else {
+            let message = match filter {
+                Filter::Active => "No active tensions found",
+                Filter::Resolved => "No resolved tensions found",
+                Filter::Released => "No released tensions found",
+                Filter::All => "No tensions found",
+            };
             output
-                .info("No tensions found")
+                .info(message)
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
+            crate::hints::print_hint(
+                &output.palette(),
+                &format!(
+                    "workspace: {} — `werk add \"desired\" \"reality\"` to start, `werk field --attention` for all spaces",
+                    workspace.root().display()
+                ),
+            );
         }
         return Ok(());
     }

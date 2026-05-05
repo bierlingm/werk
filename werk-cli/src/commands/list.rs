@@ -206,6 +206,13 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
             output
                 .info("No tensions found")
                 .map_err(|e| WerkError::IoError(e.to_string()))?;
+            crate::hints::print_hint(
+                &output.palette(),
+                &format!(
+                    "workspace: {} — `werk add \"desired\" \"reality\"` to start, `werk field --attention` for all spaces",
+                    workspace.root().display()
+                ),
+            );
         }
         return Ok(());
     }

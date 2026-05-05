@@ -8,7 +8,7 @@ werk holds **structural tensions** — the gap between what you want and what's 
 
 Each tension carries a **theory of closure**: composed action steps that bridge from reality to desire. These are hypotheses — conjectured, ordered, revisable. As steps get resolved, the **frontier of action** advances. The instrument computes temporal facts (urgency, critical path, sequencing pressure) from your deadlines and ordering. It surfaces signals by exception: silence is the default.
 
-werk does not tell you what to do. It does not interpret your patterns, diagnose your psychology, or compute dynamics like phase, tendency, or conflict. Those belong to the practice — the human (possibly aided by AI) or his coach reading the structure. The instrument holds the honest record. Interpretation is yours. Every computation the instrument produces is anchored to a standard of measurement you explicitly provide — a deadline, an ordering, an articulated desire. No user-supplied standard, no instrument-generated inference.
+werk does not decide for you. It does not diagnose your psychology or prescribe action. Those belong to the practice — the human (possibly aided by AI) or his coach reading the structure. The instrument holds the honest record and surfaces computed signals from standards you supplied: a deadline, an ordering, an articulated desire. No user-supplied standard, no instrument-generated inference.
 
 werk is operative, not managerial. It serves operations — closing gaps between where you are and where you aim. It does not track dependencies between tensions, enforce permissions, or manage coordination topology. It works best in high-trust, reality-facing contexts: individual practitioners, small teams, collaborators who share aims and are willing to face what's actually true.
 
@@ -29,6 +29,17 @@ Requires [Rust](https://rustup.rs/).
 werk init                                            # create a workspace
 werk add "Novel is drafted" "42,000 words. Stuck."   # declare a tension
 werk                                                 # open the instrument
+```
+
+For the command line daily loop:
+
+```bash
+werk field --attention       # across all registered spaces: what needs attention?
+werk list --signals          # local workspace: exceptions and pressure
+werk list --held             # unsequenced tensions
+werk position <id> 1         # commit the next step in an order of operations
+werk show <id>               # inspect one tension before acting
+werk reality <id> "..."      # record what changed
 ```
 
 The instrument stores its data in a `.werk/` directory at your workspace root.
@@ -139,6 +150,10 @@ Any MCP client (Claude Desktop, Cursor, or custom harnesses) connects the same w
 **Gesture** — the unit of meaningful action. One gesture may involve multiple mutations. Gestures are the meaningful units for undo, history, and structural interpretation.
 
 **Epoch** — a period of action within a stable desire-reality frame. When desire transforms or reality shifts significantly, the current epoch closes and a new one opens. The sequence of epochs forms the tension's **log**.
+
+**Held** — active but unpositioned. The tension is acknowledged, but not yet committed to an order of operations.
+
+**Positioned** — sequenced within its parent. Position `1` is the frontier candidate: the next step if its ancestors and predecessors are honest.
 
 **Deadline** and **order of operations** — the two temporal primitives you set. Everything else (urgency, execution windows, sequencing pressure, critical path) is computed from these.
 

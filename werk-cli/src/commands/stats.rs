@@ -321,6 +321,13 @@ pub fn cmd_stats(
                 "{} overdue — `werk list --overdue` to triage, `werk show <id>` to inspect",
                 vitals.overdue
             )
+        } else if vitals.active > 0 && vitals.positioned == 0 {
+            "no positioned tensions — `werk list --held` to inspect, `werk position <id> 1` to commit a next step".to_string()
+        } else if vitals.active > 0 && vitals.held * 10 >= vitals.active * 8 {
+            format!(
+                "{} of {} active tensions are held — `werk list --held` to choose what belongs in sequence",
+                vitals.held, vitals.active
+            )
         } else {
             "`werk stats --temporal` for deadlines, `werk stats --all` for everything".to_string()
         };
