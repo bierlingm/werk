@@ -1,0 +1,215 @@
+{
+  "main": {
+    "id": "cfdd4f5dd76c6841",
+    "type": "split",
+    "children": [
+      {
+        "id": "c52236a8bc16168b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a59cac187ed9a534",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Concepts/Werk 2.0.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Werk 2.0"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "bde511efc00ac963",
+    "type": "split",
+    "children": [
+      {
+        "id": "47dc57c16d86dad7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1dda6fca82396689",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "61054252558ade0a",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "950738862903c30a",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "8b6beff67f1affe7",
+    "type": "split",
+    "children": [
+      {
+        "id": "2d581244f27abdc4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f59ece5f4c2ddeb7",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Concepts/Werk 2.0.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Werk 2.0"
+            }
+          },
+          {
+            "id": "b33080baecb87904",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Concepts/Werk 2.0.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Werk 2.0"
+            }
+          },
+          {
+            "id": "a93629f985606fb6",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "1972c35d1f93143d",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "6965bca6a0a07392",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Concepts/Werk 2.0.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Werk 2.0"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "a59cac187ed9a534",
+  "lastOpenFiles": [
+    "Concepts/Pi.md",
+    "Concepts/Frontier of Action.md",
+    "Map of Content.md",
+    "Concepts/Frontier.md",
+    "Concepts/Critical Path.md",
+    "Concepts/Structural Memory.md",
+    "Concepts/Cooperative Practice.md",
+    "Concepts/Validation.md",
+    "Concepts/Evidence.md",
+    "Concepts/Staleness.md",
+    "Concepts/Structural Signal.md",
+    "Concepts/Chat.md",
+    "Concepts/Claim.md",
+    "Concepts/Structural Practitioner.md",
+    "Concepts/Reality Update.md",
+    "Concepts/Agentic Work.md",
+    "Concepts/Orchestration.md",
+    "Concepts/Pair Programmer.md",
+    "Concepts/Interpretation.md",
+    "Concepts/Practice Layer.md",
+    "Concepts/World-Class Surface.md",
+    "Concepts/RAG.md",
+    "Concepts/Authority.md",
+    "Concepts/Agent.md",
+    "Concepts/Reopened Mission.md",
+    "Concepts/Attention.md"
+  ]
+}
