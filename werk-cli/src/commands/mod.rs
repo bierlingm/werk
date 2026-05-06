@@ -265,7 +265,8 @@ Examples:
   werk show 42 --notes               Expand all notes to full text
   werk show 42 --route               Theory of closure with per-child detail
   werk show 42 --notes --activity    Compose section expansions
-  werk show 42 --full                Everything expanded
+  werk show 42 --full                Everything expanded (present epoch)
+  werk show 42 --history             Restore complete cross-epoch history
   werk show --json 42                Structured output for scripts")]
     Show {
         /// Tension ID or prefix (4+ characters).
@@ -298,6 +299,12 @@ Examples:
         /// Everything expanded: all notes, all activity, all epochs, ancestors, siblings, engagement.
         #[arg(long, short)]
         full: bool,
+
+        /// Restore the complete cross-epoch picture: done children, notes, and activity
+        /// from before the present epoch boundary. Default scopes these to the present
+        /// epoch (the timespan since the most recent desire/reality change).
+        #[arg(long = "history", short = 'H')]
+        history: bool,
     },
 
     /// Update the current reality of a tension.
@@ -618,13 +625,21 @@ Examples:
     #[command(after_help = "\
 Examples:
   werk position 42 1                 Set as highest priority
-  werk position 42 3                 Set as third in sequence")]
+  werk position 42 3                 Set as third in sequence
+  werk position --renumber 10        Compact children of #10 to 1..N
+  werk position --renumber 10 --dry-run
+                                     Preview the renumber map")]
     Position {
         /// Tension ID or prefix.
-        id: String,
+        id: Option<String>,
 
         /// Position number (1-based, higher = earlier in sequence).
-        n: i32,
+        n: Option<i32>,
+
+        /// Compact positions among the children of this parent so they
+        /// run 1..N preserving relative order. Held siblings stay held.
+        #[arg(long, value_name = "PARENT_ID", conflicts_with_all = ["id", "n"])]
+        renumber: Option<String>,
 
         /// Preview the change without mutating.
         #[arg(long)]

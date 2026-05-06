@@ -45,10 +45,10 @@ pub use search::{SearchHit, SearchIndex};
 pub use store::{EpochRecord, Store, StoreError};
 pub use temporal::{
     ContainmentViolation, CriticalPath, HorizonDrift, HorizonDriftType, ImpliedWindow,
-    SequencingPressure, TemporalSignals, Urgency, compute_implied_windows,
+    PositionGaps, SequencingPressure, TemporalSignals, Urgency, compute_implied_windows,
     compute_temporal_signals, compute_urgency, detect_containment_violations, detect_critical_path,
-    detect_critical_path_recursive, detect_horizon_drift, detect_sequencing_pressure,
-    gap_magnitude,
+    detect_critical_path_recursive, detect_horizon_drift, detect_position_gaps,
+    detect_sequencing_pressure, gap_magnitude,
 };
 pub use tension::{CoreError, Tension, TensionStatus};
 pub use tree::{Forest, Node, TreeError};

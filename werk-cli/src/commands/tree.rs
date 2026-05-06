@@ -9,7 +9,8 @@ use serde::Serialize;
 use std::collections::HashMap;
 use werk_core::{
     FieldStructuralSignals, Forest, TensionStatus, compute_structural_signals,
-    compute_temporal_signals, detect_containment_violations, detect_sequencing_pressure,
+    compute_temporal_signals, detect_containment_violations, detect_position_gaps,
+    detect_sequencing_pressure,
 };
 use werk_shared::cli_display::{Palette, glyphs};
 
@@ -241,6 +242,12 @@ pub fn cmd_tree(
         })
         .collect();
 
+    // Pre-compute position-gap presence for all tensions (parents only)
+    let position_gaps_set: HashMap<String, bool> = filtered_tensions
+        .iter()
+        .map(|t| (t.id.clone(), detect_position_gaps(&forest, &t.id).is_some()))
+        .collect();
+
     /// Sort nodes canonically: positioned DESC, then unpositioned by horizon, then creation time.
     fn canonical_sort(nodes: &mut Vec<&werk_core::Node>) {
         nodes.sort_by(|a, b| {
@@ -289,12 +296,16 @@ pub fn cmd_tree(
         node_id: &str,
         structural: &FieldStructuralSignals,
         critical_path_set: &HashMap<String, bool>,
+        position_gaps_set: &HashMap<String, bool>,
         sig: &werk_shared::SignalThresholds,
     ) -> Vec<&'static str> {
         let mut out = Vec::new();
 
         if *critical_path_set.get(node_id).unwrap_or(&false) {
             out.push(glyphs::SIGNAL_CRITICAL_PATH);
+        }
+        if *position_gaps_set.get(node_id).unwrap_or(&false) {
+            out.push(glyphs::SIGNAL_POSITION_GAPS);
         }
         if let Some(ss) = structural.signals.get(node_id) {
             if ss.on_longest_path {
@@ -323,6 +334,7 @@ pub fn cmd_tree(
         filtered_ids: &'a std::collections::HashSet<&'a str>,
         structural: &'a FieldStructuralSignals,
         critical_path_set: &'a HashMap<String, bool>,
+        position_gaps_set: &'a HashMap<String, bool>,
         sig: &'a werk_shared::SignalThresholds,
         term_width: usize,
         palette: Palette,
@@ -415,7 +427,13 @@ pub fn cmd_tree(
             String::new()
         };
 
-        let sig_glyphs = signal_glyphs(node.id(), ctx.structural, ctx.critical_path_set, ctx.sig);
+        let sig_glyphs = signal_glyphs(
+            node.id(),
+            ctx.structural,
+            ctx.critical_path_set,
+            ctx.position_gaps_set,
+            ctx.sig,
+        );
 
         let child_ids: Vec<_> = node
             .children
@@ -786,6 +804,7 @@ pub fn cmd_tree(
         filtered_ids: &filtered_ids,
         structural: &structural_signals,
         critical_path_set: &critical_path_set,
+        position_gaps_set: &position_gaps_set,
         sig: &sig,
         term_width,
         palette,

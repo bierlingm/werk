@@ -309,6 +309,23 @@ pub struct CriticalPath {
     pub slack_seconds: i64,
 }
 
+/// Position gaps among positioned siblings.
+///
+/// When children of a parent have positions like [1, 7] (rather than [1, 2]),
+/// the display reads as "step 1 of 7" when only two steps remain. Surfaced as
+/// a signal so the practitioner can choose to renumber or leave as-is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PositionGaps {
+    /// Number of active, positioned siblings (the "real" count).
+    pub positioned_count: usize,
+    /// Lowest position number among active siblings.
+    pub min_position: i32,
+    /// Highest position number among active siblings.
+    pub max_position: i32,
+    /// Missing position numbers within `min_position..=max_position`.
+    pub missing: Vec<i32>,
+}
+
 /// Containment violation — a child's deadline exceeds its parent's deadline.
 ///
 /// The foundation says the instrument offers pathways: keep as-is, clip to parent,
@@ -429,6 +446,42 @@ pub fn detect_sequencing_pressure(forest: &Forest, parent_id: &str) -> Vec<Seque
     }
 
     results
+}
+
+/// Detect position gaps among the active, positioned children of a parent.
+///
+/// Returns `Some(PositionGaps)` when the active positioned siblings span a range
+/// `[min..=max]` with one or more missing numbers in between (e.g. positions
+/// [1, 7] with 2..=6 missing). Returns `None` when positions are contiguous or
+/// when fewer than two siblings are positioned.
+pub fn detect_position_gaps(forest: &Forest, parent_id: &str) -> Option<PositionGaps> {
+    let children = forest.children(parent_id)?;
+    let mut positions: Vec<i32> = children
+        .iter()
+        .map(|n| &n.tension)
+        .filter(|t| t.status == TensionStatus::Active)
+        .filter_map(|t| t.position)
+        .collect();
+    if positions.len() < 2 {
+        return None;
+    }
+    positions.sort_unstable();
+    let min_position = positions[0];
+    let max_position = positions[positions.len() - 1];
+    let span = (max_position - min_position + 1) as usize;
+    if span == positions.len() {
+        return None;
+    }
+    let present: std::collections::HashSet<i32> = positions.iter().copied().collect();
+    let missing: Vec<i32> = (min_position..=max_position)
+        .filter(|p| !present.contains(p))
+        .collect();
+    Some(PositionGaps {
+        positioned_count: positions.len(),
+        min_position,
+        max_position,
+        missing,
+    })
 }
 
 /// Detect critical path children for a given parent.
@@ -577,6 +630,9 @@ pub struct TemporalSignals {
     pub on_critical_path: bool,
     /// Whether this tension has a containment violation against its parent.
     pub has_containment_violation: bool,
+    /// Position gaps among this tension's active children (if any).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_gaps: Option<PositionGaps>,
 }
 
 /// Compute all temporal signals for a given tension.
@@ -593,6 +649,7 @@ pub fn compute_temporal_signals(
     // Signals about this tension's children
     let critical_path = detect_critical_path(forest, tension_id, now);
     let containment_violations = detect_containment_violations(forest, tension_id);
+    let position_gaps = detect_position_gaps(forest, tension_id);
 
     // Signals about this tension relative to its parent
     let (implied_window, sequencing_pressures, on_critical_path, has_containment_violation) =
@@ -630,6 +687,7 @@ pub fn compute_temporal_signals(
         containment_violations,
         on_critical_path,
         has_containment_violation,
+        position_gaps,
     }
 }
 

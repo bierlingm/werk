@@ -53,6 +53,9 @@ pub const SIGNAL_SEQUENCING: &str = "\u{21c5}"; // ⇅
 /// Horizon drift — repeated postponement or oscillating deadlines.
 pub const SIGNAL_DRIFT: &str = "\u{219d}"; // ↝
 
+/// Position gaps — sibling positions span a range with missing numbers.
+pub const SIGNAL_POSITION_GAPS: &str = "\u{22ee}"; // ⋮
+
 /// Overdue marker for compact list rendering.
 pub const SIGNAL_OVERDUE: &str = "!";
 

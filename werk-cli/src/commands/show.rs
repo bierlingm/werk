@@ -65,6 +65,7 @@ pub struct ShowFlags {
     pub activity: bool,
     pub epochs: bool,
     pub context: bool,
+    pub history: bool,
 }
 
 /// JSON output structure for show command.
@@ -96,6 +97,11 @@ struct ShowResult {
     engagement: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     epochs: Option<Vec<ShowEpochInfo>>,
+    /// "present" (filtered to the latest epoch boundary) or "all" (full history).
+    epoch_scope: &'static str,
+    /// Timestamp of the present epoch boundary, when scoped to "present".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    epoch_boundary: Option<String>,
 }
 
 /// Epoch information for show display.
@@ -227,6 +233,24 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
         .get_epochs(&tension.id)
         .map_err(WerkError::StoreError)?;
     let frontier = compute_frontier(&forest, &tension.id, now, &epochs, &child_mutations);
+
+    // Present-epoch boundary: timestamp of the most recent epoch. When --history
+    // is set (or no epochs exist), no filtering is applied.
+    let epoch_boundary: Option<DateTime<Utc>> = if flags.history {
+        None
+    } else {
+        epochs.last().map(|e| e.timestamp)
+    };
+
+    if let Some(boundary) = epoch_boundary {
+        children.retain(|c| match c.status.as_str() {
+            "Resolved" | "Released" => c
+                .completion_ts
+                .map(|ts| ts >= boundary)
+                .unwrap_or(true),
+            _ => true,
+        });
+    }
     let urgency = compute_urgency(&tension, now);
     let overdue = tension.status == TensionStatus::Active
         && tension
@@ -250,8 +274,13 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
         }
     };
 
-    let mutation_limit = if flags.activity { mutations.len() } else { 10 };
-    let mutation_infos: Vec<ShowMutationInfo> = mutations
+    let scoped_mutations: Vec<&werk_core::Mutation> = if let Some(boundary) = epoch_boundary {
+        mutations.iter().filter(|m| m.timestamp() >= boundary).collect()
+    } else {
+        mutations.iter().collect()
+    };
+    let mutation_limit = if flags.activity { scoped_mutations.len() } else { 10 };
+    let mutation_infos: Vec<ShowMutationInfo> = scoped_mutations
         .iter()
         .rev()
         .take(mutation_limit)
@@ -341,6 +370,8 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
                     .collect(),
             )
         },
+        epoch_scope: if flags.history { "all" } else { "present" },
+        epoch_boundary: epoch_boundary.map(|ts| ts.to_rfc3339()),
     };
 
     if output.is_structured() {
@@ -349,10 +380,19 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
             .map_err(WerkError::IoError)?;
     } else {
         let palette = output.palette();
+        let scoped_owned: Vec<werk_core::Mutation> = scoped_mutations
+            .iter()
+            .map(|m| (*m).clone())
+            .collect();
+        let render_mutations: &[werk_core::Mutation] = if epoch_boundary.is_some() {
+            &scoped_owned
+        } else {
+            &mutations
+        };
         render_human(
-            &result, &tension, &all_tensions, &mutations, &epochs, &frontier,
-            &temporal, &structural, &field_structural, &horizon_drift, &urgency,
-            overdue, now, &palette, &flags, &sig,
+            &result, &tension, &all_tensions, render_mutations, &epochs,
+            &frontier, &temporal, &structural, &field_structural,
+            &horizon_drift, &urgency, overdue, now, &palette, &flags, &sig,
         );
     }
 
@@ -648,6 +688,7 @@ fn render_signals(
         || !temporal.critical_path.is_empty()
         || !temporal.containment_violations.is_empty()
         || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false)
+        || temporal.position_gaps.is_some()
         || horizon_drift.is_some()
         || has_hub || has_spine || has_reach;
 
@@ -701,6 +742,20 @@ fn render_signals(
                 }
             }
         }
+    }
+
+    if let Some(pg) = &temporal.position_gaps {
+        let missing_str = format_missing_positions(&pg.missing);
+        signal_line(
+            glyphs::SIGNAL_POSITION_GAPS,
+            "GAPS",
+            &format!(
+                "{} positioned children span {}..{} (gaps at {})",
+                pg.positioned_count, pg.min_position, pg.max_position, missing_str,
+            ),
+            w,
+            palette,
+        );
     }
 
     // Collapse homogeneous containment violations
@@ -1161,6 +1216,25 @@ fn signal_line(
 ) {
     let padded_label = format!("{:<10}", label);
     println!("  {} {} {}", color_fn(palette, glyph), color_fn(palette, &padded_label), desc);
+}
+
+/// Format a sorted list of missing position numbers as a compact string.
+/// `[2,3,4,5,6]` -> `2..6`, `[2,5]` -> `2,5`, `[2,3,7]` -> `2,3,7`.
+fn format_missing_positions(missing: &[i32]) -> String {
+    if missing.is_empty() {
+        return String::new();
+    }
+    let is_contiguous =
+        missing.len() > 2 && missing.windows(2).all(|w| w[1] == w[0] + 1);
+    if is_contiguous {
+        format!("{}..{}", missing[0], missing[missing.len() - 1])
+    } else {
+        missing
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
