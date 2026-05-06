@@ -143,15 +143,14 @@ fn print_totals_row(totals: &VitalsTotals, name_w: usize, palette: &Palette) {
     } else {
         format!("{:>7}", totals.overdue)
     };
-    let label = palette.chrome("TOTAL");
+    let label = palette.chrome(&format!("{:<name_w$}", "TOTAL", name_w = name_w));
     println!(
-        "{:<name_w$}  {:>6}  {}  {:>10}  {:>4}",
+        "{}  {:>6}  {}  {:>10}  {:>4}",
         label,
         totals.active,
         overdue_cell,
         totals.positioned,
         totals.held,
-        name_w = name_w,
     );
 }
 

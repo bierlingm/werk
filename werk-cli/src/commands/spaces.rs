@@ -150,14 +150,21 @@ fn scan(output: &Output, max_depth: usize, register_all: bool) -> Result<(), Wer
     }
 
     if output.is_json() {
+        let mut taken: HashSet<String> = registered.iter().map(|(n, _)| n.clone()).collect();
+        taken.insert(GLOBAL_NAME.to_string());
+        let unreg_json: Vec<_> = unregistered
+            .iter()
+            .map(|p| {
+                let name = unique_name_for_path(p, &taken);
+                taken.insert(name.clone());
+                serde_json::json!({"path": p.display().to_string(), "suggested_name": name})
+            })
+            .collect();
         let json = serde_json::json!({
             "registered": registered.iter().map(|(name, path)| {
                 serde_json::json!({"name": name, "path": path.display().to_string()})
             }).collect::<Vec<_>>(),
-            "unregistered": unregistered.iter().map(|p| {
-                let derived = derive_name(p);
-                serde_json::json!({"path": p.display().to_string(), "suggested_name": derived})
-            }).collect::<Vec<_>>(),
+            "unregistered": unreg_json,
         });
         println!("{}", serde_json::to_string_pretty(&json).unwrap());
         return Ok(());
@@ -171,9 +178,15 @@ fn scan(output: &Output, max_depth: usize, register_all: bool) -> Result<(), Wer
     print_two_col_indent(&reg_rows, 2);
     println!();
     println!("unregistered ({}):", unregistered.len());
+    let mut taken: HashSet<String> = reg.list().into_iter().map(|e| e.name).collect();
+    taken.insert(GLOBAL_NAME.to_string());
     let unreg_rows: Vec<(String, String)> = unregistered
         .iter()
-        .map(|p| (format!("?{}", derive_name(p)), p.display().to_string()))
+        .map(|p| {
+            let name = unique_name_for_path(p, &taken);
+            taken.insert(name.clone());
+            (name, p.display().to_string())
+        })
         .collect();
     print_two_col_indent(&unreg_rows, 2);
     if !unregistered.is_empty() && !register_all {
@@ -188,7 +201,7 @@ fn scan(output: &Output, max_depth: usize, register_all: bool) -> Result<(), Wer
             reg.list().into_iter().map(|e| e.name).collect();
         taken.insert(GLOBAL_NAME.to_string());
         for path in &unregistered {
-            let name = unique_name(&derive_name(path), &taken);
+            let name = unique_name_for_path(path, &taken);
             match reg.register(&name, path) {
                 Ok(e) => {
                     println!("  ✓ {} → {}", e.name, e.path.display());
@@ -273,6 +286,34 @@ fn derive_name(path: &Path) -> String {
         return "ws".to_string();
     }
     trimmed
+}
+
+/// Disambiguate a path-derived name against `taken` by walking up the path:
+/// try the basename, then `<parent>-<base>`, `<grandparent>-<parent>-<base>`,
+/// etc. Falls back to numeric suffix if path context is exhausted.
+fn unique_name_for_path(path: &Path, taken: &HashSet<String>) -> String {
+    let base = derive_name(path);
+    if !taken.contains(&base) {
+        return base;
+    }
+    let mut prefix_segments: Vec<String> = Vec::new();
+    let mut cursor = path.parent();
+    while let Some(p) = cursor {
+        let seg = derive_name(p);
+        if seg.is_empty() || seg == "ws" {
+            break;
+        }
+        prefix_segments.insert(0, seg);
+        let candidate = format!("{}-{}", prefix_segments.join("-"), base);
+        if !taken.contains(&candidate) {
+            return candidate;
+        }
+        cursor = p.parent();
+        if prefix_segments.len() >= 3 {
+            break;
+        }
+    }
+    unique_name(&base, taken)
 }
 
 /// Resolve a name collision by appending -2, -3, … until unique.
