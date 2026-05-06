@@ -625,6 +625,10 @@ Examples:
 
         /// Position number (1-based, higher = earlier in sequence).
         n: i32,
+
+        /// Preview the change without mutating.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Testimony operations: add, retract, or list notes.

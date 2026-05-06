@@ -248,7 +248,9 @@ fn main() {
             dry_run,
         ),
         Commands::Hold { id } => werk::commands::hold::cmd_hold(&output, id),
-        Commands::Position { id, n } => werk::commands::position::cmd_position(&output, id, n),
+        Commands::Position { id, n, dry_run } => {
+            werk::commands::position::cmd_position(&output, id, n, dry_run)
+        }
         Commands::Note { command } => match command {
             werk::commands::NoteCommand::Add { arg1, arg2 } => {
                 werk::commands::note::cmd_note_add(&output, arg1, arg2)

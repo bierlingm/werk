@@ -12,11 +12,18 @@ struct PositionResult {
     id: String,
     previous_position: Option<i32>,
     new_position: i32,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    dry_run: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     signals: Vec<palette::Palette>,
 }
 
-pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError> {
+pub fn cmd_position(
+    output: &Output,
+    id: String,
+    n: i32,
+    dry_run: bool,
+) -> Result<(), WerkError> {
     if n < 1 {
         return Err(WerkError::InvalidInput("position must be >= 1".to_string()));
     }
@@ -29,6 +36,34 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
     let tension = resolver.resolve(&id)?;
 
     let old_position = tension.position;
+
+    if dry_run {
+        let unchanged = old_position == Some(n);
+        if output.is_structured() {
+            let result = PositionResult {
+                id: tension.id.clone(),
+                previous_position: old_position,
+                new_position: n,
+                dry_run: true,
+                signals: Vec::new(),
+            };
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
+        } else {
+            let display = werk_shared::display_id(tension.short_code, &tension.id);
+            if unchanged {
+                println!("Would leave tension {} at position {} (unchanged)", display, n);
+            } else {
+                match old_position {
+                    Some(p) => println!("Would position tension {} at {} (was {})", display, n, p),
+                    None => println!("Would position tension {} at {} (was held)", display, n),
+                }
+            }
+            println!("No changes made.");
+        }
+        return Ok(());
+    }
 
     let _ = store.begin_gesture(Some(&format!("position {} at {}", &tension.id, n)));
     let changed = store
@@ -79,6 +114,7 @@ pub fn cmd_position(output: &Output, id: String, n: i32) -> Result<(), WerkError
             id: tension.id.clone(),
             previous_position: old_position,
             new_position: n,
+            dry_run: false,
             signals,
         };
         output
