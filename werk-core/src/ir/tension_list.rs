@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Utc};
-
-use crate::ir::{AttributeBuilder, AttributeValue, Attributes, Ir, IrContext, IrError, IrKind};
-use crate::projection::{extract_mutation_pattern, ProjectionThresholds};
+use crate::ir::{
+    AttributeBuilder, AttributeContext, AttributeValue, Attributes, Ir, IrContext, IrError, IrKind,
+    count_active_notes,
+};
+use crate::projection::{ProjectionThresholds, extract_mutation_pattern};
 use crate::temporal::{compute_urgency, gap_magnitude};
-use crate::{compute_frontier, Forest, Mutation, Store, Tension, TensionStatus};
+use crate::{Forest, Mutation, Store, Tension, TensionStatus, compute_frontier};
 
 #[derive(Debug, Clone)]
 pub struct TensionListEntry {
@@ -19,46 +20,6 @@ pub struct TensionList;
 impl Ir for TensionList {
     fn kind(&self) -> IrKind {
         IrKind::TensionList
-    }
-}
-
-pub(crate) struct AttributeContext<'a> {
-    now: DateTime<Utc>,
-    workspace_name: &'a str,
-    forest: &'a Forest,
-    patterns: HashMap<String, crate::projection::MutationPattern>,
-    note_counts: HashMap<String, usize>,
-    last_mutations: HashMap<String, DateTime<Utc>>,
-    parent_short_codes: HashMap<String, Option<i32>>,
-    held_ids: HashSet<String>,
-}
-
-impl AttributeContext<'_> {
-    fn last_mutation(&self, tension_id: &str, fallback: DateTime<Utc>) -> DateTime<Utc> {
-        self.last_mutations
-            .get(tension_id)
-            .copied()
-            .unwrap_or(fallback)
-    }
-
-    fn note_count(&self, tension_id: &str) -> usize {
-        self.note_counts.get(tension_id).copied().unwrap_or(0)
-    }
-
-    fn pattern(&self, tension_id: &str) -> crate::projection::MutationPattern {
-        self.patterns
-            .get(tension_id)
-            .cloned()
-            .unwrap_or(crate::projection::MutationPattern {
-                tension_id: tension_id.to_string(),
-                mean_interval_seconds: None,
-                mutation_count: 0,
-                frequency_per_day: 0.0,
-                frequency_trend: 0.0,
-                gap_trend: 0.0,
-                gap_samples: Vec::new(),
-                is_projectable: false,
-            })
     }
 }
 
@@ -316,22 +277,6 @@ impl TensionList {
         }
         Ok(entries)
     }
-}
-
-fn count_active_notes(mutations: &[Mutation]) -> usize {
-    let mut retracted: HashSet<String> = HashSet::new();
-    for mutation in mutations {
-        if mutation.field() == "note_retracted" {
-            retracted.insert(mutation.new_value().to_owned());
-        }
-    }
-
-    mutations
-        .iter()
-        .filter(|mutation| {
-            mutation.field() == "note" && !retracted.contains(&mutation.timestamp().to_rfc3339())
-        })
-        .count()
 }
 
 #[cfg(test)]

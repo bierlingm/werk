@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod tension_list;
+pub mod tension_tree;
 pub use tension_list::{TensionList, TensionListEntry};
+pub use tension_tree::TensionTree;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IrKind {
@@ -159,4 +161,60 @@ impl AttributeBuilder {
     pub fn requested(&self) -> &[String] {
         &self.requested
     }
+}
+
+pub(crate) struct AttributeContext<'a> {
+    pub(crate) now: DateTime<Utc>,
+    pub(crate) workspace_name: &'a str,
+    pub(crate) forest: &'a crate::Forest,
+    pub(crate) patterns: HashMap<String, crate::projection::MutationPattern>,
+    pub(crate) note_counts: HashMap<String, usize>,
+    pub(crate) last_mutations: HashMap<String, DateTime<Utc>>,
+    pub(crate) parent_short_codes: HashMap<String, Option<i32>>,
+    pub(crate) held_ids: HashSet<String>,
+}
+
+impl AttributeContext<'_> {
+    pub(crate) fn last_mutation(&self, tension_id: &str, fallback: DateTime<Utc>) -> DateTime<Utc> {
+        self.last_mutations
+            .get(tension_id)
+            .copied()
+            .unwrap_or(fallback)
+    }
+
+    pub(crate) fn note_count(&self, tension_id: &str) -> usize {
+        self.note_counts.get(tension_id).copied().unwrap_or(0)
+    }
+
+    pub(crate) fn pattern(&self, tension_id: &str) -> crate::projection::MutationPattern {
+        self.patterns
+            .get(tension_id)
+            .cloned()
+            .unwrap_or(crate::projection::MutationPattern {
+                tension_id: tension_id.to_string(),
+                mean_interval_seconds: None,
+                mutation_count: 0,
+                frequency_per_day: 0.0,
+                frequency_trend: 0.0,
+                gap_trend: 0.0,
+                gap_samples: Vec::new(),
+                is_projectable: false,
+            })
+    }
+}
+
+pub(crate) fn count_active_notes(mutations: &[crate::Mutation]) -> usize {
+    let mut retracted: HashSet<String> = HashSet::new();
+    for mutation in mutations {
+        if mutation.field() == "note_retracted" {
+            retracted.insert(mutation.new_value().to_owned());
+        }
+    }
+
+    mutations
+        .iter()
+        .filter(|mutation| {
+            mutation.field() == "note" && !retracted.contains(&mutation.timestamp().to_rfc3339())
+        })
+        .count()
 }

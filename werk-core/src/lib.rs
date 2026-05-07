@@ -34,7 +34,7 @@ pub use graph::{
     ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
 };
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
-pub use ir::{AttributeValue, Attributes, IrKind, TensionList};
+pub use ir::{AttributeValue, Attributes, IrKind, TensionList, TensionTree};
 pub use mutation::{
     Mutation, MutationFieldKind, ReconstructedTension, ReplayError, replay_mutations,
 };
