@@ -1,0 +1,168 @@
+# contemplative — a still mandala for sitting with.
+#
+# Privileges depth, breath, and recognizability over information density.
+# The intended use is: render once, leave on a screen, return to glance at.
+# The form should feel coherent across many werk-states — it should not
+# rearrange itself into a different shape every time you look.
+#
+# This file is also the reference preset. The TOML schema crystallized
+# against it; future presets follow this shape.
+#
+# Lineage: mandala / yantra geometry, alchemical seal aesthetic, ensō.
+
+[meta]
+name = "contemplative"
+version = "1"
+description = "A still mandala for sitting with — privileges depth and breath over density."
+purpose = "contemplative"
+
+# ---------------------------------------------------------------------------
+# Scope
+# ---------------------------------------------------------------------------
+# What werk-state enters the engine. CLI invocations may override these
+# defaults; the preset's job is to express the *natural* scope for this logic.
+
+[scope]
+default = { kind = "subtree", depth = 4 }   # rooted at the CLI-provided id
+fallback = { kind = "space", name = "active" }   # if no id given
+at = "now"   # historical-state queries unsupported in v1; placeholder
+
+# ---------------------------------------------------------------------------
+# Pipeline
+# ---------------------------------------------------------------------------
+# Each stage names a registered implementation and supplies its parameters.
+# Stages can be overridden individually from the CLI (`--layouter X`).
+
+[pipeline]
+selector  = "subtree"
+featurizer = "tension_tree"
+encoder   = "structural_default"
+layouter  = "radial_mandala"
+stylist   = "ink_brush"
+renderer  = "svg"
+
+# ---------------------------------------------------------------------------
+# Featurizer parameters
+# ---------------------------------------------------------------------------
+# Which attributes to compute. The Encoder/Layouter can only reference
+# attributes listed here. Names come from the stable attribute registry
+# (designs/sigil-engine.md, Part IV).
+
+[featurizer.tension_tree]
+attributes = [
+  "urgency",
+  "gap_magnitude",
+  "status",
+  "depth",
+  "child_count",
+  "descendant_count",
+  "age_seconds",
+  "is_resolved",
+  "has_children",
+]
+# The Featurizer attaches these to each node of the TensionTree IR.
+# Custom attributes (not in the registry) can be added here too — the
+# Encoder will be able to read them by name.
+
+# ---------------------------------------------------------------------------
+# Encoder — what each tension looks like
+# ---------------------------------------------------------------------------
+# `structural_default` provides sensible defaults; channels listed under
+# [encoder.channels] override them. Channel values can be:
+#
+#   - literals:                 stroke_width = 1.5
+#   - field references (E2):    r = { field = "urgency", scale = "sqrt", range = [4, 36] }
+#   - expressions (E3):         r = { expr = "sqrt(urgency) * 28 + child_count * 2 + 4" }
+#   - categorical mappings:     primitive = { field = "status", mapping = { ... } }
+#
+# Position channels (cx, cy) are *not* set here — the Layouter fills them.
+
+[encoder.structural_default]
+default_primitive = "circle"
+
+[encoder.channels.primitive]
+field = "status"
+kind  = "categorical"
+mapping = { active = "circle", held = "ellipse", resolved = "glyph", released = "polygon", frozen = "circle" }
+
+[encoder.channels.r]
+expr = "sqrt(urgency + 0.1) * 26 + log(child_count + 1) * 4 + 4"
+
+[encoder.channels.stroke_width]
+field  = "gap_magnitude"
+scale  = "linear"
+domain = [0.0, 1.0]
+range  = [0.6, 2.6]
+
+[encoder.channels.fill_opacity]
+field  = "depth"
+scale  = "linear"
+domain = [0, 4]
+range  = [0.85, 0.18]
+
+[encoder.channels.stroke_opacity]
+literal = 1.0
+
+# Resolved tensions render as glyphs from the alchemical family.
+# When primitive = "glyph", these channels apply.
+[encoder.channels.glyph_family]
+literal = "alchemical"
+
+[encoder.channels.glyph_index]
+expr = "(short_code_hash % 50)"   # deterministic glyph selection
+
+# ---------------------------------------------------------------------------
+# Layouter — where things go, and any structural marks the layout itself draws
+# ---------------------------------------------------------------------------
+
+[layouter.radial_mandala]
+center           = "root"           # root tension placed at canvas center
+ring_step        = 80               # px between concentric rings (per depth level)
+angular_share    = "child_weighted" # children get angular share proportional to descendant_count
+                                    # alternatives: "equal", "urgency_weighted"
+inner_padding    = 0.08             # angular padding between siblings (radians)
+root_radius      = 12               # radius for the central root node specifically
+respect_status   = true             # held/released tensions get reduced angular share
+
+# Structural marks the layouter emits in addition to placed data marks.
+[layouter.radial_mandala.structural_marks]
+parent_child_curves = { enabled = true, style = "arc", stroke_width = 0.4, opacity = 0.5 }
+ring_guides         = { enabled = true, dash = [1, 4], opacity = 0.18 }
+spokes              = { enabled = false }
+
+# ---------------------------------------------------------------------------
+# Stylist — global aesthetic transforms
+# ---------------------------------------------------------------------------
+
+[stylist.ink_brush]
+palette         = "ink_on_cream"
+background      = { color = "#f5efe1", texture = "paper", texture_opacity = 0.18 }
+stroke_color    = "#1a1818"
+fill_color      = "#1a1818"
+glyph_color     = "#1a1818"
+line_jitter     = 0.08              # 0..1; perturbs path coordinates for hand-drawn feel
+brush_pressure  = 0.6               # affects stroke-width variance along paths
+texture_overlay = "ink_bleed"       # SVG <filter> chain: turbulence + displacement
+
+# Cheap-jitter mode pre-perturbs path points instead of using SVG filters.
+# Useful for animation frames or large sheets where filter rendering is slow.
+filter_mode = "filter"   # "filter" | "cheap" | "off"
+
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
+
+[render]
+viewbox = [0, 0, 600, 600]
+margin  = 40
+embed_metadata = true   # writes provenance into <metadata> — required for archive purpose
+
+# ---------------------------------------------------------------------------
+# Seed
+# ---------------------------------------------------------------------------
+# `auto` derives the seed from hash(scope_canonical, logic_canonical, logic_version)
+# so this preset is byte-for-byte deterministic by default. Override with --seed
+# on the CLI for variations, or set seed = 42 here to pin a particular roll.
+
+[seed]
+mode = "auto"
