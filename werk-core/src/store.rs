@@ -72,6 +72,20 @@
 //!     children_snapshot_json TEXT,
 //!     trigger_gesture_id TEXT
 //! );
+//!
+//! CREATE TABLE IF NOT EXISTS sigils (
+//!     id INTEGER PRIMARY KEY,
+//!     short_code INTEGER UNIQUE NOT NULL,
+//!     scope_canonical TEXT NOT NULL,
+//!     logic_id TEXT NOT NULL,
+//!     logic_version TEXT NOT NULL,
+//!     seed INTEGER NOT NULL,
+//!     rendered_at TEXT NOT NULL,
+//!     file_path TEXT NOT NULL,
+//!     label TEXT NULL
+//! );
+//! CREATE INDEX IF NOT EXISTS idx_sigils_short_code ON sigils(short_code);
+//! CREATE INDEX IF NOT EXISTS idx_sigils_logic ON sigils(logic_id);
 //! ```
 
 use chrono::{DateTime, Utc};
@@ -433,6 +447,39 @@ impl Store {
         .map_err(|e| {
             StoreError::DatabaseError(format!("failed to create epochs table: {:?}", e))
         })?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sigils (
+                id INTEGER PRIMARY KEY,
+                short_code INTEGER UNIQUE NOT NULL,
+                scope_canonical TEXT NOT NULL,
+                logic_id TEXT NOT NULL,
+                logic_version TEXT NOT NULL,
+                seed INTEGER NOT NULL,
+                rendered_at TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                label TEXT NULL
+            )",
+        )
+        .map_err(|e| {
+            StoreError::DatabaseError(format!("failed to create sigils table: {:?}", e))
+        })?;
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sigils_short_code ON sigils(short_code)")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!(
+                    "failed to create sigils short_code index: {:?}",
+                    e
+                ))
+            })?;
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sigils_logic ON sigils(logic_id)")
+            .map_err(|e| {
+                StoreError::DatabaseError(format!(
+                    "failed to create sigils logic_id index: {:?}",
+                    e
+                ))
+            })?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS edges (
@@ -1339,6 +1386,100 @@ impl Store {
         self.parse_tension_rows(rows)
     }
 
+    /// Insert a sigil metadata record (no SVG bytes stored).
+    pub fn record_sigil(&self, record: &SigilRecord) -> Result<(), StoreError> {
+        let conn = self.conn.borrow();
+        conn.execute_with_params(
+            "INSERT INTO sigils (short_code, scope_canonical, logic_id, logic_version, seed, rendered_at, file_path, label) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            &[
+                SqliteValue::Integer(record.short_code as i64),
+                SqliteValue::Text(record.scope_canonical.clone().into()),
+                SqliteValue::Text(record.logic_id.clone().into()),
+                SqliteValue::Text(record.logic_version.clone().into()),
+                SqliteValue::Integer(record.seed),
+                SqliteValue::Text(record.rendered_at.to_rfc3339().into()),
+                SqliteValue::Text(record.file_path.clone().into()),
+                match &record.label {
+                    Some(label) => SqliteValue::Text(label.clone().into()),
+                    None => SqliteValue::Null,
+                },
+            ],
+        )
+        .map(|_| ())
+        .map_err(|e| StoreError::DatabaseError(format!("failed to insert sigil record: {:?}", e)))
+    }
+
+    /// List all sigils in chronological order (rendered_at ascending).
+    pub fn list_sigils(&self) -> Result<Vec<SigilRecord>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query(
+                "SELECT id, short_code, scope_canonical, logic_id, logic_version, seed, rendered_at, file_path, label FROM sigils ORDER BY rendered_at ASC, id ASC",
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("sigils query failed: {:?}", e)))?;
+
+        self.parse_sigil_rows(rows)
+    }
+
+    /// Fetch a sigil by short code.
+    pub fn get_sigil_by_short_code(
+        &self,
+        short_code: i32,
+    ) -> Result<Option<SigilRecord>, StoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query_with_params(
+                "SELECT id, short_code, scope_canonical, logic_id, logic_version, seed, rendered_at, file_path, label FROM sigils WHERE short_code = ?1",
+                &[SqliteValue::Integer(short_code as i64)],
+            )
+            .map_err(|e| StoreError::DatabaseError(format!("sigil lookup failed: {:?}", e)))?;
+
+        let mut records = self.parse_sigil_rows(rows)?;
+        Ok(records.pop())
+    }
+
+    /// Delete a sigil metadata row by short code. Returns true if a row was removed.
+    pub fn delete_sigil(&self, short_code: i32) -> Result<bool, StoreError> {
+        let conn = self.conn.borrow();
+        let pre_check = conn
+            .query_with_params(
+                "SELECT COUNT(*) FROM sigils WHERE short_code = ?1",
+                &[SqliteValue::Integer(short_code as i64)],
+            )
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("sigil delete check failed: {:?}", e))
+            })?;
+        let existed = match pre_check.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Integer(n)) => *n > 0,
+            _ => false,
+        };
+        if !existed {
+            return Ok(false);
+        }
+
+        conn.execute_with_params(
+            "DELETE FROM sigils WHERE short_code = ?1",
+            &[SqliteValue::Integer(short_code as i64)],
+        )
+        .map_err(|e| StoreError::DatabaseError(format!("sigil delete failed: {:?}", e)))?;
+
+        let check = conn
+            .query_with_params(
+                "SELECT COUNT(*) FROM sigils WHERE short_code = ?1",
+                &[SqliteValue::Integer(short_code as i64)],
+            )
+            .map_err(|e| {
+                StoreError::DatabaseError(format!("sigil delete check failed: {:?}", e))
+            })?;
+
+        let still_exists = match check.first().and_then(|r| r.get(0)) {
+            Some(SqliteValue::Integer(n)) => *n > 0,
+            _ => false,
+        };
+
+        Ok(!still_exists)
+    }
+
     /// Get all root tensions (those with no parent_id).
     pub fn get_roots(&self) -> Result<Vec<Tension>, StoreError> {
         let conn = self.conn.borrow();
@@ -1536,6 +1677,94 @@ impl Store {
         }
 
         Ok(tensions)
+    }
+
+    fn parse_sigil_rows(&self, rows: Vec<fsqlite::Row>) -> Result<Vec<SigilRecord>, StoreError> {
+        let mut sigils = Vec::new();
+        for row in &rows {
+            let id = match row.get(0) {
+                Some(SqliteValue::Integer(n)) => *n,
+                _ => return Err(StoreError::DatabaseError("invalid sigil id".to_owned())),
+            };
+            let short_code = match row.get(1) {
+                Some(SqliteValue::Integer(n)) => i32::try_from(*n).map_err(|_| {
+                    StoreError::DatabaseError("invalid sigil short_code".to_owned())
+                })?,
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid sigil short_code".to_owned(),
+                    ));
+                }
+            };
+            let scope_canonical = match row.get(2) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid sigil scope_canonical".to_owned(),
+                    ));
+                }
+            };
+            let logic_id = match row.get(3) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid sigil logic_id".to_owned(),
+                    ));
+                }
+            };
+            let logic_version = match row.get(4) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid sigil logic_version".to_owned(),
+                    ));
+                }
+            };
+            let seed = match row.get(5) {
+                Some(SqliteValue::Integer(n)) => *n,
+                _ => return Err(StoreError::DatabaseError("invalid sigil seed".to_owned())),
+            };
+            let rendered_at_str = match row.get(6) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid sigil rendered_at".to_owned(),
+                    ));
+                }
+            };
+            let rendered_at = DateTime::parse_from_rfc3339(&rendered_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| {
+                    StoreError::DatabaseError(format!("invalid sigil rendered_at: {}", e))
+                })?;
+            let file_path = match row.get(7) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => {
+                    return Err(StoreError::DatabaseError(
+                        "invalid sigil file_path".to_owned(),
+                    ));
+                }
+            };
+            let label = match row.get(8) {
+                Some(SqliteValue::Text(s)) => Some(s.to_string()),
+                Some(SqliteValue::Null) | None => None,
+                _ => None,
+            };
+
+            sigils.push(SigilRecord {
+                id,
+                short_code,
+                scope_canonical,
+                logic_id,
+                logic_version,
+                seed,
+                rendered_at,
+                file_path,
+                label,
+            });
+        }
+
+        Ok(sigils)
     }
 
     /// Update the desired state of a tension.
@@ -3414,6 +3643,20 @@ impl Store {
         }
         Ok(edges)
     }
+}
+
+/// A record of a rendered sigil (metadata only).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SigilRecord {
+    pub id: i64,
+    pub short_code: i32,
+    pub scope_canonical: String,
+    pub logic_id: String,
+    pub logic_version: String,
+    pub seed: i64,
+    pub rendered_at: DateTime<Utc>,
+    pub file_path: String,
+    pub label: Option<String>,
 }
 
 /// A record of an epoch snapshot.
@@ -5720,5 +5963,97 @@ mod tests {
         assert_eq!(epochs[0].id, e1);
         assert_eq!(epochs[1].id, e2);
         assert!(epochs[0].timestamp <= epochs[1].timestamp);
+    }
+}
+
+#[cfg(test)]
+mod sigils {
+    use super::*;
+
+    fn sample_record(
+        short_code: i32,
+        rendered_at: DateTime<Utc>,
+        file_path: String,
+    ) -> SigilRecord {
+        SigilRecord {
+            id: 0,
+            short_code,
+            scope_canonical: "space:default".to_owned(),
+            logic_id: "contemplative".to_owned(),
+            logic_version: "v1".to_owned(),
+            seed: 42,
+            rendered_at,
+            file_path,
+            label: None,
+        }
+    }
+
+    #[test]
+    fn table_and_indexes_present() {
+        let store = Store::new_in_memory().unwrap();
+        let conn = store.conn.borrow();
+
+        let table_rows = conn
+            .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sigils'")
+            .unwrap();
+        assert!(!table_rows.is_empty(), "sigils table missing");
+
+        let index_rows = conn.query("PRAGMA index_list(sigils)").unwrap();
+        let mut index_names = Vec::new();
+        for row in &index_rows {
+            if let Some(SqliteValue::Text(name)) = row.get(1) {
+                index_names.push(name.to_string());
+            }
+        }
+        assert!(index_names.contains(&"idx_sigils_short_code".to_string()));
+        assert!(index_names.contains(&"idx_sigils_logic".to_string()));
+    }
+
+    #[test]
+    fn insert_list_get_roundtrip() {
+        let store = Store::new_in_memory().unwrap();
+        let rendered_at_1 = DateTime::parse_from_rfc3339("2026-01-01T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let rendered_at_2 = DateTime::parse_from_rfc3339("2026-01-02T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let record_1 = sample_record(1, rendered_at_1, "/tmp/sigil-1.svg".to_owned());
+        let record_2 = sample_record(2, rendered_at_2, "/tmp/sigil-2.svg".to_owned());
+
+        store.record_sigil(&record_1).unwrap();
+        store.record_sigil(&record_2).unwrap();
+
+        let sigils = store.list_sigils().unwrap();
+        assert_eq!(sigils.len(), 2);
+        assert_eq!(sigils[0].short_code, 1);
+        assert_eq!(sigils[1].short_code, 2);
+
+        let fetched = store.get_sigil_by_short_code(2).unwrap().unwrap();
+        assert_eq!(fetched.short_code, 2);
+        assert_eq!(fetched.logic_id, "contemplative");
+        assert_eq!(fetched.file_path, "/tmp/sigil-2.svg");
+    }
+
+    #[test]
+    fn delete_returns_existence() {
+        let store = Store::new_in_memory().unwrap();
+        let rendered_at = DateTime::parse_from_rfc3339("2026-01-03T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let temp_path = std::env::temp_dir()
+            .join(format!("sigil-{}.svg", ulid::Ulid::new()))
+            .to_string_lossy()
+            .to_string();
+        std::fs::write(&temp_path, "<svg/>").unwrap();
+
+        let record = sample_record(7, rendered_at, temp_path.clone());
+        store.record_sigil(&record).unwrap();
+
+        assert!(store.delete_sigil(7).unwrap());
+        assert!(!store.delete_sigil(7).unwrap());
+        assert!(std::path::Path::new(&temp_path).exists());
+        let _ = std::fs::remove_file(&temp_path);
     }
 }
