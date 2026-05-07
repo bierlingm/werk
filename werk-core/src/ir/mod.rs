@@ -1,11 +1,14 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod attribute_graph;
 pub mod tension_list;
 pub mod tension_tree;
+pub use attribute_graph::AttributeGraph;
 pub use tension_list::{TensionList, TensionListEntry};
 pub use tension_tree::TensionTree;
 
@@ -56,6 +59,7 @@ impl Attributes {
 pub struct IrContext {
     pub now: DateTime<Utc>,
     pub workspace_name: String,
+    pub diagnostics: Diagnostics,
 }
 
 impl IrContext {
@@ -63,11 +67,47 @@ impl IrContext {
         Self {
             now,
             workspace_name: workspace_name.into(),
+            diagnostics: Diagnostics::default(),
         }
     }
 
     pub fn workspace_name(&self) -> &str {
         &self.workspace_name
+    }
+
+    pub fn diagnostics(&self) -> &Diagnostics {
+        &self.diagnostics
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Diagnostics {
+    warnings: Arc<Mutex<Vec<String>>>,
+}
+
+impl Diagnostics {
+    pub fn warn(&self, message: impl Into<String>) {
+        let mut warnings = self
+            .warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        warnings.push(message.into());
+    }
+
+    pub fn warnings(&self) -> Vec<String> {
+        let warnings = self
+            .warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        warnings.clone()
+    }
+
+    pub fn warning_count(&self) -> usize {
+        let warnings = self
+            .warnings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        warnings.len()
     }
 }
 
