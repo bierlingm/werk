@@ -1,0 +1,825 @@
+{
+  "features": [
+    {
+      "id": "ir-tension-list",
+      "description": "Add werk_core::ir::TensionList — flat attributed list IR. Define IrKind enum, Ir trait, Attributes struct (HashMap-backed with AttributeValue Number/Text/Bool/Categorical/Unknown), AttributeBuilder. Builder pulls every Part-IV registry attribute by joining store reads with computations from temporal.rs and projection.rs. space attribute populated from Ctx. urgency clamped 0..1 + urgency_raw exposed. gap_magnitude is binary 0/1. status categorical includes 'held' derived via Frontier. is_held bool also derived. Re-exports TensionList, IrKind, Attributes, AttributeValue from werk-core lib.rs.",
+      "skillName": "rust-implementer",
+      "milestone": "foundation",
+      "preconditions": [
+        "werk-core builds (cargo build -p werk-core)",
+        "library/sigil-engine-decisions.md D1, D3, D4, D5, D6 are read"
+      ],
+      "expectedBehavior": [
+        "TensionList::build(store, tensions, ctx) returns Vec<TensionListEntry> where each entry has the full registry attribute set",
+        "AttributeBuilder is reusable; it accepts a list of attribute names and returns a populated Attributes map",
+        "Unknown attribute names are returned as Err with the unknown name in the message",
+        "All public types derive Debug + Clone; Attributes derives Serialize + Deserialize for cross-surface JSON"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-core ir::tension_list",
+        "cargo test --workspace",
+        "cargo fmt --all -- --check",
+        "cargo clippy -p werk-core --all-targets"
+      ],
+      "fulfills": ["VAL-FOUND-001", "VAL-FOUND-008", "VAL-FOUND-009"],
+      "status": "pending"
+    },
+    {
+      "id": "ir-tension-tree",
+      "description": "Add werk_core::ir::TensionTree — wraps Forest with a side-table HashMap<String, Attributes>. TensionTree::build(store, forest, ctx) joins computed attributes per node. Frontier::compute used once for the tree to derive is_held; status mapping per D1 (3 enum variants + 'held' derivation). Verifies TensionStatus enum is unchanged (no Held/Frozen variants added).",
+      "skillName": "rust-implementer",
+      "milestone": "foundation",
+      "preconditions": [
+        "ir-tension-list completed (provides AttributeBuilder)",
+        "library/sigil-engine-decisions.md D1 read"
+      ],
+      "expectedBehavior": [
+        "TensionTree::build returns a tree where every node has populated attributes",
+        "Root depths are 0; nested children depths match Forest::depth(...)",
+        "is_held=true for an active tension whose horizon range starts in the future",
+        "status='held' categorical for the same tension",
+        "urgency clamped to 1.0 for past-horizon tensions; urgency_raw exposed unclamped",
+        "TensionStatus enum is NOT modified (no Held or Frozen variants added)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-core ir::tension_tree",
+        "git diff werk-core/src/tension.rs (must show no enum changes)",
+        "cargo fmt --all -- --check",
+        "cargo clippy -p werk-core --all-targets"
+      ],
+      "fulfills": ["VAL-FOUND-002", "VAL-FOUND-005", "VAL-FOUND-006", "VAL-FOUND-007"],
+      "status": "pending"
+    },
+    {
+      "id": "ir-attribute-graph",
+      "description": "Add werk_core::ir::AttributeGraph — wraps Forest::graph (FNX DiGraph) with node attributes. Translates edge type names: contains -> parent_child, merged_into -> merge_into, split_from unchanged. Unknown edge types pass through with diagnostics warn. Builder reuses the existing DiGraph from Forest::from_tensions_and_edges; layers attributes on top.",
+      "skillName": "rust-implementer",
+      "milestone": "foundation",
+      "preconditions": [
+        "ir-tension-list completed",
+        "library/sigil-engine-decisions.md D2 read"
+      ],
+      "expectedBehavior": [
+        "AttributeGraph::build returns a graph where every node has populated attributes",
+        "Edge attributes carry the design's edge_type names",
+        "Unknown edge types fall through unchanged and emit a Diagnostics warning"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-core ir::attribute_graph",
+        "cargo test --workspace",
+        "cargo fmt --all -- --check"
+      ],
+      "fulfills": ["VAL-FOUND-003"],
+      "status": "pending"
+    },
+    {
+      "id": "ir-epoch-series",
+      "description": "Add werk_core::ir::EpochSeries — per-tension time-indexed sequence backed by Store::get_epochs(id). Each EpochPoint carries timestamp + reconstructed snapshot (desire/actual/children). Cross-tension EpochSeries explicitly deferred (see D9; v1 supports Scope::Tension and Scope::Subtree { depth: 1 } only when paired with EpochSeries-consuming featurizers).",
+      "skillName": "rust-implementer",
+      "milestone": "foundation",
+      "preconditions": ["ir-tension-list completed"],
+      "expectedBehavior": [
+        "EpochSeries::for_tension(store, id) returns chronologically ordered series",
+        "Length matches Store::get_epochs(id)",
+        "Each point carries the snapshot from EpochRecord"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-core ir::epoch_series",
+        "cargo fmt --all -- --check"
+      ],
+      "fulfills": ["VAL-FOUND-004"],
+      "status": "pending"
+    },
+    {
+      "id": "address-sigil-prefix",
+      "description": "Extend werk_core::address::Address with Sigil(i32) variant and *N parsing. Add Display impl for Sigil. Cross-space form werk:*7 supported via existing CrossSpace branch. *N does not collide with #, g:, s: prefixes. Round-trip tests via Display + parse.",
+      "skillName": "rust-implementer",
+      "milestone": "foundation",
+      "preconditions": [],
+      "expectedBehavior": [
+        "parse_address(\"*7\") returns Address::Sigil(7)",
+        "parse_address(\"werk:*7\") returns CrossSpace { space: \"werk\", inner: Sigil(7) }",
+        "parse_address(\"#*7\") is rejected",
+        "parse_address(\"g:*7\") is parsed as Gesture (sigil prefix has lower precedence)",
+        "Display roundtrip is stable for *N and werk:*N"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-core address::tests::test_sigil",
+        "cargo test -p werk-core address::tests::test_cross_space_sigil",
+        "cargo test -p werk-core address::tests::sigil_prefix_collision_rejected",
+        "cargo test -p werk-core address::tests::test_display_roundtrip"
+      ],
+      "fulfills": ["VAL-FOUND-010", "VAL-FOUND-011"],
+      "status": "pending"
+    },
+    {
+      "id": "sigils-table-migration",
+      "description": "Add the sigils index table to Store::create_schema() (CREATE TABLE IF NOT EXISTS sigils ...) plus indexes on short_code and logic_id. Add Store helper methods: record_sigil(SigilRecord), list_sigils() -> Vec<SigilRecord>, get_sigil_by_short_code(n), delete_sigil(n) -> Result<bool>. Stores file_path only (no SVG bytes). Update the schema docstring at store.rs:14-73.",
+      "skillName": "rust-implementer",
+      "milestone": "foundation",
+      "preconditions": [],
+      "expectedBehavior": [
+        "Fresh in-memory store has the sigils table with documented schema",
+        "Indexes idx_sigils_short_code and idx_sigils_logic exist",
+        "record_sigil inserts; list_sigils returns chronologically; get_sigil_by_short_code retrieves",
+        "delete_sigil(n) returns Ok(true) first time, Ok(false) second time",
+        "delete_sigil does NOT delete the file at file_path (caller's responsibility)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-core store::sigils",
+        "cargo test --workspace"
+      ],
+      "fulfills": ["VAL-FOUND-012", "VAL-FOUND-013", "VAL-FOUND-014"],
+      "status": "pending"
+    },
+    {
+      "id": "engine-pipeline-skeleton",
+      "description": "Create the werk-sigil crate skeleton. Add werk-sigil to workspace Cargo.toml members. Author lib.rs, engine.rs, ctx.rs, scope.rs, logic.rs, sigil.rs, ir.rs, error.rs. Define Engine type with render(scope, logic, ctx) -> Result<Sigil, SigilError> signature. Define stage traits (Selector, Featurizer<I>, Encoder<I>, Layouter<I>, Stylist, Renderer). Define Ctx with now + store + workspace_name + seed + ChaCha rng + diagnostics. Define IrKind enum mirroring werk-core. Default-seed derivation via blake3(canonical_inputs). Engine::render is pure (no I/O at boundary).",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": [
+        "All M1 features completed",
+        "library/architecture.md read",
+        "library/sigil-engine-decisions.md D7 (rhai), D8 (inline glyphs), D9 (per-tension EpochSeries) read"
+      ],
+      "expectedBehavior": [
+        "werk-sigil compiles with no implementations beyond the skeleton (placeholder ConstantStylist + NoOpRenderer return early)",
+        "Engine::render can be invoked (with placeholder stages) and produces deterministic empty SVG",
+        "seed derivation is deterministic: same canonical inputs -> same seed",
+        "Two renders of the same (scope, logic) with seed=None produce byte-identical SVGs",
+        "Different scopes produce different seeds and different SVG bytes",
+        "No filesystem writes during render (verifiable: render against read-only tempdir)"
+      ],
+      "verificationSteps": [
+        "cargo build -p werk-sigil",
+        "cargo test -p werk-sigil engine::tests::render_is_pure_and_deterministic",
+        "cargo test -p werk-sigil engine::tests::default_seed_from_canonical_inputs",
+        "cargo fmt --all -- --check"
+      ],
+      "fulfills": ["VAL-ENGINE-001", "VAL-ENGINE-002", "VAL-CROSS-004"],
+      "status": "pending"
+    },
+    {
+      "id": "engine-svg-renderer",
+      "description": "Implement SvgRenderer in werk-sigil. Uses quick-xml or similar for streaming SVG construction. Embeds <metadata><werk-sigil> block with scope, logic, seed, generated, warnings count. Diagnostics from Ctx materialize into the warnings block. SvgBytes type is a thin wrapper over Vec<u8> with a write_to_path helper. Tests: golden test for an empty scene; metadata structural assertion; warnings count when ctx.diagnostics has entries.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": ["engine-pipeline-skeleton completed"],
+      "expectedBehavior": [
+        "Empty scene renders to a well-formed SVG with metadata block",
+        "<metadata><werk-sigil> block contains <scope>, <logic>, <seed>, <generated>, <warnings count='N'>",
+        "Diagnostics from Ctx serialize into <warning> entries inside the warnings block",
+        "ctx.now (not Utc::now()) is used for the <generated> timestamp"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil renderer::tests::metadata_block_structure",
+        "cargo test -p werk-sigil engine::tests::metadata_contains_provenance"
+      ],
+      "fulfills": ["VAL-ENGINE-003"],
+      "status": "pending"
+    },
+    {
+      "id": "selector-subtree",
+      "description": "Implement Selector::Subtree { root, depth } in werk-sigil/src/stages/selector.rs. Resolves the abstract scope to a concrete set of tension IDs (root + descendants up to depth, inclusive). Hands back a ResolvedScope containing the IDs and the workspace context. Other selector kinds (Tension, Space, Union, Query) implemented as thin shims; Query falls back to a basic predicate over a small set of fields (active, overdue, status=...).",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": ["engine-pipeline-skeleton completed"],
+      "expectedBehavior": [
+        "Subtree { root: id, depth: 4 }.select returns root + descendants up to depth 4 inclusive",
+        "Depth-5 descendants are excluded",
+        "Subtree.select returns Err if root id not found in store"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::selector::tests"
+      ],
+      "fulfills": ["VAL-ENGINE-005"],
+      "status": "pending"
+    },
+    {
+      "id": "featurizer-tension-tree",
+      "description": "Implement Featurizer::TensionTree in werk-sigil/src/stages/featurizer.rs. Reads werk-core via Ctx::store, calls werk_core::ir::TensionTree::build, returns the IR. Reads the requested attribute list from the preset's [featurizer.tension_tree.attributes] section; emits only those attributes. Custom (non-registry) attributes pass through as AttributeValue::Unknown so encoders can read them by name.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": [
+        "ir-tension-tree completed",
+        "selector-subtree completed"
+      ],
+      "expectedBehavior": [
+        "Featurizer::TensionTree.featurize returns a TensionTree IR with attributes matching the requested list",
+        "Custom attributes pass through with AttributeValue::Unknown",
+        "Attributes not requested are omitted (not just empty)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::featurizer::tension_tree::tests::respects_requested_attributes"
+      ],
+      "fulfills": ["VAL-ENGINE-006"],
+      "status": "pending"
+    },
+    {
+      "id": "encoder-structural-default",
+      "description": "Implement Encoder::StructuralDefault in werk-sigil/src/stages/encoder.rs. For each IR node, emits a MarkSpec with sensible defaults: primitive=circle for active, glyph for resolved, polygon for released, ellipse for held; r monotone with urgency; stroke_width monotone with gap_magnitude; fill_opacity monotone with depth (decreasing). Channel values come from the registry, not raw attribute values, so semantics are stable.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": ["featurizer-tension-tree completed"],
+      "expectedBehavior": [
+        "StructuralDefault produces one MarkSpec per IR node",
+        "primitive matches expected per status",
+        "r is monotonically increasing with urgency",
+        "stroke_width is monotonically increasing with gap_magnitude (binary 0/1 -> two values)",
+        "fill_opacity is monotonically decreasing with depth"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::encoder::structural_default::tests::channel_mappings"
+      ],
+      "fulfills": ["VAL-ENGINE-007"],
+      "status": "pending"
+    },
+    {
+      "id": "layouter-radial-mandala",
+      "description": "Implement Layouter::RadialMandala in werk-sigil/src/stages/layouter.rs. Concentric rings, root at canvas center, depth -> radius. Angular share modes: child_weighted (default), equal, urgency_weighted. Inner padding (radians) between siblings. Structural marks: parent_child_curves (arc), ring_guides (dashed), spokes (optional). respect_status reduces angular share for held/released. Reads its parameters from [layouter.radial_mandala] section of the preset.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": ["encoder-structural-default completed"],
+      "expectedBehavior": [
+        "Root mark placed at canvas center frame",
+        "Depth-1 children at ring radius 80 (default ring_step)",
+        "Depth-2 children at ring radius 160",
+        "child_weighted distributes angular share by descendant_count",
+        "Structural marks (curves, ring guides) emitted per preset config"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::layouter::radial_mandala::tests::places_root_and_rings",
+        "cargo test -p werk-sigil stages::layouter::radial_mandala::tests::angular_share_modes"
+      ],
+      "fulfills": ["VAL-ENGINE-008"],
+      "status": "pending"
+    },
+    {
+      "id": "stylist-ink-brush",
+      "description": "Implement Stylist::InkBrush in werk-sigil/src/stages/stylist.rs. Applies palette (ink_on_cream by default), background fill, line jitter, brush pressure variance, texture overlay via SVG <filter> chain (turbulence + displacement). filter_mode supports filter | cheap | off. Cheap mode pre-perturbs path coordinates; filter mode emits an SVG <filter> element.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": ["layouter-radial-mandala completed"],
+      "expectedBehavior": [
+        "After InkBrush, data marks have fill='#1a1818'",
+        "Background is '#f5efe1'",
+        "filter_mode='filter' produces a <filter> element in the SVG",
+        "filter_mode='off' produces no <filter> element and no jitter perturbation"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::stylist::ink_brush::tests::applies_palette_and_filter",
+        "cargo test -p werk-sigil stages::stylist::ink_brush::tests::filter_mode_off_no_filter"
+      ],
+      "fulfills": ["VAL-ENGINE-009"],
+      "status": "pending"
+    },
+    {
+      "id": "toml-schema-loader",
+      "description": "Implement TOML schema + load_preset in werk-sigil/src/toml_schema.rs. Schema crystallizes against contemplative.toml. Required sections: [meta], [pipeline]. Optional: [scope], [featurizer.*], [encoder.*], [encoder.channels.*], [layouter.*], [stylist.*], [render], [seed]. Returns a Logic struct with fully-resolved stage references. Uses serde + a thin custom validator. Logic-construction errors are loud (line/col where possible) and return SigilError::Construction.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": ["engine-pipeline-skeleton completed"],
+      "expectedBehavior": [
+        "Loading werk-sigil/presets/contemplative.toml succeeds with zero diagnostics warnings",
+        "Loading a TOML missing [meta] returns SigilError::Construction with section info",
+        "Loading a TOML missing [pipeline] returns SigilError::Construction",
+        "Loading a TOML with unknown registry channel name returns SigilError::Construction (UnknownChannel)",
+        "Loading a TOML pairing a tree-requiring layouter with AttributeGraph featurizer returns SigilError::IrIncompatible"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil toml_schema::tests::contemplative_loads_clean",
+        "cargo test -p werk-sigil toml_schema::tests::rejects_missing_meta",
+        "cargo test -p werk-sigil toml_schema::tests::rejects_missing_pipeline"
+      ],
+      "fulfills": ["VAL-ENGINE-010", "VAL-ENGINE-011"],
+      "status": "pending"
+    },
+    {
+      "id": "e2e-contemplative",
+      "description": "Wire everything together: invoke Engine::render against the bundled contemplative.toml on a fixture 7-node subtree (built in werk-sigil/tests/fixtures/small_tree.rs). Pin the resulting SVG as werk-sigil/tests/snapshots/contemplative.svg. Implement render-time graceful skip: a featurizer node with synthetic urgency=None gets skipped, the rest renders, the warnings count is incremented in the metadata block. This is the proof-of-architecture milestone — the first actual sigil rendered. Worker MUST attach the rendered SVG to the handoff for orchestrator + user eyeball review.",
+      "skillName": "rust-implementer",
+      "milestone": "engine-spine",
+      "preconditions": [
+        "selector-subtree, featurizer-tension-tree, encoder-structural-default, layouter-radial-mandala, stylist-ink-brush, toml-schema-loader, engine-svg-renderer all completed"
+      ],
+      "expectedBehavior": [
+        "cargo test -p werk-sigil tests::pipeline_smoke passes",
+        "werk-sigil/tests/snapshots/contemplative.svg is committed and matches byte-for-byte",
+        "SVG contains >= 7 data marks (one per tension) plus structural marks",
+        "Provenance metadata block contains scope, logic, seed, generated, warnings count",
+        "Render-time graceful skip works: synthetic missing data on one node skips it, warnings count incremented",
+        "Worker copies the rendered SVG into validation/m2/eyeball/contemplative.svg for user review"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test pipeline_smoke",
+        "cargo test -p werk-sigil --test presets contemplative",
+        "open werk-sigil/tests/snapshots/contemplative.svg in an SVG viewer; confirm it looks like a recognizable mandala",
+        "Manual: orchestrator presents the SVG to the user; user approval recorded in validation/m2/eyeball/REVIEW.md"
+      ],
+      "fulfills": ["VAL-ENGINE-004", "VAL-ENGINE-012", "VAL-ENGINE-013"],
+      "status": "pending"
+    },
+    {
+      "id": "encoder-shape-by-status",
+      "description": "Implement Encoder::ShapeByStatus in werk-sigil/src/stages/encoder.rs. Categorical primitive choice driven by status: circle | ellipse | glyph | polygon. When primitive=glyph, glyph_family defaults to 'alchemical' and glyph_index = (short_code_hash % family_size). Tested against fixture with all 4 statuses present.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed"],
+      "expectedBehavior": [
+        "ShapeByStatus produces circle for active, ellipse for held, glyph for resolved, polygon for released",
+        "Glyph indices are deterministic (same short_code -> same index)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::encoder::shape_by_status::tests::per_status_primitives"
+      ],
+      "fulfills": ["VAL-VOCAB-001"],
+      "status": "pending"
+    },
+    {
+      "id": "encoder-toml-declarative",
+      "description": "Implement Encoder::TomlDeclarative + the Rhai expression evaluator (D7). Reads channel mappings from [encoder.channels.*]. Three channel value forms: literal, field reference (E2: { field, scale, range, domain }, scale = linear|sqrt|log), and expression (E3: { expr = '...' }). Categorical mappings via { field, kind: 'categorical', mapping: {...} }. Rhai engine in expression-only mode (compile_expression). Compile errors are loud at logic-construction; eval errors at render time skip the element with a diagnostic. Add rhai dep to werk-sigil/Cargo.toml: rhai = { version = '1', default-features = false, features = ['std', 'sync'] } (or appropriate trim).",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed"],
+      "expectedBehavior": [
+        "Literal channel values produce correct output",
+        "E2 field refs with sqrt scale produce correct mapped values",
+        "E2 field refs with linear/log scales work",
+        "E3 expressions evaluate sqrt, ln, +, *, -, /, %, |, &&, ==, comparison ops",
+        "Categorical mappings match the design example in contemplative.toml [encoder.channels.primitive]",
+        "Malformed expression (e.g., 'sqrt(urgency +') returns SigilError::Construction with line/col at logic-construction time",
+        "Eval error on one node (expression references attr not present on that node) skips the node with a diagnostic warning; other nodes render"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::encoder::toml_declarative",
+        "cargo test -p werk-sigil expr"
+      ],
+      "fulfills": ["VAL-VOCAB-002", "VAL-VOCAB-003", "VAL-VOCAB-004", "VAL-VOCAB-005", "VAL-VOCAB-006", "VAL-VOCAB-007"],
+      "status": "pending"
+    },
+    {
+      "id": "layouter-fractal-branch",
+      "description": "Implement Layouter::FractalBranch in werk-sigil/src/stages/layouter.rs. Recursive branching tree placement. Each level scales geometry by configurable factor (default 0.7); leaves placed at fixed angles relative to parent. Deterministic per seed: same scope/logic/seed -> same layout. No two marks overlap (asserted in tests via bounding-box intersection check).",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed"],
+      "expectedBehavior": [
+        "4-level tree places leaves at decreasing scales",
+        "No two marks overlap (bbox check)",
+        "Root frame at canvas center"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::layouter::fractal_branch::tests::recursive_placement"
+      ],
+      "fulfills": ["VAL-VOCAB-008"],
+      "status": "pending"
+    },
+    {
+      "id": "layouter-constellation",
+      "description": "Implement Layouter::Constellation in werk-sigil/src/stages/layouter.rs. Force-directed scatter with edge bundling. Default for AttributeGraph scopes. Deterministic per seed via seeded RNG. Convergence: max 200 iterations or until total movement < epsilon. Edge bundling: edges of same type are pulled toward common medial paths (simple FD bundling, not full Holten).",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["ir-attribute-graph completed", "e2e-contemplative completed"],
+      "expectedBehavior": [
+        "10-node graph with mixed edge types produces stable layout",
+        "Same seed -> same layout (deterministic)",
+        "parent_child-connected nodes cluster (centroid distance lower than mixed)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::layouter::constellation::tests::deterministic_force_layout"
+      ],
+      "fulfills": ["VAL-VOCAB-009"],
+      "status": "pending"
+    },
+    {
+      "id": "layouter-grid",
+      "description": "Implement Layouter::Grid in werk-sigil/src/stages/layouter.rs. Tiles sub-sigils for the Sheet combinator. For Union scopes, divides the canvas into a near-square grid (cols = ceil(sqrt(n)), rows = ceil(n/cols)). Each cell becomes a child Frame; the cell's content is a sub-sigil (rendered by the Sheet combinator at M6, but Grid layouter must work standalone with provided sub-marks).",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed"],
+      "expectedBehavior": [
+        "4-element Union produces a 2x2 tiled SVG",
+        "9-element Union produces a 3x3 tiled SVG",
+        "Each cell's sub-sigil is positioned within its own Frame"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::layouter::grid::tests::tiles_2x2",
+        "cargo test -p werk-sigil stages::layouter::grid::tests::tiles_3x3"
+      ],
+      "fulfills": ["VAL-VOCAB-010"],
+      "status": "pending"
+    },
+    {
+      "id": "stylist-minimal-line",
+      "description": "Implement Stylist::MinimalLine in werk-sigil/src/stages/stylist.rs. Clean monochrome linework: stroke-only data marks (fill='none'), no SVG <filter>, no background texture. Doubles as terminal-fallback approximation when that backend lands.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed"],
+      "expectedBehavior": [
+        "After MinimalLine, all data marks have fill='none'",
+        "No <filter> element in the SVG",
+        "Palette is monochrome (single stroke color)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::stylist::minimal_line::tests::stroke_only_palette"
+      ],
+      "fulfills": ["VAL-VOCAB-011"],
+      "status": "pending"
+    },
+    {
+      "id": "stylist-glyphic",
+      "description": "Implement Stylist::Glyphic in werk-sigil/src/stages/stylist.rs. Heavy glyph substitution and formal symmetry. Forces primitive=glyph for nodes that can be glyphified (any with a glyph_family channel). Symmetric layouts get a mirrored <g> wrapper when preset enables it.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed", "glyph-families completed"],
+      "expectedBehavior": [
+        "Majority of data marks render as <g class='glyph'> groups after Glyphic",
+        "Symmetric option produces a mirror group when enabled"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil stages::stylist::glyphic::tests::glyph_majority"
+      ],
+      "fulfills": ["VAL-VOCAB-012"],
+      "status": "pending"
+    },
+    {
+      "id": "glyph-families",
+      "description": "Implement three glyph families as inline SVG path data in werk-sigil/src/glyphs/. Per D8, no external assets — all glyphs are Rust constants (e.g. const ALCHEMICAL_SUN: &str = 'M ... L ...';). Alchemical: minimum 16 distinct glyphs (target ~50 if budget allows; planetary, elemental, processual symbols). Geomantic: exactly 16 figures (Acquisitio, Amissio, Albus, ..., Via — derived from binary 4-row dot patterns). Hand-drawn primitives: minimum 12 brush atoms (target ~30 if budget allows). Each family implements GlyphFamily trait with glyph(idx: usize) -> SvgPath.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": ["e2e-contemplative completed"],
+      "expectedBehavior": [
+        "AlchemicalFamily::glyph(idx) returns distinct path data for at least 16 indices",
+        "GeomanticFamily::glyph(idx) returns one of the 16 canonical geomantic figures (verified against published reference patterns in test)",
+        "HandDrawnFamily::glyph(idx) returns distinct, non-empty path data for at least 12 indices",
+        "Same idx returns same path data on repeated calls (deterministic)",
+        "Index out of range wraps modulo and emits a diagnostic warning"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil glyphs::alchemical::tests",
+        "cargo test -p werk-sigil glyphs::geomantic::tests",
+        "cargo test -p werk-sigil glyphs::handdrawn::tests"
+      ],
+      "fulfills": ["VAL-VOCAB-013", "VAL-VOCAB-014", "VAL-VOCAB-015"],
+      "status": "pending"
+    },
+    {
+      "id": "preset-glance",
+      "description": "Author werk-sigil/presets/glance.toml per design Part V (Space(active) + RadialMandala + MinimalLine + ShapeByStatus). Compact, fits in werk-tab. Pin golden snapshot werk-sigil/tests/snapshots/glance.svg.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": [
+        "encoder-shape-by-status completed",
+        "stylist-minimal-line completed"
+      ],
+      "expectedBehavior": [
+        "glance.toml loads with zero warnings",
+        "Renders against a fixture Space(active) and produces a non-empty SVG with at least 4 data marks",
+        "Golden snapshot pinned and matches byte-for-byte"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test presets glance"
+      ],
+      "fulfills": ["VAL-VOCAB-016"],
+      "status": "pending"
+    },
+    {
+      "id": "preset-snapshot",
+      "description": "Author werk-sigil/presets/snapshot.toml per design Part V (Space(all) + RadialMandala + Glyphic + StructuralDefault). Pin golden snapshot werk-sigil/tests/snapshots/snapshot.svg. Visibly uses Glyphic stylist.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": [
+        "stylist-glyphic completed",
+        "glyph-families completed"
+      ],
+      "expectedBehavior": [
+        "snapshot.toml loads with zero warnings",
+        "Majority of data marks are glyph elements after rendering",
+        "Golden snapshot pinned and matches byte-for-byte"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test presets snapshot"
+      ],
+      "fulfills": ["VAL-VOCAB-017"],
+      "status": "pending"
+    },
+    {
+      "id": "preset-identity",
+      "description": "Author werk-sigil/presets/identity.toml per design Part V (Union(all_spaces) + FractalBranch + Glyphic + TomlDeclarative). Rich, signature-flavored. Demonstrates TomlDeclarative's E3 expression power.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": [
+        "encoder-toml-declarative completed",
+        "layouter-fractal-branch completed",
+        "stylist-glyphic completed"
+      ],
+      "expectedBehavior": [
+        "identity.toml loads with zero warnings",
+        "Renders against a Union of fixture spaces",
+        "TomlDeclarative E3 expressions are exercised in this preset",
+        "Golden snapshot pinned and matches byte-for-byte"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test presets identity"
+      ],
+      "fulfills": ["VAL-VOCAB-018"],
+      "status": "pending"
+    },
+    {
+      "id": "preset-oracle",
+      "description": "Author werk-sigil/presets/oracle.toml per design Part V (Query(active) + Constellation + InkBrush + ShapeByStatus). Surfaces overdue/stale via color emphasis. Pin golden snapshot werk-sigil/tests/snapshots/oracle.svg. After this feature lands, all 5 presets exist; orchestrator collects all 5 SVGs into validation/m3/eyeball/ for user review.",
+      "skillName": "rust-implementer",
+      "milestone": "vocabulary",
+      "preconditions": [
+        "layouter-constellation completed",
+        "encoder-shape-by-status completed",
+        "preset-glance, preset-snapshot, preset-identity completed"
+      ],
+      "expectedBehavior": [
+        "oracle.toml loads with zero warnings",
+        "Visibly uses Constellation layouter (force-directed positioning)",
+        "Golden snapshot pinned and matches byte-for-byte",
+        "Worker copies all 5 preset SVGs to validation/m3/eyeball/ and prepares a side-by-side review document"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test presets oracle",
+        "ls werk-sigil/tests/snapshots/{contemplative,glance,snapshot,identity,oracle}.svg",
+        "Manual: orchestrator presents all 5 SVGs to user; explicit approval recorded in validation/m3/eyeball/REVIEW.md"
+      ],
+      "fulfills": ["VAL-VOCAB-019", "VAL-VOCAB-020"],
+      "status": "pending"
+    },
+    {
+      "id": "archive-and-cache",
+      "description": "Implement werk-sigil/src/archive.rs. archive_path(scope, logic, seed, now) -> ~/.werk/sigils/YYYY-MM-DD/<scope-slug>-<logic>-<seed>.svg. cache_path(scope, logic, seed, werk_state_revision) -> ~/.werk/sigils/cache/<blake3>.svg. cleanup_cache(retention_days: u32) removes files in cache/ older than N days; archive untouched. werk_state_revision = MAX(updated_at) over resolved scope's elements (uses werk-core's Store::get_last_mutation_timestamps batched). All paths under $HOME/.werk/sigils/ — workers respect the user's HOME.",
+      "skillName": "rust-implementer",
+      "milestone": "surfaces",
+      "preconditions": ["e2e-contemplative completed", "sigils-table-migration completed"],
+      "expectedBehavior": [
+        "archive_path uses YYYY-MM-DD from ctx.now (not Utc::now())",
+        "cache_path key includes werk_state_revision; mutating a tension in the scope changes the key",
+        "cleanup_cache(7) removes files older than 7 days in cache/; archive/ untouched",
+        "Both helpers create parent directories as needed (mkdir -p semantics)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test archive"
+      ],
+      "fulfills": ["VAL-SURF-013", "VAL-SURF-014"],
+      "status": "pending"
+    },
+    {
+      "id": "cli-sigil-command",
+      "description": "Implement werk sigil subcommand in werk-cli/src/commands/sigil.rs. Positional SCOPE accepts addresses. Flags: --logic NAME|PATH (default 'contemplative'), --seed N, --out PATH, --save, --json, --dry-run. Wire into Cli enum at werk-cli/src/commands/mod.rs and dispatch in werk-cli/src/main.rs alongside Field. Add werk-sigil = { path = '../werk-sigil' } to werk-cli/Cargo.toml. JSON output struct: { scope, logic, logic_version, seed, path?, svg?, warnings: [] }. Errors via WerkError::error_code() mapping. Examples in #[command(after_help)]. --save calls archive helpers + records in sigils table. --save assigns a *N short code. Sigils do NOT enter the gesture log (verified by VAL-CROSS-005). Tests in werk-cli/tests/sigil.rs and werk-cli/tests/sigil_lifecycle.rs.",
+      "skillName": "rust-implementer",
+      "milestone": "surfaces",
+      "preconditions": ["archive-and-cache completed", "preset-oracle completed", "address-sigil-prefix completed"],
+      "expectedBehavior": [
+        "werk sigil 2 prints SVG to stdout, exits 0",
+        "werk sigil 2 --out /tmp/x.svg writes file, exits 0",
+        "werk sigil 2 --json prints structured JSON",
+        "werk sigil 2 --dry-run --out /tmp/x.svg does not create the file",
+        "werk sigil 2 --save writes archive + records in sigils table; new sigil has a *N short code",
+        "werk sigil 2 --seed 7 vs --seed 8 produces different output; same seed reproducible",
+        "Invalid scope returns exit 1 with JSON error code NOT_FOUND in --json mode",
+        "werk sigil --help shows >= 3 examples",
+        "Sigil rendering does NOT enter the gesture log (werk log #N shows no new sigil-related gesture)",
+        "After --save, werk show *N displays file_path, logic, seed, scope (relies on existing show command's address dispatch)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk --test sigil",
+        "cargo test -p werk --test sigil_lifecycle",
+        "Manual: cargo run -p werk -- sigil 2 --logic contemplative --out /tmp/eyeball.svg && open /tmp/eyeball.svg"
+      ],
+      "fulfills": ["VAL-SURF-001", "VAL-SURF-002", "VAL-SURF-003", "VAL-SURF-004", "VAL-SURF-005", "VAL-SURF-006", "VAL-SURF-007", "VAL-SURF-008", "VAL-SURF-015", "VAL-CROSS-001", "VAL-CROSS-005"],
+      "status": "pending"
+    },
+    {
+      "id": "web-sigil-endpoint",
+      "description": "Add GET /api/sigil to werk-web/src/lib.rs. Query params: scope, logic, seed (optional). Returns SVG bytes with Content-Type: image/svg+xml. Computes cache key, hits cache if present, renders + caches if miss. Uses werk-sigil::Engine. Add werk-sigil = { path = '../werk-sigil' } to werk-web/Cargo.toml. Verifies parity with CLI: same scope/logic/seed/state -> byte-identical output between web and CLI.",
+      "skillName": "rust-implementer",
+      "milestone": "surfaces",
+      "preconditions": ["archive-and-cache completed", "preset-oracle completed", "cli-sigil-command completed"],
+      "expectedBehavior": [
+        "GET /api/sigil?scope=2&logic=contemplative returns 200 + image/svg+xml",
+        "Body starts with <?xml",
+        "First call renders and writes ~/.werk/sigils/cache/<hash>.svg; second call serves from cache (atime/mtime check or stat)",
+        "Missing scope returns 400 with JSON error",
+        "GET /api/sigil with same params is byte-identical to werk sigil CLI output (same werk-state)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-web --test sigil",
+        "cargo test -p werk-web --test parity",
+        "Manual: cargo run -p werk -- serve --port 3749 & curl 'http://localhost:3749/api/sigil?scope=2&logic=contemplative' -o /tmp/x.svg; lsof -ti :3749 | xargs kill"
+      ],
+      "fulfills": ["VAL-SURF-009", "VAL-SURF-010", "VAL-SURF-011", "VAL-CROSS-002"],
+      "status": "pending"
+    },
+    {
+      "id": "web-sigil-sse",
+      "description": "Add GET /api/sigil/stream to werk-web/src/lib.rs. Subscribes to the existing AppState.tx broadcast::Sender, filters BroadcastStream to kind=='sigil_invalidated'. Add a second state.tx.send(SseEvent { kind: 'sigil_invalidated' }) after each existing mutation handler emit (create_tension, update_desired, update_reality, resolve_tension, release_tension, reopen_tension). Tests use tokio test + futures-util to consume the stream.",
+      "skillName": "rust-implementer",
+      "milestone": "surfaces",
+      "preconditions": ["web-sigil-endpoint completed"],
+      "expectedBehavior": [
+        "GET /api/sigil/stream returns text/event-stream and stays open",
+        "After PATCH /api/tensions/<id>/desired completes, a sigil_invalidated SSE event arrives within 2 seconds",
+        "Existing /api/events stream still works for werk-tab's existing reload-on-any pattern (no breaking change)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-web --test sigil_stream",
+        "Manual: curl -N http://localhost:3749/api/sigil/stream &; trigger a mutation; observe event"
+      ],
+      "fulfills": ["VAL-SURF-012"],
+      "status": "pending"
+    },
+    {
+      "id": "werk-tab-sigil-mode",
+      "description": "Add sigil mode to werk-tab/. Vanilla JS / HTML / CSS only (D11). Third toggle button alongside space/field. New <section class='sigil'>. loadSigil() fetches GET /api/sigil?logic=glance and injects SVG. SSE: add es.addEventListener('sigil_invalidated', ...) on the existing EventSource — do NOT open a second connection. Reuse existing discoverApi() port range. Offline state mirrors existing pattern. Validated via agent-browser.",
+      "skillName": "frontend-integrator",
+      "milestone": "tab",
+      "preconditions": [
+        "web-sigil-endpoint completed",
+        "web-sigil-sse completed"
+      ],
+      "expectedBehavior": [
+        "Header shows three toggles after page load",
+        "Click sigil toggle: sigil section visible, space/field hidden, single inline <svg> rendered",
+        "After triggering a mutation via curl, SVG visibly changes within 2s",
+        "Network panel shows exactly one EventSource connection regardless of mode toggling",
+        "When werk serve is down, sigil section shows offline banner consistent with other modes"
+      ],
+      "verificationSteps": [
+        "agent-browser: load extension, navigate, click sigil, screenshot",
+        "agent-browser: trigger mutation, screenshot again, compare visually + by hash",
+        "agent-browser DevTools: confirm single EventSource",
+        "Manual: orchestrator collects screenshots into validation/m5/eyeball/REVIEW.md"
+      ],
+      "fulfills": ["VAL-TAB-001", "VAL-TAB-002", "VAL-TAB-003", "VAL-TAB-004", "VAL-TAB-005", "VAL-TAB-006", "VAL-TAB-007", "VAL-CROSS-003"],
+      "status": "pending"
+    },
+    {
+      "id": "sheet-logic",
+      "description": "Implement Sheet combinator in werk-sigil/src/stages/layouter.rs (or a new src/combinators.rs). SheetLogic carries an inner_logic name; when invoked, recurses by calling Engine::render(sub_scope, inner_logic) for each sub-scope in a Union scope, then composes via Grid layouter. Recursion-depth limit = 4; depth=5 returns SigilError::RecursionLimit { depth: 5 }.",
+      "skillName": "rust-implementer",
+      "milestone": "combinators",
+      "preconditions": ["preset-oracle completed", "layouter-grid completed"],
+      "expectedBehavior": [
+        "SheetLogic with inner_logic='glance' and 4-element Union produces 4 sub-sigils tiled in a grid",
+        "Total element count >= sum of sub-sigil element counts",
+        "Nesting 4 deep is allowed; nesting 5 returns SigilError::RecursionLimit"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil combinators::sheet::tests::tiles_four_sub_sigils",
+        "cargo test -p werk-sigil combinators::tests::recursion_limit_at_four"
+      ],
+      "fulfills": ["VAL-COMB-001", "VAL-COMB-003"],
+      "status": "pending"
+    },
+    {
+      "id": "composite-concentric",
+      "description": "Implement Composite combinator with Concentric rule in werk-sigil/src/combinators.rs. CompositeLogic carries Vec<(Scope, Logic)> and a CompositionRule. v1 ships only Concentric (outer pair on outer ring, inner pair on inner ring). Other rules (Overlay, SideBySide, Masked) explicitly return SigilError::Unsupported.",
+      "skillName": "rust-implementer",
+      "milestone": "combinators",
+      "preconditions": ["sheet-logic completed"],
+      "expectedBehavior": [
+        "CompositeLogic { rule: Concentric, pairs: [(scope_a, logic_a), (scope_b, logic_b)] } produces an SVG with both sigils stacked concentrically",
+        "Element count >= sum of children",
+        "Other rules return SigilError::Unsupported with rule name in message"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil combinators::composite::tests::concentric_stacks_rings",
+        "cargo test -p werk-sigil combinators::composite::tests::other_rules_unsupported"
+      ],
+      "fulfills": ["VAL-COMB-002"],
+      "status": "pending"
+    },
+    {
+      "id": "animation-seed-sweep",
+      "description": "Implement render_animation in werk-sigil/src/animation.rs. Public entry: render_animation(scope, logic, axis, output, ctx) -> Result<AnimatedSigil, SigilError>. Implements SeedSweep axis (re-renders for each seed in [start, end) step step) and FrameSequence output (writes one SVG per frame to dir). EpochRange axis returns SigilError::Unsupported.",
+      "skillName": "rust-implementer",
+      "milestone": "combinators",
+      "preconditions": ["composite-concentric completed"],
+      "expectedBehavior": [
+        "SeedSweep { 0..5, step: 1 } + FrameSequence writes 5 SVG files in seed order",
+        "Each file contains the correct seed in its <metadata><seed> block",
+        "EpochRange axis returns SigilError::Unsupported"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test animation seed_sweep_writes_5_frames",
+        "cargo test -p werk-sigil --test animation epoch_range_unsupported"
+      ],
+      "fulfills": ["VAL-COMB-004", "VAL-COMB-007"],
+      "status": "pending"
+    },
+    {
+      "id": "animation-param-sweep",
+      "description": "Add ParamSweep axis to render_animation. ParamSweep { stage: StageRef, param: String, from: Value, to: Value, frames: usize } interpolates a single numeric stage parameter across N frames. Linear interpolation only in v1. AnimatedSvg output remains SigilError::Unsupported in v1.",
+      "skillName": "rust-implementer",
+      "milestone": "combinators",
+      "preconditions": ["animation-seed-sweep completed"],
+      "expectedBehavior": [
+        "ParamSweep { stage: layouter, param: 'ring_step', from: 60.0, to: 100.0, frames: 5 } produces 5 SVGs with values [60, 70, 80, 90, 100]",
+        "Each render is deterministic against its sweep value",
+        "AnimatedSvg output returns SigilError::Unsupported"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --test animation param_sweep_linear_interp",
+        "cargo test -p werk-sigil --test animation animated_svg_unsupported"
+      ],
+      "fulfills": ["VAL-COMB-005", "VAL-COMB-006"],
+      "status": "pending"
+    },
+    {
+      "id": "error-handling-discipline",
+      "description": "Audit all error paths in werk-sigil and ensure the loud-vs-graceful discipline (design Part VIII) is consistently applied. Add tests proving: schema parse error loud at construct-time; expression parse error loud at construct-time; unknown channel name loud; IR-shape mismatch loud; missing-field-on-one-node graceful with diagnostic warning. Where any path currently panics or silently swallows, fix it.",
+      "skillName": "rust-implementer",
+      "milestone": "hardening",
+      "preconditions": ["animation-param-sweep completed"],
+      "expectedBehavior": [
+        "All Construction-time errors return SigilError::Construction with location info",
+        "All render-time per-element issues result in skipped element + diagnostic warning",
+        "No panic in any rendering path (verified by panic-free fuzz test on 100 randomized fixture trees)"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil error_handling",
+        "cargo test -p werk-sigil --release stress_no_panic"
+      ],
+      "fulfills": ["VAL-HARD-001", "VAL-HARD-002", "VAL-HARD-003", "VAL-HARD-004", "VAL-HARD-005"],
+      "status": "pending"
+    },
+    {
+      "id": "cache-retention",
+      "description": "Wire cleanup_cache into the CLI startup and the web handler startup. Default retention_days = 7; configurable via WERK_SIGIL_CACHE_RETENTION_DAYS env var. Archive (~/.werk/sigils/YYYY-MM-DD/) is never auto-cleaned.",
+      "skillName": "rust-implementer",
+      "milestone": "hardening",
+      "preconditions": ["error-handling-discipline completed"],
+      "expectedBehavior": [
+        "cleanup_cache(7) removes cache files older than 7 days",
+        "Newer cache files preserved",
+        "Archive untouched",
+        "WERK_SIGIL_CACHE_RETENTION_DAYS=1 honored"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil archive::tests::cleanup_cache_removes_stale"
+      ],
+      "fulfills": ["VAL-HARD-006"],
+      "status": "pending"
+    },
+    {
+      "id": "hot-reload-presets",
+      "description": "Add notify (v6) dep to werk-sigil; implement file watcher on werk-sigil/presets/ and any user-supplied logic dir. On file change, recompute logic_version (hash of file bytes); active subscribers to /api/sigil/stream get a sigil_invalidated event. Behind the workspace-default 'hot-reload' feature flag (D10) — disable for tests that don't exercise reload.",
+      "skillName": "rust-implementer",
+      "milestone": "hardening",
+      "preconditions": ["cache-retention completed", "web-sigil-sse completed"],
+      "expectedBehavior": [
+        "Modifying werk-sigil/presets/contemplative.toml causes logic_version to change",
+        "Active /api/sigil/stream subscriber receives sigil_invalidated within 1 second",
+        "With feature 'hot-reload' disabled, the watcher is not started"
+      ],
+      "verificationSteps": [
+        "cargo test -p werk-sigil --features hot-reload hot_reload",
+        "Manual: cargo run -p werk -- serve --port 3749 &; curl -N http://localhost:3749/api/sigil/stream &; touch werk-sigil/presets/contemplative.toml; observe event; lsof -ti :3749 | xargs kill"
+      ],
+      "fulfills": ["VAL-HARD-007"],
+      "status": "pending"
+    },
+    {
+      "id": "performance-pass",
+      "description": "Performance benchmark + optimization pass on Constellation layouter (the most expensive stage). Add a release-mode test that asserts contemplative render of a 50-tension subtree completes in < 100ms (median of 20 runs, std::time::Instant). If slow, profile with a lightweight approach (println! timings around stage boundaries) and optimize.",
+      "skillName": "rust-implementer",
+      "milestone": "hardening",
+      "preconditions": ["hot-reload-presets completed"],
+      "expectedBehavior": [
+        "cargo test --release -p werk-sigil bench::tests::contemplative_50_node_under_100ms passes on a modern machine",
+        "If above bar: profile + optimize until below bar"
+      ],
+      "verificationSteps": [
+        "cargo test --release -p werk-sigil bench"
+      ],
+      "fulfills": ["VAL-HARD-008"],
+      "status": "pending"
+    },
+    {
+      "id": "m6-final-eyeball",
+      "description": "Final mission gate: orchestrator collects all 5 preset SVGs (current state), prepares a side-by-side review document at validation/m6/eyeball/distinct-presets.md, and presents to user. User confirms presets are visually distinct. Update root README.md to mention the sigil engine briefly (one paragraph) per orchestrator end-of-mission discipline.",
+      "skillName": "rust-implementer",
+      "milestone": "hardening",
+      "preconditions": ["performance-pass completed"],
+      "expectedBehavior": [
+        "All 5 preset SVGs rendered against fixture; collected at validation/m6/eyeball/",
+        "Side-by-side review doc presents them clearly",
+        "User explicit approval recorded",
+        "README.md mentions the sigil engine in a one-paragraph summary",
+        "All assertions in validation-state.json are 'passed'"
+      ],
+      "verificationSteps": [
+        "ls validation/m6/eyeball/{contemplative,glance,snapshot,identity,oracle}.svg",
+        "cat validation/m6/eyeball/distinct-presets.md",
+        "Manual: orchestrator presents to user; approval in REVIEW.md",
+        "git diff README.md (must show new paragraph)"
+      ],
+      "fulfills": ["VAL-CROSS-006"],
+      "status": "pending"
+    }
+  ]
+}
