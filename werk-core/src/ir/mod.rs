@@ -6,9 +6,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod attribute_graph;
+pub mod epoch_series;
 pub mod tension_list;
 pub mod tension_tree;
 pub use attribute_graph::AttributeGraph;
+pub use epoch_series::{EpochSeries, EpochSeriesScope};
 pub use tension_list::{TensionList, TensionListEntry};
 pub use tension_tree::TensionTree;
 
@@ -121,6 +123,18 @@ impl IrError {
     pub fn unknown_attribute(name: &str) -> Self {
         Self {
             message: format!("unknown attribute: {name}"),
+        }
+    }
+
+    pub fn unsupported_epoch_series_scope(scope: &str) -> Self {
+        Self {
+            message: format!("unsupported epoch series scope: {scope}"),
+        }
+    }
+
+    pub fn invalid_epoch_snapshot(err: impl std::fmt::Display) -> Self {
+        Self {
+            message: format!("invalid epoch snapshot: {err}"),
         }
     }
 }
