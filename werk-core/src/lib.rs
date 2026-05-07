@@ -15,6 +15,7 @@ pub mod events;
 pub mod frontier;
 pub mod graph;
 pub mod horizon;
+pub mod ir;
 pub mod mutation;
 pub mod projection;
 pub mod search;
@@ -33,6 +34,7 @@ pub use graph::{
     ComputationWitness, FieldStructuralSignals, StructuralSignals, compute_structural_signals,
 };
 pub use horizon::{Horizon, HorizonKind, HorizonParseError};
+pub use ir::{AttributeValue, Attributes, IrKind, TensionList};
 pub use mutation::{
     Mutation, MutationFieldKind, ReconstructedTension, ReplayError, replay_mutations,
 };
