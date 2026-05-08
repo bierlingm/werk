@@ -518,6 +518,18 @@ mod tests {
             parse_address("g:*7").unwrap(),
             Address::Gesture("*7".to_owned())
         );
+        assert_eq!(
+            parse_address("s:*7").unwrap(),
+            Address::Session("*7".to_owned())
+        );
         assert!(parse_address("*").is_err());
+    }
+
+    #[test]
+    fn session_prefix_precedes_sigil() {
+        assert_eq!(
+            parse_address("s:*7").unwrap(),
+            Address::Session("*7".to_owned())
+        );
     }
 }

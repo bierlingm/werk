@@ -229,27 +229,48 @@ impl TensionList {
         }
 
         let mut held_ids = HashSet::new();
+        let mut computed_parents = HashSet::new();
         for tension in &tensions {
-            let children = forest.children(&tension.id).unwrap_or_default();
+            let Some(parent_id) = tension.parent_id.as_ref() else {
+                continue;
+            };
+            if !computed_parents.insert(parent_id.clone()) {
+                continue;
+            }
+
+            let Some(parent) = store.get_tension(parent_id)? else {
+                continue;
+            };
+            let children = store.get_children(parent_id)?;
             if children.is_empty() {
                 continue;
             }
 
+            let mut family = Vec::with_capacity(children.len() + 1);
+            family.push(parent);
+            family.extend(children.clone());
+
+            let parent_forest = Forest::from_tensions(family)?;
             let mut child_mutations = Vec::with_capacity(children.len());
             for child in &children {
-                let muts = if let Some(muts) = mutations_by_id.get(child.id()) {
+                let muts = if let Some(muts) = mutations_by_id.get(&child.id) {
                     muts.clone()
                 } else {
-                    let fetched = store.get_mutations(child.id())?;
-                    mutations_by_id.insert(child.id().to_string(), fetched.clone());
+                    let fetched = store.get_mutations(&child.id)?;
+                    mutations_by_id.insert(child.id.clone(), fetched.clone());
                     fetched
                 };
-                child_mutations.push((child.id().to_string(), muts));
+                child_mutations.push((child.id.clone(), muts));
             }
 
-            let epochs = store.get_epochs(&tension.id)?;
-            let frontier =
-                compute_frontier(&forest, &tension.id, ctx.now, &epochs, &child_mutations);
+            let epochs = store.get_epochs(parent_id)?;
+            let frontier = compute_frontier(
+                &parent_forest,
+                parent_id,
+                ctx.now,
+                &epochs,
+                &child_mutations,
+            );
             for step in frontier.held {
                 held_ids.insert(step.tension_id);
             }
@@ -443,5 +464,51 @@ mod tests {
 
         assert!(!attribute_bool(attrs, "is_held"));
         assert_eq!(attribute_categorical(attrs, "status"), "active".to_string());
+    }
+
+    #[test]
+    fn subset_child_held_derived_from_parent_context() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let child = store
+            .create_tension_with_parent("child goal", "child reality", Some(parent.id.clone()))
+            .unwrap();
+
+        let ctx = IrContext::new(Utc::now(), "werk");
+        let entries = TensionList::build(&store, vec![child.clone()], &ctx).unwrap();
+        let attrs = &entries[0].attributes;
+
+        assert!(attribute_bool(attrs, "is_held"));
+        assert_eq!(attribute_categorical(attrs, "status"), "held".to_string());
+    }
+
+    #[test]
+    fn subset_child_held_uses_parent_context_with_sibling_positions() {
+        let store = Store::new_in_memory().unwrap();
+        let parent = store
+            .create_tension("parent goal", "parent reality")
+            .unwrap();
+        let held_child = store
+            .create_tension_with_parent("held goal", "held reality", Some(parent.id.clone()))
+            .unwrap();
+        let positioned_child = store
+            .create_tension_with_parent(
+                "positioned goal",
+                "positioned reality",
+                Some(parent.id.clone()),
+            )
+            .unwrap();
+        store
+            .update_position(&positioned_child.id, Some(1))
+            .unwrap();
+
+        let ctx = IrContext::new(Utc::now(), "werk");
+        let entries = TensionList::build(&store, vec![held_child.clone()], &ctx).unwrap();
+        let attrs = &entries[0].attributes;
+
+        assert!(attribute_bool(attrs, "is_held"));
+        assert_eq!(attribute_categorical(attrs, "status"), "held".to_string());
     }
 }
