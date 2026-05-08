@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+<metadata>
+<werk-sigil>
+<scope>#1~d2</scope>
+<logic>glance@1</logic>
+<seed>10445644578420468153</seed>
+<generated>2026-05-08T10:00:00+00:00</generated>
+<warnings count="0">
+</warnings>
+</werk-sigil>
+</metadata>
+<circle cx="300.00" cy="300.00" r="8.00" fill="none" stroke="#1a1a1a" stroke-width="1.00" fill-opacity="0.80" stroke-opacity="1.00" />
+<ellipse cx="403.92" cy="240.00" rx="8.00" ry="5.60" fill="none" stroke="#1a1a1a" stroke-width="1.00" fill-opacity="0.80" stroke-opacity="1.00" />
+<path class="glyph" transform="translate(403.92,360.00)" d="M10 2 L14 10 L22 10 L16 15 L18 24 L10 18 L2 24 L4 15 L-2 10 L6 10 Z" fill="#1a1a1a" stroke="#1a1a1a" stroke-width="1.00" />
+<ellipse cx="433.92" cy="188.04" rx="8.00" ry="5.60" fill="none" stroke="#1a1a1a" stroke-width="1.00" fill-opacity="0.80" stroke-opacity="1.00" />
+<polygon points="463.92,232.00 455.92,248.00 471.92,248.00" fill="none" stroke="#1a1a1a" stroke-width="1.00" fill-opacity="0.80" stroke-opacity="1.00" />
+<path class="glyph" transform="translate(463.92,360.00)" d="M10 2 L14 10 L22 10 L16 15 L18 24 L10 18 L2 24 L4 15 L-2 10 L6 10 Z" fill="#1a1a1a" stroke="#1a1a1a" stroke-width="1.00" />
+</svg>

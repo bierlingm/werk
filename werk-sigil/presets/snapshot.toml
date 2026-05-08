@@ -1,0 +1,35 @@
+[meta]
+name = "snapshot"
+version = "1"
+description = "Glyphic snapshot"
+purpose = "snapshot"
+
+[scope]
+default = { kind = "subtree", depth = 3 }
+fallback = { kind = "space", name = "active" }
+at = "now"
+
+[pipeline]
+selector = "subtree"
+featurizer = "tension_tree"
+encoder = "toml_declarative"
+layouter = "radial_mandala"
+stylist = "glyphic"
+renderer = "svg"
+
+[featurizer.tension_tree]
+attributes = ["short_code", "status", "depth", "child_count", "descendant_count", "urgency", "gap_magnitude"]
+
+[encoder.channels.primitive]
+field = "status"
+kind = "categorical"
+mapping = { active = "circle", held = "ellipse", resolved = "glyph", released = "polygon" }
+
+[encoder.channels.r]
+expr = "sqrt(urgency + 0.1) * 18 + 6"
+
+[encoder.channels.glyph_family]
+literal = "alchemical"
+
+[encoder.channels.glyph_index]
+expr = "(urgency * 10) % 16"

@@ -1,0 +1,26 @@
+[meta]
+name = "identity"
+version = "1"
+description = "Identity sheet"
+purpose = "identity"
+
+[scope]
+default = { kind = "union", members = [
+  { kind = "space", name = "active" },
+  { kind = "space", name = "resolved" },
+  { kind = "space", name = "released" },
+  { kind = "space", name = "active" },
+] }
+fallback = { kind = "space", name = "active" }
+at = "now"
+
+[pipeline]
+selector = "union"
+featurizer = "tension_tree"
+encoder = "structural_default"
+layouter = "grid"
+stylist = "ink_brush"
+renderer = "svg"
+
+[featurizer.tension_tree]
+attributes = ["short_code", "status", "depth", "child_count", "descendant_count", "urgency", "gap_magnitude"]

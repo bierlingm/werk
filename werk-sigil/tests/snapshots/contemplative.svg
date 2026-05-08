@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+<metadata>
+<werk-sigil>
+<scope>#1~d4</scope>
+<logic>contemplative@1</logic>
+<seed>12261625130941909489</seed>
+<generated>2026-05-08T10:00:00+00:00</generated>
+<warnings count="0">
+</warnings>
+</werk-sigil>
+</metadata>
+<rect x="0" y="0" width="600" height="600" fill="#f5efe1" />
+<defs>
+<filter id="ink-bleed"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" /><feDisplacementMap in="SourceGraphic" scale="3"/></filter>
+</defs>
+<circle cx="300.00" cy="300.00" r="12.00" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="1.00" stroke-opacity="1.00" />
+<ellipse cx="269.04" cy="373.77" rx="12.00" ry="8.40" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.85" stroke-opacity="1.00" />
+<path class="glyph" transform="translate(330.96,226.23)" d="M10 2 L14 10 L22 10 L16 15 L18 24 L10 18 L2 24 L4 15 L-2 10 L6 10 Z" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" />
+<ellipse cx="393.84" cy="429.59" rx="12.00" ry="8.40" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.70" stroke-opacity="1.00" />
+<polygon points="144.19,324.37 132.19,348.37 156.19,348.37" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.70" stroke-opacity="1.00" />
+<path class="glyph" transform="translate(355.97,150.11)" d="M10 2 L14 10 L22 10 L16 15 L18 24 L10 18 L2 24 L4 15 L-2 10 L6 10 Z" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" />
+<polygon points="106.21,429.58 94.21,453.58 118.21,453.58" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.55" stroke-opacity="1.00" />
+<path d="M300.00 300.00 Q300.00 373.77 269.04 373.77" fill="none" stroke="#1a1818" stroke-width="0.4" opacity="0.5" />
+<path d="M300.00 300.00 Q300.00 226.23 330.96 226.23" fill="none" stroke="#1a1818" stroke-width="0.4" opacity="0.5" />
+<path d="M269.04 373.77 Q269.04 429.59 393.84 429.59" fill="none" stroke="#1a1818" stroke-width="0.4" opacity="0.5" />
+<path d="M269.04 373.77 Q269.04 336.37 144.19 336.37" fill="none" stroke="#1a1818" stroke-width="0.4" opacity="0.5" />
+<path d="M144.19 336.37 Q144.19 441.58 106.21 441.58" fill="none" stroke="#1a1818" stroke-width="0.4" opacity="0.5" />
+<path d="M330.96 226.23 Q330.96 150.11 355.97 150.11" fill="none" stroke="#1a1818" stroke-width="0.4" opacity="0.5" />
+<path d="M300 300 m-80 0 a80 80 0 1 0 160 0 a80 80 0 1 0 -160 0" fill="none" stroke="#1a1818" stroke-width="0.3" opacity="0.18" />
+<path d="M300 300 m-160 0 a160 160 0 1 0 320 0 a160 160 0 1 0 -320 0" fill="none" stroke="#1a1818" stroke-width="0.3" opacity="0.18" />
+<path d="M300 300 m-240 0 a240 240 0 1 0 480 0 a240 240 0 1 0 -480 0" fill="none" stroke="#1a1818" stroke-width="0.3" opacity="0.18" />
+</svg>

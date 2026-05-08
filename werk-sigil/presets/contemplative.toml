@@ -50,6 +50,7 @@ renderer  = "svg"
 
 [featurizer.tension_tree]
 attributes = [
+  "short_code",
   "urgency",
   "gap_magnitude",
   "status",

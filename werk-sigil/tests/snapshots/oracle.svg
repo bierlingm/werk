@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+<metadata>
+<werk-sigil>
+<scope>query:active</scope>
+<logic>oracle@1</logic>
+<seed>13179618158592113469</seed>
+<generated>2026-05-08T10:00:00+00:00</generated>
+<warnings count="2">
+<warning>skipped #2: render error: missing attribute staleness</warning>
+<warning>skipped #4: render error: missing attribute staleness</warning>
+</warnings>
+</werk-sigil>
+</metadata>
+<rect x="0" y="0" width="600" height="600" fill="#f5efe1" />
+<defs>
+<filter id="ink-bleed"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" /><feDisplacementMap in="SourceGraphic" scale="3"/></filter>
+</defs>
+<circle cx="318.00" cy="282.00" r="8.00" fill="#cc3333" stroke="#1a1818" stroke-width="1.00" fill-opacity="0.80" stroke-opacity="1.00" />
+</svg>

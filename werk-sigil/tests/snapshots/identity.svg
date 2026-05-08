@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+<metadata>
+<werk-sigil>
+<scope>union(space:active,space:resolved,space:released,space:active)</scope>
+<logic>identity@1</logic>
+<seed>12148513300220167540</seed>
+<generated>2026-05-08T10:00:00+00:00</generated>
+<warnings count="0">
+</warnings>
+</werk-sigil>
+</metadata>
+<rect x="0" y="0" width="600" height="600" fill="#f5efe1" />
+<defs>
+<filter id="ink-bleed"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" /><feDisplacementMap in="SourceGraphic" scale="3"/></filter>
+</defs>
+<circle cx="200.00" cy="200.00" r="12.00" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="1.00" stroke-opacity="1.00" />
+<ellipse cx="400.00" cy="200.00" rx="12.00" ry="8.40" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.85" stroke-opacity="1.00" />
+<path class="glyph" transform="translate(200.00,400.00)" d="M10 2 L14 10 L22 10 L16 15 L18 24 L10 18 L2 24 L4 15 L-2 10 L6 10 Z" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" />
+<ellipse cx="400.00" cy="400.00" rx="12.00" ry="8.40" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.70" stroke-opacity="1.00" />
+<polygon points="200.00,588.00 188.00,612.00 212.00,612.00" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.70" stroke-opacity="1.00" />
+<path class="glyph" transform="translate(400.00,600.00)" d="M10 2 L14 10 L22 10 L16 15 L18 24 L10 18 L2 24 L4 15 L-2 10 L6 10 Z" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" />
+<polygon points="200.00,788.00 188.00,812.00 212.00,812.00" fill="#1a1818" stroke="#1a1818" stroke-width="0.60" fill-opacity="0.55" stroke-opacity="1.00" />
+</svg>
