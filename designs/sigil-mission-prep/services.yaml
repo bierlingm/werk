@@ -1,0 +1,35 @@
+# services.yaml — single source of truth for commands and services.
+#
+# Workers read this file. They do not guess commands.
+
+commands:
+  install: cargo build --workspace
+  build: cargo build --workspace
+  build-sigil: cargo build -p werk-sigil
+  build-werk: cargo build -p werk
+  test: cargo test --workspace
+  test-core: cargo test -p werk-core
+  test-sigil: cargo test -p werk-sigil
+  test-cli: cargo test -p werk
+  test-web: cargo test -p werk-web
+  fmt: cargo fmt --all
+  fmt-check: cargo fmt --all -- --check
+  clippy: cargo clippy --workspace --all-targets
+  # Snapshot regeneration (only run when orchestrator instructs).
+  snapshot-update: WERK_UPDATE_SNAPSHOTS=1 cargo test -p werk-sigil
+  # Render a quick sigil from the CLI for manual eyeball:
+  render-contemplative: cargo run -p werk -- sigil 2 --logic contemplative --out /tmp/sigil-eyeball.svg
+
+services:
+  # No new long-running services for this mission.
+  #
+  # The existing `werk serve` daemon (port 3749) is shared with non-mission
+  # work. Workers should NOT auto-start it. If a feature requires the
+  # daemon for manual testing, the worker starts it explicitly, runs the
+  # check, then stops it (lsof -ti :3749 | xargs kill).
+  werk-web:
+    start: cargo run -p werk -- serve --port 3749
+    stop: lsof -ti :3749 | xargs -r kill
+    healthcheck: curl -sf http://localhost:3749/api/tensions
+    port: 3749
+    depends_on: []

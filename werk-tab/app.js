@@ -27,7 +27,11 @@ const wsName = $("workspace-name");
 const wsMenu = $("workspace-menu");
 
 const fieldToggle = $("field-toggle");
+const sigilToggle = $("sigil-toggle");
 const fieldSection = $("field");
+const sigilSection = $("sigil");
+const sigilCanvas = $("sigil-canvas");
+const sigilOffline = $("sigil-offline");
 const fieldVitalsBody = $("field-vitals-body");
 const fieldVitalsFoot = $("field-vitals-foot");
 const fieldBandOverdue = $("field-band-overdue");
@@ -43,6 +47,8 @@ let currentWorkspace = null;
 let workspaceList = [];
 let switching = false;
 let fieldMode = false;
+let sigilMode = false;
+let sigilScope = null;
 
 function fmtHorizon(h) {
   return h ? `· ${h}` : "";
@@ -139,6 +145,14 @@ function renderOffline() {
   statusEl.textContent = "offline";
 }
 
+function hideSpaceBands() {
+  bandOverdue.hidden = true;
+  bandNext.hidden = true;
+  bandHeld.hidden = true;
+  bandSilent.hidden = true;
+  bandOffline.hidden = true;
+}
+
 async function probePort(port) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), PROBE_TIMEOUT_MS);
@@ -177,6 +191,10 @@ async function discoverApi() {
 }
 
 async function load() {
+  if (sigilMode) {
+    await loadSigil();
+    return;
+  }
   if (fieldMode) {
     await loadField();
     return;
@@ -283,6 +301,72 @@ function renderField(vitals, attention) {
   statusEl.textContent = `updated ${new Date().toLocaleTimeString()}`;
 }
 
+// ─── Sigil mode ────────────────────────────────────────────────────
+
+async function loadSigil() {
+  const ports = [];
+  if (lastGoodPort != null) ports.push(lastGoodPort);
+  for (let p = PORT_RANGE_START; p <= PORT_RANGE_END; p++) {
+    if (p !== lastGoodPort) ports.push(p);
+  }
+
+  for (const port of ports) {
+    try {
+      const api = `http://localhost:${port}`;
+      const scope = await discoverSigilScope(api);
+      if (!scope) continue;
+      const res = await fetch(
+        `${api}/api/sigil?scope=${encodeURIComponent(scope)}&logic=glance`,
+        { cache: "no-store", headers: { Accept: "image/svg+xml" } },
+      );
+      if (!res.ok) continue;
+      const previousApi = API;
+      API = api;
+      lastGoodPort = port;
+      sigilScope = scope;
+      renderSigil(await res.text());
+      if (previousApi !== API) reconnectStream();
+      return;
+    } catch (err) {
+      console.warn("werk-tab: sigil fetch failed", err);
+    }
+  }
+
+  API = null;
+  renderSigilOffline();
+}
+
+async function discoverSigilScope(api) {
+  const res = await fetch(`${api}/api/tensions`, { cache: "no-store" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const tension =
+    data.tensions.find((t) => (t.status || "").toLowerCase() === "active") ||
+    data.tensions[0];
+  if (!tension) return null;
+  return tension.short_code != null ? String(tension.short_code) : tension.id;
+}
+
+function renderSigil(svgText) {
+  bandOffline.hidden = true;
+  sigilOffline.hidden = true;
+  sigilCanvas.hidden = false;
+  sigilCanvas.innerHTML = svgText;
+  sigilCanvas.querySelectorAll("svg").forEach((svg, idx) => {
+    if (idx > 0) svg.remove();
+  });
+  summaryEl.textContent = "sigil · glance";
+  statusEl.textContent = `updated ${new Date().toLocaleTimeString()}`;
+}
+
+function renderSigilOffline() {
+  sigilCanvas.replaceChildren();
+  sigilCanvas.hidden = true;
+  sigilOffline.hidden = false;
+  summaryEl.textContent = "";
+  statusEl.textContent = "offline";
+}
+
 function fillFieldBand(bandEl, listEl, items, overdue) {
   bandEl.hidden = items.length === 0;
   listEl.replaceChildren(
@@ -346,16 +430,31 @@ function fmtLast(iso) {
 function toggleFieldMode(next) {
   const willEnter = next !== undefined ? next : !fieldMode;
   fieldMode = willEnter;
+  if (willEnter) sigilMode = false;
   fieldToggle.setAttribute("aria-pressed", willEnter ? "true" : "false");
   fieldToggle.classList.toggle("is-active", willEnter);
+  sigilToggle.setAttribute("aria-pressed", "false");
+  sigilToggle.classList.toggle("is-active", false);
   fieldSection.hidden = !willEnter;
+  sigilSection.hidden = true;
   // Hide space-mode bands in field mode.
-  bandOverdue.hidden = willEnter ? true : bandOverdue.hidden;
-  bandNext.hidden = willEnter ? true : bandNext.hidden;
-  bandHeld.hidden = willEnter ? true : bandHeld.hidden;
-  bandSilent.hidden = willEnter ? true : bandSilent.hidden;
+  if (willEnter) hideSpaceBands();
   // Workspace switcher still renders — useful context showing the daemon's
   // active space even in field mode — but its menu stays usable either way.
+  load();
+}
+
+function toggleSigilMode(next) {
+  const willEnter = next !== undefined ? next : !sigilMode;
+  sigilMode = willEnter;
+  if (willEnter) fieldMode = false;
+  sigilToggle.setAttribute("aria-pressed", willEnter ? "true" : "false");
+  sigilToggle.classList.toggle("is-active", willEnter);
+  fieldToggle.setAttribute("aria-pressed", "false");
+  fieldToggle.classList.toggle("is-active", false);
+  sigilSection.hidden = !willEnter;
+  fieldSection.hidden = true;
+  if (willEnter) hideSpaceBands();
   load();
 }
 
@@ -449,6 +548,11 @@ fieldToggle.addEventListener("click", (e) => {
   toggleFieldMode();
 });
 
+sigilToggle.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleSigilMode();
+});
+
 document.addEventListener("click", (e) => {
   if (!wsMenu.contains(e.target) && e.target !== wsButton) {
     toggleMenu(false);
@@ -460,19 +564,28 @@ document.addEventListener("keydown", (e) => {
 });
 
 let es = null;
+let esApi = null;
 function connectStream() {
   if (!API) {
     setTimeout(connectStream, 5000);
     return;
   }
+  if (es && esApi === API) return;
+  if (es) {
+    es.close();
+    es = null;
+  }
   try {
+    esApi = API;
     es = new EventSource(`${API}/api/events`);
     es.onmessage = () => load();
+    es.addEventListener("invalidate", () => load());
     es.onerror = () => {
       if (es) {
         es.close();
         es = null;
       }
+      esApi = null;
       // Port may have shifted after a daemon restart — rediscover.
       API = null;
       setTimeout(async () => {
@@ -484,6 +597,15 @@ function connectStream() {
     console.warn("werk-tab: SSE connect failed", err);
     setTimeout(connectStream, 5000);
   }
+}
+
+function reconnectStream() {
+  if (es) {
+    es.close();
+    es = null;
+  }
+  esApi = null;
+  connectStream();
 }
 
 (async () => {

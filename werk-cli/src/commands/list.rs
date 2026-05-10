@@ -123,8 +123,29 @@ struct ListJson {
     since: Option<String>,
 }
 
+/// JSON output structure for sigil list.
+#[derive(Serialize)]
+struct SigilListJson {
+    sigils: Vec<SigilRowJson>,
+    count: usize,
+}
+
+#[derive(Serialize)]
+struct SigilRowJson {
+    short_code: i32,
+    scope: String,
+    logic: String,
+    logic_version: String,
+    seed: i64,
+    rendered_at: String,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+}
+
 /// All the parameters for list, collected from the clap definition.
 pub struct ListParams {
+    pub kind: Option<String>,
     pub all: bool,
     pub status: Option<String>,
     pub overdue: bool,
@@ -189,6 +210,10 @@ pub fn cmd_list(output: &Output, params: ListParams) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
     let store = workspace.open_store()?;
     let now = Utc::now();
+
+    if params.kind.as_deref() == Some("sigil") {
+        return cmd_list_sigils(output, &store);
+    }
 
     let tensions = store.list_tensions().map_err(WerkError::StoreError)?;
 
@@ -942,6 +967,54 @@ fn build_tree_path(row: &TensionRow, tension_map: &HashMap<String, &Tension>) ->
 
     path.reverse();
     path
+}
+
+fn cmd_list_sigils(output: &Output, store: &werk_core::Store) -> Result<(), WerkError> {
+    let sigils = store.list_sigils().map_err(WerkError::StoreError)?;
+    if output.is_structured() {
+        let rows: Vec<SigilRowJson> = sigils
+            .iter()
+            .map(|s| SigilRowJson {
+                short_code: s.short_code,
+                scope: s.scope_canonical.clone(),
+                logic: s.logic_id.clone(),
+                logic_version: s.logic_version.clone(),
+                seed: s.seed,
+                rendered_at: s.rendered_at.to_rfc3339(),
+                path: s.file_path.clone(),
+                label: s.label.clone(),
+            })
+            .collect();
+        let result = SigilListJson {
+            sigils: rows,
+            count: sigils.len(),
+        };
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
+        return Ok(());
+    }
+
+    if sigils.is_empty() {
+        output
+            .info("No sigils found")
+            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        return Ok(());
+    }
+
+    println!("Sigils:");
+    for sigil in sigils {
+        println!(
+            "  *{}  {}@{}  {}  seed {}",
+            sigil.short_code,
+            sigil.logic_id,
+            sigil.logic_version,
+            sigil.scope_canonical,
+            sigil.seed
+        );
+        println!("       {}", sigil.file_path);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

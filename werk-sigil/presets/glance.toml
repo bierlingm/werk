@@ -1,0 +1,21 @@
+[meta]
+name = "glance"
+version = "1"
+description = "Compact signal-first glance"
+purpose = "glance"
+
+[scope]
+default = { kind = "subtree", depth = 2 }
+fallback = { kind = "space", name = "active" }
+at = "now"
+
+[pipeline]
+selector = "subtree"
+featurizer = "tension_tree"
+encoder = "shape_by_status"
+layouter = "fractal_branch"
+stylist = "minimal_line"
+renderer = "svg"
+
+[featurizer.tension_tree]
+attributes = ["short_code", "status", "depth", "child_count", "descendant_count"]

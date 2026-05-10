@@ -8,6 +8,7 @@
 //! - `#42@2026-03` — tension 42 as of March 2026
 //! - `g:01JQXYZ...` — gesture by ULID
 //! - `s:20260328-1` — session by date and sequence
+//! - `*7` — sigil by short code
 //! - `werk:42` — tension 42 in space "werk" (cross-space)
 //! - `journal:7~e3` — epoch 3 of tension 7 in space "journal"
 //!
@@ -34,6 +35,8 @@ pub enum Address {
     Gesture(String),
     /// A session by date and sequence: `s:20260328-1`
     Session(String),
+    /// A sigil short code: `*7`
+    Sigil(i32),
     /// A cross-space address: `werk:42`, `journal:7~e3`
     ///
     /// The space name is ≥2 chars matching `[a-z0-9][a-z0-9_-]*`.
@@ -50,6 +53,7 @@ impl fmt::Display for Address {
             Address::TensionAt { tension, timespec } => write!(f, "#{}@{}", tension, timespec),
             Address::Gesture(id) => write!(f, "g:{}", id),
             Address::Session(id) => write!(f, "s:{}", id),
+            Address::Sigil(n) => write!(f, "*{}", n),
             Address::CrossSpace { space, inner } => write!(f, "{}:{}", space, inner),
         }
     }
@@ -94,6 +98,7 @@ impl std::error::Error for AddressParseError {}
 /// - `#42@2026-03` — temporal
 /// - `g:ULID` — gesture
 /// - `s:DATE-N` — session
+/// - `*7` — sigil
 /// - `werk:42` — cross-space tension
 /// - `journal:7~e3` — cross-space epoch (all inner variants compose)
 pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
@@ -155,7 +160,28 @@ pub fn parse_address(input: &str) -> Result<Address, AddressParseError> {
 /// Parse the inner (non-cross-space) portion of an address.
 /// `full_input` is carried for error messages.
 fn parse_address_inner(input: &str, full_input: &str) -> Result<Address, AddressParseError> {
+    let had_hash = input.starts_with('#');
     let body = input.strip_prefix('#').unwrap_or(input);
+
+    if let Some(rest) = body.strip_prefix('*') {
+        if had_hash {
+            return Err(AddressParseError {
+                input: full_input.to_owned(),
+                reason: "sigil short code cannot be prefixed with #".to_owned(),
+            });
+        }
+        if rest.is_empty() {
+            return Err(AddressParseError {
+                input: full_input.to_owned(),
+                reason: "sigil short code is empty".to_owned(),
+            });
+        }
+        let sigil = rest.parse().map_err(|_| AddressParseError {
+            input: full_input.to_owned(),
+            reason: format!("invalid sigil short code: '{}'", rest),
+        })?;
+        return Ok(Address::Sigil(sigil));
+    }
 
     // Find sub-addressing sigil: ~ (epoch), . (note/sub), @ (temporal)
     // Try epoch: ~e<N>
@@ -454,10 +480,12 @@ mod tests {
             "#42@2026-03",
             "g:01JQXYZ",
             "s:20260328-1",
+            "*7",
             "werk:#42",
             "werk:#42~e3",
             "journal:#7.n3",
             "werk:#42@2026-03",
+            "werk:*7",
         ];
         for case in cases {
             let addr = parse_address(case).unwrap();
@@ -465,5 +493,43 @@ mod tests {
             let reparsed = parse_address(&displayed).unwrap();
             assert_eq!(addr, reparsed, "roundtrip failed for {}", case);
         }
+    }
+
+    #[test]
+    fn test_sigil() {
+        assert_eq!(parse_address("*7").unwrap(), Address::Sigil(7));
+    }
+
+    #[test]
+    fn test_cross_space_sigil() {
+        assert_eq!(
+            parse_address("werk:*7").unwrap(),
+            Address::CrossSpace {
+                space: "werk".to_owned(),
+                inner: Box::new(Address::Sigil(7)),
+            }
+        );
+    }
+
+    #[test]
+    fn sigil_prefix_collision_rejected() {
+        assert!(parse_address("#*7").is_err());
+        assert_eq!(
+            parse_address("g:*7").unwrap(),
+            Address::Gesture("*7".to_owned())
+        );
+        assert_eq!(
+            parse_address("s:*7").unwrap(),
+            Address::Session("*7".to_owned())
+        );
+        assert!(parse_address("*").is_err());
+    }
+
+    #[test]
+    fn session_prefix_precedes_sigil() {
+        assert_eq!(
+            parse_address("s:*7").unwrap(),
+            Address::Session("*7".to_owned())
+        );
     }
 }

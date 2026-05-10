@@ -1,0 +1,25 @@
+[package]
+name = "werk-sigil"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+blake3 = "1"
+chrono = { version = "0.4", features = ["serde"] }
+notify = { version = "6", optional = true }
+rand = "0.8"
+rand_chacha = "0.3"
+rhai = { version = "1", default-features = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+toml = "0.8"
+werk-core = { path = "../werk-core" }
+
+[dev-dependencies]
+filetime = "0.2"
+tempfile = "3"
+
+[features]
+hot-reload = ["notify"]
+default = ["hot-reload"]

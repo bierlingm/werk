@@ -92,8 +92,9 @@ fn tension_short_code(addr: &Address) -> Result<String> {
         | Address::Epoch { tension: n, .. }
         | Address::Note { tension: n, .. }
         | Address::TensionAt { tension: n, .. } => Ok(n.to_string()),
-        Address::Gesture(_) | Address::Session(_) => Err(WerkError::InvalidInput(
-            "cross-space addresses only support tension-based inner addresses, not gestures or sessions".to_string(),
+        Address::Gesture(_) | Address::Session(_) | Address::Sigil(_) => Err(WerkError::InvalidInput(
+            "cross-space addresses only support tension-based inner addresses, not gestures, sessions, or sigils"
+                .to_string(),
         )),
         Address::CrossSpace { .. } => Err(WerkError::InvalidInput(
             "nested cross-space addresses are not supported".to_string(),
@@ -107,10 +108,7 @@ mod tests {
 
     #[test]
     fn test_tension_short_code_extraction() {
-        assert_eq!(
-            tension_short_code(&Address::Tension(42)).unwrap(),
-            "42"
-        );
+        assert_eq!(tension_short_code(&Address::Tension(42)).unwrap(), "42");
         assert_eq!(
             tension_short_code(&Address::Epoch {
                 tension: 7,
@@ -148,6 +146,11 @@ mod tests {
     }
 
     #[test]
+    fn test_tension_short_code_rejects_sigil() {
+        assert!(tension_short_code(&Address::Sigil(7)).is_err());
+    }
+
+    #[test]
     fn test_tension_short_code_rejects_nested_cross_space() {
         let nested = Address::CrossSpace {
             space: "outer".to_owned(),
@@ -163,7 +166,10 @@ mod tests {
         match result {
             Err(e) => {
                 let msg = e.to_string();
-                assert!(msg.contains("nonexistent"), "error should name the space: {msg}");
+                assert!(
+                    msg.contains("nonexistent"),
+                    "error should name the space: {msg}"
+                );
             }
             Ok(_) => panic!("expected error for unknown space"),
         }

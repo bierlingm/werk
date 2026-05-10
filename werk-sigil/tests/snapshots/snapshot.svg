@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+<metadata>
+<werk-sigil>
+<scope>#1~d3</scope>
+<logic>snapshot@1</logic>
+<seed>6769840010686327689</seed>
+<generated>2026-05-08T10:00:00+00:00</generated>
+<warnings count="6">
+<warning>skipped #2: render error: expression eval error</warning>
+<warning>skipped #3: render error: expression eval error</warning>
+<warning>skipped #4: render error: expression eval error</warning>
+<warning>skipped #5: render error: expression eval error</warning>
+<warning>skipped #6: render error: expression eval error</warning>
+<warning>skipped #7: render error: expression eval error</warning>
+</warnings>
+</werk-sigil>
+</metadata>
+<rect x="0" y="0" width="600" height="600" fill="#f8f6f0" />
+<circle cx="300.00" cy="300.00" r="11.69" fill="#2a2727" stroke="#2a2727" stroke-width="1.00" fill-opacity="0.80" stroke-opacity="1.00" />
+<path d="M300.00 300.00 Q300.00 373.77 269.04 373.77" fill="none" stroke="#2a2727" stroke-width="0.4" opacity="0.5" />
+<path d="M300.00 300.00 Q300.00 226.23 330.96 226.23" fill="none" stroke="#2a2727" stroke-width="0.4" opacity="0.5" />
+<path d="M269.04 373.77 Q269.04 429.59 393.84 429.59" fill="none" stroke="#2a2727" stroke-width="0.4" opacity="0.5" />
+<path d="M269.04 373.77 Q269.04 336.37 144.19 336.37" fill="none" stroke="#2a2727" stroke-width="0.4" opacity="0.5" />
+<path d="M144.19 336.37 Q144.19 441.58 106.21 441.58" fill="none" stroke="#2a2727" stroke-width="0.4" opacity="0.5" />
+<path d="M330.96 226.23 Q330.96 150.11 355.97 150.11" fill="none" stroke="#2a2727" stroke-width="0.4" opacity="0.5" />
+<path d="M300 300 m-80 0 a80 80 0 1 0 160 0 a80 80 0 1 0 -160 0" fill="none" stroke="#2a2727" stroke-width="0.3" opacity="0.18" />
+<path d="M300 300 m-160 0 a160 160 0 1 0 320 0 a160 160 0 1 0 -320 0" fill="none" stroke="#2a2727" stroke-width="0.3" opacity="0.18" />
+<path d="M300 300 m-240 0 a240 240 0 1 0 480 0 a240 240 0 1 0 -480 0" fill="none" stroke="#2a2727" stroke-width="0.3" opacity="0.18" />
+</svg>

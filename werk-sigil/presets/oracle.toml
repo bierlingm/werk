@@ -1,0 +1,35 @@
+[meta]
+name = "oracle"
+version = "1"
+description = "Oracle constellation"
+purpose = "oracle"
+
+[scope]
+default = { kind = "query", status = "active" }
+fallback = { kind = "space", name = "active" }
+at = "now"
+
+[pipeline]
+selector = "query"
+featurizer = "attribute_graph"
+encoder = "toml_declarative"
+layouter = "constellation"
+stylist = "ink_brush"
+renderer = "svg"
+
+[featurizer.attribute_graph]
+attributes = ["short_code", "status", "staleness", "urgency", "gap_magnitude", "depth", "child_count", "descendant_count"]
+
+[encoder.channels.primitive]
+field = "status"
+kind = "categorical"
+mapping = { active = "circle", held = "ellipse", resolved = "glyph", released = "polygon" }
+
+[encoder.channels.fill]
+field = "staleness"
+kind = "threshold"
+threshold = 0.0
+mapping = { low = "#1a1818", high = "#cc3333" }
+
+[encoder.channels.stroke]
+literal = "#1a1818"

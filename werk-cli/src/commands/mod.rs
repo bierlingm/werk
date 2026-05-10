@@ -7,6 +7,7 @@ pub mod add;
 pub mod batch;
 pub mod compose_up;
 pub mod config;
+pub mod daemon;
 pub mod desire;
 pub mod epoch;
 pub mod field;
@@ -27,10 +28,10 @@ pub mod recur;
 pub mod release;
 pub mod reopen;
 pub mod resolve;
-pub mod daemon;
 pub mod rm;
 pub mod serve;
 pub mod show;
+pub mod sigil;
 pub mod snooze;
 pub mod spaces;
 pub mod split;
@@ -305,6 +306,39 @@ Examples:
         /// epoch (the timespan since the most recent desire/reality change).
         #[arg(long = "history", short = 'H')]
         history: bool,
+    },
+
+    /// Render a sigil (SVG artifact) from a scope.
+    #[command(after_help = "\
+Examples:
+  werk sigil 2
+  werk sigil 2 --logic contemplative
+  werk sigil 2 --seed 7 --out /tmp/sigil.svg
+  werk sigil 2 --save")]
+    Sigil {
+        /// Scope addresses (tension IDs or short codes). Multiple inputs build a union scope.
+        #[arg(num_args = 0..)]
+        scope: Vec<String>,
+
+        /// Logic preset name or path to a .toml file.
+        #[arg(long)]
+        logic: Option<String>,
+
+        /// Override the deterministic seed.
+        #[arg(long)]
+        seed: Option<u64>,
+
+        /// Write SVG to the given path.
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+
+        /// Save to archive and record metadata in the sigils table.
+        #[arg(long)]
+        save: bool,
+
+        /// Resolve and report without rendering or persisting.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Update the current reality of a tension.
@@ -685,6 +719,10 @@ Examples:
   werk list --long                   Expanded detail per tension
   werk list --search \"revenue\"       Search by content (ranked by relevance)")]
     List {
+        /// List a different kind of record (e.g., "sigil").
+        #[arg(long)]
+        kind: Option<String>,
+
         /// Include resolved and released tensions.
         #[arg(long)]
         all: bool,
@@ -1073,9 +1111,7 @@ pub enum SpacesCommand {
     },
 
     /// Drop a registration. The workspace files are not touched.
-    Unregister {
-        name: String,
-    },
+    Unregister { name: String },
 
     /// Initialize a fresh workspace at `path` and register it under `name`.
     Create {
@@ -1095,10 +1131,7 @@ pub enum SpacesCommand {
     },
 
     /// Rename a registration. Path is unchanged.
-    Rename {
-        old: String,
-        new: String,
-    },
+    Rename { old: String, new: String },
 }
 
 /// Daemon subcommands.

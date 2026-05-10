@@ -24,7 +24,7 @@ use crate::serialize::{HorizonRangeJson, TensionInfo, node_to_tension_info};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use werk_core::{
-    HorizonDriftType, TensionStatus, compute_frontier, compute_structural_signals,
+    Address, HorizonDriftType, TensionStatus, compute_frontier, compute_structural_signals,
     compute_temporal_signals, compute_urgency, detect_horizon_drift, extract_mutation_pattern,
     gap_magnitude,
 };
@@ -104,6 +104,20 @@ struct ShowResult {
     epoch_boundary: Option<String>,
 }
 
+/// JSON output structure for a sigil record.
+#[derive(Serialize)]
+struct SigilShowJson {
+    short_code: i32,
+    scope: String,
+    logic: String,
+    logic_version: String,
+    seed: i64,
+    rendered_at: String,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+}
+
 /// Epoch information for show display.
 #[derive(Serialize)]
 struct ShowEpochInfo {
@@ -146,25 +160,44 @@ struct ChildInfo {
 }
 
 pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), WerkError> {
-    // Try parsing as a cross-space address first
-    let (workspace, store, all_tensions, tension) =
-        if let Ok(addr) = werk_core::parse_address(&id) {
-            if let Some((space, inner)) = addr.as_cross_space() {
-                let result =
-                    cross_space::resolve_cross_space(space, inner)?;
-                (
-                    result.workspace,
-                    result.store,
-                    result.all_tensions,
-                    result.tension,
-                )
-            } else {
-                resolve_local(&id)?
+    if let Ok(addr) = werk_core::parse_address(&id) {
+        if let Address::Sigil(code) = addr {
+            return cmd_show_sigil(output, code);
+        }
+        if let Address::CrossSpace {
+            ref space,
+            ref inner,
+        } = addr
+        {
+            if matches!(**inner, Address::Sigil(_)) {
+                return Err(WerkError::InvalidInput(
+                    "cross-space sigil addresses are not supported".to_string(),
+                ));
             }
-        } else {
-            resolve_local(&id)?
-        };
+            let result = cross_space::resolve_cross_space(space, inner)?;
+            return cmd_show_tension(
+                output,
+                flags,
+                result.workspace,
+                result.store,
+                result.all_tensions,
+                result.tension,
+            );
+        }
+    }
 
+    let (workspace, store, all_tensions, tension) = resolve_local(&id)?;
+    cmd_show_tension(output, flags, workspace, store, all_tensions, tension)
+}
+
+fn cmd_show_tension(
+    output: &Output,
+    flags: ShowFlags,
+    workspace: crate::workspace::Workspace,
+    store: werk_core::Store,
+    all_tensions: Vec<werk_core::Tension>,
+    tension: werk_core::Tension,
+) -> Result<(), WerkError> {
     let sig = crate::commands::signal_thresholds_from(&workspace);
     let analysis = crate::commands::analysis_thresholds_from(&workspace);
 
@@ -244,10 +277,7 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
 
     if let Some(boundary) = epoch_boundary {
         children.retain(|c| match c.status.as_str() {
-            "Resolved" | "Released" => c
-                .completion_ts
-                .map(|ts| ts >= boundary)
-                .unwrap_or(true),
+            "Resolved" | "Released" => c.completion_ts.map(|ts| ts >= boundary).unwrap_or(true),
             _ => true,
         });
     }
@@ -275,11 +305,18 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
     };
 
     let scoped_mutations: Vec<&werk_core::Mutation> = if let Some(boundary) = epoch_boundary {
-        mutations.iter().filter(|m| m.timestamp() >= boundary).collect()
+        mutations
+            .iter()
+            .filter(|m| m.timestamp() >= boundary)
+            .collect()
     } else {
         mutations.iter().collect()
     };
-    let mutation_limit = if flags.activity { scoped_mutations.len() } else { 10 };
+    let mutation_limit = if flags.activity {
+        scoped_mutations.len()
+    } else {
+        10
+    };
     let mutation_infos: Vec<ShowMutationInfo> = scoped_mutations
         .iter()
         .rev()
@@ -380,20 +417,68 @@ pub fn cmd_show(output: &Output, id: String, flags: ShowFlags) -> Result<(), Wer
             .map_err(WerkError::IoError)?;
     } else {
         let palette = output.palette();
-        let scoped_owned: Vec<werk_core::Mutation> = scoped_mutations
-            .iter()
-            .map(|m| (*m).clone())
-            .collect();
+        let scoped_owned: Vec<werk_core::Mutation> =
+            scoped_mutations.iter().map(|m| (*m).clone()).collect();
         let render_mutations: &[werk_core::Mutation] = if epoch_boundary.is_some() {
             &scoped_owned
         } else {
             &mutations
         };
         render_human(
-            &result, &tension, &all_tensions, render_mutations, &epochs,
-            &frontier, &temporal, &structural, &field_structural,
-            &horizon_drift, &urgency, overdue, now, &palette, &flags, &sig,
+            &result,
+            &tension,
+            &all_tensions,
+            render_mutations,
+            &epochs,
+            &frontier,
+            &temporal,
+            &structural,
+            &field_structural,
+            &horizon_drift,
+            &urgency,
+            overdue,
+            now,
+            &palette,
+            &flags,
+            &sig,
         );
+    }
+
+    Ok(())
+}
+
+fn cmd_show_sigil(output: &Output, code: i32) -> Result<(), WerkError> {
+    let workspace = crate::workspace::Workspace::discover()?;
+    let store = workspace.open_store()?;
+    let record = store
+        .get_sigil_by_short_code(code)
+        .map_err(WerkError::StoreError)?
+        .ok_or_else(|| WerkError::TensionNotFound(format!("sigil *{code}")))?;
+
+    if output.is_structured() {
+        let result = SigilShowJson {
+            short_code: record.short_code,
+            scope: record.scope_canonical,
+            logic: record.logic_id,
+            logic_version: record.logic_version,
+            seed: record.seed,
+            rendered_at: record.rendered_at.to_rfc3339(),
+            path: record.file_path,
+            label: record.label,
+        };
+        output
+            .print_structured(&result)
+            .map_err(WerkError::IoError)?;
+    } else {
+        println!("Sigil *{}", record.short_code);
+        println!("  Scope:   {}", record.scope_canonical);
+        println!("  Logic:   {}@{}", record.logic_id, record.logic_version);
+        println!("  Seed:    {}", record.seed);
+        println!("  Rendered {}", record.rendered_at.to_rfc3339());
+        println!("  Path:    {}", record.file_path);
+        if let Some(label) = record.label {
+            println!("  Label:   {}", label);
+        }
     }
 
     Ok(())
@@ -409,11 +494,7 @@ fn rule(w: usize) -> String {
 }
 
 /// Section header: `─── Name ──────────────────── suffix`
-fn section_header(
-    name: &str,
-    suffix: &str,
-    palette: &werk_shared::cli_display::Palette,
-) -> String {
+fn section_header(name: &str, suffix: &str, palette: &werk_shared::cli_display::Palette) -> String {
     let prefix_rule = format!("{} ", rule(3));
     let name_part = format!("{} ", name);
     let used = 4 + name_part.len(); // "─── Name "
@@ -435,11 +516,7 @@ fn section_header(
 }
 
 /// Sub-section divider: `  ─── label ──────────────── count`
-fn sub_divider(
-    label: &str,
-    count: &str,
-    palette: &werk_shared::cli_display::Palette,
-) -> String {
+fn sub_divider(label: &str, count: &str, palette: &werk_shared::cli_display::Palette) -> String {
     let prefix = "  ";
     let label_part = format!("{} {} ", rule(3), label);
     let used = prefix.len() + label_part.len() + count.len() + 1;
@@ -525,14 +602,28 @@ fn render_human(
     // Three compact lines. Right column aligns within CONTENT_WIDTH.
     println!();
     render_metadata(
-        tension, all_tensions, mutations, frontier, structural,
-        field_structural, urgency, overdue, now, palette,
+        tension,
+        all_tensions,
+        mutations,
+        frontier,
+        structural,
+        field_structural,
+        urgency,
+        overdue,
+        now,
+        palette,
     );
 
     // ── Signals ────────────────────────────────────────────────────
     render_signals(
-        all_tensions, temporal, structural, field_structural,
-        horizon_drift, now, palette, sig,
+        all_tensions,
+        temporal,
+        structural,
+        field_structural,
+        horizon_drift,
+        now,
+        palette,
+        sig,
     );
 
     if flags.brief {
@@ -588,7 +679,10 @@ fn render_metadata(
     if let Some(wave) = structural.wave {
         left_parts.push(format!("wave {}/{}", wave + 1, field_structural.wave_count));
     }
-    let left1 = format!("  {}", left_parts.join(&format!(" {} ", palette.chrome("\u{00b7}"))));
+    let left1 = format!(
+        "  {}",
+        left_parts.join(&format!(" {} ", palette.chrome("\u{00b7}")))
+    );
     let age_str = relative_time(tension.created_at, now);
     let right1 = palette.chrome(&age_str.replace(" ago", " old"));
     two_col(&left1, &right1);
@@ -622,9 +716,9 @@ fn render_metadata(
                 if let Some(h) = &ancestor.horizon {
                     let ad = display_id(ancestor.short_code, &ancestor.id);
                     let days = h.range_end().signed_duration_since(now).num_days();
-                    left2_parts.push(palette.chrome(&format!(
-                        "no deadline ({} due {}, {}d)", ad, h, days
-                    )));
+                    left2_parts.push(
+                        palette.chrome(&format!("no deadline ({} due {}, {}d)", ad, h, days)),
+                    );
                     break;
                 }
                 ancestor_id = ancestor.parent_id.clone();
@@ -634,7 +728,11 @@ fn render_metadata(
         }
     }
     let right2 = if let Some(last) = mutations.last() {
-        palette.chrome(&format!("last act {} ({})", relative_time(last.timestamp(), now), last.field()))
+        palette.chrome(&format!(
+            "last act {} ({})",
+            relative_time(last.timestamp(), now),
+            last.field()
+        ))
     } else {
         String::new()
     };
@@ -642,7 +740,10 @@ fn render_metadata(
         let left2 = if left2_parts.is_empty() {
             "  ".to_string()
         } else {
-            format!("  {}", left2_parts.join(&format!(" {} ", palette.chrome("\u{00b7}"))))
+            format!(
+                "  {}",
+                left2_parts.join(&format!(" {} ", palette.chrome("\u{00b7}")))
+            )
         };
         two_col(&left2, &right2);
     }
@@ -651,7 +752,10 @@ fn render_metadata(
     let cp = &frontier.closure_progress;
     let left3 = if cp.total > 0 {
         if cp.released > 0 {
-            format!("  {}/{} done ({} released)", cp.resolved, cp.total, cp.released)
+            format!(
+                "  {}/{} done ({} released)",
+                cp.resolved, cp.total, cp.released
+            )
         } else {
             format!("  {}/{} done", cp.resolved, cp.total)
         }
@@ -679,18 +783,30 @@ fn render_signals(
     palette: &werk_shared::cli_display::Palette,
     sig: &crate::commands::SignalThresholds,
 ) {
-    let has_hub = structural.centrality.map(|c| c > sig.hub_centrality).unwrap_or(false);
+    let has_hub = structural
+        .centrality
+        .map(|c| c > sig.hub_centrality)
+        .unwrap_or(false);
     let has_spine = structural.on_longest_path;
-    let has_reach = structural.descendant_count.map(|c| c > sig.reach_descendants as usize).unwrap_or(false);
+    let has_reach = structural
+        .descendant_count
+        .map(|c| c > sig.reach_descendants as usize)
+        .unwrap_or(false);
     let has_signals = temporal.on_critical_path
         || temporal.has_containment_violation
         || !temporal.sequencing_pressures.is_empty()
         || !temporal.critical_path.is_empty()
         || !temporal.containment_violations.is_empty()
-        || temporal.implied_window.as_ref().map(|w| w.duration_seconds < 0).unwrap_or(false)
+        || temporal
+            .implied_window
+            .as_ref()
+            .map(|w| w.duration_seconds < 0)
+            .unwrap_or(false)
         || temporal.position_gaps.is_some()
         || horizon_drift.is_some()
-        || has_hub || has_spine || has_reach;
+        || has_hub
+        || has_spine
+        || has_reach;
 
     if !has_signals {
         return;
@@ -705,40 +821,88 @@ fn render_signals(
     let w = Palette::warning;
 
     if temporal.on_critical_path {
-        signal_line(glyphs::SIGNAL_CRITICAL_PATH, "CRITICAL", "on parent's critical path", s, palette);
+        signal_line(
+            glyphs::SIGNAL_CRITICAL_PATH,
+            "CRITICAL",
+            "on parent's critical path",
+            s,
+            palette,
+        );
     }
     if temporal.has_containment_violation {
-        signal_line(glyphs::SIGNAL_CONTAINMENT, "VIOLATION", "deadline exceeds parent's deadline", d, palette);
+        signal_line(
+            glyphs::SIGNAL_CONTAINMENT,
+            "VIOLATION",
+            "deadline exceeds parent's deadline",
+            d,
+            palette,
+        );
     }
     for sp in &temporal.sequencing_pressures {
         let pred_display = display_id(sp.predecessor_short_code, &sp.predecessor_id);
         let days = sp.gap_seconds as f64 / 86400.0;
-        signal_line(glyphs::SIGNAL_SEQUENCING, "PRESSURE",
-            &format!("deadline is {:.0} days before {} (ordered after)", days, pred_display), w, palette);
+        signal_line(
+            glyphs::SIGNAL_SEQUENCING,
+            "PRESSURE",
+            &format!(
+                "deadline is {:.0} days before {} (ordered after)",
+                days, pred_display
+            ),
+            w,
+            palette,
+        );
     }
 
     // Collapse homogeneous critical path signals
     if !temporal.critical_path.is_empty() {
-        let all_zero = temporal.critical_path.iter().all(|cp| cp.slack_seconds <= 0);
+        let all_zero = temporal
+            .critical_path
+            .iter()
+            .all(|cp| cp.slack_seconds <= 0);
         if temporal.critical_path.len() > 3 && all_zero {
             let all_unpos = temporal.critical_path.iter().all(|cp| {
-                all_tensions.iter().find(|t| t.id == cp.tension_id)
-                    .map(|t| t.position.is_none()).unwrap_or(false)
+                all_tensions
+                    .iter()
+                    .find(|t| t.id == cp.tension_id)
+                    .map(|t| t.position.is_none())
+                    .unwrap_or(false)
             });
             let qualifier = if all_unpos { " (none positioned)" } else { "" };
-            signal_line(glyphs::SIGNAL_CRITICAL_PATH, "CRITICAL",
-                &format!("{} children match or exceed deadline{}", temporal.critical_path.len(), qualifier), s, palette);
+            signal_line(
+                glyphs::SIGNAL_CRITICAL_PATH,
+                "CRITICAL",
+                &format!(
+                    "{} children match or exceed deadline{}",
+                    temporal.critical_path.len(),
+                    qualifier
+                ),
+                s,
+                palette,
+            );
         } else {
             for cpath in &temporal.critical_path {
-                let child_sc = all_tensions.iter().find(|t| t.id == cpath.tension_id).and_then(|t| t.short_code);
+                let child_sc = all_tensions
+                    .iter()
+                    .find(|t| t.id == cpath.tension_id)
+                    .and_then(|t| t.short_code);
                 let cd = display_id(child_sc, &cpath.tension_id);
                 let slack_days = cpath.slack_seconds as f64 / 86400.0;
                 if slack_days <= 0.0 {
-                    signal_line(glyphs::SIGNAL_CRITICAL_PATH, "CRITICAL",
-                        &format!("{} matches or exceeds deadline", cd), s, palette);
+                    signal_line(
+                        glyphs::SIGNAL_CRITICAL_PATH,
+                        "CRITICAL",
+                        &format!("{} matches or exceeds deadline", cd),
+                        s,
+                        palette,
+                    );
                 } else {
-                    signal_line(glyphs::SIGNAL_CRITICAL_PATH, "CRITICAL",
-                        &format!("{} has only {:.0} days slack", cd, slack_days), s, palette);
+                    signal_line(
+                        glyphs::SIGNAL_CRITICAL_PATH,
+                        "CRITICAL",
+                        &format!("{} has only {:.0} days slack", cd, slack_days),
+                        s,
+                        palette,
+                    );
                 }
             }
         }
@@ -761,15 +925,31 @@ fn render_signals(
     // Collapse homogeneous containment violations
     if !temporal.containment_violations.is_empty() {
         if temporal.containment_violations.len() > 3 {
-            signal_line(glyphs::SIGNAL_CONTAINMENT, "VIOLATION",
-                &format!("{} children exceed parent deadline", temporal.containment_violations.len()), d, palette);
+            signal_line(
+                glyphs::SIGNAL_CONTAINMENT,
+                "VIOLATION",
+                &format!(
+                    "{} children exceed parent deadline",
+                    temporal.containment_violations.len()
+                ),
+                d,
+                palette,
+            );
         } else {
             for cv in &temporal.containment_violations {
-                let child_sc = all_tensions.iter().find(|t| t.id == cv.tension_id).and_then(|t| t.short_code);
+                let child_sc = all_tensions
+                    .iter()
+                    .find(|t| t.id == cv.tension_id)
+                    .and_then(|t| t.short_code);
                 let cd = display_id(child_sc, &cv.tension_id);
                 let excess_days = cv.excess_seconds as f64 / 86400.0;
-                signal_line(glyphs::SIGNAL_CONTAINMENT, "VIOLATION",
-                    &format!("{} deadline exceeds by {:.0} days", cd, excess_days), d, palette);
+                signal_line(
+                    glyphs::SIGNAL_CONTAINMENT,
+                    "VIOLATION",
+                    &format!("{} deadline exceeds by {:.0} days", cd, excess_days),
+                    d,
+                    palette,
+                );
             }
         }
     }
@@ -777,34 +957,83 @@ fn render_signals(
     if let Some(iw) = &temporal.implied_window {
         let days = iw.duration_seconds as f64 / 86400.0;
         if days < 0.0 {
-            signal_line(" ", "WINDOW", &format!("negative ({:.0} days past)", -days), w, palette);
+            signal_line(
+                " ",
+                "WINDOW",
+                &format!("negative ({:.0} days past)", -days),
+                w,
+                palette,
+            );
         }
     }
     if let Some(drift) = horizon_drift {
         let net_days = drift.net_shift_seconds.abs() / 86400;
-        let direction = if drift.net_shift_seconds > 0 { "+" } else { "-" };
-        let since = drift.onset.map(|ts| format!(" since {}", relative_time(ts, now))).unwrap_or_default();
+        let direction = if drift.net_shift_seconds > 0 {
+            "+"
+        } else {
+            "-"
+        };
+        let since = drift
+            .onset
+            .map(|ts| format!(" since {}", relative_time(ts, now)))
+            .unwrap_or_default();
         let desc = match drift.drift_type {
-            HorizonDriftType::Tightening => format!("tightened{} (net {}{}d)", since, direction, net_days),
+            HorizonDriftType::Tightening => {
+                format!("tightened{} (net {}{}d)", since, direction, net_days)
+            }
             HorizonDriftType::Postponement => format!("postponed{} (net +{}d)", since, net_days),
-            HorizonDriftType::RepeatedPostponement => format!("postponed {}\u{00d7}{} (net +{}d)", drift.change_count, since, net_days),
-            HorizonDriftType::Loosening => format!("loosening{} (net {}{}d)", since, direction, net_days),
-            HorizonDriftType::Oscillating => format!("oscillating{} ({} shifts, net {}{}d)", since, drift.change_count, direction, net_days),
-            HorizonDriftType::Stable => unreachable!("horizon_drift is only Some when drift_type != Stable"),
+            HorizonDriftType::RepeatedPostponement => format!(
+                "postponed {}\u{00d7}{} (net +{}d)",
+                drift.change_count, since, net_days
+            ),
+            HorizonDriftType::Loosening => {
+                format!("loosening{} (net {}{}d)", since, direction, net_days)
+            }
+            HorizonDriftType::Oscillating => format!(
+                "oscillating{} ({} shifts, net {}{}d)",
+                since, drift.change_count, direction, net_days
+            ),
+            HorizonDriftType::Stable => {
+                unreachable!("horizon_drift is only Some when drift_type != Stable")
+            }
         };
         signal_line(glyphs::SIGNAL_DRIFT, "DRIFT", &desc, w, palette);
     }
     if has_hub {
-        signal_line(glyphs::SIGNAL_HUB, "HUB",
-            &format!("centrality {:.4} (structural routing point)", structural.centrality.unwrap_or(0.0)), s, palette);
+        signal_line(
+            glyphs::SIGNAL_HUB,
+            "HUB",
+            &format!(
+                "centrality {:.4} (structural routing point)",
+                structural.centrality.unwrap_or(0.0)
+            ),
+            s,
+            palette,
+        );
     }
     if has_spine {
-        signal_line(glyphs::SIGNAL_SPINE, "SPINE",
-            &format!("on longest structural path (depth {})", field_structural.longest_path.len()), s, palette);
+        signal_line(
+            glyphs::SIGNAL_SPINE,
+            "SPINE",
+            &format!(
+                "on longest structural path (depth {})",
+                field_structural.longest_path.len()
+            ),
+            s,
+            palette,
+        );
     }
     if has_reach {
-        signal_line(glyphs::SIGNAL_REACH, "REACH",
-            &format!("{} transitive descendants", structural.descendant_count.unwrap_or(0)), s, palette);
+        signal_line(
+            glyphs::SIGNAL_REACH,
+            "REACH",
+            &format!(
+                "{} transitive descendants",
+                structural.descendant_count.unwrap_or(0)
+            ),
+            s,
+            palette,
+        );
     }
 }
 
@@ -821,22 +1050,37 @@ fn render_theory_of_closure(
     if cp.total > 0 {
         suffix_parts.push(format!("{}/{}", cp.resolved, cp.total));
     }
-    let held_count = children.iter().filter(|c| c.status == "Active" && c.position.is_none()).count();
+    let held_count = children
+        .iter()
+        .filter(|c| c.status == "Active" && c.position.is_none())
+        .count();
     if held_count > 0 {
         suffix_parts.push(format!("{} held", held_count));
     }
 
     println!();
-    println!("{}", section_header(
-        "Theory of Closure",
-        &suffix_parts.join(" \u{00b7} "),
-        palette,
-    ));
+    println!(
+        "{}",
+        section_header(
+            "Theory of Closure",
+            &suffix_parts.join(" \u{00b7} "),
+            palette,
+        )
+    );
 
     // Partition into zones
-    let positioned: Vec<&ChildInfo> = children.iter().filter(|c| c.status == "Active" && c.position.is_some()).collect();
-    let held: Vec<&ChildInfo> = children.iter().filter(|c| c.status == "Active" && c.position.is_none()).collect();
-    let done: Vec<&ChildInfo> = children.iter().filter(|c| c.status == "Resolved" || c.status == "Released").collect();
+    let positioned: Vec<&ChildInfo> = children
+        .iter()
+        .filter(|c| c.status == "Active" && c.position.is_some())
+        .collect();
+    let held: Vec<&ChildInfo> = children
+        .iter()
+        .filter(|c| c.status == "Active" && c.position.is_none())
+        .collect();
+    let done: Vec<&ChildInfo> = children
+        .iter()
+        .filter(|c| c.status == "Resolved" || c.status == "Released")
+        .collect();
 
     // ── Positioned children ──
     // Format: "  #ID  ▸N  desire text..."
@@ -848,7 +1092,11 @@ fn render_theory_of_closure(
         let child_id = display_id(child.short_code, &child.id);
         let pos = child.position.unwrap_or(0);
         let pos_glyph = format!("{}{}", glyphs::STATUS_POSITION, pos);
-        let is_next = frontier.next_step.as_ref().map(|ns| ns.tension_id == child.id).unwrap_or(false);
+        let is_next = frontier
+            .next_step
+            .as_ref()
+            .map(|ns| ns.tension_id == child.id)
+            .unwrap_or(false);
         let is_overdue_child = frontier.overdue.iter().any(|o| o.tension_id == child.id);
 
         let id_col = format!("{:<5}", child_id);
@@ -866,19 +1114,35 @@ fn render_theory_of_closure(
             if line_idx == 0 {
                 // First line: include ID and glyph
                 if is_next && is_overdue_child {
-                    println!("  {} {} {} {}",
-                        palette.resolved(&id_col), palette.resolved(&glyph_col),
-                        palette.bold(&palette.danger("OVERDUE")), desired_text,
+                    println!(
+                        "  {} {} {} {}",
+                        palette.resolved(&id_col),
+                        palette.resolved(&glyph_col),
+                        palette.bold(&palette.danger("OVERDUE")),
+                        desired_text,
                     );
                 } else if is_next {
-                    println!("  {} {} {}", palette.resolved(&id_col), palette.resolved(&glyph_col), desired_text);
+                    println!(
+                        "  {} {} {}",
+                        palette.resolved(&id_col),
+                        palette.resolved(&glyph_col),
+                        desired_text
+                    );
                 } else if is_overdue_child {
-                    println!("  {} {} {} {}",
-                        palette.bold(&id_col), palette.chrome(&glyph_col),
-                        palette.bold(&palette.danger("OVERDUE")), desired_text,
+                    println!(
+                        "  {} {} {} {}",
+                        palette.bold(&id_col),
+                        palette.chrome(&glyph_col),
+                        palette.bold(&palette.danger("OVERDUE")),
+                        desired_text,
                     );
                 } else {
-                    println!("  {} {} {}", palette.bold(&id_col), palette.chrome(&glyph_col), desired_text);
+                    println!(
+                        "  {} {} {}",
+                        palette.bold(&id_col),
+                        palette.chrome(&glyph_col),
+                        desired_text
+                    );
                 }
             } else {
                 // Continuation lines: align to text column (12 spaces)
@@ -907,7 +1171,12 @@ fn render_theory_of_closure(
 
             for (line_idx, desired_text) in text_lines.iter().enumerate() {
                 if line_idx == 0 {
-                    println!("  {} {:<4} {}", palette.chrome(&format!("{:<5}", child_id)), "", palette.chrome(desired_text));
+                    println!(
+                        "  {} {:<4} {}",
+                        palette.chrome(&format!("{:<5}", child_id)),
+                        "",
+                        palette.chrome(desired_text)
+                    );
                 } else {
                     println!("{:<13}{}", "", palette.chrome(desired_text));
                 }
@@ -954,10 +1223,7 @@ fn render_theory_of_closure(
     }
 }
 
-fn render_child_detail(
-    child: &ChildInfo,
-    palette: &werk_shared::cli_display::Palette,
-) {
+fn render_child_detail(child: &ChildInfo, palette: &werk_shared::cli_display::Palette) {
     let mut parts: Vec<String> = Vec::new();
     if let Some(ref h) = child.horizon {
         parts.push(h.clone());
@@ -973,7 +1239,12 @@ fn render_child_detail(
         parts.push("no reality".to_string());
     }
     // Align with text column (col 13: 2 + 5 + 1 + 4 + 1)
-    println!("  {:<5} {:<4} {}", "", "", palette.chrome(&parts.join(" \u{00b7} ")));
+    println!(
+        "  {:<5} {:<4} {}",
+        "",
+        "",
+        palette.chrome(&parts.join(" \u{00b7} "))
+    );
 }
 
 fn render_notes(
@@ -991,7 +1262,10 @@ fn render_notes(
     }
 
     println!();
-    println!("{}", section_header("Notes", &format!("{}", notes.len()), palette));
+    println!(
+        "{}",
+        section_header("Notes", &format!("{}", notes.len()), palette)
+    );
 
     // Layout: "  {timestamp:>12}  {text}"
     // Text column starts at position 2 + 12 + 2 = 16.
@@ -1029,12 +1303,14 @@ fn render_notes(
             if i == 0 {
                 println!(
                     "  {}  {}",
-                    palette.chrome(&ts_padded), palette.testimony(line),
+                    palette.chrome(&ts_padded),
+                    palette.testimony(line),
                 );
             } else {
                 println!(
                     "{:width$}{}",
-                    "", palette.testimony(line),
+                    "",
+                    palette.testimony(line),
                     width = text_start,
                 );
             }
@@ -1076,26 +1352,33 @@ fn render_activity(
             .map(|dt| relative_time(dt.with_timezone(&Utc), now))
             .unwrap_or_else(|_| m.timestamp[..19].replace('T', " "));
 
-        let mut summaries = vec![format_mutation_summary(&m.field, m.old_value.as_deref(), &m.new_value)];
+        let mut summaries = vec![format_mutation_summary(
+            &m.field,
+            m.old_value.as_deref(),
+            &m.new_value,
+        )];
         let mut j = i + 1;
         while j < reversed.len() && reversed[j].timestamp == m.timestamp {
-            summaries.push(format_mutation_summary(&reversed[j].field, reversed[j].old_value.as_deref(), &reversed[j].new_value));
+            summaries.push(format_mutation_summary(
+                &reversed[j].field,
+                reversed[j].old_value.as_deref(),
+                &reversed[j].new_value,
+            ));
             j += 1;
         }
         let deduped = dedup_summaries(&summaries);
         let ts_padded = format!("{:>width$}", ts, width = ts_col);
-        println!(
-            "  {}  {}",
-            palette.chrome(&ts_padded), deduped,
-        );
+        println!("  {}  {}", palette.chrome(&ts_padded), deduped,);
         i = j;
     }
 
-    let total_non_note = total_mutations - mutation_infos.iter().filter(|m| m.field == "note").count();
+    let total_non_note =
+        total_mutations - mutation_infos.iter().filter(|m| m.field == "note").count();
     if !flags.activity && shown < total_non_note {
         println!(
             "{:width$}{}",
-            "", palette.chrome(&format!("\u{2026} {} earlier", total_non_note - shown)),
+            "",
+            palette.chrome(&format!("\u{2026} {} earlier", total_non_note - shown)),
             width = text_start,
         );
     }
@@ -1113,25 +1396,36 @@ fn render_epochs(
 
     if flags.epochs {
         println!();
-        println!("{}", section_header("Epochs", &epochs.len().to_string(), palette));
+        println!(
+            "{}",
+            section_header("Epochs", &epochs.len().to_string(), palette)
+        );
         for (i, e) in epochs.iter().enumerate().rev() {
             let e_age = relative_time(e.timestamp, now);
             println!("  {:>3}.  {}", i + 1, palette.chrome(&e_age));
-            println!("        {}  {}", palette.chrome("desire:"), truncate(&e.desire_snapshot, 55));
-            println!("        {} {}", palette.chrome("reality:"), truncate(&e.reality_snapshot, 55));
+            println!(
+                "        {}  {}",
+                palette.chrome("desire:"),
+                truncate(&e.desire_snapshot, 55)
+            );
+            println!(
+                "        {} {}",
+                palette.chrome("reality:"),
+                truncate(&e.reality_snapshot, 55)
+            );
         }
     } else {
         let latest = &epochs[epochs.len() - 1];
         let age = relative_time(latest.timestamp, now);
         println!();
-        println!("{}", palette.chrome(&format!("{} epochs (latest {})", epochs.len(), age)));
+        println!(
+            "{}",
+            palette.chrome(&format!("{} epochs (latest {})", epochs.len(), age))
+        );
     }
 }
 
-fn render_context(
-    result: &ShowResult,
-    palette: &werk_shared::cli_display::Palette,
-) {
+fn render_context(result: &ShowResult, palette: &werk_shared::cli_display::Palette) {
     if let Some(ref ancestors) = result.ancestors {
         if !ancestors.is_empty() {
             println!();
@@ -1164,7 +1458,13 @@ fn render_context(
             println!("  Frequency: {:.1}/day", freq);
         }
         if let Some(trend) = eng.get("frequency_trend").and_then(|v| v.as_f64()) {
-            let tw = if trend > 0.1 { "accelerating" } else if trend < -0.1 { "declining" } else { "steady" };
+            let tw = if trend > 0.1 {
+                "accelerating"
+            } else if trend < -0.1 {
+                "declining"
+            } else {
+                "steady"
+            };
             println!("  Trend: {}", tw);
         }
         if let Some(count) = eng.get("mutation_count").and_then(|v| v.as_u64()) {
@@ -1183,19 +1483,31 @@ fn render_hint(
         Some(c) => c.to_string(),
         None => tension.id[..8.min(tension.id.len())].to_string(),
     };
-    let has_no_positioned = children.iter().filter(|c| c.status == "Active").all(|c| c.position.is_none());
+    let has_no_positioned = children
+        .iter()
+        .filter(|c| c.status == "Active")
+        .all(|c| c.position.is_none());
     let has_children = !children.is_empty();
 
     let hint = if overdue {
-        format!("overdue \u{2014} `werk reality {} ...` to update, `werk horizon {} <new>` to reschedule", hint_id, hint_id)
+        format!(
+            "overdue \u{2014} `werk reality {} ...` to update, `werk horizon {} <new>` to reschedule",
+            hint_id, hint_id
+        )
     } else if tension.status == TensionStatus::Active {
         if has_children && has_no_positioned {
             format!("`werk position {} <n>` to commit a sequence", hint_id)
         } else {
-            format!("`werk reality {} ...` to log progress, `werk resolve {}` when done", hint_id, hint_id)
+            format!(
+                "`werk reality {} ...` to log progress, `werk resolve {}` when done",
+                hint_id, hint_id
+            )
         }
     } else {
-        format!("`werk reopen {}` to reactivate, `werk log {}` for full history", hint_id, hint_id)
+        format!(
+            "`werk reopen {}` to reactivate, `werk log {}` for full history",
+            hint_id, hint_id
+        )
     };
     crate::hints::print_hint(palette, &hint);
 }
@@ -1215,7 +1527,12 @@ fn signal_line(
     palette: &werk_shared::cli_display::Palette,
 ) {
     let padded_label = format!("{:<10}", label);
-    println!("  {} {} {}", color_fn(palette, glyph), color_fn(palette, &padded_label), desc);
+    println!(
+        "  {} {} {}",
+        color_fn(palette, glyph),
+        color_fn(palette, &padded_label),
+        desc
+    );
 }
 
 /// Format a sorted list of missing position numbers as a compact string.
@@ -1224,8 +1541,7 @@ fn format_missing_positions(missing: &[i32]) -> String {
     if missing.is_empty() {
         return String::new();
     }
-    let is_contiguous =
-        missing.len() > 2 && missing.windows(2).all(|w| w[1] == w[0] + 1);
+    let is_contiguous = missing.len() > 2 && missing.windows(2).all(|w| w[1] == w[0] + 1);
     if is_contiguous {
         format!("{}..{}", missing[0], missing[missing.len() - 1])
     } else {
@@ -1238,7 +1554,10 @@ fn format_missing_positions(missing: &[i32]) -> String {
 }
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    textwrap::wrap(text, width).into_iter().map(|cow| cow.into_owned()).collect()
+    textwrap::wrap(text, width)
+        .into_iter()
+        .map(|cow| cow.into_owned())
+        .collect()
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -1246,7 +1565,9 @@ fn strip_ansi(s: &str) -> String {
     let mut in_escape = false;
     for c in s.chars() {
         if in_escape {
-            if c.is_ascii_alphabetic() { in_escape = false; }
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
         } else if c == '\x1b' {
             in_escape = true;
         } else {
@@ -1257,7 +1578,9 @@ fn strip_ansi(s: &str) -> String {
 }
 
 fn dedup_summaries(summaries: &[String]) -> String {
-    if summaries.len() == 1 { return summaries[0].clone(); }
+    if summaries.len() == 1 {
+        return summaries[0].clone();
+    }
     let mut seen: Vec<(String, usize)> = Vec::new();
     for s in summaries {
         if let Some(entry) = seen.iter_mut().find(|(text, _)| text == s) {
@@ -1267,7 +1590,13 @@ fn dedup_summaries(summaries: &[String]) -> String {
         }
     }
     seen.iter()
-        .map(|(text, count)| if *count > 1 { format!("{} \u{00d7}{}", text, count) } else { text.clone() })
+        .map(|(text, count)| {
+            if *count > 1 {
+                format!("{} \u{00d7}{}", text, count)
+            } else {
+                text.clone()
+            }
+        })
         .collect::<Vec<_>>()
         .join(" \u{00b7} ")
 }
@@ -1297,25 +1626,40 @@ fn format_mutation_summary(field: &str, old_value: Option<&str>, new_value: &str
             }
         }
         "parent" => {
-            if new_value == "(none)" { "moved to root".to_string() }
-            else { format!("moved under {}", truncate(new_value, 30)) }
+            if new_value == "(none)" {
+                "moved to root".to_string()
+            } else {
+                format!("moved under {}", truncate(new_value, 30))
+            }
         }
         "horizon" => {
-            if new_value == "(none)" { "deadline cleared".to_string() }
-            else { format!("deadline set to {}", new_value) }
+            if new_value == "(none)" {
+                "deadline cleared".to_string()
+            } else {
+                format!("deadline set to {}", new_value)
+            }
         }
         "note" => {
-            if old_value.is_some() { format!("note retracted: {}", truncate(new_value, 50)) }
-            else { format!("note: {}", truncate(new_value, 50)) }
+            if old_value.is_some() {
+                format!("note retracted: {}", truncate(new_value, 50))
+            } else {
+                format!("note: {}", truncate(new_value, 50))
+            }
         }
         "deleted" => "deleted".to_string(),
         "snoozed_until" => {
-            if new_value == "(none)" { "snooze cleared".to_string() }
-            else { format!("snoozed until {}", new_value) }
+            if new_value == "(none)" {
+                "snooze cleared".to_string()
+            } else {
+                format!("snoozed until {}", new_value)
+            }
         }
         "recurrence" => {
-            if new_value == "(none)" { "recurrence cleared".to_string() }
-            else { format!("recurrence set to {}", new_value) }
+            if new_value == "(none)" {
+                "recurrence cleared".to_string()
+            } else {
+                format!("recurrence set to {}", new_value)
+            }
         }
         _ => format!("{} updated", field),
     }

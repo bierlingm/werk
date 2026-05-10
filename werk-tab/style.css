@@ -256,6 +256,27 @@ header {
   border-top: 1px solid var(--rule);
 }
 
+.sigil {
+  min-height: 420px;
+  padding: 24px 0 8px;
+}
+
+.sigil-canvas {
+  display: grid;
+  place-items: center;
+}
+
+.sigil-canvas svg {
+  display: block;
+  width: min(100%, 520px);
+  height: auto;
+  max-height: 60vh;
+}
+
+.sigil-offline {
+  border-top: 1px solid var(--rule);
+}
+
 .band {
   margin-bottom: 28px;
 }
