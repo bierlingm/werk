@@ -62,8 +62,13 @@ pub fn load_preset_str(content: &str) -> Result<PresetSpec, SigilError> {
             pipeline,
             params,
             seed,
+            content_hash: Some(compute_logic_hash(content)),
         },
     })
+}
+
+pub fn compute_logic_hash(content: &str) -> String {
+    blake3::hash(content.as_bytes()).to_hex().to_string()
 }
 
 fn parse_stage_params(rest: HashMap<String, toml::Value>) -> StageParams {

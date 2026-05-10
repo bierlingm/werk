@@ -11,8 +11,9 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    http::StatusCode,
+    body::Body,
+    extract::{Path, Query, State},
+    http::{StatusCode, header::CONTENT_TYPE},
     response::{Html, IntoResponse, Response, Sse},
     routing::{get, patch, post},
 };
@@ -23,7 +24,8 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, oneshot};
 use tokio_stream::StreamExt;
 use tower_http::cors::CorsLayer;
-use werk_core::{Forest, Horizon, Tension, TensionStatus, compute_urgency};
+use werk_core::{Address, Forest, Horizon, Tension, TensionStatus, compute_urgency, parse_address};
+use werk_shared::PrefixResolver;
 use werk_shared::aggregate::{
     AttentionItem, DEFAULT_HELD_PER_SPACE, DEFAULT_NEXT_UP_PER_SPACE, SkippedSpace, SpaceRef,
     SpaceVitals, VitalsTotals, compute_attention_for_store, compute_vitals_for_store,
@@ -31,6 +33,10 @@ use werk_shared::aggregate::{
 };
 use werk_shared::dto::{
     ApiError, CreateTensionRequest, SummaryDto, TensionDto, UpdateFieldRequest,
+};
+use werk_sigil::{
+    Ctx, Engine, Logic, Scope, SigilError, cache_path, derive_seed, load_preset, scope_canonical,
+    werk_state_revision,
 };
 
 const FRONTEND_HTML: &str = include_str!("../index.html");
@@ -92,6 +98,32 @@ enum StoreCmd {
         end: chrono::DateTime<chrono::Utc>,
         reply: oneshot::Sender<StoreResult<Vec<werk_core::mutation::Mutation>>>,
     },
+    ResolveSigil {
+        scope: String,
+        logic: Logic,
+        seed: Option<u64>,
+        workspace_name: String,
+        reply: oneshot::Sender<StoreResult<SigilScopeInfo>>,
+    },
+    RenderSigil {
+        scope: Scope,
+        logic: Logic,
+        seed: Option<u64>,
+        workspace_name: String,
+        reply: oneshot::Sender<StoreResult<SigilRenderResult>>,
+    },
+}
+
+#[derive(Clone)]
+struct SigilScopeInfo {
+    scope: Scope,
+    scope_canonical: String,
+    seed: u64,
+    revision: String,
+}
+
+struct SigilRenderResult {
+    svg: Vec<u8>,
 }
 
 /// Handle to communicate with the store thread.
@@ -172,7 +204,9 @@ impl StoreHandle {
                         }
                         StoreCmd::MutationsBetween { start, end, reply } => {
                             let _ = reply.send(
-                                store.mutations_between(start, end).map_err(|e| e.to_string()),
+                                store
+                                    .mutations_between(start, end)
+                                    .map_err(|e| e.to_string()),
                             );
                         }
                         StoreCmd::ComputeAttention {
@@ -192,6 +226,52 @@ impl StoreHandle {
                                 )
                                 .map_err(|e| e.to_string()),
                             );
+                        }
+                        StoreCmd::ResolveSigil {
+                            scope,
+                            logic,
+                            seed,
+                            workspace_name,
+                            reply,
+                        } => {
+                            let result =
+                                resolve_sigil_scope(&store, &logic, &scope).and_then(|resolved| {
+                                    let mut ctx =
+                                        Ctx::new(chrono::Utc::now(), &store, workspace_name, 0);
+                                    let compiled =
+                                        Engine::compile(logic).map_err(|e| e.to_string())?;
+                                    let resolved_scope = compiled
+                                        .selector
+                                        .select(resolved.clone(), &mut ctx)
+                                        .map_err(|e| e.to_string())?;
+                                    let scope_canonical = scope_canonical(&resolved_scope);
+                                    let seed_value = seed.unwrap_or_else(|| {
+                                        derive_seed(&compiled.logic, &scope_canonical)
+                                    });
+                                    let revision =
+                                        werk_state_revision(&store, &resolved_scope.tensions)
+                                            .map_err(|e| e.to_string())?;
+                                    Ok(SigilScopeInfo {
+                                        scope: resolved,
+                                        scope_canonical,
+                                        seed: seed_value,
+                                        revision,
+                                    })
+                                });
+                            let _ = reply.send(result);
+                        }
+                        StoreCmd::RenderSigil {
+                            scope,
+                            logic,
+                            seed,
+                            workspace_name,
+                            reply,
+                        } => {
+                            let mut ctx = Ctx::new(chrono::Utc::now(), &store, workspace_name, 0);
+                            let result = Engine::render_with_seed(scope, logic, &mut ctx, seed)
+                                .map(|sigil| SigilRenderResult { svg: sigil.svg.0 })
+                                .map_err(|e| e.to_string());
+                            let _ = reply.send(result);
                         }
                     }
                 }
@@ -304,6 +384,46 @@ impl StoreHandle {
             .map_err(|e| e.to_string())?;
         rx.await.map_err(|e| e.to_string())?
     }
+
+    async fn resolve_sigil(
+        &self,
+        scope: String,
+        logic: Logic,
+        seed: Option<u64>,
+        workspace_name: String,
+    ) -> StoreResult<SigilScopeInfo> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCmd::ResolveSigil {
+                scope,
+                logic,
+                seed,
+                workspace_name,
+                reply,
+            })
+            .map_err(|e| e.to_string())?;
+        rx.await.map_err(|e| e.to_string())?
+    }
+
+    async fn render_sigil(
+        &self,
+        scope: Scope,
+        logic: Logic,
+        seed: Option<u64>,
+        workspace_name: String,
+    ) -> StoreResult<SigilRenderResult> {
+        let (reply, rx) = oneshot::channel();
+        self.tx
+            .send(StoreCmd::RenderSigil {
+                scope,
+                logic,
+                seed,
+                workspace_name,
+                reply,
+            })
+            .map_err(|e| e.to_string())?;
+        rx.await.map_err(|e| e.to_string())?
+    }
 }
 
 // ─── Shared App State ──────────────────────────────────────────────
@@ -369,6 +489,13 @@ struct WorkspacesResponse {
 #[derive(Deserialize)]
 pub struct SelectWorkspaceRequest {
     path: String,
+}
+
+#[derive(Deserialize)]
+struct SigilQuery {
+    scope: Option<String>,
+    logic: Option<String>,
+    seed: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Debug)]
@@ -443,22 +570,22 @@ pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
         .route("/api/views/deadlines", get(get_view_deadlines))
         .route("/api/views/epoch", get(get_view_epoch))
         .route("/api/views/tree", get(get_view_tree))
+        .route("/api/sigil", get(get_sigil))
+        .route("/api/sigil/stream", get(sse_sigil_handler))
         .route("/api/events", get(sse_handler))
         .layer(CorsLayer::permissive())
         .with_state(state))
 }
 
 async fn get_workspace(State(state): State<Arc<AppState>>) -> Response {
-    let entry = werk_shared::daemon_workspaces::WorkspaceEntry::from_path(
-        state.workspace_root.clone(),
-    );
+    let entry =
+        werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone());
     Json(WorkspaceJson::from_entry(&entry)).into_response()
 }
 
 async fn get_workspaces(State(state): State<Arc<AppState>>) -> Response {
-    let current = werk_shared::daemon_workspaces::WorkspaceEntry::from_path(
-        state.workspace_root.clone(),
-    );
+    let current =
+        werk_shared::daemon_workspaces::WorkspaceEntry::from_path(state.workspace_root.clone());
     let available = match werk_shared::daemon_workspaces::list() {
         Ok((_, list)) => list,
         Err(_) => vec![current.clone()],
@@ -488,7 +615,11 @@ async fn select_workspace(Json(req): Json<SelectWorkspaceRequest>) -> Response {
         std::process::exit(0);
     });
     let entry = werk_shared::daemon_workspaces::WorkspaceEntry::from_path(path);
-    (StatusCode::ACCEPTED, Json(WorkspaceJson::from_entry(&entry))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        Json(WorkspaceJson::from_entry(&entry)),
+    )
+        .into_response()
 }
 
 /// Start the server on the given host and port.
@@ -498,9 +629,9 @@ pub async fn serve(
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let app = build_router(store_path)?;
-    let ip: std::net::IpAddr = host.parse().map_err(|e| {
-        Box::<dyn std::error::Error>::from(format!("invalid host '{host}': {e}"))
-    })?;
+    let ip: std::net::IpAddr = host
+        .parse()
+        .map_err(|e| Box::<dyn std::error::Error>::from(format!("invalid host '{host}': {e}")))?;
     let addr = std::net::SocketAddr::new(ip, port);
     let display_host = if host == "127.0.0.1" || host == "0.0.0.0" {
         "localhost".to_string()
@@ -645,6 +776,9 @@ async fn create_tension(
             let _ = state.tx.send(SseEvent {
                 kind: "tension_created".into(),
             });
+            let _ = state.tx.send(SseEvent {
+                kind: "invalidate".into(),
+            });
             (StatusCode::CREATED, Json(TensionDto::from_tension(&t))).into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
@@ -665,6 +799,9 @@ async fn update_desired(
         Ok(()) => {
             let _ = state.tx.send(SseEvent {
                 kind: "tension_updated".into(),
+            });
+            let _ = state.tx.send(SseEvent {
+                kind: "invalidate".into(),
             });
             StatusCode::OK.into_response()
         }
@@ -687,6 +824,9 @@ async fn update_reality(
             let _ = state.tx.send(SseEvent {
                 kind: "tension_updated".into(),
             });
+            let _ = state.tx.send(SseEvent {
+                kind: "invalidate".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
@@ -707,6 +847,9 @@ async fn resolve_tension(State(state): State<Arc<AppState>>, Path(id): Path<Stri
         Ok(()) => {
             let _ = state.tx.send(SseEvent {
                 kind: "tension_resolved".into(),
+            });
+            let _ = state.tx.send(SseEvent {
+                kind: "invalidate".into(),
             });
             StatusCode::OK.into_response()
         }
@@ -729,6 +872,9 @@ async fn release_tension(State(state): State<Arc<AppState>>, Path(id): Path<Stri
             let _ = state.tx.send(SseEvent {
                 kind: "tension_released".into(),
             });
+            let _ = state.tx.send(SseEvent {
+                kind: "invalidate".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
@@ -750,10 +896,73 @@ async fn reopen_tension(State(state): State<Arc<AppState>>, Path(id): Path<Strin
             let _ = state.tx.send(SseEvent {
                 kind: "tension_reopened".into(),
             });
+            let _ = state.tx.send(SseEvent {
+                kind: "invalidate".into(),
+            });
             StatusCode::OK.into_response()
         }
         Err(e) => err_response(StatusCode::BAD_REQUEST, e),
     }
+}
+
+async fn get_sigil(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SigilQuery>,
+) -> Response {
+    let scope = match query.scope.as_deref().map(str::trim) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return err_response(StatusCode::BAD_REQUEST, "missing required scope parameter"),
+    };
+
+    let logic = match load_logic(query.logic) {
+        Ok(l) => l,
+        Err(e) => return err_response(StatusCode::BAD_REQUEST, e.to_string()),
+    };
+
+    let workspace_name = workspace_name_from_root(&state.workspace_root);
+    let scope_info = match state
+        .store
+        .resolve_sigil(scope, logic.clone(), query.seed, workspace_name.clone())
+        .await
+    {
+        Ok(info) => info,
+        Err(e) => return err_response(StatusCode::BAD_REQUEST, e),
+    };
+
+    if let Err(e) = werk_sigil::cleanup_cache(7) {
+        return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+
+    let cache = cache_path(
+        &scope_info.scope_canonical,
+        &logic.cache_key(),
+        scope_info.seed,
+        &scope_info.revision,
+    );
+    if let Ok(bytes) = std::fs::read(&cache) {
+        return svg_response(bytes);
+    }
+
+    if let Some(parent) = cache.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+
+    let rendered = match state
+        .store
+        .render_sigil(scope_info.scope, logic, query.seed, workspace_name)
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => return err_response(StatusCode::BAD_REQUEST, e),
+    };
+
+    if let Err(e) = std::fs::write(&cache, &rendered.svg) {
+        return err_response(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+
+    svg_response(rendered.svg)
 }
 
 async fn sse_handler(
@@ -770,6 +979,24 @@ async fn sse_handler(
                     .data("{}"),
             )),
             Err(_) => None,
+        });
+    Sse::new(stream)
+}
+
+async fn sse_sigil_handler(
+    State(state): State<Arc<AppState>>,
+) -> Sse<
+    impl futures_core::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+> {
+    let rx = state.tx.subscribe();
+    let stream =
+        tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|result| match result {
+            Ok(event) if event.kind == "invalidate" => Some(Ok::<_, std::convert::Infallible>(
+                axum::response::sse::Event::default()
+                    .event("invalidate")
+                    .data("{}"),
+            )),
+            _ => None,
         });
     Sse::new(stream)
 }
@@ -866,16 +1093,18 @@ async fn get_field_vitals(State(state): State<Arc<AppState>>) -> Response {
         }
     }
 
-    let totals = per_space.iter().fold(VitalsTotals::default(), |mut acc, v| {
-        acc.active += v.active;
-        acc.resolved += v.resolved;
-        acc.released += v.released;
-        acc.deadlined += v.deadlined;
-        acc.overdue += v.overdue;
-        acc.positioned += v.positioned;
-        acc.held += v.held;
-        acc
-    });
+    let totals = per_space
+        .iter()
+        .fold(VitalsTotals::default(), |mut acc, v| {
+            acc.active += v.active;
+            acc.resolved += v.resolved;
+            acc.released += v.released;
+            acc.deadlined += v.deadlined;
+            acc.overdue += v.overdue;
+            acc.positioned += v.positioned;
+            acc.held += v.held;
+            acc
+        });
 
     Json(FieldVitalsJson {
         computed_at: now.to_rfc3339(),
@@ -1059,16 +1288,10 @@ async fn get_view_focus(State(state): State<Arc<AppState>>) -> Response {
     let (chosen, reason): (Option<&Tension>, &'static str) = active
         .iter()
         .filter_map(|t| compute_urgency(t, now).map(|u| (*t, u.value)))
-        .max_by(|a, b| {
-            a.1.partial_cmp(&b.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(t, _)| (Some(t), "most-urgent"))
         .unwrap_or_else(|| {
-            let fallback = active
-                .iter()
-                .max_by_key(|t| t.created_at)
-                .copied();
+            let fallback = active.iter().max_by_key(|t| t.created_at).copied();
             (
                 fallback,
                 if fallback.is_some() {
@@ -1352,6 +1575,41 @@ fn summarize_mutation(field: &str) -> String {
     }
 }
 
+fn load_logic(arg: Option<String>) -> Result<Logic, SigilError> {
+    let logic_name = arg.unwrap_or_else(|| "contemplative".to_string());
+    let path = logic_path(&logic_name)?;
+    load_preset(path).map(|preset| preset.logic)
+}
+
+fn logic_path(logic_name: &str) -> Result<PathBuf, SigilError> {
+    let candidate = PathBuf::from(logic_name);
+    if candidate.extension().is_some() || logic_name.contains('/') || logic_name.contains('\\') {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        return Err(SigilError::io(format!(
+            "logic file not found: {}",
+            candidate.display()
+        )));
+    }
+    let preset_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../werk-sigil/presets");
+    Ok(preset_dir.join(format!("{logic_name}.toml")))
+}
+
+fn workspace_name_from_root(root: &std::path::Path) -> String {
+    root.file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "werk".to_string())
+}
+
+fn svg_response(bytes: Vec<u8>) -> Response {
+    let mut response = Response::new(Body::from(bytes));
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, "image/svg+xml".parse().unwrap());
+    response
+}
+
 // ─── /api/views/tree ────────────────────────────────────────────
 //
 // Forest summary limited to depth 2, listing root tensions and their
@@ -1401,9 +1659,18 @@ async fn get_view_tree(State(state): State<Arc<AppState>>) -> Response {
     );
 
     let totals = TreeTotalsJson {
-        active: all.iter().filter(|t| t.status == TensionStatus::Active).count(),
-        resolved: all.iter().filter(|t| t.status == TensionStatus::Resolved).count(),
-        released: all.iter().filter(|t| t.status == TensionStatus::Released).count(),
+        active: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Active)
+            .count(),
+        resolved: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Resolved)
+            .count(),
+        released: all
+            .iter()
+            .filter(|t| t.status == TensionStatus::Released)
+            .count(),
     };
 
     let forest = match Forest::from_tensions(all.clone()) {
@@ -1464,7 +1731,15 @@ async fn get_view_tree(State(state): State<Arc<AppState>>) -> Response {
         for child_id in &node.children {
             if let Some(child) = forest.find(child_id) {
                 if child.tension.status == TensionStatus::Active {
-                    walk(forest, child, depth + 1, max_depth, all, parent_short_lookup, out);
+                    walk(
+                        forest,
+                        child,
+                        depth + 1,
+                        max_depth,
+                        all,
+                        parent_short_lookup,
+                        out,
+                    );
                 }
             }
         }
@@ -1473,7 +1748,15 @@ async fn get_view_tree(State(state): State<Arc<AppState>>) -> Response {
     for root_id in forest.root_ids() {
         if let Some(root) = forest.find(&root_id) {
             if root.tension.status == TensionStatus::Active {
-                walk(&forest, root, 0, TREE_MAX_DEPTH, &all, &parent_short, &mut items);
+                walk(
+                    &forest,
+                    root,
+                    0,
+                    TREE_MAX_DEPTH,
+                    &all,
+                    &parent_short,
+                    &mut items,
+                );
             }
         }
     }
@@ -1488,6 +1771,52 @@ async fn get_view_tree(State(state): State<Arc<AppState>>) -> Response {
         totals,
     })
     .into_response()
+}
+
+fn resolve_sigil_scope(
+    store: &werk_core::Store,
+    logic: &Logic,
+    input: &str,
+) -> Result<Scope, String> {
+    if input.trim().is_empty() {
+        return Err("scope is required".to_string());
+    }
+    if let Some(at) = logic.scope_at.as_deref()
+        && at != "now"
+    {
+        return Err("historical scope is not supported for sigils in v1".to_string());
+    }
+
+    if let Ok(addr) = parse_address(input) {
+        match addr {
+            Address::Tension(n) => return resolve_scope_by_prefix(store, logic, &n.to_string()),
+            Address::Epoch { .. } | Address::Note { .. } | Address::TensionAt { .. } => {
+                return Err("historical or sub-address scopes are not supported".to_string());
+            }
+            Address::Sigil(_) => {
+                return Err("sigil short codes cannot be used as render scopes".to_string());
+            }
+            Address::Gesture(_) | Address::Session(_) | Address::CrossSpace { .. } => {
+                return Err("unsupported scope address for sigil rendering".to_string());
+            }
+        }
+    }
+
+    resolve_scope_by_prefix(store, logic, input)
+}
+
+fn resolve_scope_by_prefix(
+    store: &werk_core::Store,
+    logic: &Logic,
+    input: &str,
+) -> Result<Scope, String> {
+    let tensions = store.list_tensions().map_err(|e| e.to_string())?;
+    let resolver = PrefixResolver::new(tensions);
+    let tension = resolver.resolve(input).map_err(|e| e.to_string())?;
+    Ok(logic
+        .scope_default
+        .clone()
+        .into_scope(Some(tension.id.clone()), None))
 }
 
 /// Resolve an ID that might be a short_code number or a full ULID.

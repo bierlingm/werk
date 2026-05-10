@@ -72,6 +72,15 @@ impl SvgRenderer {
         let mut marks = scene.layout.marks.clone();
         marks.sort_by(|a, b| a.mark.id.cmp(&b.mark.id));
 
+        for mark in &marks {
+            if !mark.cx.is_finite() || !mark.cy.is_finite() {
+                return Err(SigilError::internal("non-finite mark position"));
+            }
+            if has_non_finite_channel(&mark.mark.channels) {
+                return Err(SigilError::internal("non-finite channel value"));
+            }
+        }
+
         for mark in marks {
             render_mark(&mut svg, &mark, &scene).ok();
         }
@@ -202,6 +211,13 @@ fn channel_text<'a>(
         Some(ChannelValue::Text(value)) => Some(value.as_str()),
         _ => None,
     }
+}
+
+fn has_non_finite_channel(channels: &std::collections::HashMap<String, ChannelValue>) -> bool {
+    channels.values().any(|value| match value {
+        ChannelValue::Number(value) => !value.is_finite(),
+        ChannelValue::Text(_) => false,
+    })
 }
 
 fn glyph_path(name: &str, idx: usize) -> &'static str {

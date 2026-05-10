@@ -63,6 +63,50 @@ impl StageParams {
             _ => None,
         }
     }
+
+    pub fn set_param_number(
+        &mut self,
+        category: &str,
+        stage: &str,
+        key: &str,
+        value: f64,
+    ) {
+        self.set_param_value(category, stage, key, toml::Value::Float(value));
+    }
+
+    pub fn set_param_string(
+        &mut self,
+        category: &str,
+        stage: &str,
+        key: &str,
+        value: &str,
+    ) {
+        self.set_param_value(category, stage, key, toml::Value::String(value.to_string()));
+    }
+
+    pub fn set_param_value(
+        &mut self,
+        category: &str,
+        stage: &str,
+        key: &str,
+        value: toml::Value,
+    ) {
+        let map = match category {
+            "selector" => &mut self.selector,
+            "featurizer" => &mut self.featurizer,
+            "encoder" => &mut self.encoder,
+            "layouter" => &mut self.layouter,
+            "stylist" => &mut self.stylist,
+            "renderer" => &mut self.renderer,
+            _ => return,
+        };
+        let entry = map
+            .entry(stage.to_string())
+            .or_insert_with(|| toml::Value::Table(toml::value::Table::new()));
+        if let toml::Value::Table(table) = entry {
+            table.insert(key.to_string(), value);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +125,7 @@ pub struct Logic {
     pub pipeline: Pipeline,
     pub params: StageParams,
     pub seed: SeedSpec,
+    pub content_hash: Option<String>,
 }
 
 impl Logic {
@@ -94,5 +139,15 @@ impl Logic {
 
     pub fn canonical(&self) -> String {
         format!("{}@{}", self.meta.name, self.meta.version)
+    }
+
+    pub fn version_string(&self) -> String {
+        self.content_hash
+            .clone()
+            .unwrap_or_else(|| self.meta.version.clone())
+    }
+
+    pub fn cache_key(&self) -> String {
+        format!("{}@{}", self.meta.name, self.version_string())
     }
 }

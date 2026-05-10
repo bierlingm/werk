@@ -142,6 +142,16 @@ fn derive_seed_from_canonical(logic: &Logic, scope_canonical: &str) -> u64 {
     }
 }
 
+/// Compute the canonical scope string used for deterministic seeds and cache keys.
+pub fn scope_canonical(resolved: &ResolvedScope) -> String {
+    canonical_from_resolved(resolved)
+}
+
+/// Derive the deterministic seed from logic + canonical scope.
+pub fn derive_seed(logic: &Logic, scope_canonical: &str) -> u64 {
+    derive_seed_from_canonical(logic, scope_canonical)
+}
+
 fn build_selector(logic: &Logic) -> Result<Box<dyn Selector>, SigilError> {
     match logic.pipeline.selector.as_str() {
         "subtree" => Ok(Box::new(crate::stages::SubtreeSelector { depth: 4 })),
@@ -186,9 +196,9 @@ fn build_encoder(logic: &Logic) -> Result<Box<dyn Encoder>, SigilError> {
 fn build_layouter(logic: &Logic) -> Result<Box<dyn Layouter>, SigilError> {
     match logic.pipeline.layouter.as_str() {
         "radial_mandala" => Ok(Box::new(RadialMandala {
-            ring_step: 80.0,
-            inner_padding: 0.08,
-            root_radius: 12.0,
+            ring_step: layouter_param_number(logic, "radial_mandala", "ring_step", 80.0),
+            inner_padding: layouter_param_number(logic, "radial_mandala", "inner_padding", 0.08),
+            root_radius: layouter_param_number(logic, "radial_mandala", "root_radius", 12.0),
             center: (300.0, 300.0),
             parent_child_curves: true,
             ring_guides: true,
@@ -196,16 +206,16 @@ fn build_layouter(logic: &Logic) -> Result<Box<dyn Layouter>, SigilError> {
         })),
         "fractal_branch" => Ok(Box::new(FractalBranch {
             center: (300.0, 300.0),
-            branch_step: 120.0,
+            branch_step: layouter_param_number(logic, "fractal_branch", "branch_step", 120.0),
         })),
         "constellation" => Ok(Box::new(Constellation {
             center: (300.0, 300.0),
         })),
         "grid" => Ok(Box::new(Grid {
             center: (300.0, 300.0),
-            columns: 2,
-            rows: 2,
-            cell_size: 200.0,
+            columns: layouter_param_number(logic, "grid", "columns", 2.0) as usize,
+            rows: layouter_param_number(logic, "grid", "rows", 2.0) as usize,
+            cell_size: layouter_param_number(logic, "grid", "cell_size", 200.0),
         })),
         other => Err(SigilError::unsupported(format!("layouter {other}"))),
     }
@@ -377,6 +387,20 @@ fn parse_range(value: &toml::Value) -> Option<(f64, f64)> {
     let a = array[0].as_float()?;
     let b = array[1].as_float()?;
     Some((a, b))
+}
+
+fn layouter_param_number(logic: &Logic, stage: &str, key: &str, fallback: f64) -> f64 {
+    logic
+        .params
+        .for_stage("layouter", stage)
+        .and_then(|value| value.as_table())
+        .and_then(|table| table.get(key))
+        .and_then(|value| match value {
+            toml::Value::Float(value) => Some(*value),
+            toml::Value::Integer(value) => Some(*value as f64),
+            _ => None,
+        })
+        .unwrap_or(fallback)
 }
 
 #[cfg(test)]
@@ -603,6 +627,7 @@ mod tests {
             },
             params: StageParams::empty(),
             seed: SeedSpec::Auto,
+            content_hash: None,
         }
     }
 

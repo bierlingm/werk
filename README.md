@@ -137,6 +137,21 @@ Or in `.claude/settings.json`:
 
 Any MCP client (Claude Desktop, Cursor, or custom harnesses) connects the same way — point at `werk mcp` on stdio.
 
+## Sigil engine (SVG artifacts)
+
+werk can render deterministic SVG sigils from any scope. These are artifacts (views), not gestures.
+
+```bash
+werk sigil 2 --logic contemplative
+werk sigil 2 --logic glance --out /tmp/glance.svg
+```
+
+The web surface exposes the same renderer:
+
+```
+GET /api/sigil?scope=2&logic=contemplative
+```
+
 ## Core concepts
 
 **Tension** — a desire-reality pair. The gap between them generates energy for creative action.

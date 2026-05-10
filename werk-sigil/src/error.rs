@@ -24,6 +24,8 @@ pub enum SigilError {
     Internal { message: String },
     #[error("io error: {message}")]
     Io { message: String },
+    #[error("recursion limit exceeded at depth {depth}")]
+    RecursionLimit { depth: usize },
 }
 
 impl SigilError {
@@ -57,5 +59,9 @@ impl SigilError {
         Self::Io {
             message: message.into(),
         }
+    }
+
+    pub fn recursion_limit(depth: usize) -> Self {
+        Self::RecursionLimit { depth }
     }
 }
