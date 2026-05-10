@@ -5,8 +5,8 @@ use crate::output::Output;
 use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use werk_core::Horizon;
 use serde::Serialize;
+use werk_core::Horizon;
 
 /// JSON output structure for add command.
 #[derive(Serialize)]
@@ -98,8 +98,10 @@ pub fn cmd_add(
             let all_tensions = store.list_tensions().map_err(WerkError::StoreError)?;
             let parent = all_tensions.iter().find(|t| &t.id == pid);
             let parent_display = werk_shared::display_id_named(
-                parent.and_then(|t| t.short_code), pid,
-                &parent.map(|t| t.desired.as_str()).unwrap_or(""), 50,
+                parent.and_then(|t| t.short_code),
+                pid,
+                &parent.map(|t| t.desired.as_str()).unwrap_or(""),
+                50,
             );
             println!("  Parent:   {}", parent_display);
         }

@@ -8,7 +8,11 @@
 /// with a dim fg cell, un-written cells appear as dim instead of glaring white.
 /// Using TRANSPARENT bg lets the terminal's native background show through,
 /// which means this works on both dark and light terminals.
-pub fn clear_area_styled(frame: &mut ftui::Frame<'_>, area: ftui::layout::Rect, dim_fg: ftui::PackedRgba) {
+pub fn clear_area_styled(
+    frame: &mut ftui::Frame<'_>,
+    area: ftui::layout::Rect,
+    dim_fg: ftui::PackedRgba,
+) {
     let cell = ftui::Cell::from_char(' ')
         .with_fg(dim_fg)
         .with_bg(ftui::PackedRgba::TRANSPARENT);

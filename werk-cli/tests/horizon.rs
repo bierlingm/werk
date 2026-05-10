@@ -599,7 +599,6 @@ fn test_show_without_horizon() {
     // Should not have urgency/pressure for no-horizon tension
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Tree with horizon
 // ─────────────────────────────────────────────────────────────────────────────

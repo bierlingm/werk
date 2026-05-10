@@ -72,14 +72,16 @@ impl FeedbackCollector {
     /// Record that an action was selected.
     pub fn record_select(&mut self, action_id: &str) {
         let now = self.elapsed_secs();
-        let entry = self.boosts.entry(action_id.to_string()).or_insert(BoostEntry {
-            raw_boost: 1.0,
-            positive_signals: 0,
-            negative_signals: 0,
-            last_signal_secs: now,
-        });
-        entry.raw_boost = (entry.raw_boost + self.config.select_weight)
-            .min(self.config.max_boost);
+        let entry = self
+            .boosts
+            .entry(action_id.to_string())
+            .or_insert(BoostEntry {
+                raw_boost: 1.0,
+                positive_signals: 0,
+                negative_signals: 0,
+                last_signal_secs: now,
+            });
+        entry.raw_boost = (entry.raw_boost + self.config.select_weight).min(self.config.max_boost);
         entry.positive_signals += 1;
         entry.last_signal_secs = now;
     }
@@ -122,9 +124,9 @@ impl FeedbackCollector {
             entry.last_signal_secs = now_secs - age_secs;
         }
         // Filter non-finite entries
-        snapshot.boosts.retain(|_, e| {
-            e.raw_boost.is_finite() && e.last_signal_secs.is_finite()
-        });
+        snapshot
+            .boosts
+            .retain(|_, e| e.raw_boost.is_finite() && e.last_signal_secs.is_finite());
         self.boosts = snapshot.boosts;
         Ok(())
     }

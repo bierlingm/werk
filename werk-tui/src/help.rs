@@ -28,96 +28,107 @@ pub fn build_registry() -> HelpRegistry {
     let mut reg = HelpRegistry::new();
 
     // Global — available in every view
-    reg.register(HELP_GLOBAL, HelpContent {
-        short: "Global keybindings".into(),
-        long: Some("Keys that work in every view".into()),
-        keybindings: vec![
-            Keybinding::new("q", "quit"),
-            Keybinding::new("/", "open palette"),
-            Keybinding::new("Ctrl+K", "open palette"),
-            Keybinding::new("?", "help"),
-        ],
-        see_also: vec![],
-    });
+    reg.register(
+        HELP_GLOBAL,
+        HelpContent {
+            short: "Global keybindings".into(),
+            long: Some("Keys that work in every view".into()),
+            keybindings: vec![
+                Keybinding::new("q", "quit"),
+                Keybinding::new("/", "open palette"),
+                Keybinding::new("Ctrl+K", "open palette"),
+                Keybinding::new("?", "help"),
+            ],
+            see_also: vec![],
+        },
+    );
 
     // Deck view (Stream orientation)
-    reg.register(HELP_DECK, HelpContent {
-        short: "Deck — structure-first view".into(),
-        long: Some("Navigate and act on tensions in the tree".into()),
-        keybindings: vec![
-            // Navigation
-            Keybinding::new("j/k", "move up/down"),
-            Keybinding::new("l / Enter", "descend into"),
-            Keybinding::new("h / Bksp", "ascend out"),
-            Keybinding::new("g/G", "jump to top/bottom"),
-            Keybinding::new("Space", "gaze (peek)"),
-            Keybinding::new("1-9", "act on alert"),
-            // Reorder
-            Keybinding::new("Shift+J/K", "reorder position"),
-            // Acts
-            Keybinding::new("a", "add tension"),
-            Keybinding::new("e", "edit (desire/reality/horizon)"),
-            Keybinding::new("n", "add note"),
-            Keybinding::new("m", "move / reparent"),
-            Keybinding::new("r", "resolve"),
-            Keybinding::new("x", "release"),
-            Keybinding::new("o", "reopen"),
-            Keybinding::new("p", "hold / unhold"),
-            Keybinding::new("u/U", "undo / redo"),
-            Keybinding::new("y", "copy ID"),
-            Keybinding::new("f", "filter"),
-            // View switch
-            Keybinding::new("Tab", "switch to survey"),
-            Keybinding::new("L", "open logbase"),
-        ],
-        see_also: vec![HELP_SURVEY, HELP_LOGBASE],
-    });
+    reg.register(
+        HELP_DECK,
+        HelpContent {
+            short: "Deck — structure-first view".into(),
+            long: Some("Navigate and act on tensions in the tree".into()),
+            keybindings: vec![
+                // Navigation
+                Keybinding::new("j/k", "move up/down"),
+                Keybinding::new("l / Enter", "descend into"),
+                Keybinding::new("h / Bksp", "ascend out"),
+                Keybinding::new("g/G", "jump to top/bottom"),
+                Keybinding::new("Space", "gaze (peek)"),
+                Keybinding::new("1-9", "act on alert"),
+                // Reorder
+                Keybinding::new("Shift+J/K", "reorder position"),
+                // Acts
+                Keybinding::new("a", "add tension"),
+                Keybinding::new("e", "edit (desire/reality/horizon)"),
+                Keybinding::new("n", "add note"),
+                Keybinding::new("m", "move / reparent"),
+                Keybinding::new("r", "resolve"),
+                Keybinding::new("x", "release"),
+                Keybinding::new("o", "reopen"),
+                Keybinding::new("p", "hold / unhold"),
+                Keybinding::new("u/U", "undo / redo"),
+                Keybinding::new("y", "copy ID"),
+                Keybinding::new("f", "filter"),
+                // View switch
+                Keybinding::new("Tab", "switch to survey"),
+                Keybinding::new("L", "open logbase"),
+            ],
+            see_also: vec![HELP_SURVEY, HELP_LOGBASE],
+        },
+    );
 
     // Survey view
-    reg.register(HELP_SURVEY, HelpContent {
-        short: "Survey — time-first view".into(),
-        long: Some("All active tensions organized by temporal urgency".into()),
-        keybindings: vec![
-            // Navigation
-            Keybinding::new("j/k", "move cursor"),
-            Keybinding::new("J/K", "jump between bands"),
-            Keybinding::new("g/G", "top/bottom of band"),
-            Keybinding::new("Enter", "descend into tension"),
-            // Acts
-            Keybinding::new("r", "resolve"),
-            Keybinding::new("x", "release"),
-            Keybinding::new("e", "edit"),
-            Keybinding::new("n", "add note"),
-            // View switch
-            Keybinding::new("Tab", "pivot to deck at tension"),
-            Keybinding::new("Shift+Tab", "return to deck"),
-            Keybinding::new("L", "open logbase"),
-            Keybinding::new("Esc", "return to deck"),
-        ],
-        see_also: vec![HELP_DECK, HELP_LOGBASE],
-    });
+    reg.register(
+        HELP_SURVEY,
+        HelpContent {
+            short: "Survey — time-first view".into(),
+            long: Some("All active tensions organized by temporal urgency".into()),
+            keybindings: vec![
+                // Navigation
+                Keybinding::new("j/k", "move cursor"),
+                Keybinding::new("J/K", "jump between bands"),
+                Keybinding::new("g/G", "top/bottom of band"),
+                Keybinding::new("Enter", "descend into tension"),
+                // Acts
+                Keybinding::new("r", "resolve"),
+                Keybinding::new("x", "release"),
+                Keybinding::new("e", "edit"),
+                Keybinding::new("n", "add note"),
+                // View switch
+                Keybinding::new("Tab", "pivot to deck at tension"),
+                Keybinding::new("Shift+Tab", "return to deck"),
+                Keybinding::new("L", "open logbase"),
+                Keybinding::new("Esc", "return to deck"),
+            ],
+            see_also: vec![HELP_DECK, HELP_LOGBASE],
+        },
+    );
 
     // Logbase view
-    reg.register(HELP_LOGBASE, HelpContent {
-        short: "Logbase — epoch stream".into(),
-        long: Some("History of mutations for a single tension".into()),
-        keybindings: vec![
-            // Navigation
-            Keybinding::new("j/k", "scroll events"),
-            Keybinding::new("J/K", "jump between epochs"),
-            Keybinding::new("Enter / Space", "expand event detail"),
-            // View switch
-            Keybinding::new("Tab", "switch to survey"),
-            Keybinding::new("Shift+Tab", "return to origin"),
-            Keybinding::new("L", "close logbase"),
-            Keybinding::new("Esc", "return to origin"),
-        ],
-        see_also: vec![HELP_DECK, HELP_SURVEY],
-    });
+    reg.register(
+        HELP_LOGBASE,
+        HelpContent {
+            short: "Logbase — epoch stream".into(),
+            long: Some("History of mutations for a single tension".into()),
+            keybindings: vec![
+                // Navigation
+                Keybinding::new("j/k", "scroll events"),
+                Keybinding::new("J/K", "jump between epochs"),
+                Keybinding::new("Enter / Space", "expand event detail"),
+                // View switch
+                Keybinding::new("Tab", "switch to survey"),
+                Keybinding::new("Shift+Tab", "return to origin"),
+                Keybinding::new("L", "close logbase"),
+                Keybinding::new("Esc", "return to origin"),
+            ],
+            see_also: vec![HELP_DECK, HELP_SURVEY],
+        },
+    );
 
     reg
 }
-
 
 // ---------------------------------------------------------------------------
 // Data access — returns grouped keybindings for manual rendering
@@ -132,12 +143,13 @@ pub struct KeyGroup {
 /// Get all keybinding groups for the `?` overlay in a given view.
 /// Returns global entries first, then view-specific entries grouped by category.
 pub fn overlay_groups(view: ViewOrientation) -> Vec<KeyGroup> {
-    let mut groups = vec![
-        KeyGroup {
-            label: "Global",
-            bindings: global_entries().iter().map(|e| (leak_str(&e.key), leak_str(&e.desc))).collect(),
-        },
-    ];
+    let mut groups = vec![KeyGroup {
+        label: "Global",
+        bindings: global_entries()
+            .iter()
+            .map(|e| (leak_str(&e.key), leak_str(&e.desc)))
+            .collect(),
+    }];
 
     // Group view entries by category
     let entries = view_entries(view);
@@ -156,13 +168,22 @@ pub fn overlay_groups(view: ViewOrientation) -> Vec<KeyGroup> {
     }
 
     if !nav.is_empty() {
-        groups.push(KeyGroup { label: "Navigation", bindings: nav });
+        groups.push(KeyGroup {
+            label: "Navigation",
+            bindings: nav,
+        });
     }
     if !edit.is_empty() {
-        groups.push(KeyGroup { label: "Acts", bindings: edit });
+        groups.push(KeyGroup {
+            label: "Acts",
+            bindings: edit,
+        });
     }
     if !view_switch.is_empty() {
-        groups.push(KeyGroup { label: "View", bindings: view_switch });
+        groups.push(KeyGroup {
+            label: "View",
+            bindings: view_switch,
+        });
     }
 
     groups
@@ -246,7 +267,11 @@ fn logbase_entries() -> Vec<HelpEntry> {
         // Navigation
         entry("j/k", "scroll events", HelpCategory::Navigation),
         entry("J/K", "jump between epochs", HelpCategory::Navigation),
-        entry("Enter / Space", "expand event detail", HelpCategory::Navigation),
+        entry(
+            "Enter / Space",
+            "expand event detail",
+            HelpCategory::Navigation,
+        ),
         // View
         entry("Tab", "switch to survey", HelpCategory::View),
         entry("Shift+Tab", "return to origin", HelpCategory::View),

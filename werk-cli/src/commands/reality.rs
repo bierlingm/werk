@@ -139,8 +139,7 @@ pub fn cmd_reality(
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge
 
-    let tension_display =
-        werk_shared::display_id(tension.short_code, &tension.id);
+    let tension_display = werk_shared::display_id(tension.short_code, &tension.id);
 
     let result = RealityResult {
         id: tension.id.clone(),
@@ -154,13 +153,13 @@ pub fn cmd_reality(
         // the top level. When --show-after is passed, merge a `show`
         // key with a compact post-mutation view. Existing consumers
         // keep working; callers that want the echo opt in.
-        let mut val = serde_json::to_value(&result)
-            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        let mut val =
+            serde_json::to_value(&result).map_err(|e| WerkError::IoError(e.to_string()))?;
         if show_after {
             val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
         }
-        let json = serde_json::to_string_pretty(&val)
-            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&val).map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("{}", json);
     } else {
         output

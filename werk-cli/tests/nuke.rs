@@ -7,8 +7,8 @@
 //! - VAL-NUKE-004: --json output format
 //! - VAL-NUKE-005: Error when no .werk/ exists
 
-use assert_cmd::cargo_bin_cmd;
 use assert_cmd::Command;
+use assert_cmd::cargo_bin_cmd;
 use predicates::prelude::*;
 use tempfile::TempDir;
 

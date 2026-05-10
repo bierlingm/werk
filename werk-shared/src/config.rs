@@ -354,9 +354,7 @@ impl SignalThresholds {
     pub fn load(config: &Config) -> Self {
         use crate::config_registry::resolve_value;
         let defaults = Self::default();
-        let read = |key: &str| -> Option<String> {
-            config.get(key).map(|v| resolve_value(key, v))
-        };
+        let read = |key: &str| -> Option<String> { config.get(key).map(|v| resolve_value(key, v)) };
         Self {
             approaching_days: read("signals.approaching.days")
                 .and_then(|v| v.parse().ok())

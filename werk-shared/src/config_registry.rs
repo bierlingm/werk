@@ -60,7 +60,10 @@ impl Kind {
 
     /// Does this Kind support named levels?
     pub fn has_levels(&self) -> bool {
-        matches!(self, Kind::IntLevels(_) | Kind::FloatLevels(_) | Kind::StringEnum(_))
+        matches!(
+            self,
+            Kind::IntLevels(_) | Kind::FloatLevels(_) | Kind::StringEnum(_)
+        )
     }
 
     /// Is this a synthetic key (not stored in config.toml, value inferred from others)?
@@ -91,14 +94,9 @@ pub const REGISTRY: &[ConfigKey] = &[
     ConfigKey {
         key: "agent.timeout",
         default: "default",
-        kind: Kind::IntLevels(&[
-            ("quick", "10"),
-            ("default", "30"),
-            ("patient", "120"),
-        ]),
+        kind: Kind::IntLevels(&[("quick", "10"), ("default", "30"), ("patient", "120")]),
         gloss: "agent command timeout in seconds",
     },
-
     // ── analysis ────────────────────────────────────────────────
     ConfigKey {
         key: "analysis.sensitivity",
@@ -130,7 +128,6 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::Float,
         gloss: "desire-reality gap below this = resolved",
     },
-
     // ── display ─────────────────────────────────────────────────
     ConfigKey {
         key: "display.theme",
@@ -138,7 +135,6 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::String,
         gloss: "color theme: auto | light | dark",
     },
-
     // ── editor ──────────────────────────────────────────────────
     ConfigKey {
         key: "editor.command",
@@ -146,7 +142,6 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::String,
         gloss: "override $EDITOR for werk (empty = use $EDITOR)",
     },
-
     // ── flush ───────────────────────────────────────────────────
     ConfigKey {
         key: "flush.auto",
@@ -160,7 +155,6 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::Bool,
         gloss: "include released tensions in tensions.json",
     },
-
     // ── hooks ───────────────────────────────────────────────────
     ConfigKey {
         key: "hooks.log_tail",
@@ -168,7 +162,6 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::Int,
         gloss: "default --tail for `werk hooks log`",
     },
-
     // ── list ────────────────────────────────────────────────────
     ConfigKey {
         key: "list.default_sort",
@@ -176,7 +169,6 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::String,
         gloss: "default sort: urgency | name | deadline | created | updated | position",
     },
-
     // ── serve ───────────────────────────────────────────────────
     ConfigKey {
         key: "serve.port",
@@ -190,26 +182,17 @@ pub const REGISTRY: &[ConfigKey] = &[
         kind: Kind::String,
         gloss: "default bind host for `werk serve`",
     },
-
     // ── signals ─────────────────────────────────────────────────
     ConfigKey {
         key: "signals.approaching.days",
         default: "two weeks",
-        kind: Kind::IntLevels(&[
-            ("a week", "7"),
-            ("two weeks", "14"),
-            ("a month", "30"),
-        ]),
+        kind: Kind::IntLevels(&[("a week", "7"), ("two weeks", "14"), ("a month", "30")]),
         gloss: "days-to-deadline considered \"approaching\"",
     },
     ConfigKey {
         key: "signals.approaching.urgency",
         default: "balanced",
-        kind: Kind::FloatLevels(&[
-            ("patient", "0.3"),
-            ("balanced", "0.5"),
-            ("alert", "0.7"),
-        ]),
+        kind: Kind::FloatLevels(&[("patient", "0.3"), ("balanced", "0.5"), ("alert", "0.7")]),
         gloss: "urgency threshold for \"approaching\"",
     },
     ConfigKey {
@@ -226,11 +209,7 @@ pub const REGISTRY: &[ConfigKey] = &[
     ConfigKey {
         key: "signals.drift.threshold",
         default: "noticeable",
-        kind: Kind::FloatLevels(&[
-            ("subtle", "0.1"),
-            ("noticeable", "0.3"),
-            ("large", "0.5"),
-        ]),
+        kind: Kind::FloatLevels(&[("subtle", "0.1"), ("noticeable", "0.3"), ("large", "0.5")]),
         gloss: "desire-reality gap above which DRIFT fires",
     },
     ConfigKey {
@@ -246,14 +225,9 @@ pub const REGISTRY: &[ConfigKey] = &[
     ConfigKey {
         key: "signals.reach.descendants",
         default: "medium",
-        kind: Kind::IntLevels(&[
-            ("small", "3"),
-            ("medium", "5"),
-            ("large", "10"),
-        ]),
+        kind: Kind::IntLevels(&[("small", "3"), ("medium", "5"), ("large", "10")]),
         gloss: "descendant count for REACH glyph",
     },
-
     // ── stats ───────────────────────────────────────────────────
     ConfigKey {
         key: "stats.default_window_days",
@@ -282,10 +256,7 @@ pub fn group_of(key: &str) -> &str {
 /// Unique top-level namespaces in the registry, alphabetically sorted.
 /// Drives the grouped display in `werk config`.
 pub fn groups() -> Vec<&'static str> {
-    let mut seen: Vec<&'static str> = REGISTRY
-        .iter()
-        .map(|k| group_of(k.key))
-        .collect();
+    let mut seen: Vec<&'static str> = REGISTRY.iter().map(|k| group_of(k.key)).collect();
     seen.sort_unstable();
     seen.dedup();
     seen
@@ -301,10 +272,9 @@ pub fn keys_in_group(group: &str) -> impl Iterator<Item = &'static ConfigKey> + 
 /// A trailing dot is implied: `prefix("signals")` matches `signals.stale.days`
 /// but not `signalsomething`.
 pub fn keys_with_prefix(prefix: &str) -> impl Iterator<Item = &'static ConfigKey> + '_ {
-    REGISTRY.iter().filter(move |k| {
-        k.key == prefix
-            || k.key.starts_with(&format!("{prefix}."))
-    })
+    REGISTRY
+        .iter()
+        .filter(move |k| k.key == prefix || k.key.starts_with(&format!("{prefix}.")))
 }
 
 /// Does this key look like a hook key? Hooks are user-defined (any `post_*` or
@@ -352,10 +322,9 @@ pub fn validate(kind: Kind, raw: &str) -> Result<String, String> {
             }
             // Otherwise must parse as the underlying numeric type.
             let result = if matches!(kind, Kind::IntLevels(_)) {
-                trimmed
-                    .parse::<i64>()
-                    .map(|n| n.to_string())
-                    .map_err(|e| format!("expected integer or one of [{}]: {e}", label_list(labels)))
+                trimmed.parse::<i64>().map(|n| n.to_string()).map_err(|e| {
+                    format!("expected integer or one of [{}]: {e}", label_list(labels))
+                })
             } else {
                 trimmed
                     .parse::<f64>()
@@ -460,7 +429,10 @@ pub fn preset(name: &str) -> Option<&'static Preset> {
 /// The cascade definitions for synthetic keys. `analysis.sensitivity = "sharp"`
 /// expands to four writes against `analysis.projection.*`. Setting the
 /// synthetic key itself does NOT persist — only the cascaded writes do.
-pub fn cascade_for(synthetic_key: &str, label: &str) -> Option<&'static [(&'static str, &'static str)]> {
+pub fn cascade_for(
+    synthetic_key: &str,
+    label: &str,
+) -> Option<&'static [(&'static str, &'static str)]> {
     match (synthetic_key, label) {
         ("analysis.sensitivity", "relaxed") => Some(&[
             ("analysis.projection.pattern_window_days", "60"),
@@ -493,7 +465,9 @@ pub fn infer_synthetic(
 ) -> Option<&'static str> {
     let entry = lookup(synthetic_key)?;
     for name in entry.kind.enum_names() {
-        let Some(bundle) = cascade_for(synthetic_key, name) else { continue };
+        let Some(bundle) = cascade_for(synthetic_key, name) else {
+            continue;
+        };
         let matches_all = bundle.iter().all(|(k, v)| {
             let stored = config.get(*k).map(String::as_str);
             let resolved = stored.map(|s| resolve_value(k, s));
@@ -536,8 +510,10 @@ mod tests {
     fn groups_derive_from_key_prefixes() {
         let gs = groups();
         // Spot-check: every known prefix should show up exactly once.
-        for want in &["agent", "analysis", "display", "editor", "flush",
-                      "hooks", "list", "serve", "signals", "stats"] {
+        for want in &[
+            "agent", "analysis", "display", "editor", "flush", "hooks", "list", "serve", "signals",
+            "stats",
+        ] {
             assert!(gs.contains(want), "missing group: {want}");
         }
         // And the list is sorted + deduped.

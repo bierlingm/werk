@@ -215,20 +215,14 @@ const FEEDBACK_KEY: &str = "palette::feedback";
 const FEEDBACK_VERSION: u32 = 1;
 
 /// Save palette feedback boost map to the registry.
-pub fn save_feedback(
-    registry: &StateRegistry,
-    feedback: &crate::feedback::FeedbackCollector,
-) {
+pub fn save_feedback(registry: &StateRegistry, feedback: &crate::feedback::FeedbackCollector) {
     if let Ok(json) = feedback.export_boost_map() {
         registry.set(FEEDBACK_KEY, FEEDBACK_VERSION, json.into_bytes());
     }
 }
 
 /// Load palette feedback boost map from the registry into a collector.
-pub fn load_feedback(
-    registry: &StateRegistry,
-    feedback: &mut crate::feedback::FeedbackCollector,
-) {
+pub fn load_feedback(registry: &StateRegistry, feedback: &mut crate::feedback::FeedbackCollector) {
     if let Some(entry) = registry.get(FEEDBACK_KEY) {
         if entry.version == FEEDBACK_VERSION {
             if let Ok(json) = std::str::from_utf8(&entry.data) {

@@ -40,11 +40,7 @@ pub fn cmd_daemon(output: &Output, command: DaemonCommand) -> Result<(), WerkErr
     }
 }
 
-fn point(
-    output: &Output,
-    target: Option<String>,
-    global: bool,
-) -> Result<(), WerkError> {
+fn point(output: &Output, target: Option<String>, global: bool) -> Result<(), WerkError> {
     use werk_shared::registry::Registry;
 
     if !global && target.is_none() {
@@ -70,9 +66,8 @@ fn point(
                 )));
             }
         } else {
-            let abs = std::fs::canonicalize(&raw).map_err(|e| {
-                WerkError::IoError(format!("cannot resolve {raw}: {e}"))
-            })?;
+            let abs = std::fs::canonicalize(&raw)
+                .map_err(|e| WerkError::IoError(format!("cannot resolve {raw}: {e}")))?;
             if !abs.join(".werk").exists() {
                 return Err(WerkError::IoError(format!(
                     "{} is not a werk workspace (no .werk/ inside). Run `werk init` there first.",
@@ -99,17 +94,13 @@ fn point(
         ));
     }
 
-    let _ = output.success(&format!(
-        "daemon now serving {}",
-        target.display()
-    ));
+    let _ = output.success(&format!("daemon now serving {}", target.display()));
     Ok(())
 }
 
 fn install(output: &Output, port_range: Option<String>, force: bool) -> Result<(), WerkError> {
-    let range_str = port_range.unwrap_or_else(|| {
-        format!("{}-{}", DEFAULT_PORT_RANGE.0, DEFAULT_PORT_RANGE.1)
-    });
+    let range_str =
+        port_range.unwrap_or_else(|| format!("{}-{}", DEFAULT_PORT_RANGE.0, DEFAULT_PORT_RANGE.1));
     // Validate the range up-front so we fail before touching launchd/systemd.
     let _ = parse_range(&range_str)?;
 
@@ -198,10 +189,11 @@ fn logs(output: &Output, lines: usize, follow: bool) -> Result<(), WerkError> {
 }
 
 fn ensure_global_workspace() -> Result<PathBuf, WerkError> {
-    let ws =
-        Workspace::global().map_err(|e| WerkError::IoError(format!(
+    let ws = Workspace::global().map_err(|e| {
+        WerkError::IoError(format!(
             "global workspace (~/.werk/) not found: {e}. Run `werk init --global` first."
-        )))?;
+        ))
+    })?;
     Ok(ws.werk_dir().to_path_buf())
 }
 
@@ -218,5 +210,7 @@ fn current_exe() -> Result<PathBuf, WerkError> {
 /// to report which port it grabbed. The extension probes the range directly.
 pub fn read_port_file(werk_dir: &std::path::Path) -> Option<u16> {
     let path = werk_dir.join(PORT_FILE_NAME);
-    std::fs::read_to_string(path).ok().and_then(|s| s.trim().parse().ok())
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
 }

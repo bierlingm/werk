@@ -50,7 +50,11 @@ impl WorkspaceEntry {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| path.display().to_string())
         };
-        Self { path, name, is_global }
+        Self {
+            path,
+            name,
+            is_global,
+        }
     }
 }
 
@@ -102,11 +106,12 @@ pub fn list() -> Result<(WorkspaceEntry, Vec<WorkspaceEntry>), WerkError> {
     let mut menu: Vec<WorkspaceEntry> = Vec::new();
     let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
 
-    let push = |entry: WorkspaceEntry, menu: &mut Vec<_>, seen: &mut std::collections::HashSet<_>| {
-        if seen.insert(entry.path.clone()) {
-            menu.push(entry);
-        }
-    };
+    let push =
+        |entry: WorkspaceEntry, menu: &mut Vec<_>, seen: &mut std::collections::HashSet<_>| {
+            if seen.insert(entry.path.clone()) {
+                menu.push(entry);
+            }
+        };
 
     push(active.clone(), &mut menu, &mut seen);
 

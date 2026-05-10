@@ -23,8 +23,8 @@ pub enum Msg {
     StartResolve,
     StartRelease,
     StartMove,
-    MoveUp,    // Shift+K — move tension toward vision
-    MoveDown,  // Shift+J — move tension toward reality
+    MoveUp,   // Shift+K — move tension toward vision
+    MoveDown, // Shift+J — move tension toward reality
 
     // Text input (shared across all input modes)
     Char(char),
@@ -52,7 +52,10 @@ pub enum Msg {
     InspectorToggle,
 
     // System
-    Resize { width: u16, height: u16 },
+    Resize {
+        width: u16,
+        height: u16,
+    },
     DataChanged,
     Tick,
     Quit,
@@ -68,9 +71,9 @@ impl From<Event> for Msg {
                 }
                 // Keys with Ctrl/Alt/Super modifiers (except Shift-only) get passed through
                 // as RawEvent so TextInput can handle word-level operations.
-                let has_modifier = key.modifiers.intersects(
-                    Modifiers::CTRL | Modifiers::ALT | Modifiers::SUPER
-                );
+                let has_modifier = key
+                    .modifiers
+                    .intersects(Modifiers::CTRL | Modifiers::ALT | Modifiers::SUPER);
                 if has_modifier {
                     // Intercept specific Ctrl combos before generic RawEvent passthrough
                     if key.ctrl() {
@@ -78,7 +81,9 @@ impl From<Event> for Msg {
                             KeyCode::Char('z') if key.shift() => return Msg::Redo,
                             KeyCode::Char('z') => return Msg::Undo,
                             KeyCode::Char('k') => return Msg::OpenPalette,
-                            KeyCode::Char('i') | KeyCode::Char('I') if key.shift() => return Msg::InspectorToggle,
+                            KeyCode::Char('i') | KeyCode::Char('I') if key.shift() => {
+                                return Msg::InspectorToggle;
+                            }
                             _ => {}
                         }
                     }
@@ -86,7 +91,10 @@ impl From<Event> for Msg {
                 }
 
                 match key.code {
-                    KeyCode::Char(c) if key.modifiers == Modifiers::NONE || key.modifiers == Modifiers::SHIFT => {
+                    KeyCode::Char(c)
+                        if key.modifiers == Modifiers::NONE
+                            || key.modifiers == Modifiers::SHIFT =>
+                    {
                         Msg::Char(c)
                     }
                     KeyCode::Enter if key.shift() => Msg::ShiftSubmit,

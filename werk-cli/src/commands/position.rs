@@ -87,7 +87,10 @@ pub fn cmd_position(
         } else {
             let display = werk_shared::display_id(tension.short_code, &tension.id);
             if unchanged {
-                println!("Would leave tension {} at position {} (unchanged)", display, n);
+                println!(
+                    "Would leave tension {} at position {} (unchanged)",
+                    display, n
+                );
             } else {
                 match old_position {
                     Some(p) => println!("Would position tension {} at {} (was {})", display, n, p),

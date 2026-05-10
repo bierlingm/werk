@@ -13,8 +13,8 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use werk_core::Mutation;
 use serde::Serialize;
+use werk_core::Mutation;
 use werk_shared::HookEvent;
 
 /// JSON output structure for recur command.
@@ -125,8 +125,7 @@ pub fn cmd_recur(
     } else {
         let interval_str = interval.ok_or_else(|| {
             WerkError::InvalidInput(
-                "recurrence interval required (e.g., +1d, +1w, +1m); use --clear to remove"
-                    .into(),
+                "recurrence interval required (e.g., +1d, +1w, +1m); use --clear to remove".into(),
             )
         })?;
         let validated = validate_interval(&interval_str)?;

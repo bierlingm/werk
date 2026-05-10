@@ -67,13 +67,16 @@ impl FocusState {
 
     /// Find the FocusId for an item by sibling index.
     pub fn focus_for_sibling(&self, sibling_idx: usize) -> Option<FocusId> {
-        self.targets.iter().find(|(_, t)| {
-            matches!(t,
-                CursorTarget::Route(i) | CursorTarget::Overdue(i) |
-                CursorTarget::Next(i) | CursorTarget::HeldItem(i) |
-                CursorTarget::AccumulatedItem(i) if *i == sibling_idx
-            )
-        }).map(|(id, _)| *id)
+        self.targets
+            .iter()
+            .find(|(_, t)| {
+                matches!(t,
+                    CursorTarget::Route(i) | CursorTarget::Overdue(i) |
+                    CursorTarget::Next(i) | CursorTarget::HeldItem(i) |
+                    CursorTarget::AccumulatedItem(i) if *i == sibling_idx
+                )
+            })
+            .map(|(id, _)| *id)
     }
 
     /// Read-only access to the targets list.
@@ -134,10 +137,10 @@ impl FocusState {
 
         // Helper: allocate a node and wire it to the previous one
         let alloc = |target: CursorTarget,
-                         graph: &mut FocusGraph,
-                         targets: &mut Vec<(FocusId, CursorTarget)>,
-                         next_id: &mut FocusId,
-                         prev: &mut Option<FocusId>|
+                     graph: &mut FocusGraph,
+                     targets: &mut Vec<(FocusId, CursorTarget)>,
+                     next_id: &mut FocusId,
+                     prev: &mut Option<FocusId>|
          -> FocusId {
             let id = *next_id;
             *next_id += 1;
@@ -167,10 +170,8 @@ impl FocusState {
         let route_remaining = frontier.route.len() - shown_route;
         let shown_held = frontier.show_held.min(frontier.held.len());
         let held_remaining = frontier.held.len() - shown_held;
-        let unified = shown_route == 0
-            && route_remaining > 0
-            && shown_held == 0
-            && held_remaining > 0;
+        let unified =
+            shown_route == 0 && route_remaining > 0 && shown_held == 0 && held_remaining > 0;
 
         if unified {
             // Single unified summary line for route+held
@@ -342,14 +343,25 @@ mod tests {
     use super::*;
     use crate::deck::{AccumulatedItem, CursorTarget, Frontier};
 
-    fn make_frontier(route: Vec<usize>, overdue: Vec<usize>, next: Option<usize>,
-                     held: Vec<usize>, accumulated: Vec<AccumulatedItem>) -> Frontier {
+    fn make_frontier(
+        route: Vec<usize>,
+        overdue: Vec<usize>,
+        next: Option<usize>,
+        held: Vec<usize>,
+        accumulated: Vec<AccumulatedItem>,
+    ) -> Frontier {
         let show_route = route.len();
         let show_held = held.len();
         let show_accumulated = accumulated.len();
         Frontier {
-            route, overdue, next, held, accumulated,
-            show_route, show_held, show_accumulated,
+            route,
+            overdue,
+            next,
+            held,
+            accumulated,
+            show_route,
+            show_held,
+            show_accumulated,
             recent: Vec::new(),
             show_recent: 0,
             has_desire_anchor: false,
@@ -361,11 +373,11 @@ mod tests {
     fn rebuild_creates_nodes_for_all_items() {
         let mut fs = FocusState::new();
         let frontier = make_frontier(
-            vec![0, 1],       // 2 route items
-            vec![],           // no overdue
-            Some(2),          // next step
-            vec![3],          // 1 held item
-            vec![],           // no accumulated
+            vec![0, 1], // 2 route items
+            vec![],     // no overdue
+            Some(2),    // next step
+            vec![3],    // 1 held item
+            vec![],     // no accumulated
         );
         fs.rebuild_for_frontier(&frontier, false, false);
 
@@ -484,7 +496,10 @@ mod tests {
     fn accumulated_items_appear_after_input_point() {
         let mut fs = FocusState::new();
         let frontier = make_frontier(
-            vec![], vec![], None, vec![],
+            vec![],
+            vec![],
+            None,
+            vec![],
             vec![AccumulatedItem::Child(5), AccumulatedItem::Child(6)],
         );
         fs.rebuild_for_frontier(&frontier, false, false);

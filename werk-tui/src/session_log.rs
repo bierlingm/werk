@@ -116,7 +116,10 @@ impl SessionLog {
 
     /// Get events filtered by category.
     pub fn by_category(&self, category: Category) -> Vec<&TelemetryEvent> {
-        self.events.iter().filter(|e| e.category == category).collect()
+        self.events
+            .iter()
+            .filter(|e| e.category == category)
+            .collect()
     }
 
     /// Total events recorded (including rolled-off).
@@ -128,24 +131,31 @@ impl SessionLog {
     pub fn dump(&self) -> String {
         let mut out = String::new();
         if let Some(ref sid) = self.store_session_id {
-            out.push_str(&format!("=== Session Log [{}] ({} events, {} total) ===\n",
-                &sid[..13.min(sid.len())], self.events.len(), self.total_count));
+            out.push_str(&format!(
+                "=== Session Log [{}] ({} events, {} total) ===\n",
+                &sid[..13.min(sid.len())],
+                self.events.len(),
+                self.total_count
+            ));
         } else {
-            out.push_str(&format!("=== Session Log ({} events, {} total) ===\n",
-                self.events.len(), self.total_count));
+            out.push_str(&format!(
+                "=== Session Log ({} events, {} total) ===\n",
+                self.events.len(),
+                self.total_count
+            ));
         }
         for event in &self.events {
-            out.push_str(&format!("{:>8}ms  {:<8} {}\n",
-                event.elapsed_ms, event.category, event.detail));
+            out.push_str(&format!(
+                "{:>8}ms  {:<8} {}\n",
+                event.elapsed_ms, event.category, event.detail
+            ));
         }
         out
     }
 
     /// Dump to a file. Returns the path on success.
     pub fn dump_to_file(&self) -> Result<std::path::PathBuf, std::io::Error> {
-        let dir = std::env::current_dir()
-            .unwrap_or_default()
-            .join(".werk");
+        let dir = std::env::current_dir().unwrap_or_default().join(".werk");
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("session.log");
         std::fs::write(&path, self.dump())?;

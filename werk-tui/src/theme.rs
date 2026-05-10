@@ -6,8 +6,8 @@
 //!   Red = conflict. Green = positive change. Cyan = agent/accent.
 //! - Every slot has dark and light variants via AdaptiveColor.
 
-use ftui::{AdaptiveColor, Color, PackedRgba, ResolvedTheme, Rgb, Theme};
 use ftui::style::Style;
+use ftui::{AdaptiveColor, Color, PackedRgba, ResolvedTheme, Rgb, Theme};
 
 // ---------------------------------------------------------------------------
 // Theme construction
@@ -18,47 +18,123 @@ pub fn instrument_theme() -> Theme {
     Theme::builder()
         // Monochrome foundation
         .text(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 40, g: 40, b: 40 }),     // light terminal
-            Color::Rgb(Rgb { r: 220, g: 220, b: 220 }),  // dark terminal
+            Color::Rgb(Rgb {
+                r: 40,
+                g: 40,
+                b: 40,
+            }), // light terminal
+            Color::Rgb(Rgb {
+                r: 220,
+                g: 220,
+                b: 220,
+            }), // dark terminal
         ))
         .text_muted(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 120, g: 120, b: 120 }),
-            Color::Rgb(Rgb { r: 100, g: 100, b: 100 }),
+            Color::Rgb(Rgb {
+                r: 120,
+                g: 120,
+                b: 120,
+            }),
+            Color::Rgb(Rgb {
+                r: 100,
+                g: 100,
+                b: 100,
+            }),
         ))
         .text_subtle(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 100, g: 100, b: 100 }),
-            Color::Rgb(Rgb { r: 160, g: 160, b: 160 }),
+            Color::Rgb(Rgb {
+                r: 100,
+                g: 100,
+                b: 100,
+            }),
+            Color::Rgb(Rgb {
+                r: 160,
+                g: 160,
+                b: 160,
+            }),
         ))
         // Accent — cyan
         .accent(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 30, g: 140, b: 170 }),   // darker on light
-            Color::Rgb(Rgb { r: 80, g: 190, b: 210 }),   // bright on dark
+            Color::Rgb(Rgb {
+                r: 30,
+                g: 140,
+                b: 170,
+            }), // darker on light
+            Color::Rgb(Rgb {
+                r: 80,
+                g: 190,
+                b: 210,
+            }), // bright on dark
         ))
         // Exception colors — signal only
         .warning(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 170, g: 120, b: 20 }),   // darker amber on light
-            Color::Rgb(Rgb { r: 200, g: 170, b: 60 }),   // warm amber on dark
+            Color::Rgb(Rgb {
+                r: 170,
+                g: 120,
+                b: 20,
+            }), // darker amber on light
+            Color::Rgb(Rgb {
+                r: 200,
+                g: 170,
+                b: 60,
+            }), // warm amber on dark
         ))
         .error(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 180, g: 50, b: 50 }),
-            Color::Rgb(Rgb { r: 220, g: 90, b: 90 }),
+            Color::Rgb(Rgb {
+                r: 180,
+                g: 50,
+                b: 50,
+            }),
+            Color::Rgb(Rgb {
+                r: 220,
+                g: 90,
+                b: 90,
+            }),
         ))
         .success(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 40, g: 140, b: 80 }),
-            Color::Rgb(Rgb { r: 80, g: 190, b: 120 }),
+            Color::Rgb(Rgb {
+                r: 40,
+                g: 140,
+                b: 80,
+            }),
+            Color::Rgb(Rgb {
+                r: 80,
+                g: 190,
+                b: 120,
+            }),
         ))
         // Surfaces
         .background(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 255, g: 255, b: 255 }),
+            Color::Rgb(Rgb {
+                r: 255,
+                g: 255,
+                b: 255,
+            }),
             Color::Rgb(Rgb { r: 0, g: 0, b: 0 }),
         ))
         .surface(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 240, g: 240, b: 245 }),
-            Color::Rgb(Rgb { r: 35, g: 35, b: 42 }),
+            Color::Rgb(Rgb {
+                r: 240,
+                g: 240,
+                b: 245,
+            }),
+            Color::Rgb(Rgb {
+                r: 35,
+                g: 35,
+                b: 42,
+            }),
         ))
         .border(AdaptiveColor::adaptive(
-            Color::Rgb(Rgb { r: 200, g: 200, b: 210 }),
-            Color::Rgb(Rgb { r: 60, g: 60, b: 70 }),
+            Color::Rgb(Rgb {
+                r: 200,
+                g: 200,
+                b: 210,
+            }),
+            Color::Rgb(Rgb {
+                r: 60,
+                g: 60,
+                b: 70,
+            }),
         ))
         .build()
 }
@@ -174,7 +250,10 @@ mod tests {
         assert_ne!(dark.accent, light.accent, "accent should differ");
         assert_ne!(dark.error, light.error, "error should differ");
         assert_ne!(dark.success, light.success, "success should differ");
-        assert_ne!(dark.background, light.background, "background should differ");
+        assert_ne!(
+            dark.background, light.background,
+            "background should differ"
+        );
         assert_ne!(dark.surface, light.surface, "surface should differ");
     }
 
@@ -198,7 +277,10 @@ mod tests {
         let dark_styles = InstrumentStyles::resolve(&theme.resolve(true));
         let light_styles = InstrumentStyles::resolve(&theme.resolve(false));
         // Bold on dark = white, bold on light = black
-        assert_eq!(dark_styles.text_bold.fg, Some(PackedRgba::rgb(255, 255, 255)));
+        assert_eq!(
+            dark_styles.text_bold.fg,
+            Some(PackedRgba::rgb(255, 255, 255))
+        );
         assert_eq!(light_styles.text_bold.fg, Some(PackedRgba::rgb(0, 0, 0)));
     }
 }

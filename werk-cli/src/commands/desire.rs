@@ -138,8 +138,7 @@ pub fn cmd_desire(
     store.end_gesture();
     // Post-hooks fire automatically via the HookBridge
 
-    let tension_display =
-        werk_shared::display_id(tension.short_code, &tension.id);
+    let tension_display = werk_shared::display_id(tension.short_code, &tension.id);
 
     let result = DesireResult {
         id: tension.id.clone(),
@@ -149,20 +148,17 @@ pub fn cmd_desire(
     };
 
     if output.is_structured() {
-        let mut val = serde_json::to_value(&result)
-            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        let mut val =
+            serde_json::to_value(&result).map_err(|e| WerkError::IoError(e.to_string()))?;
         if show_after {
             val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
         }
-        let json = serde_json::to_string_pretty(&val)
-            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&val).map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("{}", json);
     } else {
         output
-            .success(&format!(
-                "Updated desired for tension {}",
-                tension_display
-            ))
+            .success(&format!("Updated desired for tension {}", tension_display))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Old:  {}", &result.old_desired);
         println!("  New:  {}", &result.desired);

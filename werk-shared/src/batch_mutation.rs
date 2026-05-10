@@ -2,8 +2,8 @@
 //!
 //! Used by `werk batch apply` to parse and apply mutations from YAML files.
 
-use serde::{Deserialize, Serialize};
 use crate::util::truncate;
+use serde::{Deserialize, Serialize};
 
 /// A single mutation to the tension forest, parsed from YAML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,10 +25,7 @@ pub enum BatchMutation {
         reasoning: String,
     },
     /// Add a note to a tension.
-    AddNote {
-        tension_id: String,
-        text: String,
-    },
+    AddNote { tension_id: String, text: String },
     /// Update the status of a tension.
     UpdateStatus {
         tension_id: String,
@@ -90,12 +87,10 @@ impl BatchMutation {
             BatchMutation::SetHorizon { horizon, .. } => {
                 format!("Set horizon: {}", horizon)
             }
-            BatchMutation::MoveTension { new_parent_id, .. } => {
-                match new_parent_id {
-                    Some(pid) => format!("Move to parent: {}", &pid[..12.min(pid.len())]),
-                    None => "Move to root".to_string(),
-                }
-            }
+            BatchMutation::MoveTension { new_parent_id, .. } => match new_parent_id {
+                Some(pid) => format!("Move to parent: {}", &pid[..12.min(pid.len())]),
+                None => "Move to root".to_string(),
+            },
             BatchMutation::CreateParent { desired, .. } => {
                 format!("Create parent: \"{}\"", truncate(desired, 60))
             }
@@ -144,7 +139,11 @@ mod tests {
         assert_eq!(mutations.len(), 2);
 
         match &mutations[0] {
-            BatchMutation::UpdateActual { tension_id, new_value, reasoning } => {
+            BatchMutation::UpdateActual {
+                tension_id,
+                new_value,
+                reasoning,
+            } => {
                 assert_eq!(tension_id, "ABC123");
                 assert_eq!(new_value, "Research complete");
                 assert_eq!(reasoning, "Progress made");

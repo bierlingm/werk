@@ -92,10 +92,7 @@ impl Registry {
             cfg.remove(&key);
         }
         for (name, path) in &self.entries {
-            cfg.set(
-                &format!("{PREFIX}{name}.path"),
-                path.display().to_string(),
-            );
+            cfg.set(&format!("{PREFIX}{name}.path"), path.display().to_string());
         }
         cfg.save().map_err(|e| WerkError::IoError(e.to_string()))
     }
@@ -210,9 +207,8 @@ pub fn global_entry() -> Result<RegisteredWorkspace> {
 }
 
 fn canonicalize_workspace(path: &Path) -> Result<PathBuf> {
-    let abs = std::fs::canonicalize(path).map_err(|e| {
-        WerkError::IoError(format!("cannot resolve {}: {e}", path.display()))
-    })?;
+    let abs = std::fs::canonicalize(path)
+        .map_err(|e| WerkError::IoError(format!("cannot resolve {}: {e}", path.display())))?;
     if !abs.join(".werk").exists() {
         return Err(WerkError::IoError(format!(
             "{} is not a werk workspace (no .werk/ inside)",
@@ -263,9 +259,8 @@ fn load_global_config() -> Result<Config> {
     let werk_dir = home.join(".werk");
     let path = werk_dir.join("config.toml");
     if !path.exists() {
-        std::fs::create_dir_all(&werk_dir).map_err(|e| {
-            WerkError::IoError(format!("create {}: {e}", werk_dir.display()))
-        })?;
+        std::fs::create_dir_all(&werk_dir)
+            .map_err(|e| WerkError::IoError(format!("create {}: {e}", werk_dir.display())))?;
         std::fs::write(&path, "")
             .map_err(|e| WerkError::IoError(format!("touch {}: {e}", path.display())))?;
     }

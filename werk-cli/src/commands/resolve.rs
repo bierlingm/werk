@@ -64,9 +64,14 @@ pub fn cmd_resolve(
             dry_run: true,
         };
         if output.is_structured() {
-            output.print_structured(&result).map_err(WerkError::IoError)?;
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
-            println!("Would resolve tension {}", werk_shared::display_id(tension.short_code, &tension.id));
+            println!(
+                "Would resolve tension {}",
+                werk_shared::display_id(tension.short_code, &tension.id)
+            );
             println!("  Status: {} -> Resolved", old_status);
             if let Some(at) = &actual_at {
                 println!("  Actually done: {}", at);
@@ -77,7 +82,13 @@ pub fn cmd_resolve(
     }
 
     // Pre-hook check
-    let event = HookEvent::status_change(&tension.id, &tension.desired, Some(&tension.actual), tension.parent_id.as_deref(), "Resolved");
+    let event = HookEvent::status_change(
+        &tension.id,
+        &tension.desired,
+        Some(&tension.actual),
+        tension.parent_id.as_deref(),
+        "Resolved",
+    );
     if !hook_handle.runner.pre_mutation(&event) {
         return Err(WerkError::InvalidInput(
             "Blocked by pre_mutation hook".to_string(),
@@ -109,17 +120,20 @@ pub fn cmd_resolve(
     };
 
     if output.is_structured() {
-        let mut val = serde_json::to_value(&result)
-            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        let mut val =
+            serde_json::to_value(&result).map_err(|e| WerkError::IoError(e.to_string()))?;
         if show_after && !dry_run {
             val["show"] = mutation_echo::build_json_echo(&store, &tension.id)?;
         }
-        let json = serde_json::to_string_pretty(&val)
-            .map_err(|e| WerkError::IoError(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&val).map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("{}", json);
     } else {
         output
-            .success(&format!("Resolved tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
+            .success(&format!(
+                "Resolved tension {}",
+                werk_shared::display_id(tension.short_code, &tension.id)
+            ))
             .map_err(|e| WerkError::IoError(e.to_string()))?;
         println!("  Status: {} -> Resolved", old_status);
         if let Some(at) = &actual_at {
@@ -149,7 +163,10 @@ fn parse_actual_at(value: &str) -> Result<DateTime<Utc>, WerkError> {
 
     if let Some(rest) = v.strip_suffix(" days ago") {
         let n: i64 = rest.trim().parse().map_err(|_| {
-            WerkError::InvalidInput(format!("invalid number in '{}': expected 'N days ago'", value))
+            WerkError::InvalidInput(format!(
+                "invalid number in '{}': expected 'N days ago'",
+                value
+            ))
         })?;
         return Ok(now - chrono::Duration::days(n));
     }
