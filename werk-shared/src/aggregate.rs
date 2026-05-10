@@ -221,14 +221,7 @@ pub fn compute_attention_for_store(
     now: DateTime<Utc>,
     next_up_per_space: usize,
     held_per_space: usize,
-) -> std::result::Result<
-    (
-        Vec<AttentionItem>,
-        Vec<AttentionItem>,
-        Vec<AttentionItem>,
-    ),
-    StoreError,
-> {
+) -> std::result::Result<(Vec<AttentionItem>, Vec<AttentionItem>, Vec<AttentionItem>), StoreError> {
     let tensions = store.list_tensions()?;
 
     let mut overdue: Vec<AttentionItem> = Vec::new();
@@ -313,16 +306,18 @@ pub fn compute_aggregate_vitals(now: DateTime<Utc>) -> Result<AggregateVitals> {
         }
     }
 
-    let totals = per_space.iter().fold(VitalsTotals::default(), |mut acc, v| {
-        acc.active += v.active;
-        acc.resolved += v.resolved;
-        acc.released += v.released;
-        acc.deadlined += v.deadlined;
-        acc.overdue += v.overdue;
-        acc.positioned += v.positioned;
-        acc.held += v.held;
-        acc
-    });
+    let totals = per_space
+        .iter()
+        .fold(VitalsTotals::default(), |mut acc, v| {
+            acc.active += v.active;
+            acc.resolved += v.resolved;
+            acc.released += v.released;
+            acc.deadlined += v.deadlined;
+            acc.overdue += v.overdue;
+            acc.positioned += v.positioned;
+            acc.held += v.held;
+            acc
+        });
 
     Ok(AggregateVitals {
         computed_at: now,
@@ -474,9 +469,7 @@ mod tests {
     fn attention_next_up_cap_applies_per_space() {
         let store = in_memory_store();
         for i in 0..10 {
-            let t = store
-                .create_tension(&format!("t{i}"), "not yet")
-                .unwrap();
+            let t = store.create_tension(&format!("t{i}"), "not yet").unwrap();
             store.update_position(&t.id, Some(i as i32 + 1)).unwrap();
         }
         let space = make_space("big");

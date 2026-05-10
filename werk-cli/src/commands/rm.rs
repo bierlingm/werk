@@ -36,10 +36,12 @@ pub fn cmd_rm(output: &Output, id: String, dry_run: bool) -> Result<(), WerkErro
     let tension_desired = tension.desired.clone();
 
     // Find children that would be reparented
-    let children: Vec<_> = tensions.iter()
+    let children: Vec<_> = tensions
+        .iter()
         .filter(|t| t.parent_id.as_deref() == Some(&tension_id))
         .collect();
-    let children_ids: Vec<String> = children.iter()
+    let children_ids: Vec<String> = children
+        .iter()
         .map(|c| werk_shared::display_id(c.short_code, &c.id))
         .collect();
 
@@ -52,12 +54,17 @@ pub fn cmd_rm(output: &Output, id: String, dry_run: bool) -> Result<(), WerkErro
             dry_run: true,
         };
         if output.is_structured() {
-            output.print_structured(&result).map_err(WerkError::IoError)?;
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
             println!("Would delete tension {}", &tension_display);
             println!("  Desired: {}", &tension_desired);
             if !children_ids.is_empty() {
-                println!("  Children reparented to grandparent: {}", children_ids.join(", "));
+                println!(
+                    "  Children reparented to grandparent: {}",
+                    children_ids.join(", ")
+                );
             }
             println!("No changes made.");
         }
@@ -65,9 +72,19 @@ pub fn cmd_rm(output: &Output, id: String, dry_run: bool) -> Result<(), WerkErro
     }
 
     // Pre-hook check
-    let event = HookEvent::mutation(&tension_id, &tension_desired, Some(&tension.actual), tension.parent_id.as_deref(), "deleted", None, "true");
+    let event = HookEvent::mutation(
+        &tension_id,
+        &tension_desired,
+        Some(&tension.actual),
+        tension.parent_id.as_deref(),
+        "deleted",
+        None,
+        "true",
+    );
     if !hook_handle.runner.pre_mutation(&event) {
-        return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+        return Err(WerkError::InvalidInput(
+            "Blocked by pre_mutation hook".to_string(),
+        ));
     }
 
     // Delete via store (handles reparenting children to grandparent)

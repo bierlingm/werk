@@ -46,7 +46,9 @@ fn test_show_displays_tension_magnitude() {
 
     // Should show the tension ID and both desired/reality text
     assert!(
-        stdout.contains("#1") && stdout.contains("write a complete novel") && stdout.contains("have an outline"),
+        stdout.contains("#1")
+            && stdout.contains("write a complete novel")
+            && stdout.contains("have an outline"),
         "Should show tension with desired/reality, got: {}",
         stdout
     );

@@ -26,37 +26,43 @@ pub fn render_inspector(app: &InstrumentApp, frame: &mut Frame<'_>, area: Rect) 
     let title_style = ftui::style::Style::new().fg(s.clr_cyan);
     let dim_style = s.dim;
 
-    lines.push(Line::from_spans(vec![
-        Span::styled(" Inspector ", title_style),
-    ]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        " Inspector ",
+        title_style,
+    )]));
 
     // Focus state
     let active_id = app.focus_state.active;
     let target = app.focus_state.cursor_target();
     let node_count = app.focus_state.selectable_count();
-    lines.push(Line::from_spans(vec![
-        Span::styled(format!(" Focus: id={active_id} target={target:?}"), dim_style),
-    ]));
-    lines.push(Line::from_spans(vec![
-        Span::styled(format!(" Nodes: {node_count} selectable"), dim_style),
-    ]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(" Focus: id={active_id} target={target:?}"),
+        dim_style,
+    )]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(" Nodes: {node_count} selectable"),
+        dim_style,
+    )]));
 
     // Frontier zone counts
     let f = &app.frontier;
-    lines.push(Line::from_spans(vec![
-        Span::styled(
-            format!(" Frontier: route={} overdue={} held={} accum={}",
-                f.route.len(), f.overdue.len(), f.held.len(), f.accumulated.len()),
-            dim_style,
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(
+            " Frontier: route={} overdue={} held={} accum={}",
+            f.route.len(),
+            f.overdue.len(),
+            f.held.len(),
+            f.accumulated.len()
         ),
-    ]));
-    lines.push(Line::from_spans(vec![
-        Span::styled(
-            format!(" Show: route={} held={} accum={}",
-                f.show_route, f.show_held, f.show_accumulated),
-            dim_style,
+        dim_style,
+    )]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(
+            " Show: route={} held={} accum={}",
+            f.show_route, f.show_held, f.show_accumulated
         ),
-    ]));
+        dim_style,
+    )]));
 
     // Layout
     let regime = match app.layout.regime {
@@ -64,24 +70,26 @@ pub fn render_inspector(app: &InstrumentApp, frame: &mut Frame<'_>, area: Rect) 
         SizeRegime::Standard => "Standard",
         SizeRegime::Expansive => "Expansive",
     };
-    lines.push(Line::from_spans(vec![
-        Span::styled(format!(" Layout: {regime} | View: {:?}", app.view_orientation), dim_style),
-    ]));
-    lines.push(Line::from_spans(vec![
-        Span::styled(format!(" Zoom: {:?} | Mode: {:?}", app.deck_zoom, app.input_mode), dim_style),
-    ]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(" Layout: {regime} | View: {:?}", app.view_orientation),
+        dim_style,
+    )]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(" Zoom: {:?} | Mode: {:?}", app.deck_zoom, app.input_mode),
+        dim_style,
+    )]));
 
     // Parent
     let parent_label = match &app.parent_id {
-        Some(pid) => werk_shared::display_id(
-            app.parent_tension.as_ref().and_then(|t| t.short_code),
-            pid,
-        ),
+        Some(pid) => {
+            werk_shared::display_id(app.parent_tension.as_ref().and_then(|t| t.short_code), pid)
+        }
         None => "root".to_string(),
     };
-    lines.push(Line::from_spans(vec![
-        Span::styled(format!(" Parent: {parent_label} | Siblings: {}", app.siblings.len()), dim_style),
-    ]));
+    lines.push(Line::from_spans(vec![Span::styled(
+        format!(" Parent: {parent_label} | Siblings: {}", app.siblings.len()),
+        dim_style,
+    )]));
 
     let height = lines.len() as u16;
     let width = 50u16.min(area.width.saturating_sub(2));

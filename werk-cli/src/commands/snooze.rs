@@ -13,8 +13,8 @@ use crate::output::Output;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::{Duration, NaiveDate, Utc};
-use werk_core::Mutation;
 use serde::Serialize;
+use werk_core::Mutation;
 use werk_shared::HookEvent;
 
 /// JSON output structure for snooze command.

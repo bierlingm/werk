@@ -16,7 +16,9 @@ use crate::output::Output;
 fn plist_path() -> Result<PathBuf, WerkError> {
     let home = dirs::home_dir()
         .ok_or_else(|| WerkError::IoError("cannot determine home directory".into()))?;
-    Ok(home.join("Library/LaunchAgents").join(format!("{DAEMON_LABEL}.plist")))
+    Ok(home
+        .join("Library/LaunchAgents")
+        .join(format!("{DAEMON_LABEL}.plist")))
 }
 
 fn uid() -> Result<u32, WerkError> {
@@ -74,10 +76,7 @@ pub fn install(
 
     bootstrap(&plist)?;
 
-    let _ = output.success(&format!(
-        "installed {DAEMON_LABEL} → {}",
-        plist.display()
-    ));
+    let _ = output.success(&format!("installed {DAEMON_LABEL} → {}", plist.display()));
 
     // Small convenience: if the port file lands within a couple seconds, report it.
     if let Some(port) = wait_for_port_file(werk_dir, 2) {

@@ -1061,7 +1061,15 @@ impl InstrumentApp {
                     let is_selected = active_target == CursorTarget::RecentSummary;
                     let text = format!("\u{25B8} {} more epochs", remaining);
                     self.render_indicator_line(
-                        frame, area.x, ry, w, &cols, &text, is_selected, self.styles.dim, 0,
+                        frame,
+                        area.x,
+                        ry,
+                        w,
+                        &cols,
+                        &text,
+                        is_selected,
+                        self.styles.dim,
+                        0,
                     );
                 }
 
@@ -2110,7 +2118,9 @@ impl InstrumentApp {
                 CursorTarget::AccumulatedItem(_) => "l descend \u{00B7} Enter focus",
                 CursorTarget::NoteItem(_) => "Enter focus",
                 CursorTarget::InputPoint => "a add \u{00B7} n note \u{00B7} e edit",
-                CursorTarget::RecentItem(_) => "Enter descend \u{00B7} Space peek \u{00B7} l descend",
+                CursorTarget::RecentItem(_) => {
+                    "Enter descend \u{00B7} Space peek \u{00B7} l descend"
+                }
                 CursorTarget::RecentSummary => "Enter expand \u{00B7} j/k navigate",
                 CursorTarget::RouteSummary | CursorTarget::Held | CursorTarget::Accumulated => {
                     "Enter expand \u{00B7} j/k navigate"

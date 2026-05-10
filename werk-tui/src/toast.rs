@@ -5,13 +5,12 @@
 
 use std::time::Duration;
 
-use ftui::widgets::{
-    NotificationQueue, QueueConfig, Toast, ToastIcon, ToastPosition,
-    ToastAction, ToastStyle, Widget,
-    notification_queue::NotificationStack,
-};
-use ftui::layout::Rect;
 use ftui::Frame;
+use ftui::layout::Rect;
+use ftui::widgets::{
+    NotificationQueue, QueueConfig, Toast, ToastAction, ToastIcon, ToastPosition, ToastStyle,
+    Widget, notification_queue::NotificationStack,
+};
 
 /// Toast queue state — lives on InstrumentApp.
 pub struct ToastQueue {

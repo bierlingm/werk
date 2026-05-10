@@ -12,7 +12,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum WerkError {
     /// No workspace found (no .werk/ in ancestor directories and no ~/.werk/)
-    #[error("no workspace found: no .werk/ directory in current or ancestor directories, and no ~/.werk/ exists")]
+    #[error(
+        "no workspace found: no .werk/ directory in current or ancestor directories, and no ~/.werk/ exists"
+    )]
     NoWorkspace,
 
     /// Tension not found by ID or prefix.

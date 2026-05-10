@@ -104,9 +104,9 @@ fn open_workspace_at(path: &Path) -> Result<Workspace, WerkError> {
 
 /// Parse a "start-end" range string. End is inclusive.
 pub fn parse_range(s: &str) -> Result<(u16, u16), WerkError> {
-    let (start, end) = s
-        .split_once('-')
-        .ok_or_else(|| WerkError::IoError(format!("invalid port range '{s}': expected start-end")))?;
+    let (start, end) = s.split_once('-').ok_or_else(|| {
+        WerkError::IoError(format!("invalid port range '{s}': expected start-end"))
+    })?;
     let start: u16 = start
         .trim()
         .parse()

@@ -138,9 +138,7 @@ Workers seeking realistic werk-state for tests can parse `tensions.json`
   complete.
 
 ### Known pre-existing issues (do not fix)
-None recorded yet. Validators that surface unrelated failing tests should
-add an entry to a `## Known Pre-Existing Issues` section here, not create
-fix features.
+- `cargo test --workspace`: `werk-cli/tests/cross_area.rs::test_lifecycle_json_dynamics_tracking` fails because `show --json` returns only 1 mutation after four `reality` updates (expected >= 5). Observed during sigil-surfaces-batch validation on 2026-05-08.
 
 ## Testing & Validation Guidance
 

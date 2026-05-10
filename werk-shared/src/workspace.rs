@@ -128,10 +128,7 @@ impl Workspace {
             .ok_or_else(|| WerkError::IoError("cannot determine home directory".to_string()))?;
         let werk_dir = home.join(".werk");
         if !werk_dir.exists() {
-            return Err(WerkError::no_workspace_with_context(
-                &home,
-                Some(&home),
-            ));
+            return Err(WerkError::no_workspace_with_context(&home, Some(&home)));
         }
         Ok(Self {
             root: home,

@@ -250,10 +250,7 @@ fn test_lifecycle_json_dynamics_tracking() {
     let show_json: Value = serde_json::from_str(&stdout).expect("Should be valid JSON");
 
     // Show JSON should have expected top-level fields
-    assert!(
-        show_json.get("id").is_some(),
-        "Show JSON should have id"
-    );
+    assert!(show_json.get("id").is_some(), "Show JSON should have id");
     assert!(
         show_json.get("status").is_some(),
         "Show JSON should have status"
@@ -1371,5 +1368,3 @@ fn test_config_persists_across_commands() {
         stdout
     );
 }
-
-

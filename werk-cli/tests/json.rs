@@ -121,7 +121,10 @@ fn test_show_json_valid_with_dynamics() {
     let json: Value = serde_json::from_str(&stdout).expect("Show output should be valid JSON");
     assert!(json.get("id").is_some(), "Should have id field");
     assert!(json.get("temporal").is_some(), "Should have temporal field");
-    assert!(json.get("dynamics").is_none(), "Should NOT have dynamics field");
+    assert!(
+        json.get("dynamics").is_none(),
+        "Should NOT have dynamics field"
+    );
 }
 
 // =============================================================================
@@ -676,7 +679,10 @@ fn test_show_json_has_honest_fields() {
 
     // Should have honest fields
     assert!(json.get("id").is_some(), "Should have id");
-    assert!(json.get("temporal").is_some(), "Should have temporal signals");
+    assert!(
+        json.get("temporal").is_some(),
+        "Should have temporal signals"
+    );
     assert!(json.get("frontier").is_some(), "Should have frontier");
     assert!(json.get("overdue").is_some(), "Should have overdue");
 

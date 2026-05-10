@@ -51,10 +51,7 @@ pub fn install(
     // Restart handles both "not started" and "already running with stale config" cases.
     run_systemctl(&["restart", UNIT_NAME])?;
 
-    let _ = output.success(&format!(
-        "installed {DAEMON_LABEL} → {}",
-        unit.display()
-    ));
+    let _ = output.success(&format!("installed {DAEMON_LABEL} → {}", unit.display()));
     let _ = output.info("daemon started. `werk daemon status` to confirm.");
     Ok(())
 }

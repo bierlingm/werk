@@ -73,11 +73,14 @@ fn parse_natural(input: &str, today: NaiveDate) -> Result<Horizon, String> {
         "tomorrow" => return horizon_day(today + Duration::days(1)),
         "next week" => {
             // Next Monday
-            let days_until_monday = (Weekday::Mon.num_days_from_monday() as i64
-                + 7
+            let days_until_monday = (Weekday::Mon.num_days_from_monday() as i64 + 7
                 - today.weekday().num_days_from_monday() as i64)
                 % 7;
-            let days = if days_until_monday == 0 { 7 } else { days_until_monday };
+            let days = if days_until_monday == 0 {
+                7
+            } else {
+                days_until_monday
+            };
             return horizon_day(today + Duration::days(days));
         }
         "next month" => {
@@ -192,9 +195,8 @@ fn horizon_from_duration(date: NaiveDate, expr: &str) -> Result<Horizon, String>
 
     // Year precision for year-based durations
     {
-        let is_compact_year = unit.len() >= 2
-            && unit.ends_with('y')
-            && unit[..unit.len() - 1].parse::<i64>().is_ok();
+        let is_compact_year =
+            unit.len() >= 2 && unit.ends_with('y') && unit[..unit.len() - 1].parse::<i64>().is_ok();
         if unit == "year" || unit == "years" || is_compact_year {
             return Horizon::new_year(date.year()).map_err(|e| e.to_string());
         }
@@ -203,9 +205,8 @@ fn horizon_from_duration(date: NaiveDate, expr: &str) -> Result<Horizon, String>
     // Month precision for month-based durations
     if unit == "month" || unit == "months" || unit.ends_with('m') && !unit.ends_with("dm") {
         // Only use month precision if the compact form is just digits + 'm'
-        let is_compact_month = unit.len() >= 2
-            && unit.ends_with('m')
-            && unit[..unit.len() - 1].parse::<i64>().is_ok();
+        let is_compact_month =
+            unit.len() >= 2 && unit.ends_with('m') && unit[..unit.len() - 1].parse::<i64>().is_ok();
         if unit == "month" || unit == "months" || is_compact_month {
             return Horizon::new_month(date.year(), date.month()).map_err(|e| e.to_string());
         }

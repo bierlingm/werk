@@ -188,7 +188,9 @@ pub fn cmd_hooks_add(
         config.set(&format!("{}.filter", key), f.clone());
     }
 
-    config.save().map_err(|e| WerkError::IoError(e.to_string()))?;
+    config
+        .save()
+        .map_err(|e| WerkError::IoError(e.to_string()))?;
 
     let scope = if global { "global" } else { "workspace" };
     if output.is_structured() {
@@ -267,7 +269,9 @@ pub fn cmd_hooks_rm(
         config.remove(&filter_key);
     }
 
-    config.save().map_err(|e| WerkError::IoError(e.to_string()))?;
+    config
+        .save()
+        .map_err(|e| WerkError::IoError(e.to_string()))?;
 
     let scope = if global { "global" } else { "workspace" };
     if output.is_structured() {
@@ -448,14 +452,8 @@ pub fn cmd_hooks_log(output: &Output, tail: usize) -> Result<(), WerkError> {
         for line in recent {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
                 let event = v.get("event").and_then(|e| e.as_str()).unwrap_or("?");
-                let tid = v
-                    .get("tension_id")
-                    .and_then(|e| e.as_str())
-                    .unwrap_or("-");
-                let ts = v
-                    .get("timestamp")
-                    .and_then(|e| e.as_str())
-                    .unwrap_or("?");
+                let tid = v.get("tension_id").and_then(|e| e.as_str()).unwrap_or("-");
+                let ts = v.get("timestamp").and_then(|e| e.as_str()).unwrap_or("?");
                 println!("  {} {} tid={}", ts, event, tid);
             } else {
                 println!("  {}", line);
@@ -553,7 +551,9 @@ pub fn cmd_hooks_install(
         installed.push((name.clone(), path));
     }
 
-    config.save().map_err(|e| WerkError::IoError(e.to_string()))?;
+    config
+        .save()
+        .map_err(|e| WerkError::IoError(e.to_string()))?;
 
     if output.is_structured() {
         let result: Vec<serde_json::Value> = installed
@@ -571,11 +571,7 @@ pub fn cmd_hooks_install(
             .map_err(WerkError::IoError)?;
     } else {
         for (name, path) in &installed {
-            println!(
-                "✓ Installed '{}' → {}",
-                name,
-                path.to_string_lossy()
-            );
+            println!("✓ Installed '{}' → {}", name, path.to_string_lossy());
         }
     }
 

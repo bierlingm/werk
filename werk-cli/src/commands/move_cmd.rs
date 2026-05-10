@@ -5,8 +5,8 @@ use crate::output::Output;
 use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
-use werk_core::Forest;
 use serde::Serialize;
+use werk_core::Forest;
 
 /// JSON output structure for move command.
 #[derive(Serialize)]
@@ -18,7 +18,12 @@ struct MoveResult {
     signals: Vec<palette::Palette>,
 }
 
-pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bool) -> Result<(), WerkError> {
+pub fn cmd_move(
+    output: &Output,
+    id: String,
+    parent: Option<String>,
+    dry_run: bool,
+) -> Result<(), WerkError> {
     // Discover workspace
     let workspace = Workspace::discover()?;
     let (mut store, _hook_handle) = workspace.open_store_with_hooks()?;
@@ -72,13 +77,23 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bo
             signals: Vec::new(),
         };
         if output.is_structured() {
-            output.print_structured(&result).map_err(WerkError::IoError)?;
+            output
+                .print_structured(&result)
+                .map_err(WerkError::IoError)?;
         } else {
             match &new_parent_id {
                 Some(pid) => {
-                    println!("Would move tension {} under {}", &tension_display, werk_shared::display_id(
-                        tensions.iter().find(|t| &t.id == pid).and_then(|t| t.short_code), pid
-                    ));
+                    println!(
+                        "Would move tension {} under {}",
+                        &tension_display,
+                        werk_shared::display_id(
+                            tensions
+                                .iter()
+                                .find(|t| &t.id == pid)
+                                .and_then(|t| t.short_code),
+                            pid
+                        )
+                    );
                 }
                 None => {
                     println!("Would move tension {} to root", &tension_display);
@@ -101,9 +116,17 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bo
         match &new_parent_id {
             Some(pid) => {
                 output
-                    .success(&format!("Moved tension {} under {}", &tension_display, werk_shared::display_id(
-                        tensions.iter().find(|t| &t.id == pid).and_then(|t| t.short_code), pid
-                    )))
+                    .success(&format!(
+                        "Moved tension {} under {}",
+                        &tension_display,
+                        werk_shared::display_id(
+                            tensions
+                                .iter()
+                                .find(|t| &t.id == pid)
+                                .and_then(|t| t.short_code),
+                            pid
+                        )
+                    ))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
             }
             None => {
@@ -119,7 +142,8 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bo
 
     // Containment: does the moved tension's deadline violate the new parent's?
     if new_parent_id.is_some() {
-        let containment = palette::check_containment_after_horizon(output, &mut store, &tension_id)?;
+        let containment =
+            palette::check_containment_after_horizon(output, &mut store, &tension_id)?;
         signals.extend(containment);
     }
 
@@ -130,7 +154,8 @@ pub fn cmd_move(output: &Output, id: String, parent: Option<String>, dry_run: bo
         let moved = updated_tensions.iter().find(|t| t.id == tension_id);
         if let Some(t) = moved {
             if t.position.is_some() {
-                let sequencing = palette::check_sequencing_after_position(output, &mut store, &tension_id)?;
+                let sequencing =
+                    palette::check_sequencing_after_position(output, &mut store, &tension_id)?;
                 signals.extend(sequencing);
             }
         }

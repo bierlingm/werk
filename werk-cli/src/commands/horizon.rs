@@ -6,8 +6,8 @@ use crate::palette;
 use crate::prefix::PrefixResolver;
 use crate::workspace::Workspace;
 use chrono::Utc;
-use werk_core::{compute_urgency, Horizon, HorizonKind, TensionStatus};
 use serde::Serialize;
+use werk_core::{Horizon, HorizonKind, TensionStatus, compute_urgency};
 use werk_shared::HookEvent;
 
 /// JSON output structure for horizon set.
@@ -67,7 +67,10 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
             let old_horizon = tension.horizon.as_ref().map(|h| h.to_string());
 
             // Pre-hook check
-            let new_horizon_str = horizon_parsed.as_ref().map(|h| h.to_string()).unwrap_or_else(|| "none".to_string());
+            let new_horizon_str = horizon_parsed
+                .as_ref()
+                .map(|h| h.to_string())
+                .unwrap_or_else(|| "none".to_string());
             let event = HookEvent::mutation(
                 &tension.id,
                 &tension.desired,
@@ -78,7 +81,9 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                 &new_horizon_str,
             );
             if !hook_handle.runner.pre_mutation(&event) {
-                return Err(WerkError::InvalidInput("Blocked by pre_mutation hook".to_string()));
+                return Err(WerkError::InvalidInput(
+                    "Blocked by pre_mutation hook".to_string(),
+                ));
             }
 
             // Update horizon
@@ -96,13 +101,17 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                         output
                             .success(&format!(
                                 "Set deadline for tension {} to {}",
-                                werk_shared::display_id(tension.short_code, &tension.id), h
+                                werk_shared::display_id(tension.short_code, &tension.id),
+                                h
                             ))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                     None => {
                         output
-                            .success(&format!("Cleared deadline for tension {}", werk_shared::display_id(tension.short_code, &tension.id)))
+                            .success(&format!(
+                                "Cleared deadline for tension {}",
+                                werk_shared::display_id(tension.short_code, &tension.id)
+                            ))
                             .map_err(|e| WerkError::IoError(e.to_string()))?;
                     }
                 }
@@ -155,7 +164,10 @@ pub fn cmd_horizon(output: &Output, id: String, value: Option<String>) -> Result
                     .print_structured(&result)
                     .map_err(WerkError::IoError)?;
             } else {
-                println!("Tension {}", werk_shared::display_id(tension.short_code, &tension.id));
+                println!(
+                    "Tension {}",
+                    werk_shared::display_id(tension.short_code, &tension.id)
+                );
 
                 match &tension.horizon {
                     Some(h) => {

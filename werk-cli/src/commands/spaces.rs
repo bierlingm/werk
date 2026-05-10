@@ -41,7 +41,10 @@ pub fn cmd_spaces(output: &Output, command: SpacesCommand) -> Result<(), WerkErr
         SpacesCommand::Register { name, path } => register(output, &name, &path),
         SpacesCommand::Unregister { name } => unregister(output, &name),
         SpacesCommand::Create { name, path } => create(output, &name, &path),
-        SpacesCommand::Scan { depth, register_all } => scan(output, depth, register_all),
+        SpacesCommand::Scan {
+            depth,
+            register_all,
+        } => scan(output, depth, register_all),
         SpacesCommand::Rename { old, new } => rename(output, &old, &new),
     }
 }
@@ -197,8 +200,7 @@ fn scan(output: &Output, max_depth: usize, register_all: bool) -> Result<(), Wer
     if register_all && !unregistered.is_empty() {
         println!();
         println!("registering...");
-        let mut taken: HashSet<String> =
-            reg.list().into_iter().map(|e| e.name).collect();
+        let mut taken: HashSet<String> = reg.list().into_iter().map(|e| e.name).collect();
         taken.insert(GLOBAL_NAME.to_string());
         for path in &unregistered {
             let name = unique_name_for_path(path, &taken);
@@ -227,13 +229,18 @@ fn print_two_col(rows: &[(String, String)]) {
 }
 
 fn print_two_col_indent(rows: &[(String, String)], indent: usize) {
-    let width = rows.iter().map(|(a, _)| a.len()).max().unwrap_or(12).max(12) + 2;
+    let width = rows
+        .iter()
+        .map(|(a, _)| a.len())
+        .max()
+        .unwrap_or(12)
+        .max(12)
+        + 2;
     let pad = " ".repeat(indent);
     for (a, b) in rows {
         println!("{pad}{a:<width$}{b}", a = a, b = b, width = width);
     }
 }
-
 
 fn walk(dir: &Path, max_depth: usize, current_depth: usize, out: &mut Vec<PathBuf>) {
     if current_depth > max_depth {

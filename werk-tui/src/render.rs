@@ -8,7 +8,7 @@ use ftui::widgets::Widget;
 use ftui::widgets::borders::BorderType;
 use ftui::widgets::panel::Panel;
 use ftui::widgets::paragraph::Paragraph;
-use ftui::widgets::status_line::{StatusLine, StatusItem};
+use ftui::widgets::status_line::{StatusItem, StatusLine};
 
 use werk_shared::truncate;
 
@@ -20,7 +20,6 @@ use crate::state::*;
 /// Left indent for all content.
 const INDENT: &str = "  ";
 impl InstrumentApp {
-
     // -----------------------------------------------------------------------
     // Empty state
     // -----------------------------------------------------------------------
@@ -58,8 +57,6 @@ impl InstrumentApp {
         let para = Paragraph::new(Text::from_lines(lines));
         para.render(text_area, frame);
     }
-
-
 
     // Help overlay — now rendered via update.rs using ftui KeybindingHints widget.
     // See crate::help for the centralized keybinding registry.
@@ -115,7 +112,9 @@ impl InstrumentApp {
 
         let description = match kind {
             ConfirmKind::Resolve { .. } => "desire met reality. the gap is closed.",
-            ConfirmKind::Release { .. } => "letting it go. acknowledging the gap without closing it.",
+            ConfirmKind::Release { .. } => {
+                "letting it go. acknowledging the gap without closing it."
+            }
         };
 
         let short = truncate(desired, 40);
@@ -176,10 +175,25 @@ impl InstrumentApp {
         // Options
         for (i, opt) in pw.palette.options.iter().enumerate() {
             let is_cursor = i == pw.cursor;
-            let idx_style = if is_cursor { self.styles.selected } else { self.styles.cyan };
-            let label_style = if is_cursor { self.styles.selected } else { self.styles.text };
+            let idx_style = if is_cursor {
+                self.styles.selected
+            } else {
+                self.styles.cyan
+            };
+            let label_style = if is_cursor {
+                self.styles.selected
+            } else {
+                self.styles.text
+            };
             lines.push(Line::from_spans([
-                Span::styled(format!("{}  ", INDENT), if is_cursor { self.styles.selected } else { Style::new() }),
+                Span::styled(
+                    format!("{}  ", INDENT),
+                    if is_cursor {
+                        self.styles.selected
+                    } else {
+                        Style::new()
+                    },
+                ),
                 Span::styled(format!("[{}]", opt.index), idx_style),
                 Span::styled(format!(" {}", opt.label), label_style),
                 // Pad to full width for selection highlight
@@ -248,10 +262,7 @@ impl InstrumentApp {
 
         // Render the panel border + tab bar as content
         let tab_line = Line::from_spans(tab_spans);
-        let content_lines = vec![
-            tab_line,
-            Line::from(""),
-        ];
+        let content_lines = vec![tab_line, Line::from("")];
         let para = Paragraph::new(Text::from_lines(content_lines));
         let panel = Panel::new(para)
             .border_type(BorderType::Rounded)
@@ -293,9 +304,7 @@ impl InstrumentApp {
         let label_w = label_text.len() as u16;
         let lines = vec![
             Line::from(""),
-            Line::from_spans([
-                Span::styled(&label_text, self.styles.label),
-            ]),
+            Line::from_spans([Span::styled(&label_text, self.styles.label)]),
         ];
 
         let para = Paragraph::new(Text::from_lines(lines));
@@ -342,8 +351,16 @@ impl InstrumentApp {
         if let Some(ref search) = self.search_state {
             for (i, result) in search.results.iter().enumerate() {
                 let is_selected = i == search.cursor;
-                let style = if is_selected { self.styles.selected } else { self.styles.text };
-                let dim = if is_selected { self.styles.text_bold } else { self.styles.dim };
+                let style = if is_selected {
+                    self.styles.selected
+                } else {
+                    self.styles.text
+                };
+                let dim = if is_selected {
+                    self.styles.text_bold
+                } else {
+                    self.styles.dim
+                };
 
                 let selector = if is_selected { "\u{25B8}" } else { " " };
 
@@ -356,14 +373,8 @@ impl InstrumentApp {
                     let desired_budget = (area.width as usize).saturating_sub(30).max(15);
                     lines.push(Line::from_spans([
                         Span::styled(format!("{}{} ", INDENT, selector), style),
-                        Span::styled(
-                            truncate(&result.desired, desired_budget).to_string(),
-                            style,
-                        ),
-                        Span::styled(
-                            format!("  {}", result.parent_path),
-                            self.styles.dim,
-                        ),
+                        Span::styled(truncate(&result.desired, desired_budget).to_string(), style),
+                        Span::styled(format!("  {}", result.parent_path), self.styles.dim),
                     ]));
                 }
             }
@@ -379,7 +390,6 @@ impl InstrumentApp {
         let para = Paragraph::new(Text::from_lines(lines));
         para.render(area, frame);
     }
-
 
     pub fn render_input_hints(&self, text: &str, area: &Rect, frame: &mut Frame<'_>) {
         let display = format!(" {}", text);

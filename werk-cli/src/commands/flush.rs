@@ -12,12 +12,11 @@ use werk_shared::flush as flush_impl;
 
 pub fn cmd_flush(output: &Output) -> Result<(), WerkError> {
     let workspace = Workspace::discover()?;
-    let outcome = flush_impl::flush_to_file(&workspace)
-        .map_err(|e| match e {
-            werk_shared::error::WerkError::IoError(s) => WerkError::IoError(s),
-            werk_shared::error::WerkError::StoreError(s) => WerkError::StoreError(s),
-            other => WerkError::IoError(format!("{:?}", other)),
-        })?;
+    let outcome = flush_impl::flush_to_file(&workspace).map_err(|e| match e {
+        werk_shared::error::WerkError::IoError(s) => WerkError::IoError(s),
+        werk_shared::error::WerkError::StoreError(s) => WerkError::StoreError(s),
+        other => WerkError::IoError(format!("{:?}", other)),
+    })?;
 
     if output.is_structured() {
         #[derive(Serialize)]

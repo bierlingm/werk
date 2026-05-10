@@ -75,7 +75,11 @@ pub fn cmd_field(output: &Output, attention: bool) -> Result<(), WerkError> {
     Ok(())
 }
 
-fn print_vitals_table(vitals: &AggregateVitals, palette: &Palette, now: chrono::DateTime<chrono::Utc>) {
+fn print_vitals_table(
+    vitals: &AggregateVitals,
+    palette: &Palette,
+    now: chrono::DateTime<chrono::Utc>,
+) {
     // Fixed-width column layout. Space name + six numeric columns + last-act.
     let name_w = vitals
         .spaces
@@ -146,11 +150,7 @@ fn print_totals_row(totals: &VitalsTotals, name_w: usize, palette: &Palette) {
     let label = palette.chrome(&format!("{:<name_w$}", "TOTAL", name_w = name_w));
     println!(
         "{}  {:>6}  {}  {:>10}  {:>4}",
-        label,
-        totals.active,
-        overdue_cell,
-        totals.positioned,
-        totals.held,
+        label, totals.active, overdue_cell, totals.positioned, totals.held,
     );
 }
 
@@ -172,7 +172,11 @@ fn print_band(label: &str, items: &[AttentionItem], palette: &Palette, danger: b
     }
 
     // Widest tag = `[space:#N]`. Compute once for consistent alignment.
-    let tag_w = items.iter().map(|i| item_tag(i).chars().count()).max().unwrap_or(0);
+    let tag_w = items
+        .iter()
+        .map(|i| item_tag(i).chars().count())
+        .max()
+        .unwrap_or(0);
 
     for item in items {
         let tag = item_tag(item);
@@ -187,12 +191,7 @@ fn print_band(label: &str, items: &[AttentionItem], palette: &Palette, danger: b
         if suffix.is_empty() {
             println!("  {}  {}", tag_styled, desired);
         } else {
-            println!(
-                "  {}  {}  {}",
-                tag_styled,
-                desired,
-                palette.chrome(&suffix)
-            );
+            println!("  {}  {}  {}", tag_styled, desired, palette.chrome(&suffix));
         }
     }
     println!();

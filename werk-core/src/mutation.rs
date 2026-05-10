@@ -935,7 +935,10 @@ mod tests {
     #[test]
     fn test_mutation_field_kind_other_preserves_unknown() {
         let kind = MutationFieldKind::from_raw("some_future_field");
-        assert_eq!(kind, MutationFieldKind::Other("some_future_field".to_owned()));
+        assert_eq!(
+            kind,
+            MutationFieldKind::Other("some_future_field".to_owned())
+        );
         assert_eq!(kind.as_str(), "some_future_field");
     }
 
@@ -996,7 +999,12 @@ mod tests {
                 ),
             ];
             let result = super::replay_mutations(&mutations);
-            assert!(result.is_ok(), "noop field {} should not error, got {:?}", field, result.err());
+            assert!(
+                result.is_ok(),
+                "noop field {} should not error, got {:?}",
+                field,
+                result.err()
+            );
         }
     }
 

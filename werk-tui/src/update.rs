@@ -633,7 +633,8 @@ impl InstrumentApp {
 
             Msg::Char('l') | Msg::Descend => {
                 // Recent item: descend into that tension (view its children)
-                if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target() {
+                if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target()
+                {
                     if let Some(entry) = self.frontier.recent.get(idx).cloned() {
                         self.descend(&entry.tension_id);
                     }
@@ -644,7 +645,8 @@ impl InstrumentApp {
             }
             Msg::Submit => {
                 // Recent item: Enter descends to that tension (as #205 desire specifies)
-                if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target() {
+                if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target()
+                {
                     // Dismiss any peek first
                     self.deck_zoom = crate::deck::ZoomLevel::Normal;
                     self.focused_detail = None;
@@ -728,7 +730,9 @@ impl InstrumentApp {
                         detail.recent_notes = Vec::new();
                     }
                     self.deck_zoom = crate::deck::ZoomLevel::Peek;
-                } else if let crate::deck::CursorTarget::RecentItem(idx) = self.focus_state.cursor_target() {
+                } else if let crate::deck::CursorTarget::RecentItem(idx) =
+                    self.focus_state.cursor_target()
+                {
                     // Space on Recent: show the epoch's reality snapshot
                     if let Some(recent) = self.frontier.recent.get(idx) {
                         let snapshot = if recent.reality_snapshot.is_empty() {

@@ -136,5 +136,4 @@ mod tests {
             assert_eq!(default_editor(), "notepad");
         }
     }
-
 }

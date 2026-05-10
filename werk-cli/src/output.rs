@@ -49,9 +49,8 @@ impl Output {
             OutputFormat::Human
         };
 
-        let color_enabled = !json
-            && std::io::stdout().is_terminal()
-            && std::env::var("NO_COLOR").is_err();
+        let color_enabled =
+            !json && std::io::stdout().is_terminal() && std::env::var("NO_COLOR").is_err();
         let palette = Palette::new(color_enabled);
 
         Self { format, palette }
@@ -124,7 +123,11 @@ impl Output {
             });
             self.print_structured(&output).map_err(io::Error::other)?;
         } else {
-            println!("{} {}", self.palette.resolved(glyphs::STATUS_RESOLVED), message);
+            println!(
+                "{} {}",
+                self.palette.resolved(glyphs::STATUS_RESOLVED),
+                message
+            );
         }
         Ok(())
     }

@@ -11,8 +11,8 @@ pub fn cmd_config(
     output: &crate::output::Output,
     command: Option<&super::ConfigCommand>,
 ) -> Result<()> {
-    use werk_shared::workspace::Workspace;
     use serde::Serialize;
+    use werk_shared::workspace::Workspace;
 
     /// JSON output structure for config set.
     #[derive(Serialize)]
@@ -75,7 +75,8 @@ pub fn cmd_config(
             // Synthetic keys cascade to other keys and are not stored themselves.
             // analysis.sensitivity = "sharp" writes four analysis.projection.* keys.
             if entry.map(|e| e.kind.is_synthetic()).unwrap_or(false) {
-                let Some(bundle) = werk_shared::config_registry::cascade_for(key, &canonical_value) else {
+                let Some(bundle) = werk_shared::config_registry::cascade_for(key, &canonical_value)
+                else {
                     return Err(WerkError::InvalidInput(format!(
                         "no cascade defined for {key} = {canonical_value}"
                     )));
@@ -98,7 +99,11 @@ pub fn cmd_config(
                         .map_err(WerkError::IoError)?;
                 } else {
                     output
-                        .success(&format!("Set {key} = {canonical_value} · {} key{} updated", bundle.len(), if bundle.len() == 1 { "" } else { "s" }))
+                        .success(&format!(
+                            "Set {key} = {canonical_value} · {} key{} updated",
+                            bundle.len(),
+                            if bundle.len() == 1 { "" } else { "s" }
+                        ))
                         .map_err(|e| WerkError::IoError(e.to_string()))?;
                     let palette = output.palette();
                     for (k, v) in bundle {
@@ -206,7 +211,7 @@ pub fn cmd_config(
             Ok(())
         }
         super::ConfigCommand::Reset { target } => {
-            use werk_shared::config_registry::{keys_with_prefix, lookup as lookup_key, REGISTRY};
+            use werk_shared::config_registry::{REGISTRY, keys_with_prefix, lookup as lookup_key};
 
             let workspace_result = Workspace::discover();
             let mut config = match workspace_result {
@@ -222,7 +227,8 @@ pub fn cmd_config(
                     if let Some(entry) = lookup_key(t) {
                         vec![entry.key]
                     } else {
-                        let matched: Vec<&'static str> = keys_with_prefix(t).map(|k| k.key).collect();
+                        let matched: Vec<&'static str> =
+                            keys_with_prefix(t).map(|k| k.key).collect();
                         if matched.is_empty() {
                             return Err(WerkError::InvalidInput(format!(
                                 "'{t}' is not a registry key or a known prefix. \
@@ -275,9 +281,7 @@ pub fn cmd_config(
                     .map_err(WerkError::IoError)?;
             } else {
                 let palette = output.palette();
-                let label = target
-                    .as_deref()
-                    .unwrap_or("all registry keys");
+                let label = target.as_deref().unwrap_or("all registry keys");
                 output
                     .success(&format!(
                         "Reset {label}: {} key{} to defaults",
@@ -316,12 +320,14 @@ pub fn cmd_config(
                     // keys just show key=value.
                     let stored = config.get(&k).cloned();
                     let entry = werk_shared::config_registry::lookup(&k);
-                    let effective = stored
-                        .clone()
-                        .unwrap_or_else(|| entry.map(|e| e.default.to_string()).unwrap_or_default());
+                    let effective = stored.clone().unwrap_or_else(|| {
+                        entry.map(|e| e.default.to_string()).unwrap_or_default()
+                    });
 
                     if stored.is_none() && entry.is_none() {
-                        return Err(WerkError::ConfigError(format!("config key '{k}' not found")));
+                        return Err(WerkError::ConfigError(format!(
+                            "config key '{k}' not found"
+                        )));
                     }
 
                     if output.is_structured() {
@@ -348,7 +354,8 @@ pub fn cmd_config(
                 }
                 _ => {
                     // No key: list all config values, grouped by framework.
-                    let path_str = config.path()
+                    let path_str = config
+                        .path()
                         .map(|p| p.display().to_string())
                         .unwrap_or_else(|| "unknown".to_string());
 
@@ -357,7 +364,9 @@ pub fn cmd_config(
                             path: path_str,
                             values: config.values().clone(),
                         };
-                        output.print_structured(&result).map_err(WerkError::IoError)?;
+                        output
+                            .print_structured(&result)
+                            .map_err(WerkError::IoError)?;
                     } else {
                         render_grouped(output, &path_str, config.values());
                     }
@@ -397,7 +406,11 @@ pub fn cmd_config(
             let editor = super::config_default_string(
                 "editor.command",
                 &std::env::var("EDITOR").unwrap_or_else(|_| {
-                    if cfg!(windows) { "notepad".into() } else { "vi".into() }
+                    if cfg!(windows) {
+                        "notepad".into()
+                    } else {
+                        "vi".into()
+                    }
                 }),
             );
             let status = std::process::Command::new(&editor)
@@ -454,16 +467,12 @@ pub fn cmd_config(
             if let Some(parent) = path.parent() {
                 if !parent.as_os_str().is_empty() {
                     std::fs::create_dir_all(parent).map_err(|e| {
-                        WerkError::IoError(format!(
-                            "create export dir {}: {e}",
-                            parent.display()
-                        ))
+                        WerkError::IoError(format!("create export dir {}: {e}", parent.display()))
                     })?;
                 }
             }
-            std::fs::write(path, file_body).map_err(|e| {
-                WerkError::IoError(format!("write {}: {e}", path.display()))
-            })?;
+            std::fs::write(path, file_body)
+                .map_err(|e| WerkError::IoError(format!("write {}: {e}", path.display())))?;
 
             if output.is_structured() {
                 output
@@ -530,9 +539,8 @@ pub fn cmd_config(
             for (k, v) in incoming.values() {
                 // Canonicalize registry keys to their Kind's normal form.
                 let value = match werk_shared::config_registry::lookup(k) {
-                    Some(entry) => {
-                        werk_shared::config_registry::validate(entry.kind, v).unwrap_or_else(|_| v.clone())
-                    }
+                    Some(entry) => werk_shared::config_registry::validate(entry.kind, v)
+                        .unwrap_or_else(|_| v.clone()),
                     None => v.clone(),
                 };
                 config.set(k, value);
@@ -678,7 +686,10 @@ pub fn cmd_config(
                         message.as_deref().unwrap_or("(no message)"),
                     ))
                     .map_err(|e| WerkError::IoError(e.to_string()))?;
-                println!("  {}", palette.chrome(&format!("audit: {}", audit_path.display())));
+                println!(
+                    "  {}",
+                    palette.chrome(&format!("audit: {}", audit_path.display()))
+                );
                 println!(
                     "  {}",
                     palette.chrome("revert: werk config abort is only valid inside a session"),
@@ -734,7 +745,7 @@ pub fn cmd_config(
             Ok(())
         }
         super::ConfigCommand::Preset { command } => {
-            use werk_shared::config_registry::{preset, PRESETS};
+            use werk_shared::config_registry::{PRESETS, preset};
             match command {
                 super::PresetCommand::List => {
                     if output.is_structured() {
@@ -759,8 +770,14 @@ pub fn cmd_config(
                             );
                         }
                         println!();
-                        println!("  {}", palette.chrome("Apply: werk config preset apply <name>"));
-                        println!("  {}", palette.chrome("Inspect: werk config preset show <name>"));
+                        println!(
+                            "  {}",
+                            palette.chrome("Apply: werk config preset apply <name>")
+                        );
+                        println!(
+                            "  {}",
+                            palette.chrome("Inspect: werk config preset show <name>")
+                        );
                     }
                     Ok(())
                 }
@@ -817,7 +834,9 @@ pub fn cmd_config(
                             None => (*value).to_string(),
                         };
                         if entry.map(|e| e.kind.is_synthetic()).unwrap_or(false) {
-                            if let Some(bundle) = werk_shared::config_registry::cascade_for(key, &canonical) {
+                            if let Some(bundle) =
+                                werk_shared::config_registry::cascade_for(key, &canonical)
+                            {
                                 for (k, v) in bundle {
                                     config.set(k, (*v).to_string());
                                 }
@@ -866,12 +885,34 @@ pub fn cmd_config(
                     global_exists,
                     active: active.to_string(),
                 };
-                output.print_structured(&result).map_err(WerkError::IoError)?;
+                output
+                    .print_structured(&result)
+                    .map_err(WerkError::IoError)?;
             } else {
                 if let Some(ref lp) = local_path {
-                    println!("Local:  {}  {}", lp, if local_exists { "(active)" } else { "(not found)" });
+                    println!(
+                        "Local:  {}  {}",
+                        lp,
+                        if local_exists {
+                            "(active)"
+                        } else {
+                            "(not found)"
+                        }
+                    );
                 }
-                println!("Global: {}  {}", global_path.display(), if global_exists { if local_path.is_none() || !local_exists { "(active)" } else { "(exists)" } } else { "(not found)" });
+                println!(
+                    "Global: {}  {}",
+                    global_path.display(),
+                    if global_exists {
+                        if local_path.is_none() || !local_exists {
+                            "(active)"
+                        } else {
+                            "(exists)"
+                        }
+                    } else {
+                        "(not found)"
+                    }
+                );
             }
 
             Ok(())
@@ -902,8 +943,7 @@ fn session_file_path(config: &Config) -> Result<std::path::PathBuf> {
 fn read_session(path: &std::path::Path) -> Result<ConfigSession> {
     let body = std::fs::read_to_string(path)
         .map_err(|e| WerkError::IoError(format!("read session: {e}")))?;
-    serde_json::from_str(&body)
-        .map_err(|e| WerkError::IoError(format!("parse session: {e}")))
+    serde_json::from_str(&body).map_err(|e| WerkError::IoError(format!("parse session: {e}")))
 }
 
 fn write_session(path: &std::path::Path, session: &ConfigSession) -> Result<()> {
@@ -913,8 +953,7 @@ fn write_session(path: &std::path::Path, session: &ConfigSession) -> Result<()> 
     }
     let body = serde_json::to_string_pretty(session)
         .map_err(|e| WerkError::IoError(format!("serialize session: {e}")))?;
-    std::fs::write(path, body)
-        .map_err(|e| WerkError::IoError(format!("write session: {e}")))?;
+    std::fs::write(path, body).map_err(|e| WerkError::IoError(format!("write session: {e}")))?;
     Ok(())
 }
 
@@ -931,7 +970,12 @@ fn fnv1a_values(values: &std::collections::BTreeMap<String, String>) -> u64 {
     let mut hash = FNV_OFFSET;
     // BTreeMap iteration is sorted → deterministic.
     for (k, v) in values {
-        for b in k.bytes().chain(std::iter::once(b'=')).chain(v.bytes()).chain(std::iter::once(b'\n')) {
+        for b in k
+            .bytes()
+            .chain(std::iter::once(b'='))
+            .chain(v.bytes())
+            .chain(std::iter::once(b'\n'))
+        {
             hash ^= u64::from(b);
             hash = hash.wrapping_mul(FNV_PRIME);
         }
@@ -942,9 +986,7 @@ fn fnv1a_values(values: &std::collections::BTreeMap<String, String>) -> u64 {
 /// Serialize a flat dot-notation map to a nested TOML document. Delegates to
 /// `Config`'s existing unflatten logic by round-tripping through a tempfile,
 /// which keeps all the existing serialization tests as the single source of truth.
-fn values_to_toml_string(
-    values: &std::collections::BTreeMap<String, String>,
-) -> Result<String> {
+fn values_to_toml_string(values: &std::collections::BTreeMap<String, String>) -> Result<String> {
     // Build a Config with the values, save to a tempfile, read it back.
     let temp = std::env::temp_dir().join(format!("werk_export_{}.toml", ulid::Ulid::new()));
     // load_from_path on a missing file returns a Config with `path` set and
@@ -975,7 +1017,7 @@ fn diff_configs(
     before: &std::collections::BTreeMap<String, String>,
     after: &std::collections::BTreeMap<String, String>,
 ) -> Vec<DiffEntry> {
-    use werk_shared::config_registry::{lookup, REGISTRY};
+    use werk_shared::config_registry::{REGISTRY, lookup};
     let mut out: Vec<DiffEntry> = Vec::new();
     // Registry keys first, in registry order.
     for entry in REGISTRY {
@@ -1013,7 +1055,7 @@ fn diff_configs(
 /// Diff a live config against the registry defaults. Non-registry keys
 /// (hooks, unknowns) appear as "added" entries since defaults would be None.
 fn diff_vs_defaults(values: &std::collections::BTreeMap<String, String>) -> Vec<DiffEntry> {
-    use werk_shared::config_registry::{lookup, REGISTRY};
+    use werk_shared::config_registry::{REGISTRY, lookup};
     let mut out: Vec<DiffEntry> = Vec::new();
     for entry in REGISTRY {
         if let Some(user) = values.get(entry.key) {
@@ -1026,10 +1068,8 @@ fn diff_vs_defaults(values: &std::collections::BTreeMap<String, String>) -> Vec<
             }
         }
     }
-    let mut extras: Vec<(&String, &String)> = values
-        .iter()
-        .filter(|(k, _)| lookup(k).is_none())
-        .collect();
+    let mut extras: Vec<(&String, &String)> =
+        values.iter().filter(|(k, _)| lookup(k).is_none()).collect();
     extras.sort_by_key(|(k, _)| k.as_str());
     for (k, v) in extras {
         out.push(DiffEntry {
@@ -1097,7 +1137,7 @@ fn render_grouped(
     path_str: &str,
     values: &std::collections::BTreeMap<String, String>,
 ) {
-    use werk_shared::config_registry::{groups, is_hook_key, keys_in_group, lookup, REGISTRY};
+    use werk_shared::config_registry::{REGISTRY, groups, is_hook_key, keys_in_group, lookup};
 
     let palette = output.palette();
 
@@ -1126,18 +1166,20 @@ fn render_grouped(
     println!("{}", palette.chrome(&"─".repeat(65)));
 
     // Column widths across registry keys + any user-set keys.
-    let key_width = REGISTRY.iter().map(|k| k.key.len())
+    let key_width = REGISTRY
+        .iter()
+        .map(|k| k.key.len())
         .chain(values.keys().map(String::len))
         .max()
         .unwrap_or(20);
     // Value column reserves room for `label (value)` shapes so level
     // keys and raw keys align.
-    let value_width = REGISTRY.iter()
+    let value_width = REGISTRY
+        .iter()
         .map(|k| {
             let base = values.get(k.key).map(|s| s.as_str()).unwrap_or(k.default);
             if k.kind.has_levels() {
-                let label = werk_shared::config_registry::label_for(k.key, base)
-                    .unwrap_or(base);
+                let label = werk_shared::config_registry::label_for(k.key, base).unwrap_or(base);
                 let resolved = werk_shared::config_registry::resolve_value(k.key, base);
                 label.len() + 3 + resolved.len()
             } else {
@@ -1174,8 +1216,16 @@ fn render_grouped(
                     value_width,
                 );
             } else {
-                render_row(&palette, entry.key, entry.default, Some(entry.default),
-                    entry.gloss, values.get(entry.key), key_width, value_width);
+                render_row(
+                    &palette,
+                    entry.key,
+                    entry.default,
+                    Some(entry.default),
+                    entry.gloss,
+                    values.get(entry.key),
+                    key_width,
+                    value_width,
+                );
             }
         }
     }
@@ -1183,9 +1233,7 @@ fn render_grouped(
     // Hook definitions — dynamic, only if any user hooks are set. Separate
     // from the registry `hooks` group which holds CLI preferences like
     // `hooks.log_tail`.
-    let hook_keys: Vec<_> = values.iter()
-        .filter(|(k, _)| is_hook_key(k))
-        .collect();
+    let hook_keys: Vec<_> = values.iter().filter(|(k, _)| is_hook_key(k)).collect();
     if !hook_keys.is_empty() {
         println!();
         println!(
@@ -1199,7 +1247,8 @@ fn render_grouped(
     }
 
     // Unknowns — anything user-set that isn't a registry key or a hook.
-    let other_keys: Vec<_> = values.iter()
+    let other_keys: Vec<_> = values
+        .iter()
         .filter(|(k, _)| lookup(k).is_none() && !is_hook_key(k))
         .collect();
     if !other_keys.is_empty() {
@@ -1219,9 +1268,7 @@ fn render_grouped(
     println!("{}", palette.chrome(&"─".repeat(65)));
     println!(
         "{}",
-        palette.chrome(
-            "Change: werk config set <key> <value>   Reset: werk config reset <key>"
-        ),
+        palette.chrome("Change: werk config set <key> <value>   Reset: werk config reset <key>"),
     );
 }
 
@@ -1262,15 +1309,27 @@ fn render_row(
         Some(entry) if entry.kind.is_synthetic() => {
             // StringEnum — value is a label-name itself, no backing value.
             // Render just the name (or "custom" if unknown).
-            let is_known = entry.kind.enum_names().iter().any(|n| *n == displayed_value);
-            (displayed_value.to_string(), if is_known { None } else { Some("custom".into()) })
+            let is_known = entry
+                .kind
+                .enum_names()
+                .iter()
+                .any(|n| *n == displayed_value);
+            (
+                displayed_value.to_string(),
+                if is_known {
+                    None
+                } else {
+                    Some("custom".into())
+                },
+            )
         }
         Some(entry) if entry.kind.has_levels() => {
             let label = werk_shared::config_registry::label_for(key, displayed_value);
             match label {
                 Some(name) if name == displayed_value => {
                     // Stored form is the label itself — show label, chrome value.
-                    let resolved = werk_shared::config_registry::resolve_value(key, displayed_value);
+                    let resolved =
+                        werk_shared::config_registry::resolve_value(key, displayed_value);
                     (format!("{name}"), Some(resolved))
                 }
                 Some(name) => {
@@ -1337,10 +1396,14 @@ fn render_key_detail(
         .map(|c| c.values().clone())
         .unwrap_or_default();
     let effective_owned: String = match entry {
-        Some(e) if e.kind.is_synthetic() => werk_shared::config_registry::infer_synthetic(key, &config_values)
+        Some(e) if e.kind.is_synthetic() => {
+            werk_shared::config_registry::infer_synthetic(key, &config_values)
+                .map(String::from)
+                .unwrap_or_else(|| "custom".to_string())
+        }
+        _ => stored
             .map(String::from)
-            .unwrap_or_else(|| "custom".to_string()),
-        _ => stored.map(String::from).unwrap_or_else(|| entry.map(|e| e.default.to_string()).unwrap_or_default()),
+            .unwrap_or_else(|| entry.map(|e| e.default.to_string()).unwrap_or_default()),
     };
     let effective = effective_owned.as_str();
 
@@ -1377,7 +1440,11 @@ fn render_key_detail(
                 }
             })
             .collect();
-        println!("  {} {}", palette.chrome("levels:"), rendered.join(palette.chrome(" · ").as_str()));
+        println!(
+            "  {} {}",
+            palette.chrome("levels:"),
+            rendered.join(palette.chrome(" · ").as_str())
+        );
     } else if entry.kind.has_levels() {
         let labels = entry.kind.labels();
         let rendered: Vec<String> = labels
@@ -1392,16 +1459,26 @@ fn render_key_detail(
                 }
             })
             .collect();
-        println!("  {} {}", palette.chrome("levels:"), rendered.join(palette.chrome(" · ").as_str()));
+        println!(
+            "  {} {}",
+            palette.chrome("levels:"),
+            rendered.join(palette.chrome(" · ").as_str())
+        );
     }
 
     // Default annotation.
     if entry.kind.is_synthetic() {
         if effective != entry.default {
-            println!("  {}", palette.chrome(&format!("[default {}]", entry.default)));
+            println!(
+                "  {}",
+                palette.chrome(&format!("[default {}]", entry.default))
+            );
         }
     } else if stored.is_some() && stored != Some(entry.default) {
-        println!("  {}", palette.chrome(&format!("[default {}]", entry.default)));
+        println!(
+            "  {}",
+            palette.chrome(&format!("[default {}]", entry.default))
+        );
     } else if stored.is_none() {
         println!("  {}", palette.chrome("(unset — showing default)"));
     }

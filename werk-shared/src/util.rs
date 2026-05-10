@@ -45,7 +45,12 @@ pub fn format_datetime_compact(dt: DateTime<Utc>) -> String {
 /// Tension identifier with truncated desired state for structural context.
 ///
 /// Example: `#52 — CLI is ergonomic, forgiving, and self-docum...`
-pub fn display_id_named(short_code: Option<i32>, ulid: &str, desired: &str, max_name_len: usize) -> String {
+pub fn display_id_named(
+    short_code: Option<i32>,
+    ulid: &str,
+    desired: &str,
+    max_name_len: usize,
+) -> String {
     let id = display_id(short_code, ulid);
     format!("{} — {}", id, truncate(desired, max_name_len))
 }
@@ -74,13 +79,25 @@ pub fn relative_time(dt: DateTime<Utc>, now: DateTime<Utc>) -> String {
         format!("{} min ago", n)
     } else if secs < 86400 {
         let n = secs / 3600;
-        if n == 1 { "1 hour ago".to_string() } else { format!("{} hours ago", n) }
+        if n == 1 {
+            "1 hour ago".to_string()
+        } else {
+            format!("{} hours ago", n)
+        }
     } else if secs < 604800 {
         let n = secs / 86400;
-        if n == 1 { "1 day ago".to_string() } else { format!("{} days ago", n) }
+        if n == 1 {
+            "1 day ago".to_string()
+        } else {
+            format!("{} days ago", n)
+        }
     } else {
         let n = secs / 604800;
-        if n == 1 { "1 week ago".to_string() } else { format!("{} weeks ago", n) }
+        if n == 1 {
+            "1 week ago".to_string()
+        } else {
+            format!("{} weeks ago", n)
+        }
     }
 }
 

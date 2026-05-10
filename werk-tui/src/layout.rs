@@ -115,12 +115,10 @@ impl LayoutState {
 
         // Cap desire/reality to ensure field gets minimum space.
         let available = area.height;
-        let desire_capped = desire_natural.min(
-            available.saturating_sub(MIN_FIELD_HEIGHT + reality_natural)
-        );
-        let reality_capped = reality_natural.min(
-            available.saturating_sub(MIN_FIELD_HEIGHT + desire_capped)
-        );
+        let desire_capped =
+            desire_natural.min(available.saturating_sub(MIN_FIELD_HEIGHT + reality_natural));
+        let reality_capped =
+            reality_natural.min(available.saturating_sub(MIN_FIELD_HEIGHT + desire_capped));
 
         let layout = Flex::vertical()
             .constraints([

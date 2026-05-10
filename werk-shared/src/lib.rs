@@ -13,7 +13,6 @@ pub mod cross_space;
 pub mod daemon_workspaces;
 pub mod dto;
 pub mod duration;
-pub mod value_labels;
 pub mod error;
 pub mod flush;
 pub mod hooks;
@@ -21,20 +20,28 @@ pub mod palette;
 pub mod prefix;
 pub mod registry;
 pub mod util;
+pub mod value_labels;
 pub mod workspace;
 
 pub use batch_mutation::BatchMutation;
-pub use dto::{ApiError, CreateTensionRequest, SummaryDto, TensionDto, UpdateFieldRequest};
 pub use config::{AnalysisThresholds, Config, SignalThresholds};
-pub use flush::{flush_to_file, content_equivalent as flush_content_equivalent, FlushOutcome, FLUSH_FILENAME};
-pub use hooks::{GitHooks, HookBridge, HookBridgeHandle, HookEvent, HookFilter, HookLogEntry, HookRunner, ShippedHooks};
+pub use dto::{ApiError, CreateTensionRequest, SummaryDto, TensionDto, UpdateFieldRequest};
 pub use error::{ErrorCode, Result, WerkError};
+pub use flush::{
+    FLUSH_FILENAME, FlushOutcome, content_equivalent as flush_content_equivalent, flush_to_file,
+};
+pub use hooks::{
+    GitHooks, HookBridge, HookBridgeHandle, HookEvent, HookFilter, HookLogEntry, HookRunner,
+    ShippedHooks,
+};
 pub use palette::{
-    Palette, PaletteChoice, PaletteContext, PaletteOption,
-    apply_choice, apply_containment_choice, apply_sequencing_choice,
-    containment_palette, detect_containment_palettes, detect_sequencing_palettes,
-    sequencing_palette,
+    Palette, PaletteChoice, PaletteContext, PaletteOption, apply_choice, apply_containment_choice,
+    apply_sequencing_choice, containment_palette, detect_containment_palettes,
+    detect_sequencing_palettes, sequencing_palette,
 };
 pub use prefix::PrefixResolver;
-pub use util::{display_id, display_id_named, format_datetime_compact, format_short_code, format_timestamp, relative_time, truncate};
+pub use util::{
+    display_id, display_id_named, format_datetime_compact, format_short_code, format_timestamp,
+    relative_time, truncate,
+};
 pub use workspace::Workspace;
