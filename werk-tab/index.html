@@ -16,6 +16,7 @@
           </button>
           <ul id="workspace-menu" class="workspace-menu" role="listbox" hidden></ul>
           <button id="field-toggle" class="field-toggle" type="button" aria-pressed="false" title="Show the aggregate field view across every registered space">field</button>
+          <button id="sigil-toggle" class="field-toggle" type="button" aria-pressed="false" title="Show a compact sigil glance for this space">sigil</button>
         </div>
         <div class="summary" id="summary"></div>
       </header>
@@ -56,6 +57,14 @@
         </section>
 
         <p class="field-skipped" id="field-skipped" hidden></p>
+      </section>
+
+      <section class="sigil" id="sigil" hidden>
+        <div class="sigil-offline" id="sigil-offline" hidden>
+          <p class="offline-msg"><code>werk serve</code> is not running.</p>
+          <p class="offline-hint">offline, reconnecting…</p>
+        </div>
+        <div class="sigil-canvas" id="sigil-canvas"></div>
       </section>
 
       <section class="band band-overdue" id="band-overdue" hidden>

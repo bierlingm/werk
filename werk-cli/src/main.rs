@@ -58,11 +58,7 @@ struct Cli {
 
     /// Shortcut for `--workspace global` — operate on `~/.werk/`.
     /// Must come before the subcommand: `werk -g tree`, not `werk tree -g`.
-    #[arg(
-        short = 'g',
-        long = "global-space",
-        conflicts_with = "workspace"
-    )]
+    #[arg(short = 'g', long = "global-space", conflicts_with = "workspace")]
     global_space: bool,
 
     /// Subcommand to execute.
@@ -164,6 +160,14 @@ fn main() {
                 history,
             },
         ),
+        Commands::Sigil {
+            scope,
+            logic,
+            seed,
+            out,
+            save,
+            dry_run,
+        } => werk::commands::sigil::cmd_sigil(&output, scope, logic, seed, out, save, dry_run),
         Commands::Reality {
             id,
             value,
@@ -268,6 +272,7 @@ fn main() {
             }
         },
         Commands::List {
+            kind,
             all,
             status,
             overdue,
@@ -287,8 +292,10 @@ fn main() {
             search,
         } => {
             let sig = werk::commands::load_signal_thresholds();
-            let parse_dur = |name: &str, s: String| werk_shared::duration::parse_days(&s)
-                .map_err(|e| werk::error::WerkError::InvalidInput(format!("--{name}: {e}")));
+            let parse_dur = |name: &str, s: String| {
+                werk_shared::duration::parse_days(&s)
+                    .map_err(|e| werk::error::WerkError::InvalidInput(format!("--{name}: {e}")))
+            };
             let approaching_days = match approaching {
                 None => Ok(None),
                 Some(None) => Ok(Some(sig.approaching_days)),
@@ -303,6 +310,7 @@ fn main() {
                 (Err(e), _) | (_, Err(e)) => Err(e),
                 (Ok(approaching), Ok(stale)) => {
                     let params = werk::commands::list::ListParams {
+                        kind,
                         all,
                         status,
                         overdue,
@@ -352,15 +360,18 @@ fn main() {
             yes,
         } => {
             let days_value = match days {
-                None => Ok(werk::commands::config_default("stats.default_window_days", 7)),
+                None => Ok(werk::commands::config_default(
+                    "stats.default_window_days",
+                    7,
+                )),
                 Some(s) => werk_shared::duration::parse_days(&s)
                     .map_err(|e| werk::error::WerkError::InvalidInput(format!("--days: {e}"))),
             };
             match days_value {
                 Err(e) => Err(e),
                 Ok(d) => werk::commands::stats::cmd_stats(
-                    &output, temporal, attention, changes, traj, engagement, drift, health, all,
-                    d, repair, yes,
+                    &output, temporal, attention, changes, traj, engagement, drift, health, all, d,
+                    repair, yes,
                 ),
             }
         }
