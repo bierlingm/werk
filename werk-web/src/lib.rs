@@ -19,6 +19,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, oneshot};
@@ -36,7 +37,7 @@ use werk_shared::dto::{
 };
 use werk_sigil::{
     Ctx, Engine, Logic, Scope, SigilError, cache_path, derive_seed, load_preset, scope_canonical,
-    werk_state_revision,
+    start_hot_reload, werk_state_revision,
 };
 
 const FRONTEND_HTML: &str = include_str!("../index.html");
@@ -503,6 +504,50 @@ struct SseEvent {
     kind: String,
 }
 
+fn sigil_preset_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../werk-sigil/presets")
+}
+
+fn sigil_hot_reload_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let preset_dir = sigil_preset_dir();
+    if preset_dir.exists() {
+        paths.push(preset_dir);
+    }
+    if let Ok(extra) = env::var("WERK_SIGIL_WATCH_PATHS") {
+        for part in extra.split(',') {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let path = PathBuf::from(trimmed);
+            if path.exists() {
+                paths.push(path);
+            }
+        }
+    }
+    paths
+}
+
+fn start_sigil_hot_reload(tx: broadcast::Sender<SseEvent>) {
+    let paths = sigil_hot_reload_paths();
+    if paths.is_empty() {
+        return;
+    }
+    match start_hot_reload(paths) {
+        Ok(watcher) => {
+            watcher.spawn_listener(move |_| {
+                let _ = tx.send(SseEvent {
+                    kind: "invalidate".into(),
+                });
+            });
+        }
+        Err(err) => {
+            eprintln!("sigil hot reload disabled: {err}");
+        }
+    }
+}
+
 // ─── JSON Types ────────────────────────────────────────────────────
 //
 // TensionDto, SummaryDto, CreateTensionRequest, UpdateFieldRequest, ApiError
@@ -550,6 +595,7 @@ pub fn build_router(store_path: std::path::PathBuf) -> Result<Router, String> {
         workspace_root: store_path,
         field_pool: Arc::new(RwLock::new(pool)),
     });
+    start_sigil_hot_reload(state.tx.clone());
 
     Ok(Router::new()
         .route("/", get(serve_frontend))

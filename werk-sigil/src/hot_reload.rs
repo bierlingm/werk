@@ -17,6 +17,21 @@ pub struct HotReloadWatcher {
     _watcher: RecommendedWatcher,
 }
 
+impl HotReloadWatcher {
+    pub fn spawn_listener<F>(self, mut on_event: F) -> std::thread::JoinHandle<()>
+    where
+        F: FnMut(HotReloadEvent) + Send + 'static,
+    {
+        std::thread::spawn(move || {
+            let HotReloadWatcher { rx, _watcher } = self;
+            for event in rx.iter() {
+                on_event(event);
+            }
+            drop(_watcher);
+        })
+    }
+}
+
 pub fn start_hot_reload(paths: Vec<PathBuf>) -> Result<HotReloadWatcher, SigilError> {
     let (tx, rx) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -45,5 +60,8 @@ pub fn start_hot_reload(paths: Vec<PathBuf>) -> Result<HotReloadWatcher, SigilEr
             .map_err(|e| SigilError::io(e.to_string()))?;
     }
 
-    Ok(HotReloadWatcher { rx, _watcher: watcher })
+    Ok(HotReloadWatcher {
+        rx,
+        _watcher: watcher,
+    })
 }
