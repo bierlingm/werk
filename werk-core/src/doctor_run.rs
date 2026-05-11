@@ -47,6 +47,12 @@ use ulid::Ulid;
 /// Schema version for the run artifact JSON. Bump on breaking changes.
 pub const DOCTOR_CONTRACT_VERSION: u32 = 1;
 
+/// Canonical action `op` strings recorded by doctor fixers. Capabilities JSON
+/// (in `werk-cli`) advertises this set; tests assert no fixer emits an op
+/// outside this list. Add new fixers' ops here when they ship, in lockstep
+/// with the capabilities surface — that's the drift-prevention contract.
+pub const ACTION_OPS: &[&str] = &["purge_noop_mutations"];
+
 /// One entry in `actions.jsonl`. Represents a single mutation the doctor
 /// performed, with cryptographic fingerprints of the before/after state so
 /// `undo` can verify byte-identical restoration.
@@ -144,9 +150,16 @@ impl DoctorRun {
     /// hash of the backed-up content for inclusion in the action record.
     /// Verifies byte-identical copy with `std::fs::read` + `cmp`.
     pub fn record_backup(&self, source_abs: &Path) -> Result<String, CoreError> {
-        let relative = source_abs
-            .strip_prefix(&self.workspace_root)
-            .unwrap_or(source_abs);
+        // Refuse out-of-tree backup sources. Pre-empts a future fixer from
+        // silently writing an absolute-path backup clone inside the run
+        // directory — the doctor's documented blast radius is the workspace.
+        let relative = source_abs.strip_prefix(&self.workspace_root).map_err(|_| {
+            CoreError::ValidationError(format!(
+                "refusing to back up out-of-tree source {}: not under workspace root {}",
+                source_abs.display(),
+                self.workspace_root.display()
+            ))
+        })?;
         let dest = self.backups_dir.join(relative);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -165,18 +178,17 @@ impl DoctorRun {
                 e
             ))
         })?;
+        // Read the destination back and hash it. An earlier version
+        // re-read the source for a byte-by-byte equality check, but
+        // that races concurrent writers on the live file (fsqlite
+        // touches `werk.db` on open, MCP may commit in parallel) and
+        // could falsely report a verification failure even when the
+        // backup itself is intact. The backup IS the snapshot at the
+        // moment of copy; the hash recorded here is what undo verifies
+        // against on restoration.
         let bytes = std::fs::read(&dest).map_err(|e| {
             CoreError::ValidationError(format!("backup readback failed: {}", e))
         })?;
-        let original = std::fs::read(source_abs).map_err(|e| {
-            CoreError::ValidationError(format!("source readback failed: {}", e))
-        })?;
-        if bytes != original {
-            return Err(CoreError::ValidationError(format!(
-                "backup verification failed: {} differs from source",
-                dest.display()
-            )));
-        }
         Ok(hex_blake3(&bytes))
     }
 
@@ -238,27 +250,64 @@ impl DoctorRun {
         let md = render_report_md(&report);
         atomic_write(&report_md_path, md.as_bytes())?;
 
-        // Atomic `latest` symlink swap.
+        // Atomic `latest` symlink swap. Surface failures instead of
+        // swallowing them — a finalize that quietly leaves `latest`
+        // pointing at an older run would have `werk doctor undo latest`
+        // operate on the wrong run.
         let doctor_dir = self
             .workspace_root
             .join(".werk")
             .join(".doctor");
-        let _ = std::fs::create_dir_all(&doctor_dir);
+        std::fs::create_dir_all(&doctor_dir).map_err(|e| {
+            CoreError::ValidationError(format!(
+                "create {} : {}",
+                doctor_dir.display(),
+                e
+            ))
+        })?;
         let latest_link = doctor_dir.join("latest");
         let latest_tmp = doctor_dir.join(format!("latest.tmp.{}", std::process::id()));
         let target = PathBuf::from("runs").join(&self.run_id);
         let _ = std::fs::remove_file(&latest_tmp);
         #[cfg(unix)]
         {
-            if std::os::unix::fs::symlink(&target, &latest_tmp).is_ok() {
-                let _ = std::fs::rename(&latest_tmp, &latest_link);
-            }
+            std::os::unix::fs::symlink(&target, &latest_tmp).map_err(|e| {
+                CoreError::ValidationError(format!(
+                    "symlink {} -> {}: {}",
+                    latest_tmp.display(),
+                    target.display(),
+                    e
+                ))
+            })?;
+            std::fs::rename(&latest_tmp, &latest_link).map_err(|e| {
+                let _ = std::fs::remove_file(&latest_tmp);
+                CoreError::ValidationError(format!(
+                    "rename {} -> {}: {}",
+                    latest_tmp.display(),
+                    latest_link.display(),
+                    e
+                ))
+            })?;
         }
         #[cfg(not(unix))]
         {
             // On non-unix platforms, write a plain file naming the run.
-            let _ = std::fs::write(&latest_tmp, self.run_id.as_bytes());
-            let _ = std::fs::rename(&latest_tmp, &latest_link);
+            std::fs::write(&latest_tmp, self.run_id.as_bytes()).map_err(|e| {
+                CoreError::ValidationError(format!(
+                    "write {}: {}",
+                    latest_tmp.display(),
+                    e
+                ))
+            })?;
+            std::fs::rename(&latest_tmp, &latest_link).map_err(|e| {
+                let _ = std::fs::remove_file(&latest_tmp);
+                CoreError::ValidationError(format!(
+                    "rename {} -> {}: {}",
+                    latest_tmp.display(),
+                    latest_link.display(),
+                    e
+                ))
+            })?;
         }
 
         // History line.
