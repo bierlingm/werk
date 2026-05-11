@@ -639,7 +639,7 @@ fn cmd_fix(
             && input.trim().eq_ignore_ascii_case("y");
         if !accepted {
             emit_refusal(output, "user declined");
-            return Ok(EXIT_PARTIAL_FIX);
+            return Ok(EXIT_REFUSED_UNSAFE);
         }
     }
 
@@ -827,7 +827,16 @@ fn cmd_undo(output: &Output, target: String, dry_run: bool) -> Result<i32, WerkE
                     }
                     restored.push(rel_str);
                 } else if live_path.exists() {
-                    let _ = std::fs::remove_file(&live_path);
+                    // Stale sidecar: backup didn't include it, but a live
+                    // file exists. Must remove it — leaving it would let
+                    // fsqlite replay a WAL against the restored base.
+                    if let Err(e) = std::fs::remove_file(&live_path) {
+                        emit_refusal(
+                            output,
+                            &format!("failed to remove stale sidecar {}: {}", rel_str, e),
+                        );
+                        return Ok(EXIT_IO_ERROR);
+                    }
                 }
             }
         }
