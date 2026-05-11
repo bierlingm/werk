@@ -49,7 +49,10 @@ use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::io::{IsTerminal, Write};
 use std::path::Path;
+use werk_core::Store;
 use werk_core::doctor_run::{ACTION_OPS, ActionRecord, DOCTOR_CONTRACT_VERSION, DoctorRun};
+use werk_core::horizon::Horizon;
+use werk_core::store::PreferEdge;
 use werk_shared::workspace::Workspace;
 
 // ── Doctor exit codes (R-003 §2) ─────────────────────────────────────
@@ -107,6 +110,19 @@ pub struct DoctorArgs {
     /// Print expanded evidence for one finding-id and exit.
     #[arg(long, value_name = "FINDING_ID")]
     pub explain: Option<String>,
+
+    /// Conflict policy for `prune_duplicate_parent_edges` (R-005). Without
+    /// this flag the fixer is soft-refused: the finding is reported but
+    /// no edge is deleted. `oldest` keeps the contains-edge with the
+    /// smallest ULID; `newest` keeps the largest (last-write-wins).
+    #[arg(long, value_name = "POLICY", value_parser = ["oldest", "newest"])]
+    pub prefer: Option<String>,
+
+    /// Opt-in for `null_violating_child_horizon` (R-005). Nulling a
+    /// child's horizon discards user temporal commitment, so the fixer
+    /// is soft-refused unless this flag is passed.
+    #[arg(long)]
+    pub apply_horizon_fix: bool,
 
     /// Subcommand verb.
     #[command(subcommand)]
@@ -204,60 +220,132 @@ pub fn capabilities() -> Capabilities {
             DetectorSpec {
                 id: "singleParent",
                 subsystem: "edges",
-                available: false,
-                description: None,
-                evidence_source: None,
-                reserved_for: Some("R-005"),
+                available: true,
+                description: Some(
+                    "Every tension has at most one `contains` edge pointing at it (Quint singleParent).",
+                ),
+                evidence_source: Some("specs/werk.qnt:393"),
+                reserved_for: None,
             },
             DetectorSpec {
                 id: "noSelfEdges",
                 subsystem: "edges",
-                available: false,
-                description: None,
-                evidence_source: None,
-                reserved_for: Some("R-005"),
+                available: true,
+                description: Some("No edge has from_id == to_id (Quint noSelfEdges)."),
+                evidence_source: Some("specs/werk.qnt:399"),
+                reserved_for: None,
             },
             DetectorSpec {
                 id: "edgesValid",
                 subsystem: "edges",
-                available: false,
-                description: None,
-                evidence_source: None,
-                reserved_for: Some("R-005"),
+                available: true,
+                description: Some(
+                    "Both endpoints of every edge reference an existing tension (Quint edgesValid).",
+                ),
+                evidence_source: Some("specs/werk.qnt:403"),
+                reserved_for: None,
             },
             DetectorSpec {
                 id: "siblingPositionsUnique",
                 subsystem: "edges",
-                available: false,
-                description: None,
-                evidence_source: None,
-                reserved_for: Some("R-005"),
+                available: true,
+                description: Some(
+                    "Among children connected by a contains-edge to the same parent, no two share a non-NULL position (Quint siblingPositionsUnique).",
+                ),
+                evidence_source: Some("specs/werk.qnt:418"),
+                reserved_for: None,
             },
             DetectorSpec {
                 id: "noContainmentViolations",
                 subsystem: "edges",
-                available: false,
-                description: None,
-                evidence_source: None,
-                reserved_for: Some("R-005"),
+                available: true,
+                description: Some(
+                    "Horizon containment: for each contains-edge with both horizons set, child.horizon <= parent.horizon (Quint noContainmentViolations).",
+                ),
+                evidence_source: Some("specs/werk.qnt:436"),
+                reserved_for: None,
             },
             DetectorSpec {
                 id: "undoneSubsetOfCompleted",
                 subsystem: "gestures",
-                available: false,
-                description: None,
-                evidence_source: None,
-                reserved_for: Some("R-005"),
+                available: true,
+                description: Some(
+                    "Every non-NULL gestures.undone_gesture_id references an existing gestures row (Quint undoneSubsetOfCompleted).",
+                ),
+                evidence_source: Some("specs/werk.qnt:450"),
+                reserved_for: None,
             },
         ],
-        fixers: vec![FixerSpec {
-            id: "purge_noop_mutations",
-            detector: "noop_mutations",
-            available: true,
-            op: "purge_noop_mutations",
-            inverse: "restore_db_from_backup",
-            backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
-        }],
+        fixers: vec![
+            FixerSpec {
+                id: "purge_noop_mutations",
+                detector: "noop_mutations",
+                available: true,
+                op: "purge_noop_mutations",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            FixerSpec {
+                id: "prune_duplicate_parent_edges",
+                detector: "singleParent",
+                available: true,
+                op: "prune_duplicate_parent_edges",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            FixerSpec {
+                id: "delete_self_edges",
+                detector: "noSelfEdges",
+                available: true,
+                op: "delete_self_edges",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            FixerSpec {
+                id: "delete_dangling_edges",
+                detector: "edgesValid",
+                available: true,
+                op: "delete_dangling_edges",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            FixerSpec {
+                id: "null_colliding_sibling_positions",
+                detector: "siblingPositionsUnique",
+                available: true,
+                op: "null_colliding_sibling_positions",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            FixerSpec {
+                id: "null_violating_child_horizon",
+                detector: "noContainmentViolations",
+                available: true,
+                op: "null_violating_child_horizon",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            FixerSpec {
+                id: "null_dangling_undo_gestures",
+                detector: "undoneSubsetOfCompleted",
+                available: true,
+                op: "null_dangling_undo_gestures",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+            // Meta-op: emitted only when the post-fix safety harness
+            // sees a Quint-invariant violation and the run self-rolls
+            // back. Listed here so explain/triage can name it; the op
+            // is never invoked by a fixer.
+            FixerSpec {
+                id: "safety_harness_rollback",
+                detector: "(meta)",
+                available: true,
+                op: "safety_harness_rollback",
+                inverse: "restore_db_from_backup",
+                backs_up: vec![".werk/werk.db", ".werk/werk.db-wal", ".werk/werk.db-shm"],
+            },
+        ],
         exit_codes: serde_json::json!({
             "0": "healthy",
             "1": "findings_present",
@@ -406,6 +494,666 @@ pub fn run_store_fix(
     })
 }
 
+// ── Quint-invariant detectors / fixers (R-005) ───────────────────────
+
+/// Aggregate result of running the `edges` subsystem detectors.
+#[derive(Debug, Clone, Default)]
+pub struct EdgesFindings {
+    pub multi_parent: Vec<werk_core::DoctorMultiParentRow>,
+    pub self_edges: Vec<werk_core::DoctorEdgeRow>,
+    pub dangling_edges: Vec<werk_core::DoctorEdgeRow>,
+    pub sibling_collisions: Vec<werk_core::DoctorSiblingCollisionRow>,
+    /// Children whose horizon exceeds parent's. The CLI does the
+    /// `Horizon::parse` comparison; the store returns raw pairs.
+    pub horizon_violations: Vec<HorizonViolation>,
+    /// Pairs where either side's horizon string failed to parse — surfaced
+    /// as a separate low-severity finding (not a containment violation).
+    pub horizon_unparseable: Vec<HorizonUnparseable>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HorizonViolation {
+    pub parent_id: String,
+    pub child_id: String,
+    pub parent_horizon: String,
+    pub child_horizon: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct HorizonUnparseable {
+    pub parent_id: String,
+    pub child_id: String,
+    pub raw_parent: String,
+    pub raw_child: String,
+    pub error: String,
+}
+
+impl EdgesFindings {
+    pub fn is_empty(&self) -> bool {
+        self.multi_parent.is_empty()
+            && self.self_edges.is_empty()
+            && self.dangling_edges.is_empty()
+            && self.sibling_collisions.is_empty()
+            && self.horizon_violations.is_empty()
+            && self.horizon_unparseable.is_empty()
+    }
+
+    pub fn into_findings(&self) -> Vec<Finding> {
+        let mut out = Vec::new();
+        for v in &self.multi_parent {
+            out.push(Finding {
+                id: "fm-edges-multi-parent".to_string(),
+                subsystem: "edges".to_string(),
+                severity: "high".to_string(),
+                message: format!(
+                    "tension {} has {} contains-edges (singleParent violated)",
+                    v.tension_id,
+                    v.parent_edge_ids.len()
+                ),
+                count: v.parent_edge_ids.len(),
+            });
+        }
+        if !self.self_edges.is_empty() {
+            out.push(Finding {
+                id: "fm-edges-self-loop".to_string(),
+                subsystem: "edges".to_string(),
+                severity: "high".to_string(),
+                message: format!("{} self-referencing edge(s)", self.self_edges.len()),
+                count: self.self_edges.len(),
+            });
+        }
+        if !self.dangling_edges.is_empty() {
+            out.push(Finding {
+                id: "fm-edges-dangling".to_string(),
+                subsystem: "edges".to_string(),
+                severity: "high".to_string(),
+                message: format!(
+                    "{} edge(s) reference missing tension(s)",
+                    self.dangling_edges.len()
+                ),
+                count: self.dangling_edges.len(),
+            });
+        }
+        for c in &self.sibling_collisions {
+            out.push(Finding {
+                id: "fm-edges-sibling-position-collision".to_string(),
+                subsystem: "edges".to_string(),
+                severity: "medium".to_string(),
+                message: format!(
+                    "parent {} has {} children at position {}",
+                    c.parent_id,
+                    c.child_ids.len(),
+                    c.position
+                ),
+                count: c.child_ids.len(),
+            });
+        }
+        for v in &self.horizon_violations {
+            out.push(Finding {
+                id: "fm-edges-horizon-containment".to_string(),
+                subsystem: "edges".to_string(),
+                severity: "medium".to_string(),
+                message: format!(
+                    "child {}'s horizon {} exceeds parent {}'s horizon {}",
+                    v.child_id, v.child_horizon, v.parent_id, v.parent_horizon
+                ),
+                count: 1,
+            });
+        }
+        for u in &self.horizon_unparseable {
+            out.push(Finding {
+                id: "fm-edges-horizon-unparseable".to_string(),
+                subsystem: "edges".to_string(),
+                severity: "low".to_string(),
+                message: format!(
+                    "could not parse horizon on edge {}->{}: {}",
+                    u.parent_id, u.child_id, u.error
+                ),
+                count: 1,
+            });
+        }
+        out
+    }
+}
+
+/// Aggregate result of running the `gestures` subsystem detectors.
+#[derive(Debug, Clone, Default)]
+pub struct GesturesFindings {
+    pub dangling_undo: Vec<werk_core::DoctorDanglingUndoRow>,
+}
+
+impl GesturesFindings {
+    pub fn is_empty(&self) -> bool {
+        self.dangling_undo.is_empty()
+    }
+
+    pub fn into_findings(&self) -> Vec<Finding> {
+        let mut out = Vec::new();
+        if !self.dangling_undo.is_empty() {
+            out.push(Finding {
+                id: "fm-gestures-undone-dangling".to_string(),
+                subsystem: "gestures".to_string(),
+                severity: "medium".to_string(),
+                message: format!(
+                    "{} gesture(s) reference a non-existent undone_gesture_id",
+                    self.dangling_undo.len()
+                ),
+                count: self.dangling_undo.len(),
+            });
+        }
+        out
+    }
+}
+
+/// Read-only detector pass for the `edges` subsystem. All six Quint
+/// edge invariants in one entry point.
+pub fn run_edges_detect(store: &Store) -> Result<EdgesFindings, WerkError> {
+    let multi_parent = store
+        .list_multi_parent_violations()
+        .map_err(WerkError::CoreError)?;
+    let self_edges = store.list_self_edges().map_err(WerkError::CoreError)?;
+    let dangling_edges = store.list_dangling_edges().map_err(WerkError::CoreError)?;
+    let sibling_collisions = store
+        .list_sibling_position_collisions()
+        .map_err(WerkError::CoreError)?;
+    let horizon_pairs = store
+        .list_horizon_pairs_for_contains_edges()
+        .map_err(WerkError::CoreError)?;
+    let mut horizon_violations = Vec::new();
+    let mut horizon_unparseable = Vec::new();
+    for p in horizon_pairs {
+        match (Horizon::parse(&p.parent_horizon), Horizon::parse(&p.child_horizon)) {
+            (Ok(ph), Ok(ch)) => {
+                if ch > ph {
+                    horizon_violations.push(HorizonViolation {
+                        parent_id: p.parent_id,
+                        child_id: p.child_id,
+                        parent_horizon: p.parent_horizon,
+                        child_horizon: p.child_horizon,
+                    });
+                }
+            }
+            (Err(e), _) => {
+                horizon_unparseable.push(HorizonUnparseable {
+                    parent_id: p.parent_id,
+                    child_id: p.child_id,
+                    raw_parent: p.parent_horizon,
+                    raw_child: p.child_horizon,
+                    error: format!("parent: {}", e),
+                });
+            }
+            (_, Err(e)) => {
+                horizon_unparseable.push(HorizonUnparseable {
+                    parent_id: p.parent_id,
+                    child_id: p.child_id,
+                    raw_parent: p.parent_horizon,
+                    raw_child: p.child_horizon,
+                    error: format!("child: {}", e),
+                });
+            }
+        }
+    }
+    Ok(EdgesFindings {
+        multi_parent,
+        self_edges,
+        dangling_edges,
+        sibling_collisions,
+        horizon_violations,
+        horizon_unparseable,
+    })
+}
+
+/// Read-only detector pass for the `gestures` subsystem.
+pub fn run_gestures_detect(store: &Store) -> Result<GesturesFindings, WerkError> {
+    let dangling_undo = store
+        .list_dangling_undo_gestures()
+        .map_err(WerkError::CoreError)?;
+    Ok(GesturesFindings { dangling_undo })
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EdgesFixResult {
+    pub multi_parent_pruned: usize,
+    pub multi_parent_soft_refused: usize,
+    pub self_edges_deleted: usize,
+    pub dangling_edges_deleted: usize,
+    pub sibling_positions_nulled: usize,
+    pub horizon_violations_nulled: usize,
+    pub horizon_soft_refused: usize,
+    pub parent_ids_reconciled: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GesturesFixResult {
+    pub dangling_undo_nulled: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EdgesFixOptions {
+    /// `--prefer` policy (None = soft-refuse multi-parent fixer).
+    pub prefer: Option<PreferEdge>,
+    /// `--apply-horizon-fix` (false = soft-refuse horizon fixer).
+    pub apply_horizon_fix: bool,
+}
+
+/// Helper: ensure the DB triplet is backed up exactly once per run and
+/// record one intent ActionRecord for `op` against `werk.db`. The intent
+/// record's `before_hash` is computed FRESH at call time (not cached) so
+/// each fixer's hash reflects the live state immediately before its
+/// mutation.
+fn record_db_intent(
+    run: &mut DoctorRun,
+    workspace: &Workspace,
+    op: &str,
+    note: &str,
+) -> Result<(), WerkError> {
+    let db_path = workspace.db_path();
+    // `before_hash` in the intent record is the hash that `cmd_undo`
+    // verifies against AFTER restoring from `backups/`. The restored
+    // file's bytes equal the SNAPSHOT bytes captured by record_backup_once,
+    // so before_hash must equal the snapshot hash — not a fresh
+    // hash_current of the live file (which can diverge from the snapshot
+    // when fsqlite housekeeping touches bytes between the copy and the
+    // fresh read). Per-fixer freshness is provided by the completion
+    // record's after_hash field, which captures post-mutation state.
+    let snapshot_hash = run
+        .record_backup_once(&db_path)
+        .map_err(WerkError::CoreError)?;
+    for ext in ["werk.db-wal", "werk.db-shm"] {
+        let sidecar = db_path.with_file_name(ext);
+        if sidecar.exists() {
+            run.record_backup_once(&sidecar)
+                .map_err(WerkError::CoreError)?;
+        }
+    }
+    let target = db_path
+        .strip_prefix(workspace.root())
+        .unwrap_or(&db_path)
+        .display()
+        .to_string();
+    let intent = ActionRecord {
+        timestamp: Utc::now().to_rfc3339(),
+        op: op.to_string(),
+        target,
+        before_hash: Some(snapshot_hash),
+        after_hash: None,
+        note: Some(note.to_string()),
+    };
+    debug_assert!(
+        ACTION_OPS.contains(&intent.op.as_str()),
+        "op `{}` not in ACTION_OPS table — capabilities will drift",
+        intent.op
+    );
+    run.record_action(intent).map_err(WerkError::CoreError)?;
+    Ok(())
+}
+
+/// Helper: append a completion record for `op` after a mutation.
+fn record_db_completion(
+    run: &mut DoctorRun,
+    workspace: &Workspace,
+    op: &str,
+    note: String,
+) -> Result<(), WerkError> {
+    let db_path = workspace.db_path();
+    let after_hash = DoctorRun::hash_current(&db_path).ok().flatten();
+    let target = db_path
+        .strip_prefix(workspace.root())
+        .unwrap_or(&db_path)
+        .display()
+        .to_string();
+    let completion = ActionRecord {
+        timestamp: Utc::now().to_rfc3339(),
+        op: op.to_string(),
+        target,
+        before_hash: None,
+        after_hash,
+        note: Some(note),
+    };
+    run.record_action(completion).map_err(WerkError::CoreError)?;
+    Ok(())
+}
+
+/// Run the `edges` subsystem fixers. Each per-fixer mutation is
+/// journaled with its own intent/completion pair (sharing one backup
+/// for the DB triplet). Soft-refused fixers emit no actions but their
+/// findings remain visible.
+pub fn run_edges_fix(
+    store: &Store,
+    workspace: &Workspace,
+    run: &mut DoctorRun,
+    findings: &EdgesFindings,
+    options: EdgesFixOptions,
+) -> Result<EdgesFixResult, WerkError> {
+    let mut result = EdgesFixResult::default();
+    if findings.is_empty() {
+        return Ok(result);
+    }
+
+    // 1. singleParent — soft-refused unless --prefer is passed.
+    if !findings.multi_parent.is_empty() {
+        if let Some(prefer) = options.prefer {
+            record_db_intent(
+                run,
+                workspace,
+                "prune_duplicate_parent_edges",
+                &format!(
+                    "intent recorded; pruning {} multi-parent tension(s) with prefer={:?}",
+                    findings.multi_parent.len(),
+                    prefer
+                ),
+            )?;
+            let pr = store
+                .doctor_prune_duplicate_parent_edges(prefer)
+                .map_err(WerkError::CoreError)?;
+            result.multi_parent_pruned = pr.deleted_edge_ids.len();
+            result.parent_ids_reconciled += pr.parent_ids_reconciled;
+            record_db_completion(
+                run,
+                workspace,
+                "prune_duplicate_parent_edges",
+                format!(
+                    "pruned {} duplicate contains-edge(s) across {} tension(s); reconciled parent_id on {}",
+                    pr.deleted_edge_ids.len(),
+                    pr.affected_tension_ids.len(),
+                    pr.parent_ids_reconciled
+                ),
+            )?;
+        } else {
+            result.multi_parent_soft_refused = findings.multi_parent.len();
+        }
+    }
+
+    // 2. noSelfEdges — always applied.
+    if !findings.self_edges.is_empty() {
+        record_db_intent(
+            run,
+            workspace,
+            "delete_self_edges",
+            &format!(
+                "intent recorded; deleting {} self-edge(s)",
+                findings.self_edges.len()
+            ),
+        )?;
+        let sr = store
+            .doctor_delete_self_edges()
+            .map_err(WerkError::CoreError)?;
+        result.self_edges_deleted = sr.deleted;
+        result.parent_ids_reconciled += sr.parent_ids_reconciled;
+        record_db_completion(
+            run,
+            workspace,
+            "delete_self_edges",
+            format!(
+                "deleted {} self-referencing edge(s); reconciled parent_id on {}",
+                sr.deleted, sr.parent_ids_reconciled
+            ),
+        )?;
+    }
+
+    // 3. edgesValid — always applied.
+    if !findings.dangling_edges.is_empty() {
+        record_db_intent(
+            run,
+            workspace,
+            "delete_dangling_edges",
+            &format!(
+                "intent recorded; deleting {} dangling edge(s)",
+                findings.dangling_edges.len()
+            ),
+        )?;
+        let dr = store
+            .doctor_delete_dangling_edges()
+            .map_err(WerkError::CoreError)?;
+        result.dangling_edges_deleted = dr.deleted;
+        result.parent_ids_reconciled += dr.parent_ids_reconciled;
+        record_db_completion(
+            run,
+            workspace,
+            "delete_dangling_edges",
+            format!(
+                "deleted {} dangling edge(s); reconciled parent_id on {}",
+                dr.deleted, dr.parent_ids_reconciled
+            ),
+        )?;
+    }
+
+    // 4. siblingPositionsUnique — always applied.
+    if !findings.sibling_collisions.is_empty() {
+        record_db_intent(
+            run,
+            workspace,
+            "null_colliding_sibling_positions",
+            &format!(
+                "intent recorded; resolving {} position-collision group(s)",
+                findings.sibling_collisions.len()
+            ),
+        )?;
+        let sf = store
+            .doctor_null_colliding_sibling_positions()
+            .map_err(WerkError::CoreError)?;
+        result.sibling_positions_nulled = sf.nulled.len();
+        record_db_completion(
+            run,
+            workspace,
+            "null_colliding_sibling_positions",
+            format!(
+                "nulled position on {} child tension(s) across {} parent(s)",
+                sf.nulled.len(),
+                sf.parent_count
+            ),
+        )?;
+    }
+
+    // 5. noContainmentViolations — soft-refused unless --apply-horizon-fix.
+    if !findings.horizon_violations.is_empty() {
+        if options.apply_horizon_fix {
+            let targets: Vec<String> = findings
+                .horizon_violations
+                .iter()
+                .map(|v| v.child_id.clone())
+                .collect();
+            record_db_intent(
+                run,
+                workspace,
+                "null_violating_child_horizon",
+                &format!(
+                    "intent recorded; nulling horizon on {} child tension(s)",
+                    targets.len()
+                ),
+            )?;
+            let pairs = store
+                .doctor_null_violating_child_horizons(&targets)
+                .map_err(WerkError::CoreError)?;
+            result.horizon_violations_nulled = pairs.len();
+            record_db_completion(
+                run,
+                workspace,
+                "null_violating_child_horizon",
+                format!(
+                    "nulled horizon on {} child tension(s); transitive violations not auto-resolved (re-run if needed)",
+                    pairs.len()
+                ),
+            )?;
+        } else {
+            result.horizon_soft_refused = findings.horizon_violations.len();
+        }
+    }
+
+    Ok(result)
+}
+
+/// Run the `gestures` subsystem fixers.
+pub fn run_gestures_fix(
+    store: &Store,
+    workspace: &Workspace,
+    run: &mut DoctorRun,
+    findings: &GesturesFindings,
+) -> Result<GesturesFixResult, WerkError> {
+    let mut result = GesturesFixResult::default();
+    if findings.dangling_undo.is_empty() {
+        return Ok(result);
+    }
+    let targets: Vec<String> = findings
+        .dangling_undo
+        .iter()
+        .map(|r| r.gesture_id.clone())
+        .collect();
+    record_db_intent(
+        run,
+        workspace,
+        "null_dangling_undo_gestures",
+        &format!(
+            "intent recorded; nulling undone_gesture_id on {} phantom undo-gesture(s)",
+            targets.len()
+        ),
+    )?;
+    let count = store
+        .doctor_null_dangling_undo_gestures(&targets)
+        .map_err(WerkError::CoreError)?;
+    result.dangling_undo_nulled = count;
+    record_db_completion(
+        run,
+        workspace,
+        "null_dangling_undo_gestures",
+        format!("nulled undone_gesture_id on {} phantom undo-gesture(s)", count),
+    )?;
+    Ok(result)
+}
+
+// ── Safety harness (W-1) ─────────────────────────────────────────────
+//
+// W-1 enforcement (per analysis/safety_envelope.md): after `cmd_fix`
+// completes its subsystem fixer passes, it re-detects every Quint
+// invariant via `run_edges_detect` / `run_gestures_detect` and compares
+// the per-violator key sets to the pre-fix snapshot. Any NEWLY
+// introduced violator (one that didn't exist pre-fix) triggers an
+// in-flight rollback via `safety_harness_rollback` and finalizes the
+// run with EXIT_FIX_FAILED. The per-id SET diff (rather than a coarse
+// "any violation of invariant X" check) ensures a soft-refused
+// fixer's pre-existing residuals are correctly distinguished from
+// post-fix-introduced ones.
+//
+// TOCTOU: a concurrent MCP writer adding a violator between detector
+// passes is attributed to this run and triggers rollback. Documented
+// as pass-3 limitation #2.
+
+/// In-flight rollback: replay the run's own backups in place. Used by
+/// `cmd_fix` when the post-fix safety harness reports a violation.
+/// Each per-file replacement is journaled with its own intent/completion
+/// record so a SIGKILL mid-rollback leaves a recoverable trail.
+fn safety_harness_rollback(
+    run: &mut DoctorRun,
+    workspace: &Workspace,
+    violated_ids: &[String],
+) -> Result<usize, WerkError> {
+    let db_path = workspace.db_path();
+    let mut restored = 0usize;
+    let candidates: Vec<std::path::PathBuf> = ["werk.db", "werk.db-wal", "werk.db-shm"]
+        .into_iter()
+        .map(|name| db_path.with_file_name(name))
+        .collect();
+    for live_path in &candidates {
+        let rel = live_path
+            .strip_prefix(workspace.root())
+            .unwrap_or(live_path)
+            .to_path_buf();
+        let backup_path = run.run_dir().join("backups").join(&rel);
+        let rel_str = rel.display().to_string();
+        if !backup_path.exists() {
+            // No backup for this sidecar. If a live sidecar exists, it
+            // was created by fsqlite DURING the fix run and must be
+            // removed — leaving it would let fsqlite replay a stale WAL
+            // against the restored base on next open (mirrors cmd_undo's
+            // stale-sidecar handling). Journaled so cmd_undo can replay.
+            if live_path.exists() {
+                let before_now =
+                    DoctorRun::hash_current(live_path).map_err(WerkError::CoreError)?;
+                let intent = ActionRecord {
+                    timestamp: Utc::now().to_rfc3339(),
+                    op: "safety_harness_rollback".to_string(),
+                    target: rel_str.clone(),
+                    before_hash: before_now,
+                    after_hash: None,
+                    note: Some(format!(
+                        "W-1 violated post-fix: [{}]; removing stale sidecar {} (no backup)",
+                        violated_ids.join(","),
+                        rel_str
+                    )),
+                };
+                run.record_action(intent).map_err(WerkError::CoreError)?;
+                std::fs::remove_file(live_path).map_err(|e| {
+                    WerkError::IoError(format!(
+                        "rollback remove stale sidecar {}: {}",
+                        rel_str, e
+                    ))
+                })?;
+                let completion = ActionRecord {
+                    timestamp: Utc::now().to_rfc3339(),
+                    op: "safety_harness_rollback".to_string(),
+                    target: rel_str,
+                    before_hash: None,
+                    after_hash: None,
+                    note: Some("removed stale sidecar".to_string()),
+                };
+                run.record_action(completion).map_err(WerkError::CoreError)?;
+                restored += 1;
+            }
+            continue;
+        }
+        // before_hash for the rollback's intent record is the SNAPSHOT
+        // hash — what the restored bytes will be — NOT the pre-rollback
+        // live hash. cmd_undo's restore_target verifies post-restore
+        // bytes against before_hash; setting before_hash to the
+        // pre-rollback hash would fail verification on subsequent
+        // cmd_undo replay (review H8).
+        let snapshot_bytes = std::fs::read(&backup_path).map_err(|e| {
+            WerkError::IoError(format!("read backup {}: {}", rel_str, e))
+        })?;
+        let snapshot_hash = blake3::hash(&snapshot_bytes).to_hex().to_string();
+        let intent = ActionRecord {
+            timestamp: Utc::now().to_rfc3339(),
+            op: "safety_harness_rollback".to_string(),
+            target: rel_str.clone(),
+            before_hash: Some(snapshot_hash.clone()),
+            after_hash: None,
+            note: Some(format!(
+                "W-1 violated post-fix: [{}]; restoring {}",
+                violated_ids.join(","),
+                rel_str
+            )),
+        };
+        run.record_action(intent).map_err(WerkError::CoreError)?;
+        // Atomic tempfile + rename in place.
+        let tmp = live_path.with_extension(format!(
+            "{}.harness.tmp.{}",
+            live_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("partial"),
+            std::process::id()
+        ));
+        std::fs::copy(&backup_path, &tmp).map_err(|e| {
+            WerkError::IoError(format!("rollback copy {}: {}", rel_str, e))
+        })?;
+        std::fs::rename(&tmp, live_path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            WerkError::IoError(format!("rollback rename {}: {}", rel_str, e))
+        })?;
+        let completion = ActionRecord {
+            timestamp: Utc::now().to_rfc3339(),
+            op: "safety_harness_rollback".to_string(),
+            target: rel_str,
+            before_hash: None,
+            after_hash: Some(snapshot_hash),
+            note: Some("restored from in-flight run backup".to_string()),
+        };
+        run.record_action(completion).map_err(WerkError::CoreError)?;
+        restored += 1;
+    }
+    Ok(restored)
+}
+
 // ── Top-level dispatch ───────────────────────────────────────────────
 
 /// Entry point invoked by `main.rs` for `Commands::Doctor`. Returns the
@@ -435,12 +1183,27 @@ pub fn cmd_doctor(output: &Output, args: DoctorArgs) -> Result<i32, WerkError> {
     }
 
     if args.fix {
+        // `value_parser` on DoctorArgs.prefer restricts values to
+        // {"oldest","newest"} at parse time; unknown values would be
+        // rejected by clap with a usage error before we reach this
+        // dispatch (review S5). The match below is exhaustive for the
+        // accepted set.
+        let prefer = match args.prefer.as_deref() {
+            None => None,
+            Some("oldest") => Some(PreferEdge::Oldest),
+            Some("newest") => Some(PreferEdge::Newest),
+            Some(_unreachable) => unreachable!("clap value_parser restricts --prefer"),
+        };
         return cmd_fix(
             output,
             args.dry_run,
             args.yes,
             args.only.as_deref(),
             args.robot,
+            EdgesFixOptions {
+                prefer,
+                apply_horizon_fix: args.apply_horizon_fix,
+            },
         );
     }
 
@@ -479,7 +1242,14 @@ fn cmd_diagnose(
         let store_findings = run_store_detect(&store)?;
         findings.extend(store_findings.into_findings());
     }
-    // Other subsystems (edges, gestures): reserved for R-005. No-op for now.
+    if subsystems.includes_edges() {
+        let edges_findings = run_edges_detect(&store)?;
+        findings.extend(edges_findings.into_findings());
+    }
+    if subsystems.includes_gestures() {
+        let gestures_findings = run_gestures_detect(&store)?;
+        findings.extend(gestures_findings.into_findings());
+    }
 
     // `--since` filter applies to stdout only; the run artifact still holds
     // the full lossless `findings` list.
@@ -563,6 +1333,7 @@ fn cmd_fix(
     yes: bool,
     only: Option<&str>,
     robot: bool,
+    options: EdgesFixOptions,
 ) -> Result<i32, WerkError> {
     if !yes && !std::io::stdin().is_terminal() {
         emit_refusal(output, "--yes required for --fix on non-TTY");
@@ -579,23 +1350,94 @@ fn cmd_fix(
     let subsystems = parse_only(only)?;
     let store = workspace.open_store()?;
 
-    // Detect first (the chokepoint contract: detect-then-fix).
-    // For dry-run we do this WITHOUT starting a DoctorRun, so a dry-run
-    // never promotes `.werk/.doctor/latest` (which would corrupt a
-    // subsequent `werk doctor undo latest`).
+    // Detect first across all requested subsystems. Dry-run uses this
+    // result without starting a DoctorRun so the run-id is null.
     let store_findings = if subsystems.includes_store() {
         run_store_detect(&store)?
     } else {
         StoreFindings::default()
     };
+    let edges_findings = if subsystems.includes_edges() {
+        run_edges_detect(&store)?
+    } else {
+        EdgesFindings::default()
+    };
+    let gestures_findings = if subsystems.includes_gestures() {
+        run_gestures_detect(&store)?
+    } else {
+        GesturesFindings::default()
+    };
 
-    let findings = store_findings.into_findings();
+    let mut findings: Vec<Finding> = Vec::new();
+    findings.extend(store_findings.into_findings());
+    findings.extend(edges_findings.into_findings());
+    findings.extend(gestures_findings.into_findings());
+
     let mut actions_planned = Vec::new();
     if store_findings.noop_mutations > 0 {
         actions_planned.push(serde_json::json!({
             "op": "purge_noop_mutations",
             "target": ".werk/werk.db",
             "fixer": "purge_noop_mutations",
+        }));
+    }
+    if !edges_findings.multi_parent.is_empty() && options.prefer.is_some() {
+        actions_planned.push(serde_json::json!({
+            "op": "prune_duplicate_parent_edges",
+            "target": ".werk/werk.db",
+            "fixer": "prune_duplicate_parent_edges",
+        }));
+    }
+    if !edges_findings.self_edges.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "delete_self_edges",
+            "target": ".werk/werk.db",
+            "fixer": "delete_self_edges",
+        }));
+    }
+    if !edges_findings.dangling_edges.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "delete_dangling_edges",
+            "target": ".werk/werk.db",
+            "fixer": "delete_dangling_edges",
+        }));
+    }
+    if !edges_findings.sibling_collisions.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "null_colliding_sibling_positions",
+            "target": ".werk/werk.db",
+            "fixer": "null_colliding_sibling_positions",
+        }));
+    }
+    if !edges_findings.horizon_violations.is_empty() && options.apply_horizon_fix {
+        actions_planned.push(serde_json::json!({
+            "op": "null_violating_child_horizon",
+            "target": ".werk/werk.db",
+            "fixer": "null_violating_child_horizon",
+        }));
+    }
+    if !gestures_findings.dangling_undo.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "null_dangling_undo_gestures",
+            "target": ".werk/werk.db",
+            "fixer": "null_dangling_undo_gestures",
+        }));
+    }
+
+    // Soft-refused fixers — surface in dry-run output so users know why.
+    let mut soft_refused = Vec::new();
+    if !edges_findings.multi_parent.is_empty() && options.prefer.is_none() {
+        soft_refused.push(serde_json::json!({
+            "fixer": "prune_duplicate_parent_edges",
+            "reason": "policy required: pass --prefer=oldest or --prefer=newest",
+            "count": edges_findings.multi_parent.len(),
+        }));
+    }
+    if !edges_findings.horizon_violations.is_empty() && !options.apply_horizon_fix {
+        soft_refused.push(serde_json::json!({
+            "fixer": "null_violating_child_horizon",
+            "reason": "opt-in required: pass --apply-horizon-fix",
+            "count": edges_findings.horizon_violations.len(),
         }));
     }
 
@@ -609,6 +1451,7 @@ fn cmd_fix(
                 "dry_run": true,
                 "findings": findings,
                 "actions_planned": actions_planned,
+                "soft_refused": soft_refused,
             }
         });
         print_envelope(output, robot, &envelope, |_| {
@@ -620,14 +1463,18 @@ fn cmd_fix(
                     println!("  {}", a);
                 }
             }
+            if !soft_refused.is_empty() {
+                eprintln!("Soft-refused fixers (re-run with the named flag):");
+                for s in &soft_refused {
+                    eprintln!("  {}", s);
+                }
+            }
         });
         return Ok(EXIT_HEALTHY);
     }
 
     // Interactive confirmation on TTY when --yes wasn't passed and there
-    // is actually something destructive to do. Skipped silently when
-    // there's nothing to fix (the call would still produce action_count=0
-    // and no mutation, but the prompt would be noise).
+    // is actually something destructive to do.
     if !yes && !actions_planned.is_empty() && std::io::stdin().is_terminal() {
         eprint!(
             "Apply {} fixer action(s)? [y/N] ",
@@ -648,52 +1495,251 @@ fn cmd_fix(
         WerkError::IoError(e.to_string())
     })?;
 
-    let fix_result = match run_store_fix(&store, &workspace, &mut run, &store_findings) {
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null))
+        .collect();
+
+    // Run the three subsystem fixer passes in order. Each may early-return
+    // with no actions when its findings group is empty.
+    let store_fix = match run_store_fix(&store, &workspace, &mut run, &store_findings) {
         Ok(r) => r,
         Err(e) => {
-            // Best-effort: finalize with exit 3; the run dir contains
-            // backups under the chokepoint contract so a subsequent
-            // `werk doctor undo <run-id>` can roll back manually.
             let _ = run.finalize(
                 EXIT_FIX_FAILED,
-                format!("fix failed: {}", e),
-                findings.iter().map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)).collect(),
+                format!("store fix failed: {}", e),
+                findings_json.clone(),
             );
-            emit_refusal(output, &format!("fixer error: {}", e));
+            emit_refusal(output, &format!("store fixer error: {}", e));
+            return Ok(EXIT_FIX_FAILED);
+        }
+    };
+    let edges_fix = match run_edges_fix(&store, &workspace, &mut run, &edges_findings, options) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = run.finalize(
+                EXIT_FIX_FAILED,
+                format!("edges fix failed: {}", e),
+                findings_json.clone(),
+            );
+            emit_refusal(output, &format!("edges fixer error: {}", e));
+            return Ok(EXIT_FIX_FAILED);
+        }
+    };
+    let gestures_fix = match run_gestures_fix(&store, &workspace, &mut run, &gestures_findings) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = run.finalize(
+                EXIT_FIX_FAILED,
+                format!("gestures fix failed: {}", e),
+                findings_json.clone(),
+            );
+            emit_refusal(output, &format!("gestures fixer error: {}", e));
             return Ok(EXIT_FIX_FAILED);
         }
     };
 
-    let summary = if fix_result.purged > 0 {
-        format!("purged {} noop mutation row(s)", fix_result.purged)
+    // W-1 safety harness: re-detect every Quint invariant. A residual
+    // violation triggers an in-flight rollback to the run's backups.
+    //
+    // Soft-refuse handling: a pre-existing violator that the soft-refused
+    // fixer chose not to touch is EXPECTED to persist post-fix. To
+    // distinguish "expected residual" from "newly introduced by an
+    // applied fixer", we compare per-tension-id sets pre vs post. Only
+    // truly NEW violators trigger rollback. The coarse-by-invariant-name
+    // filter (replaced by this code) could mask a fresh violation that
+    // happened to share the same invariant name as a soft-refused one
+    // (review H4).
+    let post_edges = match run_edges_detect(&store) {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = run.finalize(
+                EXIT_FIX_FAILED,
+                format!("safety harness failed to re-detect: {}", e),
+                findings_json.clone(),
+            );
+            emit_refusal(output, &format!("safety harness error: {}", e));
+            return Ok(EXIT_FIX_FAILED);
+        }
+    };
+    let post_gestures = match run_gestures_detect(&store) {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = run.finalize(
+                EXIT_FIX_FAILED,
+                format!("safety harness failed to re-detect: {}", e),
+                findings_json.clone(),
+            );
+            emit_refusal(output, &format!("safety harness error: {}", e));
+            return Ok(EXIT_FIX_FAILED);
+        }
+    };
+
+    let pre_mp_ids: std::collections::HashSet<String> = edges_findings
+        .multi_parent
+        .iter()
+        .map(|v| v.tension_id.clone())
+        .collect();
+    let pre_self_ids: std::collections::HashSet<String> =
+        edges_findings.self_edges.iter().map(|e| e.id.clone()).collect();
+    let pre_dangling_ids: std::collections::HashSet<String> = edges_findings
+        .dangling_edges
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    let pre_sib_keys: std::collections::HashSet<(String, i64)> = edges_findings
+        .sibling_collisions
+        .iter()
+        .map(|c| (c.parent_id.clone(), c.position))
+        .collect();
+    let pre_horizon_keys: std::collections::HashSet<(String, String)> = edges_findings
+        .horizon_violations
+        .iter()
+        .map(|v| (v.parent_id.clone(), v.child_id.clone()))
+        .collect();
+    let pre_undo_ids: std::collections::HashSet<String> = gestures_findings
+        .dangling_undo
+        .iter()
+        .map(|r| r.gesture_id.clone())
+        .collect();
+
+    let mut harness_violations: Vec<String> = Vec::new();
+    if post_edges
+        .multi_parent
+        .iter()
+        .any(|v| !pre_mp_ids.contains(&v.tension_id))
+    {
+        harness_violations.push("singleParent".to_string());
+    }
+    if post_edges.self_edges.iter().any(|e| !pre_self_ids.contains(&e.id)) {
+        harness_violations.push("noSelfEdges".to_string());
+    }
+    if post_edges
+        .dangling_edges
+        .iter()
+        .any(|e| !pre_dangling_ids.contains(&e.id))
+    {
+        harness_violations.push("edgesValid".to_string());
+    }
+    if post_edges
+        .sibling_collisions
+        .iter()
+        .any(|c| !pre_sib_keys.contains(&(c.parent_id.clone(), c.position)))
+    {
+        harness_violations.push("siblingPositionsUnique".to_string());
+    }
+    if post_edges
+        .horizon_violations
+        .iter()
+        .any(|v| !pre_horizon_keys.contains(&(v.parent_id.clone(), v.child_id.clone())))
+    {
+        harness_violations.push("noContainmentViolations".to_string());
+    }
+    if post_gestures
+        .dangling_undo
+        .iter()
+        .any(|r| !pre_undo_ids.contains(&r.gesture_id))
+    {
+        harness_violations.push("undoneSubsetOfCompleted".to_string());
+    }
+
+    if !harness_violations.is_empty() {
+        // W-1 rollback. Journal per-file intent/completion records.
+        // Propagate errors (review H2): a partial rollback must not be
+        // silently absorbed — the user needs to know manual recovery is
+        // required.
+        let rollback_result = safety_harness_rollback(&mut run, &workspace, &harness_violations);
+        let summary = match &rollback_result {
+            Ok(n) => format!(
+                "W-1 violated post-fix: [{}]; rolled back {} file(s)",
+                harness_violations.join(","),
+                n
+            ),
+            Err(e) => format!(
+                "W-1 violated post-fix: [{}]; ROLLBACK FAILED ({}); manual recovery required from .werk/.doctor/runs/{}/backups/",
+                harness_violations.join(","),
+                e,
+                run.run_id()
+            ),
+        };
+        let _ = run.finalize(EXIT_FIX_FAILED, &summary, findings_json);
+        let envelope = serde_json::json!({
+            "schema_version": DOCTOR_CONTRACT_VERSION,
+            "verb": "doctor",
+            "exit_code": EXIT_FIX_FAILED,
+            "data": {
+                "summary": summary,
+                "rolled_back_invariants": harness_violations,
+                "rollback_ok": rollback_result.is_ok(),
+            }
+        });
+        print_envelope(output, robot, &envelope, |_| {
+            eprintln!("doctor: {}", summary);
+        });
+        return Ok(EXIT_FIX_FAILED);
+    }
+
+    // Sum the actual mutation row counts so the summary reflects work
+    // done. `purged` was previously collapsed to 1/0 (review H5).
+    let total_actions = store_fix.purged
+        + edges_fix.multi_parent_pruned
+        + edges_fix.self_edges_deleted
+        + edges_fix.dangling_edges_deleted
+        + edges_fix.sibling_positions_nulled
+        + edges_fix.horizon_violations_nulled
+        + gestures_fix.dangling_undo_nulled;
+    let exit_code = if !soft_refused.is_empty() && total_actions > 0 {
+        EXIT_PARTIAL_FIX
+    } else if !soft_refused.is_empty() {
+        EXIT_FINDINGS_PRESENT
     } else {
+        EXIT_HEALTHY
+    };
+
+    let summary = if total_actions == 0 && soft_refused.is_empty() {
         "no actions taken".to_string()
+    } else if soft_refused.is_empty() {
+        format!("applied {} fixer mutation(s)", total_actions)
+    } else {
+        format!(
+            "applied {} fixer mutation(s); {} soft-refused finding group(s) remain",
+            total_actions,
+            soft_refused.len()
+        )
     };
     let report = run
-        .finalize(
-            EXIT_HEALTHY,
-            &summary,
-            findings.iter().map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)).collect(),
-        )
+        .finalize(exit_code, &summary, findings_json)
         .map_err(WerkError::CoreError)?;
 
     let envelope = serde_json::json!({
         "schema_version": DOCTOR_CONTRACT_VERSION,
         "verb": "doctor",
         "run_id": report.run_id,
-        "exit_code": EXIT_HEALTHY,
+        "exit_code": exit_code,
         "data": {
             "summary": summary,
             "findings": findings,
             "actions_taken": report.action_count,
-            "purged": fix_result.purged,
+            "purged": store_fix.purged,
+            "edges": {
+                "multi_parent_pruned": edges_fix.multi_parent_pruned,
+                "self_edges_deleted": edges_fix.self_edges_deleted,
+                "dangling_edges_deleted": edges_fix.dangling_edges_deleted,
+                "sibling_positions_nulled": edges_fix.sibling_positions_nulled,
+                "horizon_violations_nulled": edges_fix.horizon_violations_nulled,
+                "parent_ids_reconciled": edges_fix.parent_ids_reconciled,
+            },
+            "gestures": {
+                "dangling_undo_nulled": gestures_fix.dangling_undo_nulled,
+            },
+            "soft_refused": soft_refused,
         }
     });
     print_envelope(output, robot, &envelope, |_| {
         println!("{}", summary);
         eprintln!("Run id: {}", report.run_id);
     });
-    Ok(EXIT_HEALTHY)
+    Ok(exit_code)
 }
 
 // ── Undo ─────────────────────────────────────────────────────────────
@@ -800,6 +1846,28 @@ fn cmd_undo(output: &Output, target: String, dry_run: bool) -> Result<i32, WerkE
                 &format!("refusing to restore out-of-tree target: {}", a.target),
             );
             return Ok(EXIT_REFUSED_UNSAFE);
+        }
+        // Stale-sidecar branch of safety_harness_rollback (R-005): the
+        // original action REMOVED a live sidecar that had no backup. On
+        // undo there is nothing to restore — replaying as "remove the
+        // live file if present" preserves the post-rollback shape.
+        let backup_for_target = backups_dir.join(&a.target);
+        if a.op == "safety_harness_rollback" && !backup_for_target.exists() {
+            let live = workspace.root().join(&a.target);
+            if live.exists() {
+                if let Err(e) = std::fs::remove_file(&live) {
+                    emit_refusal(
+                        output,
+                        &format!(
+                            "failed to remove (undo of stale-sidecar removal) {}: {}",
+                            a.target, e
+                        ),
+                    );
+                    return Ok(EXIT_IO_ERROR);
+                }
+            }
+            restored.push(a.target.clone());
+            continue;
         }
         if let Err(code) = restore_target(output, workspace.root(), &backups_dir, &a.target, a.before_hash.as_deref()) {
             return Ok(code);
@@ -1222,15 +2290,93 @@ fn cmd_explain(output: &Output, finding_id: &str) -> Result<i32, WerkError> {
             "command": "werk doctor --fix --yes",
             "inverse": "werk doctor undo <run-id>",
         })),
-        "singleParent" | "noSelfEdges" | "edgesValid" | "siblingPositionsUnique"
-        | "noContainmentViolations" | "undoneSubsetOfCompleted" => Some(serde_json::json!({
+        "singleParent" | "fm-edges-multi-parent" => Some(serde_json::json!({
             "id": finding_id,
-            "subsystem": if finding_id == "undoneSubsetOfCompleted" { "gestures" } else { "edges" },
-            "severity": "unknown",
-            "summary": "Quint invariant — reserved capability, runtime detector lands in R-005.",
-            "available": false,
-            "reserved_for": "R-005",
-            "specs": "specs/werk.qnt:458-472",
+            "subsystem": "edges",
+            "severity": "high",
+            "summary": "A tension has more than one `contains` edge pointing at it; the forest invariant `singleParent` is violated.",
+            "quint_source": "specs/werk.qnt:393",
+            "fixer": "prune_duplicate_parent_edges",
+            "command": "werk doctor --fix --only=edges --prefer=oldest|newest --yes",
+            "inverse": "werk doctor undo <run-id>",
+            "policy_note": "Soft-refused by default. Pass --prefer=oldest (smallest ULID) or --prefer=newest (last-write-wins) to choose which contains-edge survives. The fixer reconciles tensions.parent_id in the same transaction.",
+        })),
+        "noSelfEdges" | "fm-edges-self-loop" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "edges",
+            "severity": "high",
+            "summary": "An edge has from_id == to_id. Self-edges have no semantic meaning and are safe to delete.",
+            "quint_source": "specs/werk.qnt:399",
+            "fixer": "delete_self_edges",
+            "command": "werk doctor --fix --only=edges --yes",
+            "inverse": "werk doctor undo <run-id>",
+            "policy_note": "Always auto-applied. If the deleted self-edge is a contains-edge, tensions.parent_id is reconciled to NULL.",
+        })),
+        "edgesValid" | "fm-edges-dangling" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "edges",
+            "severity": "high",
+            "summary": "An edge references a tension that no longer exists. The orphan edge is safe to delete; the surviving endpoint is unaffected.",
+            "quint_source": "specs/werk.qnt:403",
+            "fixer": "delete_dangling_edges",
+            "command": "werk doctor --fix --only=edges --yes",
+            "inverse": "werk doctor undo <run-id>",
+            "policy_note": "Always auto-applied. tensions.parent_id is reconciled for surviving children whose parent was nuked.",
+        })),
+        "siblingPositionsUnique" | "fm-edges-sibling-position-collision" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "edges",
+            "severity": "medium",
+            "summary": "Two or more siblings share the same non-NULL position. The Quint invariant requires unique positions among contains-children of the same parent.",
+            "quint_source": "specs/werk.qnt:418",
+            "fixer": "null_colliding_sibling_positions",
+            "command": "werk doctor --fix --only=edges --yes",
+            "inverse": "werk doctor undo <run-id>",
+            "policy_note": "Always auto-applied. Keeps the child whose contains-edge ULID is smallest; nulls position on the others. Unpositioned children rejoin the unordered tail.",
+        })),
+        "noContainmentViolations" | "fm-edges-horizon-containment" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "edges",
+            "severity": "medium",
+            "summary": "A child tension's horizon (deadline) exceeds its parent's. Quint requires child.horizon <= parent.horizon.",
+            "quint_source": "specs/werk.qnt:436",
+            "fixer": "null_violating_child_horizon",
+            "command": "werk doctor --fix --only=edges --apply-horizon-fix --yes",
+            "inverse": "werk doctor undo <run-id>",
+            "policy_note": "Soft-refused by default. Nulling the child's horizon discards user temporal commitment, so opt in with --apply-horizon-fix. Transitive violations are NOT auto-walked; re-run after the first fix to surface any cascaded findings.",
+        })),
+        "fm-edges-horizon-unparseable" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "edges",
+            "severity": "low",
+            "summary": "A tension's horizon string could not be parsed; the horizon containment detector could not evaluate this edge.",
+            "quint_source": "werk-core/src/horizon.rs",
+            "fixer": "(none)",
+            "command": "manual fix: correct the horizon string via `werk horizon <id> <iso-8601>`",
+            "inverse": "(n/a)",
+            "policy_note": "No auto-fix available — fix the underlying upstream invariant by hand.",
+        })),
+        "undoneSubsetOfCompleted" | "fm-gestures-undone-dangling" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "gestures",
+            "severity": "medium",
+            "summary": "A gesture row's undone_gesture_id references a row that doesn't exist. The phantom undo claim is invalid.",
+            "quint_source": "specs/werk.qnt:450",
+            "fixer": "null_dangling_undo_gestures",
+            "command": "werk doctor --fix --only=gestures --yes",
+            "inverse": "werk doctor undo <run-id>",
+            "policy_note": "Always auto-applied. Nulls undone_gesture_id rather than deleting the row, so inbound FK references from mutations/edges/epochs are preserved.",
+        })),
+        "safety_harness_rollback" => Some(serde_json::json!({
+            "id": finding_id,
+            "subsystem": "(meta)",
+            "severity": "info",
+            "summary": "Internal op emitted only when the post-fix safety harness sees a residual Quint violation. The run self-rolls-back to its first backup; the journal records each per-file restore.",
+            "quint_source": "analysis/safety_envelope.md (W-1)",
+            "fixer": "(meta)",
+            "command": "(internal — never invoked directly by a user)",
+            "inverse": "(self-inverse: restoration is idempotent)",
+            "policy_note": "If the harness fires, the run finalizes with EXIT_FIX_FAILED. A subsequent `werk doctor undo <run-id>` is safe (no-op) and replays the rollback's own journaled entries.",
         })),
         _ => None,
     };
@@ -1260,20 +2406,81 @@ fn cmd_robot_triage(output: &Output, only: Option<&str>) -> Result<i32, WerkErro
             return Ok(EXIT_REFUSED_UNSAFE);
         }
     };
-    let _subsystems = parse_only(only)?; // currently unused; future R-005 fanout
+    let subsystems = parse_only(only)?;
     let store = workspace.open_store()?;
     let run = DoctorRun::start(workspace.root()).map_err(|e| {
         emit_refusal(output, &format!("cannot create run dir: {}", e));
         WerkError::IoError(e.to_string())
     })?;
-    let store_findings = run_store_detect(&store)?;
-    let findings = store_findings.into_findings();
+    let store_findings = if subsystems.includes_store() {
+        run_store_detect(&store)?
+    } else {
+        StoreFindings::default()
+    };
+    let edges_findings = if subsystems.includes_edges() {
+        run_edges_detect(&store)?
+    } else {
+        EdgesFindings::default()
+    };
+    let gestures_findings = if subsystems.includes_gestures() {
+        run_gestures_detect(&store)?
+    } else {
+        GesturesFindings::default()
+    };
+    let mut findings: Vec<Finding> = Vec::new();
+    findings.extend(store_findings.into_findings());
+    findings.extend(edges_findings.into_findings());
+    findings.extend(gestures_findings.into_findings());
     let mut actions_planned = Vec::new();
     if store_findings.noop_mutations > 0 {
         actions_planned.push(serde_json::json!({
             "op": "purge_noop_mutations",
             "target": ".werk/werk.db",
             "fixer": "purge_noop_mutations",
+        }));
+    }
+    if !edges_findings.multi_parent.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "prune_duplicate_parent_edges",
+            "target": ".werk/werk.db",
+            "fixer": "prune_duplicate_parent_edges",
+            "requires_flag": "--prefer=oldest|newest",
+        }));
+    }
+    if !edges_findings.self_edges.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "delete_self_edges",
+            "target": ".werk/werk.db",
+            "fixer": "delete_self_edges",
+        }));
+    }
+    if !edges_findings.dangling_edges.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "delete_dangling_edges",
+            "target": ".werk/werk.db",
+            "fixer": "delete_dangling_edges",
+        }));
+    }
+    if !edges_findings.sibling_collisions.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "null_colliding_sibling_positions",
+            "target": ".werk/werk.db",
+            "fixer": "null_colliding_sibling_positions",
+        }));
+    }
+    if !edges_findings.horizon_violations.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "null_violating_child_horizon",
+            "target": ".werk/werk.db",
+            "fixer": "null_violating_child_horizon",
+            "requires_flag": "--apply-horizon-fix",
+        }));
+    }
+    if !gestures_findings.dangling_undo.is_empty() {
+        actions_planned.push(serde_json::json!({
+            "op": "null_dangling_undo_gestures",
+            "target": ".werk/werk.db",
+            "fixer": "null_dangling_undo_gestures",
         }));
     }
     let exit_code = if findings.is_empty() {
@@ -1332,6 +2539,12 @@ struct OnlySet {
 impl OnlySet {
     fn includes_store(&self) -> bool {
         self.all || self.items.iter().any(|s| s == "store")
+    }
+    fn includes_edges(&self) -> bool {
+        self.all || self.items.iter().any(|s| s == "edges")
+    }
+    fn includes_gestures(&self) -> bool {
+        self.all || self.items.iter().any(|s| s == "gestures")
     }
 }
 
@@ -1561,23 +2774,146 @@ mod tests {
             "noop_mutations",
             "fm-store-noop-mutations-non-position-fields",
             "singleParent",
+            "fm-edges-multi-parent",
             "noSelfEdges",
+            "fm-edges-self-loop",
             "edgesValid",
+            "fm-edges-dangling",
             "siblingPositionsUnique",
+            "fm-edges-sibling-position-collision",
             "noContainmentViolations",
+            "fm-edges-horizon-containment",
+            "fm-edges-horizon-unparseable",
             "undoneSubsetOfCompleted",
+            "fm-gestures-undone-dangling",
+            "safety_harness_rollback",
         ];
         let caps = capabilities();
         for d in &caps.detectors {
-            // R-005-reserved detectors are addressed by their Quint id.
-            // The available detector(s) currently map to fm-* ids via
-            // their Finding::id, not the detector spec id. Both are listed.
             if !KNOWN_TO_EXPLAIN.contains(&d.id) {
                 panic!(
                     "capabilities declares detector `{}` but cmd_explain has no spec for it",
                     d.id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn safety_harness_rollback_restores_db_and_journals_per_file() {
+        // W-1 contract test: synthesize a fix-then-corrupt situation
+        // and assert safety_harness_rollback restores the live triplet
+        // from backups and journals per-file intent/completion records.
+        // Uses werk-core directly to avoid relying on a deliberately
+        // buggy fixer.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".werk")).unwrap();
+        // Open a Store, create a tension (so the DB has content), then
+        // close. The DB is now in a known state — call this the snapshot.
+        {
+            let store = werk_core::Store::init_unlocked(&root).unwrap();
+            store.create_tension("d", "r").unwrap();
+        }
+        let workspace = Workspace::discover_from(&root).unwrap();
+        let mut run = DoctorRun::start(&root).unwrap();
+        // Back up the snapshot.
+        run.record_backup_once(&workspace.db_path()).unwrap();
+        let wal = workspace.db_path().with_file_name("werk.db-wal");
+        if wal.exists() {
+            run.record_backup_once(&wal).unwrap();
+        }
+        // Now simulate a fixer mutation: append junk bytes to werk.db
+        // (corrupt it so the post-rollback state is verifiable as
+        // "different from corruption, equal to backup").
+        let corrupt_bytes = b"\x00CORRUPTION\x00".to_vec();
+        let pre_corruption_size = std::fs::metadata(workspace.db_path()).unwrap().len();
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(workspace.db_path())
+                .unwrap();
+            f.write_all(&corrupt_bytes).unwrap();
+        }
+        let post_corruption_size = std::fs::metadata(workspace.db_path()).unwrap().len();
+        assert!(
+            post_corruption_size > pre_corruption_size,
+            "corruption should grow the file"
+        );
+
+        // Fire the rollback.
+        let restored = safety_harness_rollback(&mut run, &workspace, &["singleParent".to_string()])
+            .expect("rollback should succeed");
+        assert!(restored >= 1, "should restore at least werk.db");
+
+        // Live DB should match the snapshot size (corruption gone).
+        let post_rollback_size = std::fs::metadata(workspace.db_path()).unwrap().len();
+        assert_eq!(
+            post_rollback_size, pre_corruption_size,
+            "rollback should restore werk.db to snapshot bytes"
+        );
+
+        // actions.jsonl should contain per-file intent + completion
+        // records mentioning safety_harness_rollback.
+        let actions_path = run.run_dir().join("actions.jsonl");
+        let contents = std::fs::read_to_string(&actions_path).unwrap();
+        let lines: Vec<&str> = contents.lines().filter(|l| !l.is_empty()).collect();
+        assert!(
+            lines.iter().any(|l| l.contains("safety_harness_rollback")),
+            "actions.jsonl should journal the rollback"
+        );
+        // At least one intent (before_hash:Some) and one completion (before_hash:null) per file.
+        let intent_lines: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("safety_harness_rollback") && l.contains("\"before_hash\":\""))
+            .collect();
+        let completion_lines: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("safety_harness_rollback") && l.contains("\"before_hash\":null"))
+            .collect();
+        assert!(
+            !intent_lines.is_empty(),
+            "should journal at least one rollback intent record"
+        );
+        assert!(
+            !completion_lines.is_empty(),
+            "should journal at least one rollback completion record"
+        );
+    }
+
+    #[test]
+    fn parse_only_includes_edges_and_gestures() {
+        let set = parse_only(Some("edges")).unwrap();
+        assert!(!set.all);
+        assert!(set.includes_edges());
+        assert!(!set.includes_store());
+        let set = parse_only(Some("gestures")).unwrap();
+        assert!(set.includes_gestures());
+        let set = parse_only(Some("edges,gestures")).unwrap();
+        assert!(set.includes_edges());
+        assert!(set.includes_gestures());
+        assert!(!set.includes_store());
+    }
+
+    #[test]
+    fn quint_detectors_all_available() {
+        let caps = capabilities();
+        for id in [
+            "singleParent",
+            "noSelfEdges",
+            "edgesValid",
+            "siblingPositionsUnique",
+            "noContainmentViolations",
+            "undoneSubsetOfCompleted",
+        ] {
+            let d = caps
+                .detectors
+                .iter()
+                .find(|d| d.id == id)
+                .unwrap_or_else(|| panic!("missing detector `{}`", id));
+            assert!(d.available, "detector `{}` not available", id);
+            assert!(d.reserved_for.is_none(), "detector `{}` still reserved", id);
         }
     }
 

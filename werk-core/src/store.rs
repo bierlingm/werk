@@ -3736,6 +3736,835 @@ impl Store {
         }
         Ok(edges)
     }
+
+    // ── Doctor: Quint-invariant detectors and fixers (R-005) ──────────
+    //
+    // All methods in this block are designed for use ONLY through the
+    // `werk doctor` chokepoint (`werk-cli/src/commands/doctor.rs`).
+    // - `list_*` / `count_*` methods are read-only detectors.
+    // - `doctor_*` methods are mutators that must be journaled by the
+    //   caller via `DoctorRun::record_action`. Each runs inside a
+    //   `BEGIN CONCURRENT; … commit_with_retry;` envelope so cross-table
+    //   mutations are atomic under MVCC two-writer reality (W-4).
+
+    /// Test-fixture helper: insert a raw edge row bypassing the gesture
+    /// API. Used ONLY by the doctor's fixture round-trip tests to inject
+    /// Quint-invariant violations. Not part of the public surface.
+    #[doc(hidden)]
+    pub fn doctor_test_insert_edge_raw(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        edge_type: &str,
+    ) -> Result<String, CoreError> {
+        let conn = self.conn.borrow();
+        let id = ulid::Ulid::new().to_string();
+        conn.execute_with_params(
+            "INSERT INTO edges (id, from_id, to_id, edge_type, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            &[
+                SqliteValue::Text(id.clone().into()),
+                SqliteValue::Text(from_id.to_owned().into()),
+                SqliteValue::Text(to_id.to_owned().into()),
+                SqliteValue::Text(edge_type.to_owned().into()),
+                SqliteValue::Text(Utc::now().to_rfc3339().into()),
+            ],
+        )
+        .map_err(|e| CoreError::ValidationError(format!("test edge insert: {:?}", e)))?;
+        Ok(id)
+    }
+
+    /// Test-fixture helper: directly set a tension's `position` column.
+    #[doc(hidden)]
+    pub fn doctor_test_set_position_raw(
+        &self,
+        tension_id: &str,
+        position: Option<i64>,
+    ) -> Result<(), CoreError> {
+        let conn = self.conn.borrow();
+        let v = match position {
+            Some(p) => SqliteValue::Integer(p),
+            None => SqliteValue::Null,
+        };
+        conn.execute_with_params(
+            "UPDATE tensions SET position = ?1 WHERE id = ?2",
+            &[v, SqliteValue::Text(tension_id.to_owned().into())],
+        )
+        .map_err(|e| CoreError::ValidationError(format!("test position set: {:?}", e)))?;
+        Ok(())
+    }
+
+    /// Test-fixture helper: directly set a tension's `horizon` column.
+    #[doc(hidden)]
+    pub fn doctor_test_set_horizon_raw(
+        &self,
+        tension_id: &str,
+        horizon: Option<&str>,
+    ) -> Result<(), CoreError> {
+        let conn = self.conn.borrow();
+        let v = match horizon {
+            Some(h) => SqliteValue::Text(h.to_owned().into()),
+            None => SqliteValue::Null,
+        };
+        conn.execute_with_params(
+            "UPDATE tensions SET horizon = ?1 WHERE id = ?2",
+            &[v, SqliteValue::Text(tension_id.to_owned().into())],
+        )
+        .map_err(|e| CoreError::ValidationError(format!("test horizon set: {:?}", e)))?;
+        Ok(())
+    }
+
+    /// Test-fixture helper: insert a gesture row with an arbitrary
+    /// `undone_gesture_id`, including ids that don't reference a real
+    /// gesture (so we can inject the `undoneSubsetOfCompleted` violation).
+    #[doc(hidden)]
+    pub fn doctor_test_insert_gesture_raw(
+        &self,
+        description: &str,
+        undone_gesture_id: Option<&str>,
+    ) -> Result<String, CoreError> {
+        let conn = self.conn.borrow();
+        let id = ulid::Ulid::new().to_string();
+        let v = match undone_gesture_id {
+            Some(u) => SqliteValue::Text(u.to_owned().into()),
+            None => SqliteValue::Null,
+        };
+        conn.execute_with_params(
+            "INSERT INTO gestures (id, timestamp, description, undone_gesture_id) VALUES (?1, ?2, ?3, ?4)",
+            &[
+                SqliteValue::Text(id.clone().into()),
+                SqliteValue::Text(Utc::now().to_rfc3339().into()),
+                SqliteValue::Text(description.to_owned().into()),
+                v,
+            ],
+        )
+        .map_err(|e| CoreError::ValidationError(format!("test gesture insert: {:?}", e)))?;
+        Ok(id)
+    }
+
+    /// `singleParent`: list every tension that has more than one
+    /// `contains` edge pointing at it, with the offending edge ids sorted
+    /// by ULID ascending (deterministic, monotonic).
+    pub fn list_multi_parent_violations(
+        &self,
+    ) -> Result<Vec<DoctorMultiParentRow>, CoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query(
+                "SELECT to_id FROM edges WHERE edge_type = 'contains' GROUP BY to_id HAVING COUNT(*) > 1 ORDER BY to_id ASC",
+            )
+            .map_err(|e| CoreError::ValidationError(format!("singleParent query: {:?}", e)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            let to_id = match r.get(0) {
+                Some(SqliteValue::Text(s)) => s.to_string(),
+                _ => continue,
+            };
+            let edge_rows = conn
+                .query_with_params(
+                    "SELECT id FROM edges WHERE edge_type = 'contains' AND to_id = ?1 ORDER BY id ASC",
+                    &[SqliteValue::Text(to_id.clone().into())],
+                )
+                .map_err(|e| CoreError::ValidationError(format!("singleParent detail: {:?}", e)))?;
+            let edge_ids: Vec<String> = edge_rows
+                .into_iter()
+                .filter_map(|er| match er.get(0) {
+                    Some(SqliteValue::Text(s)) => Some(s.to_string()),
+                    _ => None,
+                })
+                .collect();
+            if edge_ids.len() > 1 {
+                out.push(DoctorMultiParentRow {
+                    tension_id: to_id,
+                    parent_edge_ids: edge_ids,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// `noSelfEdges`: list every edge with `from_id == to_id`.
+    pub fn list_self_edges(&self) -> Result<Vec<DoctorEdgeRow>, CoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query("SELECT id, from_id, to_id, edge_type FROM edges WHERE from_id = to_id ORDER BY id ASC")
+            .map_err(|e| CoreError::ValidationError(format!("noSelfEdges query: {:?}", e)))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                let id = text(r.get(0))?;
+                let from_id = text(r.get(1))?;
+                let to_id = text(r.get(2))?;
+                let edge_type = text(r.get(3))?;
+                Some(DoctorEdgeRow {
+                    id,
+                    from_id,
+                    to_id,
+                    edge_type,
+                })
+            })
+            .collect())
+    }
+
+    /// `edgesValid`: list every edge whose endpoints don't reference an
+    /// existing tension. Runs under `BEGIN CONCURRENT` for a consistent
+    /// snapshot across the `edges` and `tensions` tables (W-4).
+    pub fn list_dangling_edges(&self) -> Result<Vec<DoctorEdgeRow>, CoreError> {
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("edgesValid begin: {:?}", e)))?;
+        let result: Result<Vec<DoctorEdgeRow>, CoreError> = (|| {
+            let rows = conn
+                .query(
+                    "SELECT e.id, e.from_id, e.to_id, e.edge_type \
+                     FROM edges e \
+                     LEFT JOIN tensions tf ON tf.id = e.from_id \
+                     LEFT JOIN tensions tt ON tt.id = e.to_id \
+                     WHERE tf.id IS NULL OR tt.id IS NULL \
+                     ORDER BY e.id ASC",
+                )
+                .map_err(|e| CoreError::ValidationError(format!("edgesValid query: {:?}", e)))?;
+            Ok(rows
+                .into_iter()
+                .filter_map(|r| {
+                    Some(DoctorEdgeRow {
+                        id: text(r.get(0))?,
+                        from_id: text(r.get(1))?,
+                        to_id: text(r.get(2))?,
+                        edge_type: text(r.get(3))?,
+                    })
+                })
+                .collect())
+        })();
+        // Read-only transaction; rollback to release the snapshot. No
+        // commit_with_retry needed since we didn't write.
+        let _ = conn.execute("ROLLBACK;");
+        result
+    }
+
+    /// `siblingPositionsUnique`: list every `(parent_id, position)` group
+    /// among children connected by a `contains` edge whose position is
+    /// non-NULL and which has more than one occupant.
+    pub fn list_sibling_position_collisions(
+        &self,
+    ) -> Result<Vec<DoctorSiblingCollisionRow>, CoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query(
+                "SELECT e.from_id, t.position, COUNT(*) as cnt \
+                 FROM edges e JOIN tensions t ON t.id = e.to_id \
+                 WHERE e.edge_type = 'contains' AND t.position IS NOT NULL \
+                 GROUP BY e.from_id, t.position \
+                 HAVING cnt > 1 \
+                 ORDER BY e.from_id ASC, t.position ASC",
+            )
+            .map_err(|e| {
+                CoreError::ValidationError(format!("siblingPositionsUnique query: {:?}", e))
+            })?;
+        let mut out = Vec::new();
+        for r in rows {
+            let parent_id = match text(r.get(0)) {
+                Some(s) => s,
+                None => continue,
+            };
+            let position = match r.get(1) {
+                Some(SqliteValue::Integer(p)) => *p,
+                _ => continue,
+            };
+            // Pull the colliding children, ordered by edge ULID asc (the
+            // earliest-recorded edge is the "winner" by §2.5 tiebreak).
+            let child_rows = conn
+                .query_with_params(
+                    "SELECT e.to_id, e.id FROM edges e \
+                     JOIN tensions t ON t.id = e.to_id \
+                     WHERE e.from_id = ?1 AND e.edge_type = 'contains' AND t.position = ?2 \
+                     ORDER BY e.id ASC",
+                    &[
+                        SqliteValue::Text(parent_id.clone().into()),
+                        SqliteValue::Integer(position),
+                    ],
+                )
+                .map_err(|e| {
+                    CoreError::ValidationError(format!("siblingPositionsUnique detail: {:?}", e))
+                })?;
+            let children: Vec<String> = child_rows
+                .into_iter()
+                .filter_map(|cr| text(cr.get(0)))
+                .collect();
+            if children.len() > 1 {
+                out.push(DoctorSiblingCollisionRow {
+                    parent_id,
+                    position,
+                    child_ids: children,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// `noContainmentViolations`: list every `contains` edge whose parent
+    /// and child both have a non-NULL `horizon`. Returns the raw rows;
+    /// the caller (the doctor CLI) does the horizon comparison via
+    /// `Horizon::parse` to keep the spec-vs-implementation gap small.
+    /// Runs under `BEGIN CONCURRENT` for a consistent multi-table snapshot.
+    pub fn list_horizon_pairs_for_contains_edges(
+        &self,
+    ) -> Result<Vec<DoctorHorizonPairRow>, CoreError> {
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("horizon begin: {:?}", e)))?;
+        let result: Result<Vec<DoctorHorizonPairRow>, CoreError> = (|| {
+            let rows = conn
+                .query(
+                    "SELECT e.from_id, e.to_id, tp.horizon, tc.horizon \
+                     FROM edges e \
+                     JOIN tensions tp ON tp.id = e.from_id \
+                     JOIN tensions tc ON tc.id = e.to_id \
+                     WHERE e.edge_type = 'contains' \
+                       AND tp.horizon IS NOT NULL \
+                       AND tc.horizon IS NOT NULL",
+                )
+                .map_err(|e| CoreError::ValidationError(format!("horizon query: {:?}", e)))?;
+            Ok(rows
+                .into_iter()
+                .filter_map(|r| {
+                    Some(DoctorHorizonPairRow {
+                        parent_id: text(r.get(0))?,
+                        child_id: text(r.get(1))?,
+                        parent_horizon: text(r.get(2))?,
+                        child_horizon: text(r.get(3))?,
+                    })
+                })
+                .collect())
+        })();
+        let _ = conn.execute("ROLLBACK;");
+        result
+    }
+
+    /// `undoneSubsetOfCompleted`: list every gesture whose
+    /// `undone_gesture_id` doesn't reference an existing gesture row.
+    pub fn list_dangling_undo_gestures(
+        &self,
+    ) -> Result<Vec<DoctorDanglingUndoRow>, CoreError> {
+        let conn = self.conn.borrow();
+        let rows = conn
+            .query(
+                "SELECT g.id, g.undone_gesture_id FROM gestures g \
+                 WHERE g.undone_gesture_id IS NOT NULL \
+                   AND g.undone_gesture_id NOT IN (SELECT id FROM gestures WHERE id IS NOT NULL) \
+                 ORDER BY g.id ASC",
+            )
+            .map_err(|e| {
+                CoreError::ValidationError(format!("undoneSubsetOfCompleted query: {:?}", e))
+            })?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                Some(DoctorDanglingUndoRow {
+                    gesture_id: text(r.get(0))?,
+                    dangling_referent: text(r.get(1))?,
+                })
+            })
+            .collect())
+    }
+
+    /// Helper: reconcile `tensions.parent_id` for the given tension ids
+    /// based on the current `contains`-edge set. For each id:
+    /// - If exactly one contains-edge points at it, `parent_id = <from_id>`.
+    /// - If zero or more-than-one (latter caught by harness), `parent_id = NULL`.
+    /// Caller is responsible for the surrounding transaction.
+    pub fn doctor_reconcile_parent_ids(
+        &self,
+        tension_ids: &[String],
+    ) -> Result<usize, CoreError> {
+        if tension_ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.borrow();
+        let mut changed = 0usize;
+        for tid in tension_ids {
+            let edge_rows = conn
+                .query_with_params(
+                    "SELECT from_id FROM edges WHERE edge_type = 'contains' AND to_id = ?1",
+                    &[SqliteValue::Text(tid.clone().into())],
+                )
+                .map_err(|e| {
+                    CoreError::ValidationError(format!("reconcile lookup: {:?}", e))
+                })?;
+            let new_parent: Option<String> = if edge_rows.len() == 1 {
+                text(edge_rows[0].get(0))
+            } else {
+                None
+            };
+            // Read current parent_id to know if this is a real change.
+            let cur_rows = conn
+                .query_with_params(
+                    "SELECT parent_id FROM tensions WHERE id = ?1",
+                    &[SqliteValue::Text(tid.clone().into())],
+                )
+                .map_err(|e| {
+                    CoreError::ValidationError(format!("reconcile current parent: {:?}", e))
+                })?;
+            let cur_parent: Option<String> = cur_rows
+                .first()
+                .and_then(|r| match r.get(0) {
+                    Some(SqliteValue::Text(s)) => Some(s.to_string()),
+                    _ => None,
+                });
+            if cur_parent == new_parent {
+                continue;
+            }
+            let param_val = match &new_parent {
+                Some(p) => SqliteValue::Text(p.clone().into()),
+                None => SqliteValue::Null,
+            };
+            conn.execute_with_params(
+                "UPDATE tensions SET parent_id = ?1 WHERE id = ?2",
+                &[param_val, SqliteValue::Text(tid.clone().into())],
+            )
+            .map_err(|e| {
+                CoreError::ValidationError(format!("reconcile update: {:?}", e))
+            })?;
+            changed += 1;
+        }
+        Ok(changed)
+    }
+
+    /// Fixer 2.2: prune duplicate contains-edges, keeping one per tension
+    /// per `PreferEdge` policy. Reconciles `parent_id` in the same
+    /// transaction.
+    pub fn doctor_prune_duplicate_parent_edges(
+        &self,
+        prefer: PreferEdge,
+    ) -> Result<DoctorPruneResult, CoreError> {
+        let violations = self.list_multi_parent_violations()?;
+        if violations.is_empty() {
+            return Ok(DoctorPruneResult::default());
+        }
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("prune begin: {:?}", e)))?;
+        let work = (|| -> Result<DoctorPruneResult, CoreError> {
+            let mut deleted_ids: Vec<String> = Vec::new();
+            let mut affected: Vec<String> = Vec::new();
+            for v in &violations {
+                // edge_ids are already sorted ULID asc by list_multi_parent_violations.
+                let keep = match prefer {
+                    PreferEdge::Oldest => v.parent_edge_ids.first().cloned(),
+                    PreferEdge::Newest => v.parent_edge_ids.last().cloned(),
+                };
+                let Some(keep_id) = keep else { continue };
+                for eid in &v.parent_edge_ids {
+                    if eid == &keep_id {
+                        continue;
+                    }
+                    conn.execute_with_params(
+                        "DELETE FROM edges WHERE id = ?1",
+                        &[SqliteValue::Text(eid.clone().into())],
+                    )
+                    .map_err(|e| {
+                        CoreError::ValidationError(format!("prune delete: {:?}", e))
+                    })?;
+                    deleted_ids.push(eid.clone());
+                }
+                affected.push(v.tension_id.clone());
+            }
+            let reconciled = self.doctor_reconcile_parent_ids(&affected)?;
+            Ok(DoctorPruneResult {
+                deleted_edge_ids: deleted_ids,
+                affected_tension_ids: affected,
+                parent_ids_reconciled: reconciled,
+            })
+        })();
+        match work {
+            Ok(r) => {
+                Self::commit_with_retry(&conn).map_err(|e| {
+                    CoreError::ValidationError(format!("prune commit: {}", e))
+                })?;
+                Ok(r)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    /// Fixer 2.3: delete every self-edge. Returns the `to_id`s of any
+    /// deleted contains-self-edges so the caller can reconcile parent_id
+    /// (those tensions had `parent_id == id`).
+    pub fn doctor_delete_self_edges(&self) -> Result<DoctorSelfEdgeResult, CoreError> {
+        let self_edges = self.list_self_edges()?;
+        if self_edges.is_empty() {
+            return Ok(DoctorSelfEdgeResult::default());
+        }
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("self-edge begin: {:?}", e)))?;
+        let work = (|| -> Result<DoctorSelfEdgeResult, CoreError> {
+            let mut deleted = 0usize;
+            let mut contains_to_ids: Vec<String> = Vec::new();
+            for e in &self_edges {
+                conn.execute_with_params(
+                    "DELETE FROM edges WHERE id = ?1",
+                    &[SqliteValue::Text(e.id.clone().into())],
+                )
+                .map_err(|err| {
+                    CoreError::ValidationError(format!("self-edge delete: {:?}", err))
+                })?;
+                deleted += 1;
+                if e.edge_type == "contains" {
+                    contains_to_ids.push(e.to_id.clone());
+                }
+            }
+            let reconciled = self.doctor_reconcile_parent_ids(&contains_to_ids)?;
+            Ok(DoctorSelfEdgeResult {
+                deleted,
+                affected_tension_ids: contains_to_ids,
+                parent_ids_reconciled: reconciled,
+            })
+        })();
+        match work {
+            Ok(r) => {
+                Self::commit_with_retry(&conn).map_err(|e| {
+                    CoreError::ValidationError(format!("self-edge commit: {}", e))
+                })?;
+                Ok(r)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    /// Fixer 2.4: delete every dangling edge (endpoint references missing
+    /// tension). Reconciles `parent_id` for surviving tensions whose
+    /// contains-edge pointed at a missing parent.
+    pub fn doctor_delete_dangling_edges(&self) -> Result<DoctorDanglingResult, CoreError> {
+        let dangling = self.list_dangling_edges()?;
+        if dangling.is_empty() {
+            return Ok(DoctorDanglingResult::default());
+        }
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("dangling begin: {:?}", e)))?;
+        let work = (|| -> Result<DoctorDanglingResult, CoreError> {
+            let mut deleted = 0usize;
+            let mut surviving_to_ids: Vec<String> = Vec::new();
+            for e in &dangling {
+                conn.execute_with_params(
+                    "DELETE FROM edges WHERE id = ?1",
+                    &[SqliteValue::Text(e.id.clone().into())],
+                )
+                .map_err(|err| {
+                    CoreError::ValidationError(format!("dangling delete: {:?}", err))
+                })?;
+                deleted += 1;
+                // For contains-edges where the CHILD (to_id) still exists
+                // as a tension but the parent (from_id) is missing, the
+                // child's `parent_id` is now stale and must be NULLed.
+                if e.edge_type == "contains" {
+                    let tcheck = conn
+                        .query_with_params(
+                            "SELECT id FROM tensions WHERE id = ?1",
+                            &[SqliteValue::Text(e.to_id.clone().into())],
+                        )
+                        .map_err(|err| {
+                            CoreError::ValidationError(format!("dangling check: {:?}", err))
+                        })?;
+                    if !tcheck.is_empty() {
+                        surviving_to_ids.push(e.to_id.clone());
+                    }
+                }
+            }
+            let reconciled = self.doctor_reconcile_parent_ids(&surviving_to_ids)?;
+            Ok(DoctorDanglingResult {
+                deleted,
+                affected_tension_ids: surviving_to_ids,
+                parent_ids_reconciled: reconciled,
+            })
+        })();
+        match work {
+            Ok(r) => {
+                Self::commit_with_retry(&conn).map_err(|e| {
+                    CoreError::ValidationError(format!("dangling commit: {}", e))
+                })?;
+                Ok(r)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    /// Fixer 2.5: for each `(parent, position)` collision, keep the
+    /// child whose contains-edge ULID is smallest and NULL the others'
+    /// `position`. Does NOT affect parent_id (the contains-edges
+    /// themselves are unchanged).
+    pub fn doctor_null_colliding_sibling_positions(
+        &self,
+    ) -> Result<DoctorSiblingFixResult, CoreError> {
+        let collisions = self.list_sibling_position_collisions()?;
+        if collisions.is_empty() {
+            return Ok(DoctorSiblingFixResult::default());
+        }
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("sibling begin: {:?}", e)))?;
+        let work = (|| -> Result<DoctorSiblingFixResult, CoreError> {
+            let mut nulled: Vec<(String, i64)> = Vec::new();
+            let mut affected_parents: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for c in &collisions {
+                // child_ids are sorted by edge ULID asc; keep the first.
+                affected_parents.insert(c.parent_id.clone());
+                for losing_child in c.child_ids.iter().skip(1) {
+                    conn.execute_with_params(
+                        "UPDATE tensions SET position = NULL WHERE id = ?1",
+                        &[SqliteValue::Text(losing_child.clone().into())],
+                    )
+                    .map_err(|e| {
+                        CoreError::ValidationError(format!("sibling null: {:?}", e))
+                    })?;
+                    nulled.push((losing_child.clone(), c.position));
+                }
+            }
+            Ok(DoctorSiblingFixResult {
+                nulled,
+                parent_count: affected_parents.len(),
+            })
+        })();
+        match work {
+            Ok(r) => {
+                Self::commit_with_retry(&conn).map_err(|e| {
+                    CoreError::ValidationError(format!("sibling commit: {}", e))
+                })?;
+                Ok(r)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    /// Fixer 2.6: NULL the `horizon` column on the given child tensions.
+    /// Caller supplies the target ids because Rust did the
+    /// `Horizon::parse`-driven comparison (the Quint `<=` is on `Time`).
+    /// Chunks at 500 ids per `IN`-clause to avoid pathological prepared-
+    /// statement sizes.
+    pub fn doctor_null_violating_child_horizons(
+        &self,
+        target_ids: &[String],
+    ) -> Result<Vec<(String, String)>, CoreError> {
+        if target_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("horizon-fix begin: {:?}", e)))?;
+        let work = (|| -> Result<Vec<(String, String)>, CoreError> {
+            let mut nulled: Vec<(String, String)> = Vec::new();
+            for chunk in target_ids.chunks(500) {
+                // Snapshot the old horizons first (one round-trip).
+                let mut placeholders = String::new();
+                let mut params: Vec<SqliteValue> = Vec::with_capacity(chunk.len());
+                for (i, id) in chunk.iter().enumerate() {
+                    if i > 0 {
+                        placeholders.push(',');
+                    }
+                    placeholders.push('?');
+                    placeholders.push_str(&(i + 1).to_string());
+                    params.push(SqliteValue::Text(id.clone().into()));
+                }
+                let sql = format!(
+                    "SELECT id, horizon FROM tensions WHERE id IN ({})",
+                    placeholders
+                );
+                let rows = conn.query_with_params(&sql, &params).map_err(|e| {
+                    CoreError::ValidationError(format!("horizon-fix snapshot: {:?}", e))
+                })?;
+                for r in rows {
+                    let id = match text(r.get(0)) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    let h = match text(r.get(1)) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    nulled.push((id, h));
+                }
+                let update_sql = format!(
+                    "UPDATE tensions SET horizon = NULL WHERE id IN ({})",
+                    placeholders
+                );
+                conn.execute_with_params(&update_sql, &params).map_err(|e| {
+                    CoreError::ValidationError(format!("horizon-fix update: {:?}", e))
+                })?;
+            }
+            Ok(nulled)
+        })();
+        match work {
+            Ok(r) => {
+                Self::commit_with_retry(&conn).map_err(|e| {
+                    CoreError::ValidationError(format!("horizon-fix commit: {}", e))
+                })?;
+                Ok(r)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    /// Fixer 2.7: NULL the `undone_gesture_id` column on every gesture
+    /// row whose target is dangling. We never DELETE the row — other
+    /// tables carry `gesture_id` FKs and deleting would create fresh
+    /// dangling references elsewhere.
+    pub fn doctor_null_dangling_undo_gestures(
+        &self,
+        target_ids: &[String],
+    ) -> Result<usize, CoreError> {
+        if target_ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("undo-fix begin: {:?}", e)))?;
+        let work = (|| -> Result<usize, CoreError> {
+            let mut count = 0usize;
+            for chunk in target_ids.chunks(500) {
+                let mut placeholders = String::new();
+                let mut params: Vec<SqliteValue> = Vec::with_capacity(chunk.len());
+                for (i, id) in chunk.iter().enumerate() {
+                    if i > 0 {
+                        placeholders.push(',');
+                    }
+                    placeholders.push('?');
+                    placeholders.push_str(&(i + 1).to_string());
+                    params.push(SqliteValue::Text(id.clone().into()));
+                }
+                let sql = format!(
+                    "UPDATE gestures SET undone_gesture_id = NULL WHERE id IN ({})",
+                    placeholders
+                );
+                conn.execute_with_params(&sql, &params).map_err(|e| {
+                    CoreError::ValidationError(format!("undo-fix update: {:?}", e))
+                })?;
+                count += chunk.len();
+            }
+            Ok(count)
+        })();
+        match work {
+            Ok(r) => {
+                Self::commit_with_retry(&conn).map_err(|e| {
+                    CoreError::ValidationError(format!("undo-fix commit: {}", e))
+                })?;
+                Ok(r)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+}
+
+/// SqliteValue → Option<String> extractor used by Quint detectors.
+fn text(v: Option<&SqliteValue>) -> Option<String> {
+    match v? {
+        SqliteValue::Text(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+/// Policy for `doctor_prune_duplicate_parent_edges`. The doctor surface
+/// names this `--prefer=oldest|newest`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreferEdge {
+    /// Keep the contains-edge with the smallest ULID (earliest in time).
+    Oldest,
+    /// Keep the contains-edge with the largest ULID (last-write-wins).
+    Newest,
+}
+
+/// One row of `list_multi_parent_violations`: a tension whose `to_id`
+/// is referenced by more than one contains-edge.
+#[derive(Debug, Clone)]
+pub struct DoctorMultiParentRow {
+    pub tension_id: String,
+    /// Contains-edge ids sorted by ULID ascending (oldest first).
+    pub parent_edge_ids: Vec<String>,
+}
+
+/// One row of `list_self_edges` / `list_dangling_edges`.
+#[derive(Debug, Clone)]
+pub struct DoctorEdgeRow {
+    pub id: String,
+    pub from_id: String,
+    pub to_id: String,
+    pub edge_type: String,
+}
+
+/// One row of `list_sibling_position_collisions`.
+#[derive(Debug, Clone)]
+pub struct DoctorSiblingCollisionRow {
+    pub parent_id: String,
+    pub position: i64,
+    /// Child tension ids sorted by their contains-edge ULID ascending.
+    pub child_ids: Vec<String>,
+}
+
+/// One row of `list_horizon_pairs_for_contains_edges`. The CLI does
+/// `Horizon::parse` and filters to actual violations.
+#[derive(Debug, Clone)]
+pub struct DoctorHorizonPairRow {
+    pub parent_id: String,
+    pub child_id: String,
+    pub parent_horizon: String,
+    pub child_horizon: String,
+}
+
+/// One row of `list_dangling_undo_gestures`.
+#[derive(Debug, Clone)]
+pub struct DoctorDanglingUndoRow {
+    pub gesture_id: String,
+    pub dangling_referent: String,
+}
+
+/// Result of `doctor_prune_duplicate_parent_edges`.
+#[derive(Debug, Clone, Default)]
+pub struct DoctorPruneResult {
+    pub deleted_edge_ids: Vec<String>,
+    pub affected_tension_ids: Vec<String>,
+    pub parent_ids_reconciled: usize,
+}
+
+/// Result of `doctor_delete_self_edges`.
+#[derive(Debug, Clone, Default)]
+pub struct DoctorSelfEdgeResult {
+    pub deleted: usize,
+    pub affected_tension_ids: Vec<String>,
+    pub parent_ids_reconciled: usize,
+}
+
+/// Result of `doctor_delete_dangling_edges`.
+#[derive(Debug, Clone, Default)]
+pub struct DoctorDanglingResult {
+    pub deleted: usize,
+    pub affected_tension_ids: Vec<String>,
+    pub parent_ids_reconciled: usize,
+}
+
+/// Result of `doctor_null_colliding_sibling_positions`.
+#[derive(Debug, Clone, Default)]
+pub struct DoctorSiblingFixResult {
+    /// `(losing_child_id, old_position)` pairs.
+    pub nulled: Vec<(String, i64)>,
+    pub parent_count: usize,
 }
 
 /// A record of a rendered sigil (metadata only).
