@@ -9,6 +9,7 @@
 // and react to events.
 
 pub mod address;
+pub mod doctor_run;
 pub mod edge;
 pub mod engine;
 pub mod events;

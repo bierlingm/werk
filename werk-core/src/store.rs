@@ -350,8 +350,9 @@ impl Store {
         let _ = std::fs::create_dir_all(&backup_dir);
         let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
         let backup_path = backup_dir.join(format!("werk.db.{}", timestamp));
+        let mut wrote_local = false;
         if !backup_path.exists() {
-            let _ = std::fs::copy(db_path, &backup_path);
+            wrote_local = std::fs::copy(db_path, &backup_path).is_ok();
         }
         if let Ok(entries) = std::fs::read_dir(&backup_dir) {
             let mut db_backups: Vec<_> = entries
@@ -365,6 +366,98 @@ impl Store {
             db_backups.sort_by_key(|e| e.file_name());
             if db_backups.len() > 10 {
                 for entry in &db_backups[..db_backups.len() - 10] {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+
+        // Mirror backups outside the workspace so `werk nuke` cannot destroy
+        // its own recovery substrate. Best-effort; failures are silent.
+        // Audit reference: recommendations.jsonl R-002.
+        if wrote_local {
+            Self::mirror_backup_to_home(werk_dir, &backup_path, &timestamp.to_string());
+        }
+    }
+
+    /// Compute a stable, readable slug for a workspace's home-mirror
+    /// backup directory. The slug is the workspace's absolute path with
+    /// path separators and unsafe characters mapped to `_`, leading
+    /// underscores trimmed. Two workspaces at different absolute paths
+    /// always produce different slugs.
+    fn workspace_slug(werk_dir: &std::path::Path) -> String {
+        let abs = std::fs::canonicalize(werk_dir).unwrap_or_else(|_| werk_dir.to_path_buf());
+        let mut slug: String = abs
+            .to_string_lossy()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        while slug.starts_with('_') {
+            slug.remove(0);
+        }
+        // Filesystem-safe length cap (most filesystems cap names at 255 bytes).
+        if slug.len() > 200 {
+            slug.truncate(200);
+        }
+        slug
+    }
+
+    fn mirror_backup_to_home(
+        werk_dir: &std::path::Path,
+        src_backup: &std::path::Path,
+        timestamp: &str,
+    ) {
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+        // Skip mirror for workspaces under any known tempdir — tests and
+        // throwaway workspaces should not accumulate forever in ~/.werk/backups/.
+        // env::temp_dir() honors TMPDIR but on macOS that points at
+        // /var/folders/... — common ad-hoc tempdirs like /tmp must be listed
+        // explicitly. All paths are canonicalized for symlink resolution
+        // (macOS /tmp -> /private/tmp).
+        if let Ok(abs_werk) = std::fs::canonicalize(werk_dir) {
+            for candidate in [
+                std::env::temp_dir(),
+                std::path::PathBuf::from("/tmp"),
+                std::path::PathBuf::from("/private/tmp"),
+                std::path::PathBuf::from("/var/folders"),
+                std::path::PathBuf::from("/private/var/folders"),
+            ] {
+                if let Ok(abs_tmp) = std::fs::canonicalize(&candidate)
+                    && abs_werk.starts_with(&abs_tmp)
+                {
+                    return;
+                }
+            }
+        }
+        let slug = Self::workspace_slug(werk_dir);
+        if slug.is_empty() {
+            return;
+        }
+        let mirror_dir = home.join(".werk").join("backups").join(&slug);
+        if std::fs::create_dir_all(&mirror_dir).is_err() {
+            return;
+        }
+        let mirror_path = mirror_dir.join(format!("werk.db.{}", timestamp));
+        if !mirror_path.exists() {
+            let _ = std::fs::copy(src_backup, &mirror_path);
+        }
+        // Retention: keep 30 mirror snapshots (more than local's 10 since
+        // these are the post-nuke recovery substrate).
+        if let Ok(entries) = std::fs::read_dir(&mirror_dir) {
+            let mut mirrors: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("werk.db."))
+                .collect();
+            mirrors.sort_by_key(|e| e.file_name());
+            if mirrors.len() > 30 {
+                for entry in &mirrors[..mirrors.len() - 30] {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }

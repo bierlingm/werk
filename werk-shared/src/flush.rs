@@ -199,14 +199,39 @@ pub fn flush_to_file(workspace: &Workspace) -> Result<FlushOutcome> {
         let _ = std::fs::copy(&flush_path, &backup_path);
     }
 
-    let mut file = std::fs::File::create(&flush_path).map_err(|e| {
-        WerkError::IoError(format!("failed to create {}: {}", flush_path.display(), e))
-    })?;
-    file.write_all(json.as_bytes()).map_err(|e| {
-        WerkError::IoError(format!("failed to write {}: {}", flush_path.display(), e))
-    })?;
-    file.write_all(b"\n").map_err(|e| {
-        WerkError::IoError(format!("failed to write {}: {}", flush_path.display(), e))
+    // Atomic write: tempfile in the same directory → fsync → rename.
+    // A torn write here destroys the human-readable recovery substrate, so
+    // readers must never observe a partial tensions.json. The pid suffix
+    // makes the tempfile unique even if two flushes race (unlikely under
+    // fsqlite MVCC, but cheap insurance).
+    let tmp_path = flush_path.with_extension(format!("json.tmp.{}", std::process::id()));
+    let write_result = (|| -> Result<()> {
+        let mut file = std::fs::File::create(&tmp_path).map_err(|e| {
+            WerkError::IoError(format!("failed to create {}: {}", tmp_path.display(), e))
+        })?;
+        file.write_all(json.as_bytes()).map_err(|e| {
+            WerkError::IoError(format!("failed to write {}: {}", tmp_path.display(), e))
+        })?;
+        file.write_all(b"\n").map_err(|e| {
+            WerkError::IoError(format!("failed to write {}: {}", tmp_path.display(), e))
+        })?;
+        file.sync_all().map_err(|e| {
+            WerkError::IoError(format!("failed to fsync {}: {}", tmp_path.display(), e))
+        })?;
+        Ok(())
+    })();
+    if let Err(e) = write_result {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    std::fs::rename(&tmp_path, &flush_path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        WerkError::IoError(format!(
+            "failed to rename {} -> {}: {}",
+            tmp_path.display(),
+            flush_path.display(),
+            e
+        ))
     })?;
 
     Ok(FlushOutcome {

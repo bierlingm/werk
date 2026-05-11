@@ -18,6 +18,7 @@ fnx-algorithms = { git = "https://github.com/Dicklesworthstone/franken_networkx"
 fnx-runtime = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
 frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch", default-features = false, features = ["hash"] }
 asupersync = "0.2.9"
+blake3 = "1"
 
 [dev-dependencies]
 tempfile = "3"
