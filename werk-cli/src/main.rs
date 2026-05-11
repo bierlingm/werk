@@ -43,7 +43,7 @@ Commands by framework:
     list, tree, stats
 
   System
-    init, config, flush, batch, nuke, mcp, serve, daemon, spaces"
+    init, config, flush, batch, nuke, mcp, serve, daemon, spaces, doctor"
 )]
 struct Cli {
     /// Output in JSON format.
