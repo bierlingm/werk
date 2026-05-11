@@ -51,7 +51,19 @@ pub const DOCTOR_CONTRACT_VERSION: u32 = 1;
 /// (in `werk-cli`) advertises this set; tests assert no fixer emits an op
 /// outside this list. Add new fixers' ops here when they ship, in lockstep
 /// with the capabilities surface — that's the drift-prevention contract.
-pub const ACTION_OPS: &[&str] = &["purge_noop_mutations"];
+pub const ACTION_OPS: &[&str] = &[
+    "purge_noop_mutations",
+    // R-005 edges-subsystem fixers
+    "prune_duplicate_parent_edges",
+    "delete_self_edges",
+    "delete_dangling_edges",
+    "null_colliding_sibling_positions",
+    "null_violating_child_horizon",
+    // R-005 gestures-subsystem fixer
+    "null_dangling_undo_gestures",
+    // R-005 safety-harness rollback (emitted only when W-1 fires post-fix)
+    "safety_harness_rollback",
+];
 
 /// One entry in `actions.jsonl`. Represents a single mutation the doctor
 /// performed, with cryptographic fingerprints of the before/after state so
@@ -103,6 +115,14 @@ pub struct DoctorRun {
     actions_path: PathBuf,
     backups_dir: PathBuf,
     action_count: usize,
+    /// Cache of source paths already backed up during this run. Maps the
+    /// absolute source path to the BLAKE3 hash of the snapshot that was
+    /// copied. `record_backup_once` consults this so multiple fixers can
+    /// share a single backup file per run. Per-fixer `before_hash` values
+    /// in ActionRecord are computed fresh via `hash_current`, NOT from
+    /// this cache — the cache reflects the snapshot at first-copy time
+    /// and is stable for the lifetime of the run.
+    backup_cache: std::collections::HashMap<PathBuf, String>,
 }
 
 impl DoctorRun {
@@ -134,6 +154,7 @@ impl DoctorRun {
             run_id,
             started_at: Utc::now(),
             action_count: 0,
+            backup_cache: std::collections::HashMap::new(),
         })
     }
 
@@ -190,6 +211,47 @@ impl DoctorRun {
             CoreError::ValidationError(format!("backup readback failed: {}", e))
         })?;
         Ok(hex_blake3(&bytes))
+    }
+
+    /// Idempotent variant of `record_backup`. Copies `source_abs` into
+    /// the run's `backups/` tree only on first call per source path; later
+    /// calls within the same run return the cached snapshot hash without
+    /// touching the filesystem. The returned hash is the BLAKE3 of the
+    /// SNAPSHOT (the bytes that were copied at first-call time) — not the
+    /// hash of the file as it stands NOW. For a per-fixer `before_hash`
+    /// reflecting current-state, use `hash_current` separately.
+    ///
+    /// Rationale: a single doctor run may invoke multiple fixers against
+    /// the same DB triplet. Each fixer wants the backup to exist exactly
+    /// once (idempotent), but each fixer's intent ActionRecord must
+    /// reflect the LIVE bytes at intent-record time, not the long-stale
+    /// snapshot bytes.
+    pub fn record_backup_once(&mut self, source_abs: &Path) -> Result<String, CoreError> {
+        let key = source_abs.to_path_buf();
+        if let Some(existing) = self.backup_cache.get(&key) {
+            return Ok(existing.clone());
+        }
+        let hash = self.record_backup(source_abs)?;
+        self.backup_cache.insert(key, hash.clone());
+        Ok(hash)
+    }
+
+    /// Compute the BLAKE3 hex hash of `source_abs` as it exists RIGHT NOW.
+    /// Never cached. Use to populate the `before_hash` field of a per-fixer
+    /// intent ActionRecord. Returns `Ok(None)` if the path does not exist
+    /// (so callers can record a `before_hash: None` without erroring).
+    pub fn hash_current(source_abs: &Path) -> Result<Option<String>, CoreError> {
+        if !source_abs.exists() {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(source_abs).map_err(|e| {
+            CoreError::ValidationError(format!(
+                "read {} for hash_current: {}",
+                source_abs.display(),
+                e
+            ))
+        })?;
+        Ok(Some(hex_blake3(&bytes)))
     }
 
     /// Append a single action record to `actions.jsonl`. Append-only,

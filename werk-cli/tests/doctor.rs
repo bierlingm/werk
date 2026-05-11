@@ -284,17 +284,33 @@ fn doctor_capabilities_round_trip_pins_contract() {
         .get("detectors")
         .and_then(|a| a.as_array())
         .expect("detectors array");
-    // R-005 reservations must remain visible.
-    let mut reserved_count = 0;
-    for d in detectors {
-        if d.get("available").and_then(|b| b.as_bool()) == Some(false)
-            && d.get("reserved_for").and_then(|s| s.as_str()) == Some("R-005")
-        {
-            reserved_count += 1;
-        }
+    // R-005 has shipped: the six Quint detectors must be `available: true`
+    // with no `reserved_for` field. Drift would mean a future pass
+    // silently re-reserved a Quint detector slot.
+    let quint_ids = [
+        "singleParent",
+        "noSelfEdges",
+        "edgesValid",
+        "siblingPositionsUnique",
+        "noContainmentViolations",
+        "undoneSubsetOfCompleted",
+    ];
+    for id in quint_ids {
+        let d = detectors
+            .iter()
+            .find(|d| d.get("id").and_then(|s| s.as_str()) == Some(id))
+            .unwrap_or_else(|| panic!("capabilities missing detector `{}`", id));
+        assert_eq!(
+            d.get("available").and_then(|b| b.as_bool()),
+            Some(true),
+            "detector `{}` is not available",
+            id
+        );
+        assert!(
+            d.get("reserved_for").is_none()
+                || d.get("reserved_for").map(|v| v.is_null()).unwrap_or(false),
+            "detector `{}` still has reserved_for set",
+            id
+        );
     }
-    assert_eq!(
-        reserved_count, 6,
-        "expected 6 R-005-reserved detector slots"
-    );
 }

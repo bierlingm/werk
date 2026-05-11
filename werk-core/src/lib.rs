@@ -48,7 +48,11 @@ pub use projection::{
     extract_mutation_pattern, project_field, project_frequency_at, project_gap_at, project_tension,
 };
 pub use search::{SearchHit, SearchIndex};
-pub use store::{EpochRecord, Store, StoreError};
+pub use store::{
+    DoctorDanglingResult, DoctorDanglingUndoRow, DoctorEdgeRow, DoctorHorizonPairRow,
+    DoctorMultiParentRow, DoctorPruneResult, DoctorSelfEdgeResult, DoctorSiblingCollisionRow,
+    DoctorSiblingFixResult, EpochRecord, PreferEdge, Store, StoreError,
+};
 pub use temporal::{
     ContainmentViolation, CriticalPath, HorizonDrift, HorizonDriftType, ImpliedWindow,
     PositionGaps, SequencingPressure, TemporalSignals, Urgency, compute_implied_windows,
