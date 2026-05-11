@@ -6574,6 +6574,7 @@ name = "werk"
 version = "1.6.0"
 dependencies = [
  "assert_cmd",
+ "blake3",
  "chrono",
  "clap",
  "dirs 6.0.0",
@@ -6612,6 +6613,7 @@ name = "werk-core"
 version = "1.6.0"
 dependencies = [
  "asupersync",
+ "blake3",
  "chrono",
  "dirs 5.0.1",
  "fnx-algorithms",

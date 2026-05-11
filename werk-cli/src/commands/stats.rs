@@ -188,6 +188,11 @@ struct HealthJson {
     noop_mutations: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     purged: Option<usize>,
+    /// ULID of the doctor run that recorded this repair, when --repair
+    /// actually mutated state. Read with `cat .werk/.doctor/runs/<id>/report.json`.
+    /// Populated only when the run was finalized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    doctor_run_id: Option<String>,
 }
 
 // ── Command ────────────────────────────────────────────────────────
@@ -265,7 +270,7 @@ pub fn cmd_stats(
             result.drift = Some(compute_drift(&tensions, &store)?);
         }
         if show_health {
-            result.health = Some(compute_health(&store, repair, yes)?);
+            result.health = Some(compute_health(&store, &workspace, repair, yes)?);
         }
 
         output
@@ -312,7 +317,7 @@ pub fn cmd_stats(
             print_drift(&compute_drift(&tensions, &store)?);
         }
         if show_health {
-            print_health(&compute_health(&store, repair, yes)?);
+            print_health(&compute_health(&store, &workspace, repair, yes)?);
         }
 
         // Footer hint — point users at the most useful next gestures.
@@ -1186,25 +1191,64 @@ fn print_drift(drifts: &[DriftEntryJson]) {
 
 fn compute_health(
     store: &werk_core::Store,
+    workspace: &werk_shared::workspace::Workspace,
     repair: bool,
     yes: bool,
 ) -> Result<HealthJson, WerkError> {
     let noop_count = store.count_noop_mutations().map_err(WerkError::CoreError)?;
 
-    let purged = if repair && noop_count > 0 {
-        if yes || confirm_repair(noop_count) {
-            let purged = store.purge_noop_mutations().map_err(WerkError::CoreError)?;
-            Some(purged)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let mut purged: Option<usize> = None;
+    let mut doctor_run_id: Option<String> = None;
+
+    if repair && noop_count > 0 && (yes || confirm_repair(noop_count)) {
+        // R-004: every doctor mutation is recorded in a per-run artifact tree.
+        // Even though the noop-purge is naturally idempotent and scoped to a
+        // single DELETE, it should still leave an observable trail and an
+        // undo handle.
+        let mut run = werk_core::doctor_run::DoctorRun::start(workspace.root())
+            .map_err(WerkError::CoreError)?;
+        // Back up the DB before mutating. The doctor's invariant is
+        // "every mutation has a verbatim backup recorded under the run id".
+        let db_path = workspace.db_path();
+        let before_hash = run
+            .record_backup(&db_path)
+            .map_err(WerkError::CoreError)
+            .ok();
+        let purged_count = store.purge_noop_mutations().map_err(WerkError::CoreError)?;
+        let after_hash = std::fs::read(&db_path)
+            .ok()
+            .map(|b| blake3::hash(&b).to_hex().to_string());
+        let action = werk_core::doctor_run::ActionRecord {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            op: "purge_noop_mutations".to_string(),
+            target: db_path
+                .strip_prefix(workspace.root())
+                .unwrap_or(&db_path)
+                .display()
+                .to_string(),
+            before_hash,
+            after_hash,
+            note: Some(format!("purged {} noop mutation row(s)", purged_count)),
+        };
+        let _ = run.record_action(action);
+        let run_id = run.run_id().to_string();
+        let _ = run.finalize(
+            0,
+            format!("noop-mutation repair purged {} row(s)", purged_count),
+            vec![serde_json::json!({
+                "id": "fm-store-noop-mutations-non-position-fields",
+                "severity": "low",
+                "count": purged_count,
+            })],
+        );
+        purged = Some(purged_count);
+        doctor_run_id = Some(run_id);
+    }
 
     Ok(HealthJson {
         noop_mutations: noop_count,
         purged,
+        doctor_run_id,
     })
 }
 
