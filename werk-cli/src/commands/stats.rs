@@ -1211,7 +1211,10 @@ fn compute_health(
             .map_err(WerkError::CoreError)?;
         let fix = doctor::run_store_fix(store, workspace, &mut run, &findings)?;
         let run_id = run.run_id().to_string();
-        let _ = run.finalize(
+        // Surface finalize failures explicitly — without finalize, the
+        // `latest` symlink never moves and `werk doctor undo latest`
+        // would target the wrong run. Don't lie about repair success.
+        run.finalize(
             0,
             format!("noop-mutation repair purged {} row(s)", fix.purged),
             vec![serde_json::json!({
@@ -1219,7 +1222,8 @@ fn compute_health(
                 "severity": "low",
                 "count": fix.purged,
             })],
-        );
+        )
+        .map_err(WerkError::CoreError)?;
         purged = Some(fix.purged);
         doctor_run_id = Some(run_id);
     }

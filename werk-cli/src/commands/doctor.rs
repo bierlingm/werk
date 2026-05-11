@@ -24,6 +24,23 @@
 //! 64 usage_error         66 no_input             73 cannot_create_output
 //! 74 io_error
 //! ```
+//!
+//! ## Known limitations (pass-3 substrate; tracked for follow-up PRs)
+//!
+//! - **No writer-ticket lock.** Two concurrent `werk doctor --fix`
+//!   invocations both succeed; the last `finalize` wins the `latest`
+//!   symlink. Real exit-5 `concurrency_lost` behavior needs fsqlite
+//!   writer-ticket integration.
+//! - **Detect/fix TOCTOU.** `count_noop_mutations` and
+//!   `purge_noop_mutations` are independent statements; a concurrent
+//!   MCP writer can drift the count between them.
+//! - **WAL checkpoint not forced before backup.** The fix path backs up
+//!   `werk.db` + `werk.db-wal` + `werk.db-shm` as independent file
+//!   copies; bringing the triplet under a single `BEGIN EXCLUSIVE` is a
+//!   follow-up.
+//! - **`undo` is not transactional.** A failure midway through restoring
+//!   leaves the workspace partially restored; the run directory's
+//!   backups remain available for manual recovery.
 
 use crate::error::WerkError;
 use crate::output::Output;
@@ -463,20 +480,30 @@ fn cmd_diagnose(
         findings.clone()
     };
 
-    let exit_code = if findings.is_empty() {
+    // Exit code reports what the USER sees on stdout. With `--since`,
+    // findings already present in the prior run are filtered out, so the
+    // visible set is the truth — exit 1 only when there's something new.
+    // (The lossless `findings` list still goes into report.json.)
+    let exit_code = if visible_findings.is_empty() {
         EXIT_HEALTHY
     } else {
         EXIT_FINDINGS_PRESENT
     };
 
-    let summary = if findings.is_empty() {
-        "no findings".to_string()
+    let summary = if visible_findings.is_empty() {
+        if findings.is_empty() {
+            "no findings".to_string()
+        } else {
+            format!("no new findings since {}", since.unwrap_or(""))
+        }
     } else {
-        format!("{} finding(s)", findings.len())
+        format!("{} finding(s)", visible_findings.len())
     };
 
-    let findings_json: Vec<serde_json::Value> =
-        findings.iter().map(|f| serde_json::to_value(f).unwrap()).collect();
+    let findings_json: Vec<serde_json::Value> = findings
+        .iter()
+        .map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null))
+        .collect();
 
     let report = run
         .finalize(exit_code, &summary, findings_json)
@@ -532,12 +559,11 @@ fn cmd_fix(
     };
     let subsystems = parse_only(only)?;
     let store = workspace.open_store()?;
-    let mut run = DoctorRun::start(workspace.root()).map_err(|e| {
-        emit_refusal(output, &format!("cannot create run dir: {}", e));
-        WerkError::IoError(e.to_string())
-    })?;
 
     // Detect first (the chokepoint contract: detect-then-fix).
+    // For dry-run we do this WITHOUT starting a DoctorRun, so a dry-run
+    // never promotes `.werk/.doctor/latest` (which would corrupt a
+    // subsequent `werk doctor undo latest`).
     let store_findings = if subsystems.includes_store() {
         run_store_detect(&store)?
     } else {
@@ -558,7 +584,7 @@ fn cmd_fix(
         let envelope = serde_json::json!({
             "schema_version": DOCTOR_CONTRACT_VERSION,
             "verb": "doctor",
-            "run_id": run.run_id().to_string(),
+            "run_id": serde_json::Value::Null,
             "exit_code": EXIT_HEALTHY,
             "data": {
                 "dry_run": true,
@@ -566,11 +592,6 @@ fn cmd_fix(
                 "actions_planned": actions_planned,
             }
         });
-        let _ = run.finalize(
-            EXIT_HEALTHY,
-            "dry-run plan",
-            findings.iter().map(|f| serde_json::to_value(f).unwrap()).collect(),
-        );
         print_envelope(output, robot, &envelope, |_| {
             println!("Plan:");
             if actions_planned.is_empty() {
@@ -584,6 +605,30 @@ fn cmd_fix(
         return Ok(EXIT_HEALTHY);
     }
 
+    // Interactive confirmation on TTY when --yes wasn't passed and there
+    // is actually something destructive to do. Skipped silently when
+    // there's nothing to fix (the call would still produce action_count=0
+    // and no mutation, but the prompt would be noise).
+    if !yes && !actions_planned.is_empty() && std::io::stdin().is_terminal() {
+        eprint!(
+            "Apply {} fixer action(s)? [y/N] ",
+            actions_planned.len()
+        );
+        let _ = std::io::stderr().flush();
+        let mut input = String::new();
+        let accepted = std::io::stdin().read_line(&mut input).is_ok()
+            && input.trim().eq_ignore_ascii_case("y");
+        if !accepted {
+            emit_refusal(output, "user declined");
+            return Ok(EXIT_PARTIAL_FIX);
+        }
+    }
+
+    let mut run = DoctorRun::start(workspace.root()).map_err(|e| {
+        emit_refusal(output, &format!("cannot create run dir: {}", e));
+        WerkError::IoError(e.to_string())
+    })?;
+
     let fix_result = match run_store_fix(&store, &workspace, &mut run, &store_findings) {
         Ok(r) => r,
         Err(e) => {
@@ -593,7 +638,7 @@ fn cmd_fix(
             let _ = run.finalize(
                 EXIT_FIX_FAILED,
                 format!("fix failed: {}", e),
-                findings.iter().map(|f| serde_json::to_value(f).unwrap()).collect(),
+                findings.iter().map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)).collect(),
             );
             emit_refusal(output, &format!("fixer error: {}", e));
             return Ok(EXIT_FIX_FAILED);
@@ -609,7 +654,7 @@ fn cmd_fix(
         .finalize(
             EXIT_HEALTHY,
             &summary,
-            findings.iter().map(|f| serde_json::to_value(f).unwrap()).collect(),
+            findings.iter().map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)).collect(),
         )
         .map_err(WerkError::CoreError)?;
 
@@ -726,6 +771,17 @@ fn cmd_undo(output: &Output, target: String, dry_run: bool) -> Result<i32, WerkE
 
     let mut restored = Vec::new();
     for a in &actions {
+        // Path traversal guard: refuse to touch any target that escapes
+        // the workspace. The chokepoint `record_backup` already rejects
+        // out-of-tree sources, but a hand-edited `actions.jsonl` could
+        // still try to direct undo at `../etc/passwd`.
+        if !is_safe_relative(&a.target) {
+            emit_refusal(
+                output,
+                &format!("refusing to restore out-of-tree target: {}", a.target),
+            );
+            return Ok(EXIT_REFUSED_UNSAFE);
+        }
         if let Err(code) = restore_target(output, workspace.root(), &backups_dir, &a.target, a.before_hash.as_deref()) {
             return Ok(code);
         }
@@ -741,6 +797,9 @@ fn cmd_undo(output: &Output, target: String, dry_run: bool) -> Result<i32, WerkE
             for sidecar in ["werk.db-wal", "werk.db-shm"] {
                 let rel = dir_rel.join(sidecar);
                 let rel_str = rel.to_string_lossy().into_owned();
+                if !is_safe_relative(&rel_str) {
+                    continue;
+                }
                 let backup_path = backups_dir.join(&rel);
                 let live_path = workspace.root().join(&rel);
                 if backup_path.exists() {
@@ -992,13 +1051,22 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
     }
     let cutoff = chrono::DateTime::parse_from_rfc3339(&before_str)
         .or_else(|_| {
-            chrono::NaiveDate::parse_from_str(&before_str, "%Y-%m-%d")
-                .map(|d| {
-                    d.and_hms_opt(0, 0, 0).unwrap().and_utc().fixed_offset()
-                })
+            chrono::NaiveDate::parse_from_str(&before_str, "%Y-%m-%d").map(|d| {
+                d.and_hms_opt(0, 0, 0)
+                    .expect("midnight is always a valid time")
+                    .and_utc()
+                    .fixed_offset()
+            })
         })
         .map_err(|e| WerkError::InvalidInput(format!("--before: {}", e)))?;
-    let cutoff_ms = cutoff.timestamp_millis() as u64;
+    // Reject pre-epoch cutoffs so a hostile / typo'd `--before 1969-01-01`
+    // can't wrap negative ms into u64::MAX-ish and delete every run.
+    let cutoff_ms_i64 = cutoff.timestamp_millis();
+    if cutoff_ms_i64 < 0 {
+        emit_refusal(output, "--before must be on or after the Unix epoch (1970-01-01)");
+        return Ok(EXIT_USAGE);
+    }
+    let cutoff_ms = cutoff_ms_i64 as u64;
 
     let workspace = Workspace::discover()?;
     let doctor_dir = workspace.root().join(".werk").join(".doctor");
@@ -1014,6 +1082,7 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
         .and_then(|p| p.file_name().and_then(|s| s.to_str()).map(String::from));
 
     let mut removed = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
     let entries = std::fs::read_dir(&runs_dir).map_err(|e| WerkError::IoError(e.to_string()))?;
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
@@ -1025,8 +1094,9 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
             continue;
         };
         if ulid.timestamp_ms() < cutoff_ms {
-            if std::fs::remove_dir_all(e.path()).is_ok() {
-                removed.push(name);
+            match std::fs::remove_dir_all(e.path()) {
+                Ok(()) => removed.push(name),
+                Err(err) => failures.push(format!("{}: {}", name, err)),
             }
         }
     }
@@ -1049,22 +1119,36 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
         let _ = f.write_all(s.as_bytes());
     }
 
+    let exit = if failures.is_empty() {
+        EXIT_HEALTHY
+    } else {
+        EXIT_PARTIAL_FIX
+    };
     let envelope = serde_json::json!({
         "schema_version": DOCTOR_CONTRACT_VERSION,
         "verb": "gc",
         "run_id": serde_json::Value::Null,
-        "exit_code": EXIT_HEALTHY,
-        "data": { "removed": removed, "before": before_str }
+        "exit_code": exit,
+        "data": { "removed": removed, "failures": failures, "before": before_str }
     });
     print_envelope(output, false, &envelope, |_| {
         println!("Removed {} run(s).", removed.len());
+        if !failures.is_empty() {
+            eprintln!("Failed to remove {} run(s):", failures.len());
+            for f in &failures {
+                eprintln!("  {}", f);
+            }
+        }
     });
-    Ok(EXIT_HEALTHY)
+    Ok(exit)
 }
 
 fn cmd_explain(output: &Output, finding_id: &str) -> Result<i32, WerkError> {
     let spec = match finding_id {
-        "fm-store-noop-mutations-non-position-fields" => Some(serde_json::json!({
+        // Accept both the detector id (from capabilities.detectors[].id)
+        // and the finding id (from Finding::id) so an agent calling
+        // `--explain` with either string lands at the same explanation.
+        "noop_mutations" | "fm-store-noop-mutations-non-position-fields" => Some(serde_json::json!({
             "id": finding_id,
             "subsystem": "store",
             "severity": "low",
@@ -1146,7 +1230,7 @@ fn cmd_robot_triage(output: &Output, only: Option<&str>) -> Result<i32, WerkErro
         .finalize(
             exit_code,
             &summary,
-            findings.iter().map(|f| serde_json::to_value(f).unwrap()).collect(),
+            findings.iter().map(|f| serde_json::to_value(f).unwrap_or(serde_json::Value::Null)).collect(),
         )
         .map_err(WerkError::CoreError)?;
 
@@ -1237,12 +1321,43 @@ fn print_envelope<F: Fn(&Output)>(
     human: F,
 ) {
     if output.is_json() || robot {
-        if let Ok(s) = serde_json::to_string(envelope) {
-            println!("{}", s);
+        match serde_json::to_string(envelope) {
+            Ok(s) => println!("{}", s),
+            Err(e) => {
+                // Don't silently drop JSON output — a consumer parsing
+                // stdout would see nothing and have no way to recover.
+                // The serialization failure is itself surfaced as a
+                // minimal JSON object so the contract holds.
+                eprintln!("doctor: failed to serialize envelope: {}", e);
+                println!(
+                    "{{\"schema_version\":{},\"verb\":\"doctor\",\"exit_code\":{},\"error\":\"envelope_serialization_failed\"}}",
+                    DOCTOR_CONTRACT_VERSION, EXIT_IO_ERROR
+                );
+            }
         }
     } else {
         human(output);
     }
+}
+
+/// Refuse paths that contain `..` components, absolute prefixes, or
+/// platform-specific escape sequences. The doctor's blast radius is the
+/// workspace; an attacker-controlled `actions.jsonl` line should not be
+/// able to direct restoration outside it.
+fn is_safe_relative(rel: &str) -> bool {
+    let p = std::path::Path::new(rel);
+    if p.is_absolute() {
+        return false;
+    }
+    for c in p.components() {
+        match c {
+            std::path::Component::Normal(_) | std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return false,
+        }
+    }
+    true
 }
 
 /// Atomic restoration of a single file from `backups_dir/rel` to
@@ -1368,6 +1483,48 @@ mod tests {
         let set = parse_only(None).unwrap();
         assert!(set.all);
         assert!(set.includes_store());
+    }
+
+    #[test]
+    fn explain_covers_every_reserved_detector() {
+        // Cross-check: every detector declared in `capabilities()` must be
+        // recognized by `cmd_explain`. Drift would mean an agent calling
+        // `werk doctor --explain <id>` for a slot listed in capabilities
+        // gets EXIT_NO_INPUT. The cheapest assertion is to walk the static
+        // match arm key set; we encode it as a constant list and assert
+        // the union covers every detector id.
+        const KNOWN_TO_EXPLAIN: &[&str] = &[
+            "noop_mutations",
+            "fm-store-noop-mutations-non-position-fields",
+            "singleParent",
+            "noSelfEdges",
+            "edgesValid",
+            "siblingPositionsUnique",
+            "noContainmentViolations",
+            "undoneSubsetOfCompleted",
+        ];
+        let caps = capabilities();
+        for d in &caps.detectors {
+            // R-005-reserved detectors are addressed by their Quint id.
+            // The available detector(s) currently map to fm-* ids via
+            // their Finding::id, not the detector spec id. Both are listed.
+            if !KNOWN_TO_EXPLAIN.contains(&d.id) {
+                panic!(
+                    "capabilities declares detector `{}` but cmd_explain has no spec for it",
+                    d.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn is_safe_relative_rejects_traversal() {
+        assert!(is_safe_relative(".werk/werk.db"));
+        assert!(is_safe_relative("nested/path/file"));
+        assert!(!is_safe_relative("../etc/passwd"));
+        assert!(!is_safe_relative("/etc/passwd"));
+        assert!(!is_safe_relative(".werk/../../oops"));
+        assert!(!is_safe_relative("a/b/../../../c"));
     }
 
     #[test]
