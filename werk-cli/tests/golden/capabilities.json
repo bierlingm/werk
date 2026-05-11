@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "doctor_contract_version": 1,
+  "werk_version": "1.6.0",
+  "detectors": [
+    {
+      "id": "noop_mutations",
+      "subsystem": "store",
+      "available": true,
+      "description": "Count rows in store mutations where old_value = new_value (currently scoped to field='position')",
+      "evidence_source": "werk-core/src/store.rs:1191"
+    },
+    {
+      "id": "singleParent",
+      "subsystem": "edges",
+      "available": true,
+      "description": "Every tension has at most one `contains` edge pointing at it (Quint singleParent).",
+      "evidence_source": "specs/werk.qnt:393"
+    },
+    {
+      "id": "noSelfEdges",
+      "subsystem": "edges",
+      "available": true,
+      "description": "No edge has from_id == to_id (Quint noSelfEdges).",
+      "evidence_source": "specs/werk.qnt:399"
+    },
+    {
+      "id": "edgesValid",
+      "subsystem": "edges",
+      "available": true,
+      "description": "Both endpoints of every edge reference an existing tension (Quint edgesValid).",
+      "evidence_source": "specs/werk.qnt:403"
+    },
+    {
+      "id": "siblingPositionsUnique",
+      "subsystem": "edges",
+      "available": true,
+      "description": "Among children connected by a contains-edge to the same parent, no two share a non-NULL position (Quint siblingPositionsUnique).",
+      "evidence_source": "specs/werk.qnt:418"
+    },
+    {
+      "id": "noContainmentViolations",
+      "subsystem": "edges",
+      "available": true,
+      "description": "Horizon containment: for each contains-edge with both horizons set, child.horizon <= parent.horizon (Quint noContainmentViolations).",
+      "evidence_source": "specs/werk.qnt:436"
+    },
+    {
+      "id": "undoneSubsetOfCompleted",
+      "subsystem": "gestures",
+      "available": true,
+      "description": "Every non-NULL gestures.undone_gesture_id references an existing gestures row (Quint undoneSubsetOfCompleted).",
+      "evidence_source": "specs/werk.qnt:450"
+    }
+  ],
+  "fixers": [
+    {
+      "id": "purge_noop_mutations",
+      "detector": "noop_mutations",
+      "available": true,
+      "op": "purge_noop_mutations",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "prune_duplicate_parent_edges",
+      "detector": "singleParent",
+      "available": true,
+      "op": "prune_duplicate_parent_edges",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "delete_self_edges",
+      "detector": "noSelfEdges",
+      "available": true,
+      "op": "delete_self_edges",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "delete_dangling_edges",
+      "detector": "edgesValid",
+      "available": true,
+      "op": "delete_dangling_edges",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "null_colliding_sibling_positions",
+      "detector": "siblingPositionsUnique",
+      "available": true,
+      "op": "null_colliding_sibling_positions",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "null_violating_child_horizon",
+      "detector": "noContainmentViolations",
+      "available": true,
+      "op": "null_violating_child_horizon",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "null_dangling_undo_gestures",
+      "detector": "undoneSubsetOfCompleted",
+      "available": true,
+      "op": "null_dangling_undo_gestures",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    },
+    {
+      "id": "safety_harness_rollback",
+      "detector": "(meta)",
+      "available": true,
+      "op": "safety_harness_rollback",
+      "inverse": "restore_db_from_backup",
+      "backs_up": [
+        ".werk/werk.db",
+        ".werk/werk.db-wal",
+        ".werk/werk.db-shm"
+      ]
+    }
+  ],
+  "exit_codes": {
+    "0": "healthy",
+    "1": "findings_present",
+    "2": "partial_fix",
+    "3": "fix_failed_rolled_back",
+    "4": "refused_unsafe",
+    "5": "concurrency_lost",
+    "6": "online_required",
+    "64": "usage_error",
+    "66": "no_input",
+    "73": "cannot_create_output",
+    "74": "io_error"
+  },
+  "env_vars": [
+    "NO_COLOR",
+    "WERK_WORKSPACE"
+  ],
+  "subsystems": [
+    "store",
+    "edges",
+    "gestures"
+  ],
+  "run_artifact_layout": {
+    "root": ".werk/.doctor/runs/<ULID>/",
+    "files": [
+      "report.json",
+      "report.md",
+      "actions.jsonl",
+      "backups/",
+      "stderr.log"
+    ],
+    "latest_symlink": ".werk/.doctor/latest"
+  },
+  "compat_aliases": {
+    "werk stats --health": "werk doctor --only=store",
+    "werk stats --health --repair --yes": "werk doctor --fix --only=store --yes"
+  }
+}

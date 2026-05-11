@@ -69,6 +69,18 @@ pub fn cmd_nuke(output: &Output, confirm: bool, global: bool) -> Result<(), Werk
             if let Some(count) = tension_count {
                 println!("  {} tension(s) will be permanently lost.", count);
             }
+            // R-014: .werk/backups/ is destroyed by nuke. Point the user
+            // at the read-only escape hatch before they --confirm.
+            let backups_dir = werk_dir.join("backups");
+            if backups_dir.exists() {
+                println!(
+                    "\n  {} also contains rotating DB backups that will be lost.",
+                    backups_dir.display()
+                );
+                println!(
+                    "  To copy them somewhere safe first, run:  werk doctor evacuate-backups"
+                );
+            }
             println!("\nPass --confirm to proceed with deletion.");
         }
         return Ok(());
