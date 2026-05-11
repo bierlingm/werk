@@ -47,6 +47,12 @@ use ulid::Ulid;
 /// Schema version for the run artifact JSON. Bump on breaking changes.
 pub const DOCTOR_CONTRACT_VERSION: u32 = 1;
 
+/// Canonical action `op` strings recorded by doctor fixers. Capabilities JSON
+/// (in `werk-cli`) advertises this set; tests assert no fixer emits an op
+/// outside this list. Add new fixers' ops here when they ship, in lockstep
+/// with the capabilities surface — that's the drift-prevention contract.
+pub const ACTION_OPS: &[&str] = &["purge_noop_mutations"];
+
 /// One entry in `actions.jsonl`. Represents a single mutation the doctor
 /// performed, with cryptographic fingerprints of the before/after state so
 /// `undo` can verify byte-identical restoration.
@@ -144,9 +150,16 @@ impl DoctorRun {
     /// hash of the backed-up content for inclusion in the action record.
     /// Verifies byte-identical copy with `std::fs::read` + `cmp`.
     pub fn record_backup(&self, source_abs: &Path) -> Result<String, CoreError> {
-        let relative = source_abs
-            .strip_prefix(&self.workspace_root)
-            .unwrap_or(source_abs);
+        // Refuse out-of-tree backup sources. Pre-empts a future fixer from
+        // silently writing an absolute-path backup clone inside the run
+        // directory — the doctor's documented blast radius is the workspace.
+        let relative = source_abs.strip_prefix(&self.workspace_root).map_err(|_| {
+            CoreError::ValidationError(format!(
+                "refusing to back up out-of-tree source {}: not under workspace root {}",
+                source_abs.display(),
+                self.workspace_root.display()
+            ))
+        })?;
         let dest = self.backups_dir.join(relative);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {

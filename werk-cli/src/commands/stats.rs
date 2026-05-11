@@ -1195,53 +1195,32 @@ fn compute_health(
     repair: bool,
     yes: bool,
 ) -> Result<HealthJson, WerkError> {
-    let noop_count = store.count_noop_mutations().map_err(WerkError::CoreError)?;
+    // Thin adapter — the detect+fix code lives in `commands::doctor` so
+    // `werk doctor --only=store` and `werk stats --health` share a single
+    // source of truth. The JSON envelope shape pinned by R-004
+    // (`{noop_mutations, purged?, doctor_run_id?}`) is preserved here.
+    use crate::commands::doctor;
+    let findings = doctor::run_store_detect(store)?;
+    let noop_count = findings.noop_mutations;
 
     let mut purged: Option<usize> = None;
     let mut doctor_run_id: Option<String> = None;
 
     if repair && noop_count > 0 && (yes || confirm_repair(noop_count)) {
-        // R-004: every doctor mutation is recorded in a per-run artifact tree.
-        // Even though the noop-purge is naturally idempotent and scoped to a
-        // single DELETE, it should still leave an observable trail and an
-        // undo handle.
         let mut run = werk_core::doctor_run::DoctorRun::start(workspace.root())
             .map_err(WerkError::CoreError)?;
-        // Back up the DB before mutating. The doctor's invariant is
-        // "every mutation has a verbatim backup recorded under the run id".
-        let db_path = workspace.db_path();
-        let before_hash = run
-            .record_backup(&db_path)
-            .map_err(WerkError::CoreError)
-            .ok();
-        let purged_count = store.purge_noop_mutations().map_err(WerkError::CoreError)?;
-        let after_hash = std::fs::read(&db_path)
-            .ok()
-            .map(|b| blake3::hash(&b).to_hex().to_string());
-        let action = werk_core::doctor_run::ActionRecord {
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            op: "purge_noop_mutations".to_string(),
-            target: db_path
-                .strip_prefix(workspace.root())
-                .unwrap_or(&db_path)
-                .display()
-                .to_string(),
-            before_hash,
-            after_hash,
-            note: Some(format!("purged {} noop mutation row(s)", purged_count)),
-        };
-        let _ = run.record_action(action);
+        let fix = doctor::run_store_fix(store, workspace, &mut run, &findings)?;
         let run_id = run.run_id().to_string();
         let _ = run.finalize(
             0,
-            format!("noop-mutation repair purged {} row(s)", purged_count),
+            format!("noop-mutation repair purged {} row(s)", fix.purged),
             vec![serde_json::json!({
                 "id": "fm-store-noop-mutations-non-position-fields",
                 "severity": "low",
-                "count": purged_count,
+                "count": fix.purged,
             })],
         );
-        purged = Some(purged_count);
+        purged = Some(fix.purged);
         doctor_run_id = Some(run_id);
     }
 

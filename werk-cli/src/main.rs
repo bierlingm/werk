@@ -431,6 +431,23 @@ fn main() {
         ),
         Commands::Daemon { command } => werk::commands::daemon::cmd_daemon(&output, command),
         Commands::Spaces { command } => werk::commands::spaces::cmd_spaces(&output, command),
+        Commands::Doctor(doctor_args) => {
+            // Doctor owns its own exit-code dictionary (0/1/2/3/4/5/6/64/66/73/74).
+            // The dispatch returns the canonical doctor code; we exit with it
+            // directly here so the generic 0/1/2 mapper below does not collapse
+            // semantically distinct codes.
+            match werk::commands::doctor::cmd_doctor(&output, doctor_args) {
+                Ok(code) => std::process::exit(code),
+                Err(e) => {
+                    if output.is_json() {
+                        let _ = output.error_json("INTERNAL_ERROR", &e.to_string());
+                    } else {
+                        let _ = output.error(&e.to_string());
+                    }
+                    std::process::exit(werk::commands::doctor::EXIT_IO_ERROR);
+                }
+            }
+        }
         Commands::Nuke { confirm, global } => {
             werk::commands::nuke::cmd_nuke(&output, confirm, global)
         }

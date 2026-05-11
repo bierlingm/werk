@@ -9,6 +9,7 @@ pub mod compose_up;
 pub mod config;
 pub mod daemon;
 pub mod desire;
+pub mod doctor;
 pub mod epoch;
 pub mod field;
 pub mod flush;
@@ -1014,6 +1015,34 @@ Examples:
         #[command(subcommand)]
         command: HooksCommand,
     },
+
+    /// Diagnose and (optionally) repair the workspace's structural state.
+    ///
+    /// Default (no flags) is read-only and writes only an append-only run
+    /// artifact under `.werk/.doctor/runs/<run-id>/`. With `--fix`, every
+    /// mutation is backed up verbatim and recorded so
+    /// `werk doctor undo <run-id>` can restore byte-for-byte.
+    ///
+    /// Pass-3 surface (R-003) ships the chokepoint plus one detector
+    /// (`noop_mutations`). The six Quint invariant detectors are reserved
+    /// in `capabilities --json` and land in R-005.
+    #[command(after_help = "\
+Examples:
+  werk doctor                          Read-only diagnose
+  werk doctor --json                   Machine-readable output
+  werk doctor --fix --yes              Repair (skip confirmation)
+  werk doctor --dry-run --fix          Print the plan
+  werk doctor --robot-triage           One-call JSON triage
+  werk doctor undo latest              Roll back the most recent --fix
+  werk doctor capabilities --json      What this binary can detect and fix
+  werk doctor robot-docs               Paste-ready agent handbook
+
+Exit codes:
+  0 healthy          1 findings present     2 partial fix
+  3 fix failed       4 refused unsafe       5 lock held
+  6 online required  64 usage              66 no input
+  73 cannot create   74 io error")]
+    Doctor(doctor::DoctorArgs),
 
     /// Destroy the current workspace (deletes the .werk/ directory).
     #[command(after_help = "\
