@@ -360,28 +360,47 @@ pub fn run_store_fix(
             run.record_backup(&sidecar).map_err(WerkError::CoreError)?;
         }
     }
+    // Crash-safety: write the action **before** the mutation so a SIGKILL
+    // between backup-success and mutation-success doesn't leave a silently
+    // mutated DB whose `actions.jsonl` is empty (the undo path would then
+    // refuse to roll back even though a backup exists). `after_hash` is a
+    // best-effort post-hoc field; undo only needs `before_hash` + backup.
+    let target = db_path
+        .strip_prefix(workspace.root())
+        .unwrap_or(&db_path)
+        .display()
+        .to_string();
+    let intent = ActionRecord {
+        timestamp: Utc::now().to_rfc3339(),
+        op: "purge_noop_mutations".to_string(),
+        target: target.clone(),
+        before_hash: Some(before_hash),
+        after_hash: None,
+        note: Some("intent recorded; mutation pending".to_string()),
+    };
+    debug_assert!(
+        ACTION_OPS.contains(&intent.op.as_str()),
+        "op `{}` not in ACTION_OPS table — capabilities will drift",
+        intent.op
+    );
+    run.record_action(intent).map_err(WerkError::CoreError)?;
     let purged_count = store.purge_noop_mutations().map_err(WerkError::CoreError)?;
     let after_hash = std::fs::read(&db_path)
         .ok()
         .map(|b| blake3::hash(&b).to_hex().to_string());
-    let action = ActionRecord {
+    // Append a completion record so the action log reflects reality (the
+    // undo path replays in reverse and tolerates this trailing record;
+    // duplicate `op` rows on the same target are idempotent under undo
+    // because restore is a file replace, not a state delta).
+    let completion = ActionRecord {
         timestamp: Utc::now().to_rfc3339(),
         op: "purge_noop_mutations".to_string(),
-        target: db_path
-            .strip_prefix(workspace.root())
-            .unwrap_or(&db_path)
-            .display()
-            .to_string(),
-        before_hash: Some(before_hash),
+        target,
+        before_hash: None,
         after_hash,
         note: Some(format!("purged {} noop mutation row(s)", purged_count)),
     };
-    debug_assert!(
-        ACTION_OPS.contains(&action.op.as_str()),
-        "op `{}` not in ACTION_OPS table — capabilities will drift",
-        action.op
-    );
-    run.record_action(action).map_err(WerkError::CoreError)?;
+    run.record_action(completion).map_err(WerkError::CoreError)?;
     Ok(StoreFixResult {
         purged: purged_count,
     })
@@ -1083,6 +1102,17 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
 
     let mut removed = Vec::new();
     let mut failures: Vec<String> = Vec::new();
+    let mut skipped_in_flight: Vec<String> = Vec::new();
+    // Defense in depth against racing a concurrent doctor: don't delete
+    // any run modified within the last 60 seconds even if its ULID
+    // timestamp is older than the cutoff. A doctor that started long ago
+    // and is still appending to actions.jsonl would otherwise lose its
+    // own backups underneath it.
+    let recency_grace_secs: u64 = 60;
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let entries = std::fs::read_dir(&runs_dir).map_err(|e| WerkError::IoError(e.to_string()))?;
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
@@ -1093,11 +1123,31 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
         let Ok(ulid) = ulid::Ulid::from_string(&name) else {
             continue;
         };
-        if ulid.timestamp_ms() < cutoff_ms {
-            match std::fs::remove_dir_all(e.path()) {
-                Ok(()) => removed.push(name),
-                Err(err) => failures.push(format!("{}: {}", name, err)),
-            }
+        if ulid.timestamp_ms() >= cutoff_ms {
+            continue;
+        }
+        let path = e.path();
+        // Only delete FINALIZED runs (report.json present). An un-finalized
+        // run directory belongs to a still-running doctor and removing it
+        // would yank that doctor's own backups out from under it.
+        if !path.join("report.json").exists() {
+            skipped_in_flight.push(name);
+            continue;
+        }
+        // Defense in depth: also skip if the run was touched recently.
+        let touched_recently = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| now_secs.saturating_sub(d.as_secs()) < recency_grace_secs)
+            .unwrap_or(false);
+        if touched_recently {
+            skipped_in_flight.push(name);
+            continue;
+        }
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => removed.push(name),
+            Err(err) => failures.push(format!("{}: {}", name, err)),
         }
     }
 
@@ -1129,7 +1179,12 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
         "verb": "gc",
         "run_id": serde_json::Value::Null,
         "exit_code": exit,
-        "data": { "removed": removed, "failures": failures, "before": before_str }
+        "data": {
+            "removed": removed,
+            "failures": failures,
+            "skipped_in_flight": skipped_in_flight,
+            "before": before_str,
+        }
     });
     print_envelope(output, false, &envelope, |_| {
         println!("Removed {} run(s).", removed.len());
