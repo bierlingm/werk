@@ -314,3 +314,186 @@ fn doctor_capabilities_round_trip_pins_contract() {
         );
     }
 }
+
+/// Pass-5 limit-#4 closure: undo writes a `restore_in_progress` marker
+/// at start and removes it on success. Confirms crash-resumption shape.
+#[test]
+fn doctor_undo_clears_restore_in_progress_marker() {
+    let dir = TempDir::new().unwrap();
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+    let _ = seed_noop_position_mutation(dir.path());
+    // Run fix → create run with actions
+    let fix_out = cargo_bin_cmd!("werk")
+        .args(["--json", "doctor", "--fix", "--yes"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(fix_out.status.success());
+    // Latest run dir
+    let latest = dir.path().join(".werk/.doctor/latest");
+    let run_dir = std::fs::read_link(&latest).expect("latest symlink");
+    let run_dir_abs = dir.path().join(".werk/.doctor").join(&run_dir);
+    let marker = run_dir_abs.join("restore_in_progress");
+    assert!(!marker.exists(), "marker should be absent before undo");
+    let out = cargo_bin_cmd!("werk")
+        .args(["--json", "doctor", "undo", "latest"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "undo must succeed");
+    assert!(
+        !marker.exists(),
+        "marker must be cleared on successful undo (path: {})",
+        marker.display()
+    );
+}
+
+/// R-014: `werk doctor evacuate-backups` copies `.werk/backups/*` to
+/// an external destination without mutating the source. Re-running is
+/// idempotent (identical bytes are skipped).
+#[test]
+fn doctor_evacuate_backups_copies_and_is_idempotent() {
+    let dir = TempDir::new().unwrap();
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    // Plant a couple of synthetic backup files under .werk/backups/.
+    let backups = dir.path().join(".werk/backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    std::fs::write(backups.join("werk.db.20260101T000000Z"), b"snapshot-1").unwrap();
+    std::fs::write(backups.join("werk.db.20260102T000000Z"), b"snapshot-2").unwrap();
+
+    let dest = TempDir::new().unwrap();
+    let out = cargo_bin_cmd!("werk")
+        .args([
+            "--json",
+            "doctor",
+            "evacuate-backups",
+            "--dest",
+            dest.path().to_str().unwrap(),
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "first evacuate must succeed");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["verb"], "evacuate-backups");
+    assert_eq!(v["data"]["files_copied"], 2);
+    assert_eq!(v["data"]["files_skipped_identical"], 0);
+
+    // Source must be untouched (W-3: copy-only, never move).
+    assert!(backups.join("werk.db.20260101T000000Z").exists());
+    assert!(backups.join("werk.db.20260102T000000Z").exists());
+
+    // Dest must contain bytes matching source.
+    let bytes = std::fs::read(dest.path().join("werk.db.20260101T000000Z")).unwrap();
+    assert_eq!(bytes, b"snapshot-1");
+
+    // Re-run: all files identical → 0 copied, 2 skipped.
+    let out2 = cargo_bin_cmd!("werk")
+        .args([
+            "--json",
+            "doctor",
+            "evacuate-backups",
+            "--dest",
+            dest.path().to_str().unwrap(),
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(out2.status.success());
+    let v2: serde_json::Value = serde_json::from_slice(&out2.stdout).unwrap();
+    assert_eq!(v2["data"]["files_copied"], 0);
+    assert_eq!(v2["data"]["files_skipped_identical"], 2);
+}
+
+/// R-014 dry-run: enumerates plan without writing.
+#[test]
+fn doctor_evacuate_backups_dry_run_writes_nothing() {
+    let dir = TempDir::new().unwrap();
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+    let backups = dir.path().join(".werk/backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    std::fs::write(backups.join("werk.db.x"), b"x").unwrap();
+
+    let dest = TempDir::new().unwrap();
+    let dest_subdir = dest.path().join("not-yet-created");
+    let out = cargo_bin_cmd!("werk")
+        .args([
+            "--json",
+            "doctor",
+            "evacuate-backups",
+            "--dest",
+            dest_subdir.to_str().unwrap(),
+            "--dry-run",
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["dry_run"], true);
+    assert_eq!(v["data"]["files_planned"], 1);
+    assert!(!dest_subdir.exists(), "dry-run must not create dest dir");
+}
+
+/// R-013: golden-artifact drift detection.
+///
+/// `werk-cli/tests/golden/capabilities.json` is the committed snapshot
+/// of `werk doctor capabilities --json`. Agents and downstream tools
+/// depend on its shape being stable. ANY change to the capabilities
+/// surface — adding a detector, renaming an op, bumping `schema_version`,
+/// extending the exit-code dictionary — must be accompanied by running
+/// `./scripts/snapshot-capabilities.sh`, which regenerates the file.
+///
+/// This test deliberately diffs the FULL JSON (not just a field subset)
+/// so any silent drift fails CI. The previous
+/// `doctor_capabilities_round_trip_pins_contract` test pins a narrow
+/// schema contract; this one pins the entire artifact.
+#[test]
+fn doctor_capabilities_matches_golden_artifact() {
+    let dir = TempDir::new().unwrap();
+    cargo_bin_cmd!("werk")
+        .arg("init")
+        .current_dir(dir.path())
+        .assert()
+        .success();
+    let out = cargo_bin_cmd!("werk")
+        .args(["doctor", "capabilities", "--json"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let actual: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("capabilities --json must be valid JSON");
+
+    let golden_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/capabilities.json");
+    let golden_bytes = std::fs::read(&golden_path)
+        .unwrap_or_else(|e| panic!("missing golden file {}: {}", golden_path.display(), e));
+    let golden: serde_json::Value =
+        serde_json::from_slice(&golden_bytes).expect("golden capabilities must be valid JSON");
+
+    if actual != golden {
+        // Print the diff in a CI-friendly way before panicking.
+        let actual_pretty = serde_json::to_string_pretty(&actual).unwrap();
+        let golden_pretty = serde_json::to_string_pretty(&golden).unwrap();
+        eprintln!("--- golden ---\n{}\n--- actual ---\n{}", golden_pretty, actual_pretty);
+        panic!(
+            "capabilities surface drifted from golden. Run scripts/snapshot-capabilities.sh \
+             to update {} after confirming the change is intentional.",
+            golden_path.display()
+        );
+    }
+}

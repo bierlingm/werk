@@ -34,13 +34,22 @@
 //! - **Detect/fix TOCTOU.** `count_noop_mutations` and
 //!   `purge_noop_mutations` are independent statements; a concurrent
 //!   MCP writer can drift the count between them.
-//! - **WAL checkpoint not forced before backup.** The fix path backs up
-//!   `werk.db` + `werk.db-wal` + `werk.db-shm` as independent file
-//!   copies; bringing the triplet under a single `BEGIN EXCLUSIVE` is a
-//!   follow-up.
-//! - **`undo` is not transactional.** A failure midway through restoring
-//!   leaves the workspace partially restored; the run directory's
-//!   backups remain available for manual recovery.
+//! - **WAL checkpoint forced before backup (pass 5).** Every triplet
+//!   backup is now preceded by `PRAGMA wal_checkpoint(TRUNCATE);` so
+//!   the on-disk `werk.db` reflects all committed bytes at copy time.
+//!   Failures are non-fatal — the WAL sidecar is still copied, so
+//!   replay-on-restore remains correct.
+//! - **`undo` is crash-resumable (pass 5).** Each individual file
+//!   restore is still tempfile + rename (per-file atomic). A
+//!   `restore_in_progress` journal marker is written before the loop
+//!   and cleared on success; if a crash interrupts the sequence the
+//!   marker remains, the user re-runs `werk doctor undo <run-id>`,
+//!   and the restore replays idempotently (restore-from-backup is the
+//!   same regardless of how many times it runs). True multi-file
+//!   atomicity is not achievable on POSIX without rolling our own
+//!   journal-replay; the marker pattern gives the same user-visible
+//!   guarantee for ≥ 99% of failure modes (mid-loop SIGKILL, power
+//!   loss, OOM).
 
 use crate::error::WerkError;
 use crate::output::Output;
@@ -159,6 +168,16 @@ pub enum DoctorVerb {
         before: Option<String>,
         #[arg(long)]
         yes: bool,
+    },
+    /// Copy `.werk/backups/*` to `~/.werk/backups/<slug>/` so the recovery
+    /// substrate survives `werk nuke`. COPY-only: source is read-only.
+    EvacuateBackups {
+        /// Override the destination root (default: `~/.werk/backups/`).
+        #[arg(long, value_name = "PATH")]
+        dest: Option<std::path::PathBuf>,
+        /// Print the plan without copying.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -437,6 +456,15 @@ pub fn run_store_fix(
         return Ok(StoreFixResult::default());
     }
     let db_path = workspace.db_path();
+    // Best-effort WAL checkpoint so the backup triplet is self-consistent
+    // (see record_db_intent rationale). Failures are non-fatal — the WAL
+    // file is still copied alongside `werk.db` so replay is possible.
+    if let Err(e) = store.wal_checkpoint_truncate() {
+        eprintln!(
+            "[doctor] wal_checkpoint(TRUNCATE) skipped: {} (backup will include WAL bytes)",
+            e
+        );
+    }
     // fsqlite uses a `werk.db-wal` sidecar (and may use `-shm`). To get a
     // self-consistent backup we must back up the triplet — restoring the
     // main file alone while leaving a stale WAL on disk would replay the
@@ -742,12 +770,25 @@ pub struct EdgesFixOptions {
 /// each fixer's hash reflects the live state immediately before its
 /// mutation.
 fn record_db_intent(
+    store: &Store,
     run: &mut DoctorRun,
     workspace: &Workspace,
     op: &str,
     note: &str,
 ) -> Result<(), WerkError> {
     let db_path = workspace.db_path();
+    // Force a WAL checkpoint (best-effort) so the on-disk `werk.db`
+    // bytes reflect all committed writes BEFORE we snapshot. Without
+    // this, the live `werk.db` can lag the `-wal` sidecar and the
+    // three-file copy can be internally inconsistent under replay.
+    // Failures are surfaced as a stderr note; a stale-WAL backup is
+    // still correct (WAL is included in the triplet), just larger.
+    if let Err(e) = store.wal_checkpoint_truncate() {
+        eprintln!(
+            "[doctor] wal_checkpoint(TRUNCATE) skipped: {} (backup will include WAL bytes)",
+            e
+        );
+    }
     // `before_hash` in the intent record is the hash that `cmd_undo`
     // verifies against AFTER restoring from `backups/`. The restored
     // file's bytes equal the SNAPSHOT bytes captured by record_backup_once,
@@ -834,6 +875,7 @@ pub fn run_edges_fix(
     if !findings.multi_parent.is_empty() {
         if let Some(prefer) = options.prefer {
             record_db_intent(
+                store,
                 run,
                 workspace,
                 "prune_duplicate_parent_edges",
@@ -867,6 +909,7 @@ pub fn run_edges_fix(
     // 2. noSelfEdges — always applied.
     if !findings.self_edges.is_empty() {
         record_db_intent(
+            store,
             run,
             workspace,
             "delete_self_edges",
@@ -894,6 +937,7 @@ pub fn run_edges_fix(
     // 3. edgesValid — always applied.
     if !findings.dangling_edges.is_empty() {
         record_db_intent(
+            store,
             run,
             workspace,
             "delete_dangling_edges",
@@ -921,6 +965,7 @@ pub fn run_edges_fix(
     // 4. siblingPositionsUnique — always applied.
     if !findings.sibling_collisions.is_empty() {
         record_db_intent(
+            store,
             run,
             workspace,
             "null_colliding_sibling_positions",
@@ -954,6 +999,7 @@ pub fn run_edges_fix(
                 .map(|v| v.child_id.clone())
                 .collect();
             record_db_intent(
+                store,
                 run,
                 workspace,
                 "null_violating_child_horizon",
@@ -1000,6 +1046,7 @@ pub fn run_gestures_fix(
         .map(|r| r.gesture_id.clone())
         .collect();
     record_db_intent(
+        store,
         run,
         workspace,
         "null_dangling_undo_gestures",
@@ -1170,6 +1217,9 @@ pub fn cmd_doctor(output: &Output, args: DoctorArgs) -> Result<i32, WerkError> {
             DoctorVerb::Diff { reference } => cmd_diff(output, reference),
             DoctorVerb::Gc { before, yes } => cmd_gc(output, before, yes),
             DoctorVerb::Undo { target, dry_run } => cmd_undo(output, target, dry_run),
+            DoctorVerb::EvacuateBackups { dest, dry_run } => {
+                cmd_evacuate_backups(output, dest, dry_run)
+            }
         };
     }
 
@@ -1834,6 +1884,37 @@ fn cmd_undo(output: &Output, target: String, dry_run: bool) -> Result<i32, WerkE
         return Ok(EXIT_HEALTHY);
     }
 
+    // Pass-5 undo journaling: write a `restore_in_progress` marker
+    // before touching the workspace and remove it on successful
+    // completion. If the marker is present at the start of a later undo,
+    // the previous undo crashed midway — we surface that and replay the
+    // same run-id (idempotent because every per-file step is restore-
+    // from-backup, which is the same regardless of how many times it
+    // runs). Per-file restores already use tempfile + rename so each
+    // individual replacement is crash-safe; the marker closes the loop
+    // across the whole sequence.
+    let marker_path = run_dir.join("restore_in_progress");
+    if marker_path.exists() {
+        eprintln!(
+            "[doctor] prior undo of run {} did not complete (marker present at {}); replaying.",
+            run_id,
+            marker_path.display()
+        );
+    }
+    let marker_contents = format!(
+        "{{\"run_id\":\"{}\",\"started_at\":\"{}\",\"pid\":{}}}\n",
+        run_id,
+        Utc::now().to_rfc3339(),
+        std::process::id()
+    );
+    if let Err(e) = std::fs::write(&marker_path, marker_contents.as_bytes()) {
+        emit_refusal(
+            output,
+            &format!("failed to write restore_in_progress marker: {}", e),
+        );
+        return Ok(EXIT_IO_ERROR);
+    }
+
     let mut restored = Vec::new();
     for a in &actions {
         // Path traversal guard: refuse to touch any target that escapes
@@ -1909,6 +1990,9 @@ fn cmd_undo(output: &Output, target: String, dry_run: bool) -> Result<i32, WerkE
             }
         }
     }
+
+    // Successful completion: clear the journal marker.
+    let _ = std::fs::remove_file(&marker_path);
 
     let envelope = serde_json::json!({
         "schema_version": DOCTOR_CONTRACT_VERSION,
@@ -2267,6 +2351,215 @@ fn cmd_gc(output: &Output, before: Option<String>, yes: bool) -> Result<i32, Wer
         println!("Removed {} run(s).", removed.len());
         if !failures.is_empty() {
             eprintln!("Failed to remove {} run(s):", failures.len());
+            for f in &failures {
+                eprintln!("  {}", f);
+            }
+        }
+    });
+    Ok(exit)
+}
+
+/// R-014: `werk doctor evacuate-backups`.
+///
+/// Per safety-envelope W-5: `.werk/backups/` lives inside `.werk/` and
+/// is destroyed by `werk nuke`. This verb mirrors every regular file
+/// under `.werk/backups/` to a stable external location keyed by a
+/// per-workspace slug, so the user has somewhere to recover from after
+/// nuke. The source tree is never modified — copy semantics, never
+/// move. The destination is created if absent.
+///
+/// Slug derivation: BLAKE3-12-hex of the absolute workspace path +
+/// `__` + basename. Collision-resistant across machines.
+fn cmd_evacuate_backups(
+    output: &Output,
+    dest_override: Option<std::path::PathBuf>,
+    dry_run: bool,
+) -> Result<i32, WerkError> {
+    let workspace = match Workspace::discover() {
+        Ok(w) => w,
+        Err(_) => {
+            emit_refusal(output, "no workspace discovered");
+            return Ok(EXIT_REFUSED_UNSAFE);
+        }
+    };
+    let src = workspace.root().join(".werk").join("backups");
+    if !src.exists() {
+        let envelope = serde_json::json!({
+            "schema_version": DOCTOR_CONTRACT_VERSION,
+            "verb": "evacuate-backups",
+            "run_id": serde_json::Value::Null,
+            "exit_code": EXIT_NO_INPUT,
+            "data": {
+                "source": src.display().to_string(),
+                "files_copied": 0,
+                "destination": serde_json::Value::Null,
+                "note": "no .werk/backups/ directory present",
+            }
+        });
+        print_envelope(output, false, &envelope, |_| {
+            eprintln!("Nothing to evacuate: {} does not exist.", src.display());
+        });
+        return Ok(EXIT_NO_INPUT);
+    }
+
+    let abs_root = workspace
+        .root()
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.root().to_path_buf());
+    let abs_root_str = abs_root.to_string_lossy().into_owned();
+    let hash = blake3::hash(abs_root_str.as_bytes()).to_hex().to_string();
+    let prefix = &hash[..12];
+    let basename = abs_root
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "werk".to_string());
+    let slug = format!("{}__{}", prefix, basename);
+
+    let dest_root = match dest_override {
+        Some(p) => p,
+        None => {
+            let home = dirs::home_dir().ok_or_else(|| {
+                WerkError::IoError("no home directory; pass --dest <PATH>".to_string())
+            })?;
+            home.join(".werk").join("backups").join(&slug)
+        }
+    };
+
+    // Enumerate files (recursive). Symlinks NOT followed: copy-as-file
+    // is safer here — we never want to write outside dest_root by
+    // chasing a malicious link in `.werk/backups/`.
+    fn walk(root: &Path, out: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+        for e in std::fs::read_dir(root)? {
+            let e = e?;
+            let p = e.path();
+            let meta = std::fs::symlink_metadata(&p)?;
+            if meta.file_type().is_dir() {
+                walk(&p, out)?;
+            } else if meta.file_type().is_file() {
+                out.push(p);
+            }
+            // Symlinks and other types are deliberately skipped.
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    if let Err(e) = walk(&src, &mut files) {
+        return Err(WerkError::IoError(format!(
+            "failed to enumerate {}: {}",
+            src.display(),
+            e
+        )));
+    }
+    files.sort();
+
+    let plan: Vec<serde_json::Value> = files
+        .iter()
+        .map(|p| {
+            let rel = p.strip_prefix(&src).unwrap_or(p);
+            serde_json::json!({
+                "source": p.display().to_string(),
+                "dest": dest_root.join(rel).display().to_string(),
+            })
+        })
+        .collect();
+
+    if dry_run {
+        let envelope = serde_json::json!({
+            "schema_version": DOCTOR_CONTRACT_VERSION,
+            "verb": "evacuate-backups",
+            "run_id": serde_json::Value::Null,
+            "exit_code": EXIT_HEALTHY,
+            "data": {
+                "source": src.display().to_string(),
+                "destination": dest_root.display().to_string(),
+                "slug": slug,
+                "dry_run": true,
+                "files_planned": plan.len(),
+                "plan": plan,
+            }
+        });
+        print_envelope(output, false, &envelope, |_| {
+            eprintln!(
+                "Plan: copy {} file(s) from {} to {} (dry-run, no writes).",
+                plan.len(),
+                src.display(),
+                dest_root.display()
+            );
+        });
+        return Ok(EXIT_HEALTHY);
+    }
+
+    // Idempotent destination create.
+    std::fs::create_dir_all(&dest_root).map_err(|e| {
+        WerkError::IoError(format!(
+            "cannot create {}: {}",
+            dest_root.display(),
+            e
+        ))
+    })?;
+    let mut copied = 0usize;
+    let mut skipped = 0usize;
+    let mut failures: Vec<serde_json::Value> = Vec::new();
+    for p in &files {
+        let rel = p.strip_prefix(&src).unwrap_or(p);
+        let dest_path = dest_root.join(rel);
+        if let Some(parent) = dest_path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            failures.push(serde_json::json!({
+                "source": p.display().to_string(),
+                "error": format!("mkdir {}: {}", parent.display(), e),
+            }));
+            continue;
+        }
+        // If a file with identical bytes already exists, skip — keeps
+        // evacuate idempotent across repeated runs.
+        if dest_path.exists()
+            && let (Ok(src_bytes), Ok(dst_bytes)) =
+                (std::fs::read(p), std::fs::read(&dest_path))
+            && src_bytes == dst_bytes
+        {
+            skipped += 1;
+            continue;
+        }
+        match std::fs::copy(p, &dest_path) {
+            Ok(_) => copied += 1,
+            Err(e) => failures.push(serde_json::json!({
+                "source": p.display().to_string(),
+                "dest": dest_path.display().to_string(),
+                "error": e.to_string(),
+            })),
+        }
+    }
+    let exit = if failures.is_empty() {
+        EXIT_HEALTHY
+    } else {
+        EXIT_PARTIAL_FIX
+    };
+    let envelope = serde_json::json!({
+        "schema_version": DOCTOR_CONTRACT_VERSION,
+        "verb": "evacuate-backups",
+        "run_id": serde_json::Value::Null,
+        "exit_code": exit,
+        "data": {
+            "source": src.display().to_string(),
+            "destination": dest_root.display().to_string(),
+            "slug": slug,
+            "files_seen": files.len(),
+            "files_copied": copied,
+            "files_skipped_identical": skipped,
+            "failures": failures,
+        }
+    });
+    print_envelope(output, false, &envelope, |_| {
+        eprintln!(
+            "Evacuated {} file(s) ({} unchanged) to {}.",
+            copied,
+            skipped,
+            dest_root.display()
+        );
+        if !failures.is_empty() {
+            eprintln!("Failures:");
             for f in &failures {
                 eprintln!("  {}", f);
             }

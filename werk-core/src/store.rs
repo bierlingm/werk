@@ -2459,6 +2459,31 @@ impl Store {
         self.path.as_deref()
     }
 
+    /// Force a WAL checkpoint (TRUNCATE mode) so the `werk.db` file
+    /// reflects all committed bytes and the `werk.db-wal` sidecar is
+    /// reset to length zero.
+    ///
+    /// Called by the doctor before backing up the DB triplet — without
+    /// it, the live `werk.db` bytes may lag the WAL and a copy of the
+    /// three files captured at different instants can be internally
+    /// inconsistent. TRUNCATE is best-effort: under contention it may
+    /// return SQLITE_BUSY, in which case we surface the error so the
+    /// caller can choose to retry or fall through to a triplet copy
+    /// (still correct under WAL replay; just larger).
+    ///
+    /// Idempotent. Safe to call on an empty WAL.
+    pub fn wal_checkpoint_truncate(&self) -> Result<(), CoreError> {
+        let conn = self.conn.borrow();
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map(|_| ())
+            .map_err(|e| {
+                CoreError::ValidationError(format!(
+                    "wal_checkpoint(TRUNCATE) failed: {:?}",
+                    e
+                ))
+            })
+    }
+
     /// Set the EventBus for this store.
     ///
     /// After setting, all successful operations will emit events.
