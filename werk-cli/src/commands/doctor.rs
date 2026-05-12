@@ -31,9 +31,13 @@
 //!   invocations both succeed; the last `finalize` wins the `latest`
 //!   symlink. Real exit-5 `concurrency_lost` behavior needs fsqlite
 //!   writer-ticket integration.
-//! - **Detect/fix TOCTOU.** `count_noop_mutations` and
-//!   `purge_noop_mutations` are independent statements; a concurrent
-//!   MCP writer can drift the count between them.
+//! - **Detect/fix TOCTOU — CLOSED (pass-6 PR-2, Rec 02).** Every doctor
+//!   fixer (six Quint invariants + `purge_noop_mutations` + the parent_id
+//!   reconciler) now opens `BEGIN CONCURRENT;` first and re-detects its
+//!   violator set inside the MVCC snapshot. Concurrent MCP writes between
+//!   the CLI's pre-fix detector and the fixer cannot leave behind work or
+//!   trigger spurious rollbacks; the fix is operated on the fresh set
+//!   exclusively. Drift tests live in `werk-core/tests/doctor_rec02_toctou.rs`.
 //! - **WAL checkpoint forced before backup (pass 5).** Every triplet
 //!   backup is now preceded by `PRAGMA wal_checkpoint(TRUNCATE);` so
 //!   the on-disk `werk.db` reflects all committed bytes at copy time.

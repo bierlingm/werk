@@ -1190,6 +1190,13 @@ impl Store {
     /// Use this to preview before purging.
     pub fn count_noop_mutations(&self) -> Result<usize, CoreError> {
         let conn = self.conn.borrow();
+        Self::count_noop_mutations_in_tx(&conn)
+    }
+
+    /// Re-count no-op mutations using an already-borrowed connection.
+    /// Used inside `purge_noop_mutations`'s `BEGIN CONCURRENT` envelope so
+    /// the count and delete observe the same MVCC snapshot (Rec 02).
+    fn count_noop_mutations_in_tx(conn: &Connection) -> Result<usize, CoreError> {
         let rows = conn
             .query("SELECT COUNT(*) FROM mutations WHERE field = 'position' AND old_value IS NOT NULL AND old_value = new_value")
             .map_err(|e| CoreError::ValidationError(format!("query failed: {:?}", e)))?;
@@ -1202,14 +1209,39 @@ impl Store {
     /// Delete no-op position mutations where old_value equals new_value.
     /// Scoped to position mutations only — other fields are left untouched.
     /// Returns the number of deleted rows.
+    ///
+    /// Rec 02 (TOCTOU): the count and the delete run inside a single
+    /// `BEGIN CONCURRENT` envelope so a concurrent MCP writer cannot
+    /// drift the count between detect and fix. On an empty re-detect
+    /// inside the snapshot we rollback and return 0.
     pub fn purge_noop_mutations(&self) -> Result<usize, CoreError> {
-        let count = self.count_noop_mutations()?;
-        if count > 0 {
-            let conn = self.conn.borrow();
+        let conn = self.conn.borrow();
+        conn.execute("BEGIN CONCURRENT;")
+            .map_err(|e| CoreError::ValidationError(format!("noop begin: {:?}", e)))?;
+        let work = (|| -> Result<usize, CoreError> {
+            let count = Self::count_noop_mutations_in_tx(&conn)?;
+            if count == 0 {
+                return Ok(0);
+            }
             conn.execute("DELETE FROM mutations WHERE field = 'position' AND old_value IS NOT NULL AND old_value = new_value")
                 .map_err(|e| CoreError::ValidationError(format!("delete failed: {:?}", e)))?;
+            Ok(count)
+        })();
+        match work {
+            Ok(0) => {
+                let _ = conn.execute("ROLLBACK;");
+                Ok(0)
+            }
+            Ok(n) => {
+                Self::commit_with_retry(&conn)
+                    .map_err(|e| CoreError::ValidationError(format!("noop commit: {}", e)))?;
+                Ok(n)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK;");
+                Err(e)
+            }
         }
-        Ok(count)
     }
 
     /// Get a tension by ID.
@@ -3873,6 +3905,16 @@ impl Store {
         &self,
     ) -> Result<Vec<DoctorMultiParentRow>, CoreError> {
         let conn = self.conn.borrow();
+        Self::list_multi_parent_violations_in_tx(&conn)
+    }
+
+    /// Re-detect helper for `doctor_prune_duplicate_parent_edges` (Rec 02).
+    /// Same SQL as `list_multi_parent_violations` but takes an already-
+    /// borrowed connection so detect+fix can share a `BEGIN CONCURRENT`
+    /// snapshot.
+    fn list_multi_parent_violations_in_tx(
+        conn: &Connection,
+    ) -> Result<Vec<DoctorMultiParentRow>, CoreError> {
         let rows = conn
             .query(
                 "SELECT to_id FROM edges WHERE edge_type = 'contains' GROUP BY to_id HAVING COUNT(*) > 1 ORDER BY to_id ASC",
@@ -3910,6 +3952,13 @@ impl Store {
     /// `noSelfEdges`: list every edge with `from_id == to_id`.
     pub fn list_self_edges(&self) -> Result<Vec<DoctorEdgeRow>, CoreError> {
         let conn = self.conn.borrow();
+        Self::list_self_edges_in_tx(&conn)
+    }
+
+    /// Re-detect helper for `doctor_delete_self_edges` (Rec 02). Shares
+    /// the SELECT with `list_self_edges` but takes an already-borrowed
+    /// connection so detect+fix share a single MVCC snapshot.
+    fn list_self_edges_in_tx(conn: &Connection) -> Result<Vec<DoctorEdgeRow>, CoreError> {
         let rows = conn
             .query("SELECT id, from_id, to_id, edge_type FROM edges WHERE from_id = to_id ORDER BY id ASC")
             .map_err(|e| CoreError::ValidationError(format!("noSelfEdges query: {:?}", e)))?;
@@ -3937,33 +3986,38 @@ impl Store {
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("edgesValid begin: {:?}", e)))?;
-        let result: Result<Vec<DoctorEdgeRow>, CoreError> = (|| {
-            let rows = conn
-                .query(
-                    "SELECT e.id, e.from_id, e.to_id, e.edge_type \
-                     FROM edges e \
-                     LEFT JOIN tensions tf ON tf.id = e.from_id \
-                     LEFT JOIN tensions tt ON tt.id = e.to_id \
-                     WHERE tf.id IS NULL OR tt.id IS NULL \
-                     ORDER BY e.id ASC",
-                )
-                .map_err(|e| CoreError::ValidationError(format!("edgesValid query: {:?}", e)))?;
-            Ok(rows
-                .into_iter()
-                .filter_map(|r| {
-                    Some(DoctorEdgeRow {
-                        id: text(r.get(0))?,
-                        from_id: text(r.get(1))?,
-                        to_id: text(r.get(2))?,
-                        edge_type: text(r.get(3))?,
-                    })
-                })
-                .collect())
-        })();
+        let result = Self::list_dangling_edges_in_tx(&conn);
         // Read-only transaction; rollback to release the snapshot. No
         // commit_with_retry needed since we didn't write.
         let _ = conn.execute("ROLLBACK;");
         result
+    }
+
+    /// Re-detect helper for `doctor_delete_dangling_edges` (Rec 02). Same
+    /// SQL as `list_dangling_edges` but takes an already-borrowed
+    /// connection so detect+fix share a single MVCC snapshot.
+    fn list_dangling_edges_in_tx(conn: &Connection) -> Result<Vec<DoctorEdgeRow>, CoreError> {
+        let rows = conn
+            .query(
+                "SELECT e.id, e.from_id, e.to_id, e.edge_type \
+                 FROM edges e \
+                 LEFT JOIN tensions tf ON tf.id = e.from_id \
+                 LEFT JOIN tensions tt ON tt.id = e.to_id \
+                 WHERE tf.id IS NULL OR tt.id IS NULL \
+                 ORDER BY e.id ASC",
+            )
+            .map_err(|e| CoreError::ValidationError(format!("edgesValid query: {:?}", e)))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                Some(DoctorEdgeRow {
+                    id: text(r.get(0))?,
+                    from_id: text(r.get(1))?,
+                    to_id: text(r.get(2))?,
+                    edge_type: text(r.get(3))?,
+                })
+            })
+            .collect())
     }
 
     /// `siblingPositionsUnique`: list every `(parent_id, position)` group
@@ -3973,6 +4027,15 @@ impl Store {
         &self,
     ) -> Result<Vec<DoctorSiblingCollisionRow>, CoreError> {
         let conn = self.conn.borrow();
+        Self::list_sibling_position_collisions_in_tx(&conn)
+    }
+
+    /// Re-detect helper for `doctor_null_colliding_sibling_positions`
+    /// (Rec 02). Same SQL but takes an already-borrowed connection so
+    /// detect+fix share a single MVCC snapshot.
+    fn list_sibling_position_collisions_in_tx(
+        conn: &Connection,
+    ) -> Result<Vec<DoctorSiblingCollisionRow>, CoreError> {
         let rows = conn
             .query(
                 "SELECT e.from_id, t.position, COUNT(*) as cnt \
@@ -4037,32 +4100,39 @@ impl Store {
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("horizon begin: {:?}", e)))?;
-        let result: Result<Vec<DoctorHorizonPairRow>, CoreError> = (|| {
-            let rows = conn
-                .query(
-                    "SELECT e.from_id, e.to_id, tp.horizon, tc.horizon \
-                     FROM edges e \
-                     JOIN tensions tp ON tp.id = e.from_id \
-                     JOIN tensions tc ON tc.id = e.to_id \
-                     WHERE e.edge_type = 'contains' \
-                       AND tp.horizon IS NOT NULL \
-                       AND tc.horizon IS NOT NULL",
-                )
-                .map_err(|e| CoreError::ValidationError(format!("horizon query: {:?}", e)))?;
-            Ok(rows
-                .into_iter()
-                .filter_map(|r| {
-                    Some(DoctorHorizonPairRow {
-                        parent_id: text(r.get(0))?,
-                        child_id: text(r.get(1))?,
-                        parent_horizon: text(r.get(2))?,
-                        child_horizon: text(r.get(3))?,
-                    })
-                })
-                .collect())
-        })();
+        let result = Self::list_horizon_pairs_for_contains_edges_in_tx(&conn);
         let _ = conn.execute("ROLLBACK;");
         result
+    }
+
+    /// Re-detect helper for `doctor_null_violating_child_horizons`
+    /// (Rec 02). Same SQL but takes an already-borrowed connection so
+    /// detect+fix share a single MVCC snapshot.
+    fn list_horizon_pairs_for_contains_edges_in_tx(
+        conn: &Connection,
+    ) -> Result<Vec<DoctorHorizonPairRow>, CoreError> {
+        let rows = conn
+            .query(
+                "SELECT e.from_id, e.to_id, tp.horizon, tc.horizon \
+                 FROM edges e \
+                 JOIN tensions tp ON tp.id = e.from_id \
+                 JOIN tensions tc ON tc.id = e.to_id \
+                 WHERE e.edge_type = 'contains' \
+                   AND tp.horizon IS NOT NULL \
+                   AND tc.horizon IS NOT NULL",
+            )
+            .map_err(|e| CoreError::ValidationError(format!("horizon query: {:?}", e)))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                Some(DoctorHorizonPairRow {
+                    parent_id: text(r.get(0))?,
+                    child_id: text(r.get(1))?,
+                    parent_horizon: text(r.get(2))?,
+                    child_horizon: text(r.get(3))?,
+                })
+            })
+            .collect())
     }
 
     /// `undoneSubsetOfCompleted`: list every gesture whose
@@ -4071,6 +4141,15 @@ impl Store {
         &self,
     ) -> Result<Vec<DoctorDanglingUndoRow>, CoreError> {
         let conn = self.conn.borrow();
+        Self::list_dangling_undo_gestures_in_tx(&conn)
+    }
+
+    /// Re-detect helper for `doctor_null_dangling_undo_gestures` (Rec 02).
+    /// Same SQL but takes an already-borrowed connection so detect+fix
+    /// share a single MVCC snapshot.
+    fn list_dangling_undo_gestures_in_tx(
+        conn: &Connection,
+    ) -> Result<Vec<DoctorDanglingUndoRow>, CoreError> {
         let rows = conn
             .query(
                 "SELECT g.id, g.undone_gesture_id FROM gestures g \
@@ -4105,6 +4184,20 @@ impl Store {
             return Ok(0);
         }
         let conn = self.conn.borrow();
+        Self::doctor_reconcile_parent_ids_in_tx(&conn, tension_ids)
+    }
+
+    /// Reconcile-helper variant that operates on a caller-supplied
+    /// connection handle (Rec 02). Lets a fixer running inside its own
+    /// `BEGIN CONCURRENT` envelope reconcile parent_id without nesting a
+    /// fresh `RefCell::borrow()` (clearer ownership, identical effect).
+    fn doctor_reconcile_parent_ids_in_tx(
+        conn: &Connection,
+        tension_ids: &[String],
+    ) -> Result<usize, CoreError> {
+        if tension_ids.is_empty() {
+            return Ok(0);
+        }
         let mut changed = 0usize;
         for tid in tension_ids {
             let edge_rows = conn
@@ -4161,14 +4254,18 @@ impl Store {
         &self,
         prefer: PreferEdge,
     ) -> Result<DoctorPruneResult, CoreError> {
-        let violations = self.list_multi_parent_violations()?;
-        if violations.is_empty() {
-            return Ok(DoctorPruneResult::default());
-        }
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("prune begin: {:?}", e)))?;
+        // Rec 02: re-detect inside the BEGIN CONCURRENT envelope so a
+        // concurrent MCP writer cannot flip the multi-parent set between
+        // detect and fix. Empty-after-re-detect ROLLBACKs and returns a
+        // default result (idempotent — already-fixed).
         let work = (|| -> Result<DoctorPruneResult, CoreError> {
+            let violations = Self::list_multi_parent_violations_in_tx(&conn)?;
+            if violations.is_empty() {
+                return Ok(DoctorPruneResult::default());
+            }
             let mut deleted_ids: Vec<String> = Vec::new();
             let mut affected: Vec<String> = Vec::new();
             for v in &violations {
@@ -4193,7 +4290,7 @@ impl Store {
                 }
                 affected.push(v.tension_id.clone());
             }
-            let reconciled = self.doctor_reconcile_parent_ids(&affected)?;
+            let reconciled = Self::doctor_reconcile_parent_ids_in_tx(&conn, &affected)?;
             Ok(DoctorPruneResult {
                 deleted_edge_ids: deleted_ids,
                 affected_tension_ids: affected,
@@ -4201,6 +4298,11 @@ impl Store {
             })
         })();
         match work {
+            Ok(r) if r.deleted_edge_ids.is_empty() && r.affected_tension_ids.is_empty() => {
+                // Re-detect found nothing — release the snapshot.
+                let _ = conn.execute("ROLLBACK;");
+                Ok(r)
+            }
             Ok(r) => {
                 Self::commit_with_retry(&conn).map_err(|e| {
                     CoreError::ValidationError(format!("prune commit: {}", e))
@@ -4218,14 +4320,15 @@ impl Store {
     /// deleted contains-self-edges so the caller can reconcile parent_id
     /// (those tensions had `parent_id == id`).
     pub fn doctor_delete_self_edges(&self) -> Result<DoctorSelfEdgeResult, CoreError> {
-        let self_edges = self.list_self_edges()?;
-        if self_edges.is_empty() {
-            return Ok(DoctorSelfEdgeResult::default());
-        }
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("self-edge begin: {:?}", e)))?;
+        // Rec 02: re-detect inside the snapshot — see prune_duplicate.
         let work = (|| -> Result<DoctorSelfEdgeResult, CoreError> {
+            let self_edges = Self::list_self_edges_in_tx(&conn)?;
+            if self_edges.is_empty() {
+                return Ok(DoctorSelfEdgeResult::default());
+            }
             let mut deleted = 0usize;
             let mut contains_to_ids: Vec<String> = Vec::new();
             for e in &self_edges {
@@ -4241,7 +4344,7 @@ impl Store {
                     contains_to_ids.push(e.to_id.clone());
                 }
             }
-            let reconciled = self.doctor_reconcile_parent_ids(&contains_to_ids)?;
+            let reconciled = Self::doctor_reconcile_parent_ids_in_tx(&conn, &contains_to_ids)?;
             Ok(DoctorSelfEdgeResult {
                 deleted,
                 affected_tension_ids: contains_to_ids,
@@ -4249,6 +4352,10 @@ impl Store {
             })
         })();
         match work {
+            Ok(r) if r.deleted == 0 => {
+                let _ = conn.execute("ROLLBACK;");
+                Ok(r)
+            }
             Ok(r) => {
                 Self::commit_with_retry(&conn).map_err(|e| {
                     CoreError::ValidationError(format!("self-edge commit: {}", e))
@@ -4266,14 +4373,15 @@ impl Store {
     /// tension). Reconciles `parent_id` for surviving tensions whose
     /// contains-edge pointed at a missing parent.
     pub fn doctor_delete_dangling_edges(&self) -> Result<DoctorDanglingResult, CoreError> {
-        let dangling = self.list_dangling_edges()?;
-        if dangling.is_empty() {
-            return Ok(DoctorDanglingResult::default());
-        }
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("dangling begin: {:?}", e)))?;
+        // Rec 02: re-detect inside the snapshot.
         let work = (|| -> Result<DoctorDanglingResult, CoreError> {
+            let dangling = Self::list_dangling_edges_in_tx(&conn)?;
+            if dangling.is_empty() {
+                return Ok(DoctorDanglingResult::default());
+            }
             let mut deleted = 0usize;
             let mut surviving_to_ids: Vec<String> = Vec::new();
             for e in &dangling {
@@ -4302,7 +4410,7 @@ impl Store {
                     }
                 }
             }
-            let reconciled = self.doctor_reconcile_parent_ids(&surviving_to_ids)?;
+            let reconciled = Self::doctor_reconcile_parent_ids_in_tx(&conn, &surviving_to_ids)?;
             Ok(DoctorDanglingResult {
                 deleted,
                 affected_tension_ids: surviving_to_ids,
@@ -4310,6 +4418,10 @@ impl Store {
             })
         })();
         match work {
+            Ok(r) if r.deleted == 0 => {
+                let _ = conn.execute("ROLLBACK;");
+                Ok(r)
+            }
             Ok(r) => {
                 Self::commit_with_retry(&conn).map_err(|e| {
                     CoreError::ValidationError(format!("dangling commit: {}", e))
@@ -4330,14 +4442,15 @@ impl Store {
     pub fn doctor_null_colliding_sibling_positions(
         &self,
     ) -> Result<DoctorSiblingFixResult, CoreError> {
-        let collisions = self.list_sibling_position_collisions()?;
-        if collisions.is_empty() {
-            return Ok(DoctorSiblingFixResult::default());
-        }
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("sibling begin: {:?}", e)))?;
+        // Rec 02: re-detect inside the snapshot.
         let work = (|| -> Result<DoctorSiblingFixResult, CoreError> {
+            let collisions = Self::list_sibling_position_collisions_in_tx(&conn)?;
+            if collisions.is_empty() {
+                return Ok(DoctorSiblingFixResult::default());
+            }
             let mut nulled: Vec<(String, i64)> = Vec::new();
             let mut affected_parents: std::collections::BTreeSet<String> =
                 std::collections::BTreeSet::new();
@@ -4361,6 +4474,10 @@ impl Store {
             })
         })();
         match work {
+            Ok(r) if r.nulled.is_empty() => {
+                let _ = conn.execute("ROLLBACK;");
+                Ok(r)
+            }
             Ok(r) => {
                 Self::commit_with_retry(&conn).map_err(|e| {
                     CoreError::ValidationError(format!("sibling commit: {}", e))
@@ -4389,10 +4506,19 @@ impl Store {
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("horizon-fix begin: {:?}", e)))?;
+        // Rec 02: inside the snapshot, re-snapshot (child_id, child_horizon,
+        // parent_horizon) via a JOIN on the live contains-edge set and
+        // re-run `Horizon::parse`. Only NULL children that *still* violate
+        // — if a concurrent writer already raised the parent's horizon or
+        // dropped the child's, skip them. A target whose join row vanished
+        // (edge or tension deleted underneath) is silently dropped, matching
+        // the idempotent "already fixed" semantics of the other Rec-02 fixers.
+        let target_set: std::collections::BTreeSet<&str> =
+            target_ids.iter().map(String::as_str).collect();
         let work = (|| -> Result<Vec<(String, String)>, CoreError> {
             let mut nulled: Vec<(String, String)> = Vec::new();
+            let mut still_violating: Vec<String> = Vec::new();
             for chunk in target_ids.chunks(500) {
-                // Snapshot the old horizons first (one round-trip).
                 let mut placeholders = String::new();
                 let mut params: Vec<SqliteValue> = Vec::with_capacity(chunk.len());
                 for (i, id) in chunk.iter().enumerate() {
@@ -4403,23 +4529,58 @@ impl Store {
                     placeholders.push_str(&(i + 1).to_string());
                     params.push(SqliteValue::Text(id.clone().into()));
                 }
-                let sql = format!(
-                    "SELECT id, horizon FROM tensions WHERE id IN ({})",
+                let snapshot_sql = format!(
+                    "SELECT tc.id, tc.horizon, tp.horizon \
+                     FROM tensions tc \
+                     JOIN edges e ON e.to_id = tc.id AND e.edge_type = 'contains' \
+                     JOIN tensions tp ON tp.id = e.from_id \
+                     WHERE tc.id IN ({}) \
+                       AND tc.horizon IS NOT NULL \
+                       AND tp.horizon IS NOT NULL",
                     placeholders
                 );
-                let rows = conn.query_with_params(&sql, &params).map_err(|e| {
-                    CoreError::ValidationError(format!("horizon-fix snapshot: {:?}", e))
-                })?;
+                let rows = conn
+                    .query_with_params(&snapshot_sql, &params)
+                    .map_err(|e| {
+                        CoreError::ValidationError(format!("horizon-fix snapshot: {:?}", e))
+                    })?;
                 for r in rows {
                     let id = match text(r.get(0)) {
                         Some(s) => s,
                         None => continue,
                     };
-                    let h = match text(r.get(1)) {
+                    if !target_set.contains(id.as_str()) {
+                        continue;
+                    }
+                    let ch = match text(r.get(1)) {
                         Some(s) => s,
                         None => continue,
                     };
-                    nulled.push((id, h));
+                    let ph = match text(r.get(2)) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    match (Horizon::parse(&ph), Horizon::parse(&ch)) {
+                        (Ok(pp), Ok(cc)) if cc > pp => {
+                            still_violating.push(id.clone());
+                            nulled.push((id, ch));
+                        }
+                        _ => {
+                            // No longer violating in this snapshot — skip.
+                        }
+                    }
+                }
+            }
+            for chunk in still_violating.chunks(500) {
+                let mut placeholders = String::new();
+                let mut params: Vec<SqliteValue> = Vec::with_capacity(chunk.len());
+                for (i, id) in chunk.iter().enumerate() {
+                    if i > 0 {
+                        placeholders.push(',');
+                    }
+                    placeholders.push('?');
+                    placeholders.push_str(&(i + 1).to_string());
+                    params.push(SqliteValue::Text(id.clone().into()));
                 }
                 let update_sql = format!(
                     "UPDATE tensions SET horizon = NULL WHERE id IN ({})",
@@ -4432,6 +4593,10 @@ impl Store {
             Ok(nulled)
         })();
         match work {
+            Ok(r) if r.is_empty() => {
+                let _ = conn.execute("ROLLBACK;");
+                Ok(r)
+            }
             Ok(r) => {
                 Self::commit_with_retry(&conn).map_err(|e| {
                     CoreError::ValidationError(format!("horizon-fix commit: {}", e))
@@ -4459,9 +4624,25 @@ impl Store {
         let conn = self.conn.borrow();
         conn.execute("BEGIN CONCURRENT;")
             .map_err(|e| CoreError::ValidationError(format!("undo-fix begin: {:?}", e)))?;
+        // Rec 02: re-detect dangling-undo set inside the snapshot. The
+        // caller passed candidate ids (from the pre-fix detector); intersect
+        // with the current snapshot so a concurrent writer that resurrected
+        // the referent (or deleted the gesture row itself) does not cause
+        // us to mutate stale rows. Idempotent — empty intersection ROLLBACKs.
+        let target_set: std::collections::BTreeSet<&str> =
+            target_ids.iter().map(String::as_str).collect();
         let work = (|| -> Result<usize, CoreError> {
+            let live = Self::list_dangling_undo_gestures_in_tx(&conn)?;
+            let still_dangling: Vec<String> = live
+                .into_iter()
+                .filter(|r| target_set.contains(r.gesture_id.as_str()))
+                .map(|r| r.gesture_id)
+                .collect();
+            if still_dangling.is_empty() {
+                return Ok(0);
+            }
             let mut count = 0usize;
-            for chunk in target_ids.chunks(500) {
+            for chunk in still_dangling.chunks(500) {
                 let mut placeholders = String::new();
                 let mut params: Vec<SqliteValue> = Vec::with_capacity(chunk.len());
                 for (i, id) in chunk.iter().enumerate() {
@@ -4484,6 +4665,10 @@ impl Store {
             Ok(count)
         })();
         match work {
+            Ok(0) => {
+                let _ = conn.execute("ROLLBACK;");
+                Ok(0)
+            }
             Ok(r) => {
                 Self::commit_with_retry(&conn).map_err(|e| {
                     CoreError::ValidationError(format!("undo-fix commit: {}", e))
