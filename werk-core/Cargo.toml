@@ -17,8 +17,8 @@ dirs = "5"
 fnx-classes = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
 fnx-algorithms = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
 fnx-runtime = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
-frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch", default-features = false, features = ["hash"] }
-asupersync = "0.2.9"
+frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch", rev = "03060d51823cf62cf22d415043d7808a8a3cf034", default-features = false, features = ["hash"] }
+asupersync = "0.3.1"
 blake3 = "1"
 
 [dev-dependencies]
