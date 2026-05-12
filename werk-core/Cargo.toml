@@ -5,8 +5,9 @@ edition = "2024"
 description = "Structural dynamics grammar — a faithful computational model of Fritz's structural tension"
 
 [dependencies]
-fsqlite = "0.1.2"
-fsqlite-types = "0.1.2"
+fsqlite = { git = "https://github.com/Dicklesworthstone/frankensqlite", rev = "05e87363" }
+fsqlite-types = { git = "https://github.com/Dicklesworthstone/frankensqlite", rev = "05e87363" }
+fsqlite-mvcc = { git = "https://github.com/Dicklesworthstone/frankensqlite", rev = "05e87363" }
 ulid = "1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
