@@ -14,9 +14,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 dirs = "5"
-fnx-classes = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
-fnx-algorithms = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
-fnx-runtime = { git = "https://github.com/Dicklesworthstone/franken_networkx" }
+fnx-classes = { git = "https://github.com/Dicklesworthstone/franken_networkx", rev = "0b2b4cbd" }
+fnx-algorithms = { git = "https://github.com/Dicklesworthstone/franken_networkx", rev = "0b2b4cbd" }
+fnx-runtime = { git = "https://github.com/Dicklesworthstone/franken_networkx", rev = "0b2b4cbd" }
 frankensearch = { git = "https://github.com/Dicklesworthstone/frankensearch", rev = "03060d51823cf62cf22d415043d7808a8a3cf034", default-features = false, features = ["hash"] }
 asupersync = "0.3.1"
 blake3 = "1"
