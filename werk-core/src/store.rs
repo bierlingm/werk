@@ -4621,6 +4621,25 @@ pub struct EpochRecord {
     pub epoch_type: Option<String>,
 }
 
+// fsqlite 0.1.3 no longer implicitly checkpoints the WAL on connection drop.
+// Without this Drop, writes that landed in the WAL after the last checkpoint
+// could be invisible to the next `Connection::open` on the same DB path,
+// stranding data across process exit. Best-effort: never panics.
+impl Drop for Store {
+    fn drop(&mut self) {
+        // Skip for in-memory stores (no WAL).
+        if self.path.is_none() {
+            return;
+        }
+        if let Err(e) = self.wal_checkpoint_truncate() {
+            eprintln!(
+                "werk-core: warning — WAL checkpoint on Store drop failed: {:?}",
+                e
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6740,6 +6759,10 @@ mod tests {
                 }
             });
             assert!(!has_horiz, "Should have no horizon column in legacy DB");
+            // fsqlite 0.1.3 no longer implicitly checkpoints WAL on connection drop.
+            // Without this, the writes above stay in the WAL and Store::init below
+            // may open the bare DB file without replaying them.
+            let _ = legacy_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)");
         } // Connection closed
 
         // Open via Store::init - this should trigger migration
